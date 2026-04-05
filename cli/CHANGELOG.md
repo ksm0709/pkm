@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.2.0 (2026-04-05)
+
+### Features
+
+- **config**: Add auto git project vault mapping and local config support
+  ([`27d5fbc`](https://github.com/ksm0709/pkm/commit/27d5fbcd819ef870aea800c18bc1be95107527e1))
+
+
 ## v2.1.0 (2026-04-05)
 
 ### Bug Fixes
