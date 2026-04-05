@@ -28,7 +28,7 @@ jobs:
         working-directory: cli
         run: |
           uv venv
-          uv pip install -e ".[dev]"
+          uv pip install -e ".[search,dev]"
           uv run pytest tests/ -v
 
       - name: Python Semantic Release
