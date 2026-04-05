@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.1.2 (2026-04-05)
+
+### Performance Improvements
+
+- Lazy-import sentence-transformers to eliminate startup delay
+  ([`4984b34`](https://github.com/ksm0709/pkm/commit/4984b34636863538fa7bb0ab6942a6b3f80bdbdd))
+
+
 ## v1.1.1 (2026-04-05)
 
 ### Bug Fixes
