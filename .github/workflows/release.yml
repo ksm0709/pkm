@@ -31,15 +31,27 @@ jobs:
           uv pip install -e ".[search,dev]"
           uv run pytest tests/ -v
 
+      - name: Record current latest tag
+        id: before
+        run: echo "tag=$(git describe --tags --abbrev=0 2>/dev/null || echo '')" >> $GITHUB_OUTPUT
+
       - name: Python Semantic Release
-        id: release
-        uses: python-semantic-release/python-semantic-release@v9
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          root_options: "-C cli"
+        working-directory: cli
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          pip install python-semantic-release
+          semantic-release version
+          semantic-release publish
 
       - name: Update latest tag
-        if: steps.release.outputs.released == 'true'
         run: |
-          git tag -f latest
-          git push origin -f latest
+          new_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo '')
+          if [ -n "$new_tag" ] && [ "$new_tag" != "${{ steps.before.outputs.tag }}" ]; then
+            git tag -f latest
+            git push origin -f latest
+          fi
