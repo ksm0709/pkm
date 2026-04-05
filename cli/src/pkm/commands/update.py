@@ -51,11 +51,20 @@ def update_cmd(version: str | None) -> None:
             )
             if result.returncode != 0:
                 console.print(f"[red]✗ Version {tag} not found.[/red]")
+                # Try GitHub releases first, fallback to local git tags
                 versions = get_recent_versions(5)
+                if not versions:
+                    local = subprocess.run(
+                        ["git", "-C", str(repo_dir), "tag", "--sort=-version:refname"],
+                        capture_output=True, text=True,
+                    )
+                    versions = [t for t in local.stdout.splitlines() if t.startswith("v")][:5]
                 if versions:
                     console.print("[yellow]Available versions:[/yellow]")
                     for v in versions:
                         console.print(f"  {v}")
+                else:
+                    console.print("[yellow]No tagged releases found yet.[/yellow]")
                 raise click.ClickException(f"Could not checkout {tag}.")
         else:
             console.print(f"[cyan]Pulling latest from {repo_dir}...[/cyan]")
