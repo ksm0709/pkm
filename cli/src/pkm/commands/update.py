@@ -8,6 +8,8 @@ from pathlib import Path
 import click
 from rich.console import Console
 
+from pkm.version_check import get_recent_versions
+
 console = Console()
 
 
@@ -43,11 +45,18 @@ def update_cmd(version: str | None) -> None:
                 raise click.ClickException("git fetch failed.")
 
             console.print(f"[cyan]Checking out {tag}...[/cyan]")
-            result = subprocess.run(["git", "-C", str(repo_dir), "checkout", tag])
+            result = subprocess.run(
+                ["git", "-C", str(repo_dir), "checkout", tag],
+                capture_output=True,
+            )
             if result.returncode != 0:
-                raise click.ClickException(
-                    f"Could not checkout {tag}. Run 'git -C {repo_dir} tag' to see available versions."
-                )
+                console.print(f"[red]✗ Version {tag} not found.[/red]")
+                versions = get_recent_versions(5)
+                if versions:
+                    console.print("[yellow]Available versions:[/yellow]")
+                    for v in versions:
+                        console.print(f"  {v}")
+                raise click.ClickException(f"Could not checkout {tag}.")
         else:
             console.print(f"[cyan]Pulling latest from {repo_dir}...[/cyan]")
             result = subprocess.run(["git", "-C", str(repo_dir), "pull"])

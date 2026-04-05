@@ -50,6 +50,17 @@ def get_latest_version() -> str | None:
     return latest
 
 
+def get_recent_versions(n: int = 5) -> list[str]:
+    """Return up to n recent release tags from GitHub, newest first."""
+    try:
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/releases?per_page={n}"
+        with urlopen(url, timeout=FETCH_TIMEOUT) as resp:
+            releases = json.loads(resp.read())
+            return [r["tag_name"] for r in releases if r.get("tag_name")]
+    except (URLError, json.JSONDecodeError, Exception):
+        return []
+
+
 def available_update(current_version: str) -> str | None:
     """Return the newer version tag if one is available, else None."""
     latest = get_latest_version()
