@@ -2,6 +2,18 @@
 
 <!-- version list -->
 
+## v2.0.0 (2026-04-05)
+
+### Features
+
+- **note**: Add pkm note command group (add/edit/show/stale/orphans)
+  ([`c3cd8a4`](https://github.com/ksm0709/pkm/commit/c3cd8a462e56da94f050cc01f05709d4b38295a9))
+
+### Breaking Changes
+
+- **note**: Pkm new, pkm stale, pkm orphans removed from top-level
+
+
 ## v1.1.2 (2026-04-05)
 
 ### Performance Improvements
