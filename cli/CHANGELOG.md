@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.1.1 (2026-04-05)
+
+### Bug Fixes
+
+- **setup**: Install into uv tool env instead of active venv
+  ([`4169f60`](https://github.com/ksm0709/pkm/commit/4169f6065ef7c45b29fb3d21b202210de5d78f27))
+
+
 ## v1.1.0 (2026-04-05)
 
 ### Bug Fixes
