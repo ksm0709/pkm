@@ -31,10 +31,6 @@ jobs:
           uv pip install -e ".[search,dev]"
           uv run pytest tests/ -v
 
-      - name: Record current latest tag
-        id: before
-        run: echo "tag=$(git describe --tags --abbrev=0 2>/dev/null || echo '')" >> $GITHUB_OUTPUT
-
       - name: Python Semantic Release
         working-directory: cli
         env:
@@ -48,10 +44,3 @@ jobs:
           semantic-release version
           semantic-release publish
 
-      - name: Update latest tag
-        run: |
-          new_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo '')
-          if [ -n "$new_tag" ] && [ "$new_tag" != "${{ steps.before.outputs.tag }}" ]; then
-            git tag -f latest
-            git push origin -f latest
-          fi
