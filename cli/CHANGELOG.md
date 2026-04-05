@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.3.1 (2026-04-05)
+
+### Bug Fixes
+
+- **agent**: Update hook hints to use pkm note/daily commands
+  ([`4bd7315`](https://github.com/ksm0709/pkm/commit/4bd7315d307a2a412f325643e60ac926520f9559))
+
+
 ## v2.3.0 (2026-04-05)
 
 ### Bug Fixes
