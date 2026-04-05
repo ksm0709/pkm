@@ -12,8 +12,8 @@
 
 ```bash
 # 1. 관련 메모리 검색
-pkm memory search "$TASK_DESCRIPTION" --top 5
-pkm memory search "$TASK_DESCRIPTION" --type procedural --top 3
+pkm search "$TASK_DESCRIPTION" --top 5
+pkm search "$TASK_DESCRIPTION" --type procedural --top 3
 
 # 2. 세션 ID 설정
 export SESSION_ID="$(date +%Y-%m-%d)-$(echo $TASK_NAME | tr ' ' '-' | head -c 20)"
@@ -24,10 +24,10 @@ export SESSION_ID="$(date +%Y-%m-%d)-$(echo $TASK_NAME | tr ' ' '-' | head -c 20
 
 ```bash
 # 오류 해결 시 (즉시 저장)
-pkm memory store "오류명: 원인 및 해결 방법" --type procedural --importance 8
+pkm note add --content "오류명: 원인 및 해결 방법" --type procedural --importance 8
 
 # 아키텍처 결정 시 (즉시 저장)
-pkm memory store "결정 내용 — 근거" --type semantic --importance 7 --session $SESSION_ID
+pkm note add --content "결정 내용 — 근거" --type semantic --importance 7 --session $SESSION_ID
 ```
 
 ### Before Claiming Completion
@@ -35,7 +35,7 @@ pkm memory store "결정 내용 — 근거" --type semantic --importance 7 --ses
 
 ```bash
 # 1. 세션 메모리 확인
-pkm memory session $SESSION_ID
+pkm search --session $SESSION_ID
 
 # 2. 저장되지 않은 중요 발견이 있으면 저장
 # 3. 통합 후보 확인 (선택적)

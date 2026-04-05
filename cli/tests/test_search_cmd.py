@@ -76,6 +76,41 @@ def test_search_command(cli_runner, tmp_vault: VaultConfig, mock_model):
     assert "#" in result.output or "rank" in result.output.lower() or "Title" in result.output
 
 
+def test_search_memory_type_filter(cli_runner, tmp_vault: VaultConfig, mock_model):
+    """pkm search --type accepts memory_type filter without error."""
+    cli_runner("index")
+    result = cli_runner("search", "MVCC", "--type", "semantic")
+    assert result.exit_code == 0, result.output
+
+
+def test_search_min_importance_filter(cli_runner, tmp_vault: VaultConfig, mock_model):
+    """pkm search --min-importance accepts importance filter without error."""
+    cli_runner("index")
+    result = cli_runner("search", "MVCC", "--min-importance", "5")
+    assert result.exit_code == 0, result.output
+
+
+def test_search_recency_weight(cli_runner, tmp_vault: VaultConfig, mock_model):
+    """pkm search --recency-weight accepts recency weight without error."""
+    cli_runner("index")
+    result = cli_runner("search", "MVCC", "--recency-weight", "0.4")
+    assert result.exit_code == 0, result.output
+
+
+def test_search_session_filter(cli_runner, tmp_vault: VaultConfig, mock_model, tmp_path):
+    """pkm search --session returns only notes with matching session_id."""
+    # Create a note with session_id in tmp_vault
+    session_note = tmp_vault.notes_dir / "2026-01-01-session-test-note.md"
+    session_note.write_text(
+        "---\nid: session-test-note\nsession_id: test-session-abc\nmemory_type: episodic\nimportance: 5.0\ntags: []\naliases: []\n---\nSession test content.\n",
+        encoding="utf-8",
+    )
+    cli_runner("index")
+
+    result = cli_runner("search", "session test", "--session", "test-session-abc")
+    assert result.exit_code == 0, result.output
+
+
 def test_search_stale_warning(cli_runner, tmp_vault: VaultConfig, mock_model):
     """pkm search warns when index is stale."""
     # Build index

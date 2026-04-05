@@ -204,3 +204,101 @@ def test_note_orphans_is_accessible(cli_runner, tmp_vault):
     """pkm note orphans is accessible as a subcommand of note."""
     result = cli_runner("note", "orphans")
     assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# pkm note add --content (agent memory usage)
+# ---------------------------------------------------------------------------
+
+def test_note_add_content_creates_memory_note(tmp_vault):
+    """pkm note add --content creates note with memory frontmatter."""
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["--vault", "test-vault", "note", "add",
+         "--content", "learned that IndexEntry crash fix requires field filtering",
+         "--type", "semantic", "--importance", "7", "--session", "s1", "--agent", "ag1"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    today = date.today().isoformat()
+    notes = list(tmp_vault.notes_dir.glob(f"{today}-*.md"))
+    assert len(notes) >= 1
+
+    # Find the note we just created
+    note_file = next(n for n in notes if "indexentry" in n.name or "learned" in n.name)
+    meta = _parse_frontmatter(note_file)
+    assert meta["memory_type"] == "semantic"
+    assert meta["importance"] == 7.0
+    assert meta["session_id"] == "s1"
+    assert meta["agent_id"] == "ag1"
+    assert meta["source_type"] == "agent"
+    assert meta["consolidated"] is False
+
+
+def test_note_add_title_only_no_memory_fields(tmp_vault):
+    """pkm note add 'title' (no options) does NOT include memory fields."""
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["--vault", "test-vault", "note", "add", "Plain Research Note"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    today = date.today().isoformat()
+    note_file = tmp_vault.notes_dir / f"{today}-plain-research-note.md"
+    assert note_file.exists()
+
+    meta = _parse_frontmatter(note_file)
+    assert "memory_type" not in meta
+    assert "importance" not in meta
+    assert "session_id" not in meta
+    # Standard fields present
+    assert "id" in meta
+    assert "source" in meta
+
+
+def test_note_add_stdin(tmp_vault):
+    """pkm note add --stdin reads content from stdin."""
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["--vault", "test-vault", "note", "add", "--stdin", "--type", "episodic", "--importance", "5"],
+        input="multi-line content\nfrom stdin",
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    today = date.today().isoformat()
+    notes = list(tmp_vault.notes_dir.glob(f"{today}-*.md"))
+    assert any("multi-line" in n.name or "multi" in n.name for n in notes)
+
+
+def test_note_add_no_title_no_content_raises_error(tmp_vault):
+    """pkm note add with no title and no --content raises UsageError."""
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["--vault", "test-vault", "note", "add"],
+    )
+    assert result.exit_code != 0
+
+
+def test_note_add_content_defaults(tmp_vault):
+    """pkm note add --content without --type uses semantic default."""
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["--vault", "test-vault", "note", "add", "--content", "default type test content"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    today = date.today().isoformat()
+    notes = list(tmp_vault.notes_dir.glob(f"{today}-*default*.md"))
+    assert len(notes) >= 1
+    meta = _parse_frontmatter(notes[0])
+    assert meta["memory_type"] == "semantic"
+    assert meta["importance"] == 5.0

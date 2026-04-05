@@ -8,8 +8,8 @@
 - **Secondary:** remember this, 기억해, store finding, 발견 저장
 
 ## Tools
-- `pkm memory store` (메모리 저장 CLI)
-- `pkm memory search` (저장 전 중복 확인)
+- `pkm note add --content` (메모리 저장 CLI)
+- `pkm search` (저장 전 중복 확인)
 
 ## Principles
 - 저장 전 반드시 검색하여 중복을 방지한다
@@ -42,18 +42,18 @@
 
 ```bash
 # 1. 저장 전 중복 확인
-pkm memory search "IndexEntry crash unknown fields" --top 3
+pkm search "IndexEntry crash unknown fields" --top 3
 
 # 2. 유사 항목 없으면 저장
-pkm memory store "IndexEntry crash는 새 필드 추가 시 발생 — fix: load_index()에서 unknown fields 필터링" \
+pkm note add --content "IndexEntry crash는 새 필드 추가 시 발생 — fix: load_index()에서 unknown fields 필터링" \
   --type procedural --importance 8
 
 # 3. 세션 추적 포함 저장
-pkm memory store "WS-1 frontmatter 구현 완료" \
+pkm note add --content "WS-1 frontmatter 구현 완료" \
   --type episodic --importance 5 --session 2026-04-05-memory-layer
 
 # 4. 멀티라인 내용 (stdin)
-cat << 'EOF' | pkm memory store --stdin --type semantic --importance 7
+cat << 'EOF' | pkm note add --content --stdin --type semantic --importance 7
 Generative Agents 점수 공식:
 score = (1 - α) * cosine_similarity + α * recency * (importance / 10)
 recency = 0.995^hours_elapsed

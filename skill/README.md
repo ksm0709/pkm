@@ -29,9 +29,9 @@ PKM 워크플로우 목록. 사용자 요청에 맞는 워크플로우를 찾아
 ## Memory Layer Architecture
 
 ```
-[에이전트 발견] → pkm memory store → memory/YYYY-MM-DD-<slug>.md
+[에이전트 발견] → pkm note add --content → memory/YYYY-MM-DD-<slug>.md
                                               ↓
-[세션 시작]    ← pkm memory search ← 시맨틱 + 시간 가중 검색
+[세션 시작]    ← pkm search ← 시맨틱 + 시간 가중 검색
                                               ↓
 [일일 통합]    → pkm consolidate mark → consolidated: true
                                               ↓

@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import shlex
 import subprocess
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -13,7 +14,7 @@ from rich.console import Console
 
 from pkm.config import load_config
 from pkm.editor import get_editor
-from pkm.frontmatter import generate_frontmatter, parse, render
+from pkm.frontmatter import generate_frontmatter, generate_memory_frontmatter, parse, render
 
 console = Console()
 
@@ -70,14 +71,48 @@ def note(ctx: click.Context) -> None:
 
 
 @note.command()
-@click.argument("title")
+@click.argument("title", required=False, default=None)
+@click.option("--content", default=None, help="Note content body (agent usage; title auto-generated from content)")
+@click.option("--stdin", "use_stdin", is_flag=True, help="Read content from stdin")
+@click.option("--type", "memory_type", type=click.Choice(["episodic", "semantic", "procedural"]), default=None)
+@click.option("--importance", type=click.IntRange(1, 10), default=None)
+@click.option("--session", "session_id", default=None)
+@click.option("--agent", "agent_id", default=None)
 @click.option("--tags", "-t", default="", help="Comma-separated tags")
 @click.pass_context
-def add(ctx: click.Context, title: str, tags: str) -> None:
-    """Create a new atomic note in the vault."""
+def add(
+    ctx: click.Context,
+    title: str | None,
+    content: str | None,
+    use_stdin: bool,
+    memory_type: str | None,
+    importance: int | None,
+    session_id: str | None,
+    agent_id: str | None,
+    tags: str,
+) -> None:
+    """Create a new atomic note in the vault.
+
+    Human usage (title required):
+      pkm note add "My Research Note" --tags ai
+
+    Agent usage (--content generates title automatically):
+      pkm note add --content "learned X" --type semantic --importance 7
+      echo "multi-line" | pkm note add --stdin --type episodic --importance 5
+    """
+    if use_stdin:
+        content = sys.stdin.read().strip()
+
+    if content and not title:
+        effective_title = content[:50]
+    elif title:
+        effective_title = title
+    else:
+        raise click.UsageError("Provide a title, or use --content / --stdin for agent usage")
+
     vault = ctx.obj["vault"]
     today = date.today().isoformat()
-    slug = _slugify(title)
+    slug = _slugify(effective_title)
     filename = f"{today}-{slug}.md"
     note_path: Path = vault.notes_dir / filename
     note_id = note_path.stem
@@ -86,9 +121,26 @@ def add(ctx: click.Context, title: str, tags: str) -> None:
         raise click.ClickException(f"Note already exists: {note_path}")
 
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
-    meta = generate_frontmatter(note_id, tags=tag_list, aliases=[], source=today)
-    content = render(meta, "")
-    note_path.write_text(content, encoding="utf-8")
+    body = content or ""
+
+    is_memory = bool(content or memory_type or importance is not None or session_id)
+    if is_memory:
+        from datetime import datetime, timezone
+        meta = generate_memory_frontmatter(
+            note_id=note_id,
+            memory_type=memory_type or "semantic",
+            importance=float(importance) if importance is not None else 5.0,
+            created_at=datetime.now(timezone.utc).isoformat(),
+            session_id=session_id,
+            agent_id=agent_id,
+            source_type="agent",
+            tags=tag_list,
+        )
+    else:
+        meta = generate_frontmatter(note_id, tags=tag_list, aliases=[], source=today)
+
+    note_content = render(meta, body)
+    note_path.write_text(note_content, encoding="utf-8")
     console.print(f"[green]Created[/green] {note_path}")
 
 

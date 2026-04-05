@@ -31,7 +31,7 @@ Do NOT store:
 Always check for existing memories before creating a new one:
 
 ```bash
-pkm memory search "topic keywords" --top 5
+pkm search "topic keywords" --top 5
 ```
 
 If a result scores above 0.85 and covers the same ground, update your understanding from it rather than creating a duplicate. Only store if the new memory adds genuinely new information.
@@ -44,7 +44,7 @@ If a result scores above 0.85 and covers the same ground, update your understand
 Use for: what happened today, current task status, work in flight.
 
 ```bash
-pkm memory store "Refactoring auth module — stopped at middleware layer, resume from jwt_decode()" \
+pkm note add --content "Refactoring auth module — stopped at middleware layer, resume from jwt_decode()" \
   --type episodic --importance 6 --session abc123
 ```
 
@@ -52,7 +52,7 @@ pkm memory store "Refactoring auth module — stopped at middleware layer, resum
 Use for: architectural decisions, API contracts, domain rules, learned patterns.
 
 ```bash
-pkm memory store "SQLite WAL mode required for concurrent reads in this project — switching to journal mode caused test flakiness" \
+pkm note add --content "SQLite WAL mode required for concurrent reads in this project — switching to journal mode caused test flakiness" \
   --type semantic --importance 8
 ```
 
@@ -60,7 +60,7 @@ pkm memory store "SQLite WAL mode required for concurrent reads in this project 
 Use for: repeatable processes, setup steps, debugging runbooks.
 
 ```bash
-pkm memory store "To run integration tests: spin up docker-compose first, then uv run pytest tests/integration/" \
+pkm note add --content "To run integration tests: spin up docker-compose first, then uv run pytest tests/integration/" \
   --type procedural --importance 6
 ```
 
@@ -84,13 +84,13 @@ Default is 5. Bias toward 7+ for anything you'd need to explain to the next agen
 Use a stable `--session` ID within a work session (e.g., a task ID, branch name, or UUID):
 
 ```bash
-pkm memory store "content" --type episodic --importance 5 --session feat/auth-rewrite
+pkm note add --content "content" --type episodic --importance 5 --session feat/auth-rewrite
 ```
 
 Retrieve all memories from a session:
 
 ```bash
-pkm memory session feat/auth-rewrite
+pkm search --session feat/auth-rewrite
 ```
 
 ---
@@ -168,15 +168,15 @@ pkm agent setup-hooks --agent opencode
 
 ```bash
 # Store memories
-pkm memory store "content" --type semantic --importance 7
-pkm memory store "content" --type episodic --importance 5 --session my-session
+pkm note add --content "content" --type semantic --importance 7
+pkm note add --content "content" --type episodic --importance 5 --session my-session
 
 # Search
-pkm memory search "topic" --top 5
-pkm memory search "topic" --type semantic
+pkm search "topic" --top 5
+pkm search "topic" --type semantic
 
 # Session recall
-pkm memory session my-session
+pkm search --session my-session
 
 # Daily notes
 pkm daily                    # view today
@@ -204,12 +204,12 @@ Before starting work, load session context:
   pkm agent hook session-start --format system-reminder
 
 Store important findings during work:
-  pkm memory store "content" --type semantic --importance 7        # knowledge/decisions
-  pkm memory store "content" --type episodic --importance 5 \     # in-progress state
+  pkm note add --content "content" --type semantic --importance 7        # knowledge/decisions
+  pkm note add --content "content" --type episodic --importance 5 \     # in-progress state
     --session $SESSION_ID
 
 Search before storing (avoid duplicates):
-  pkm memory search "topic" --top 5
+  pkm search "topic" --top 5
 
 At session end, update the daily note:
   pkm daily add "What was accomplished and what remains."
@@ -231,14 +231,14 @@ All agents must follow this protocol for persistent memory:
 1. **Session start**: run `pkm agent hook session-start --format system-reminder`
    and incorporate the output into your working context.
 
-2. **Search before storing**: run `pkm memory search "topic" --top 5` before
+2. **Search before storing**: run `pkm search "topic" --top 5` before
    creating a new memory. Skip storing if an existing note covers the same ground.
 
 3. **Store decisions and errors** as `semantic` memories (importance 7+):
-   `pkm memory store "..." --type semantic --importance 8`
+   `pkm note add --content "..." --type semantic --importance 8`
 
 4. **Store in-progress state** as `episodic` memories with a session ID:
-   `pkm memory store "..." --type episodic --importance 5 --session SESSION`
+   `pkm note add --content "..." --type episodic --importance 5 --session SESSION`
 
 5. **Session end**: append key accomplishments and unresolved issues to the daily note:
    `pkm daily add "Completed X. Still pending: Y."`

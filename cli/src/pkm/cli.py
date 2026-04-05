@@ -9,7 +9,6 @@ from pkm import __version__
 from pkm.version_check import available_update
 from pkm.commands.config import config
 from pkm.commands.daily import daily
-from pkm.commands.memory import memory
 from pkm.commands.links import orphans
 from pkm.commands.notes import note
 from pkm.commands.maintenance import stats, tags
@@ -61,4 +60,3 @@ main.add_command(setup_cmd)
 main.add_command(update_cmd)
 main.add_command(agent)
 main.add_command(consolidate)
-main.add_command(memory)

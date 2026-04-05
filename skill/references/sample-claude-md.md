@@ -12,8 +12,8 @@
 ### 작업 시작 전 (필수)
 1. 관련 과거 지식 검색:
    ```bash
-   pkm memory search "<현재 작업 키워드>" --top 5
-   pkm memory search "<현재 작업 키워드>" --type procedural --top 3
+   pkm search "<현재 작업 키워드>" --top 5
+   pkm search "<현재 작업 키워드>" --type procedural --top 3
    ```
 2. score 0.6 이상 항목은 반드시 읽고 참고한다
 3. 이전에 해결한 동일 오류가 있으면 그 방법을 먼저 시도한다
@@ -21,19 +21,19 @@
 ### 작업 중 (중요 발견 시)
 ```bash
 # 오류 수정 후
-pkm memory store "<오류명> fix: <해결 방법>" --type procedural --importance 8
+pkm note add --content "<오류명> fix: <해결 방법>" --type procedural --importance 8
 
 # 아키텍처 결정 후
-pkm memory store "<결정 내용> — 이유: <근거>" --type semantic --importance 7
+pkm note add --content "<결정 내용> — 이유: <근거>" --type semantic --importance 7
 
 # 세션 진행 상황
-pkm memory store "<완료 내용>" --type episodic --importance 5 --session $SESSION_ID
+pkm note add --content "<완료 내용>" --type episodic --importance 5 --session $SESSION_ID
 ```
 
 ### 작업 완료 후
 ```bash
 # 세션 메모리 리뷰
-pkm memory session $SESSION_ID
+pkm search --session $SESSION_ID
 
 # 통합 후보 확인
 pkm consolidate

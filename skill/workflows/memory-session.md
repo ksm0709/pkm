@@ -8,14 +8,14 @@
 - **Secondary:** session tracking, 세션 추적, session resume, 세션 재개
 
 ## Tools
-- `pkm memory session` (세션 메모리 조회)
-- `pkm memory store --session` (세션 태그 저장)
+- `pkm search --session` (세션 메모리 조회)
+- `pkm note add --content --session` (세션 태그 저장)
 - `pkm consolidate` (세션 종료 후 통합 준비)
 
 ## Principles
 - 세션 ID는 시작 시 한 번 생성하고 세션 내내 일관되게 사용한다
 - 에피소딕 메모리는 항상 `--session` 플래그로 저장한다
-- 세션 종료 시 `pkm memory session <id>`로 결과를 리뷰한다
+- 세션 종료 시 `pkm search --session <id>`로 결과를 리뷰한다
 
 ## Session ID Convention
 
@@ -30,7 +30,7 @@ SESSION_ID="$(date +%Y-%m-%d)-$(echo $TASK_NAME | tr ' ' '-' | head -c 20)"
 ```
 
 ## Edge Cases
-- 세션 ID를 잊었으면 `pkm memory search` + 날짜 범위로 에피소딕 메모리를 찾는다
+- 세션 ID를 잊었으면 `pkm search` + 날짜 범위로 에피소딕 메모리를 찾는다
 - 세션 메모리가 없으면 해당 세션에서 `--session` 플래그 없이 저장된 것일 수 있다
 - 세션 종료 후 바로 통합할 필요는 없다 — `pkm consolidate`가 후보를 관리한다
 
@@ -41,17 +41,17 @@ SESSION_ID="$(date +%Y-%m-%d)-$(echo $TASK_NAME | tr ' ' '-' | head -c 20)"
 SESSION_ID="2026-04-05-memory-layer-impl"
 
 # 2. 작업 중: 에피소딕 메모리 저장
-pkm memory store "WS-1 frontmatter 파싱 완료, edge case: BOM 헤더 처리 필요" \
+pkm note add --content "WS-1 frontmatter 파싱 완료, edge case: BOM 헤더 처리 필요" \
   --type episodic --importance 6 --session $SESSION_ID
 
-pkm memory store "sentence-transformers lazy import로 startup 1.2초 → 0.1초 개선" \
+pkm note add --content "sentence-transformers lazy import로 startup 1.2초 → 0.1초 개선" \
   --type procedural --importance 8 --session $SESSION_ID
 
 # 3. 세션 종료: 결과 리뷰
-pkm memory session $SESSION_ID
+pkm search --session $SESSION_ID
 
 # 4. JSON으로 상세 조회
-pkm memory session $SESSION_ID --format json
+pkm search --session $SESSION_ID --format json
 
 # 5. 통합 후보 확인 (선택적)
 pkm consolidate

@@ -8,7 +8,7 @@
 - **Secondary:** past findings, 과거 발견, recall, 기억 조회, similar patterns
 
 ## Tools
-- `pkm memory search` (시맨틱 + 시간 가중 검색 CLI)
+- `pkm search` (시맨틱 + 시간 가중 검색 CLI)
 
 ## Principles
 - 세션 시작 시 항상 관련 과거 작업을 검색한다
@@ -24,21 +24,21 @@
 
 ```bash
 # 1. 기본 시맨틱 검색
-pkm memory search "authentication error"
+pkm search "authentication error"
 
 # 2. 타입 필터
-pkm memory search "database migration" --type procedural
+pkm search "database migration" --type procedural
 
 # 3. 최근성 + 중요도 가중
-pkm memory search "architecture decision" --recency-weight 0.4 --min-importance 7
+pkm search "architecture decision" --recency-weight 0.4 --min-importance 7
 
 # 4. 상위 20개 JSON 출력
-pkm memory search "error handling" --top 20 --format json
+pkm search "error handling" --top 20 --format json
 
 # 5. 세션 시작 시 패턴
 SESSION_TOPIC="auth refactor"
-pkm memory search "$SESSION_TOPIC" --top 5
-pkm memory search "$SESSION_TOPIC" --type procedural --top 3
+pkm search "$SESSION_TOPIC" --top 5
+pkm search "$SESSION_TOPIC" --type procedural --top 3
 ```
 
 ## Scoring Formula
