@@ -6,6 +6,7 @@ import click
 from rich.console import Console
 
 from pkm import __version__
+from pkm.version_check import available_update
 from pkm.commands.config import config
 from pkm.commands.daily import daily
 from pkm.commands.links import orphans
@@ -29,6 +30,13 @@ _console = Console()
 def main(ctx: click.Context, vault: str | None) -> None:
     """Personal Knowledge Management CLI for Obsidian vaults."""
     ctx.ensure_object(dict)
+    newer = available_update(__version__)
+    if newer:
+        _console.print(
+            f"[bold yellow]⚡ pkm {newer} available[/bold yellow] "
+            f"[dim](current: v{__version__})[/dim]  "
+            "Run [bold cyan]pkm update[/bold cyan] to upgrade."
+        )
     if ctx.invoked_subcommand is None:
         _console.print(f"[bold]pkm[/bold] v{__version__} — Personal Knowledge Management CLI")
         _console.print()
