@@ -73,8 +73,14 @@ def update_cmd(version: str | None) -> None:
                 raise click.ClickException("git pull failed.")
 
         console.print("[cyan]Reinstalling...[/cyan]")
+        import sys
+        search_installed = subprocess.run(
+            [sys.executable, "-c", "import sentence_transformers"],
+            capture_output=True,
+        ).returncode == 0
+        install_target = str(cli_dir) + ("[search]" if search_installed else "")
         result = subprocess.run(
-            ["uv", "tool", "install", "--editable", str(cli_dir), "--reinstall-package", "pkm"],
+            ["uv", "tool", "install", "--editable", install_target, "--reinstall-package", "pkm"],
         )
         if result.returncode != 0:
             raise click.ClickException("uv tool install failed.")
