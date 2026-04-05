@@ -13,10 +13,11 @@ from pkm.commands.notes import new
 from pkm.commands.maintenance import stale, stats, tags
 from pkm.commands.search import index_cmd, search_cmd
 from pkm.commands.setup import setup_cmd
+from pkm.commands.update import update_cmd
 from pkm.commands.vault import vault
 from pkm.config import get_vault
 
-VAULT_FREE_COMMANDS = {"vault", "config", "setup"}
+VAULT_FREE_COMMANDS = {"vault", "config", "setup", "update"}
 
 _console = Console()
 
@@ -49,3 +50,4 @@ main.add_command(stale)
 main.add_command(vault)
 main.add_command(config)
 main.add_command(setup_cmd)
+main.add_command(update_cmd)
