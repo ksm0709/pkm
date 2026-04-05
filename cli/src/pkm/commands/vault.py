@@ -11,7 +11,13 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from pkm.config import VaultConfig, discover_vaults, get_vaults_root, load_config, save_config
+from pkm.config import (
+    VaultConfig,
+    discover_vaults,
+    get_vaults_root,
+    load_config,
+    save_config,
+)
 
 console = Console()
 
@@ -47,6 +53,8 @@ def vault() -> None:
 @vault.command(name="list")
 def list_vaults() -> None:
     """List all discovered vaults."""
+    from pkm.config import get_vault_context
+
     vaults = discover_vaults()
     if not vaults:
         console.print(
@@ -54,20 +62,30 @@ def list_vaults() -> None:
         )
         return
 
-    default_name = _default_vault_name(vaults)
+    try:
+        active_vault, active_source = get_vault_context()
+        active_name = active_vault.name
+    except click.ClickException:
+        active_name = None
+        active_source = ""
 
     table = Table(show_header=True, header_style="bold")
     table.add_column("Name")
     table.add_column("Path")
     table.add_column("Notes", justify="right")
     table.add_column("Dailies", justify="right")
-    table.add_column("Default", justify="center")
+    table.add_column("Active", justify="left")
 
     for name, vc in vaults.items():
         notes_count = _count_md(vc.notes_dir)
         dailies_count = _count_md(vc.daily_dir)
-        default_mark = "★" if name == default_name else ""
-        table.add_row(name, str(vc.path), str(notes_count), str(dailies_count), default_mark)
+        if name == active_name:
+            active_mark = f"[bold green]★[/bold green] [dim]via {active_source}[/dim]"
+        else:
+            active_mark = ""
+        table.add_row(
+            name, str(vc.path), str(notes_count), str(dailies_count), active_mark
+        )
 
     console.print(table)
 
@@ -108,7 +126,9 @@ def add(name: str) -> None:
 
 @vault.command()
 @click.argument("name")
-@click.option("--yes", "-y", is_flag=True, default=False, help="Skip confirmation prompt.")
+@click.option(
+    "--yes", "-y", is_flag=True, default=False, help="Skip confirmation prompt."
+)
 def remove(name: str, yes: bool) -> None:
     """Remove a vault by moving it to trash."""
     vaults = discover_vaults()
@@ -120,7 +140,9 @@ def remove(name: str, yes: bool) -> None:
     notes_count = _count_md(vc.notes_dir)
     dailies_count = _count_md(vc.daily_dir)
 
-    console.print(f"Vault [bold]{name}[/bold]: {notes_count} notes, {dailies_count} dailies")
+    console.print(
+        f"Vault [bold]{name}[/bold]: {notes_count} notes, {dailies_count} dailies"
+    )
 
     if not yes:
         click.confirm(f"Move vault '{name}' to trash?", abort=True)

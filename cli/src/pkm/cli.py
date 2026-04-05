@@ -40,7 +40,18 @@ def main(ctx: click.Context, vault: str | None) -> None:
             "Run [bold cyan]pkm update[/bold cyan] to upgrade."
         )
     if ctx.invoked_subcommand is None:
-        _console.print(f"[bold]pkm[/bold] v{__version__} — Personal Knowledge Management CLI")
+        _console.print(
+            f"[bold]pkm[/bold] v{__version__} — Personal Knowledge Management CLI"
+        )
+        try:
+            from pkm.config import get_vault_context
+
+            vc, source = get_vault_context(vault)
+            _console.print(
+                f"Active Vault: [bold cyan]{vc.name}[/bold cyan] [dim]({source})[/dim]"
+            )
+        except Exception:
+            pass
         _console.print()
         click.echo(ctx.get_help())
         return
