@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re as _re
 import time
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -12,6 +13,7 @@ import click
 from pkm.config import VaultConfig
 from pkm.frontmatter import parse
 from pkm.wikilinks import count_backlinks
+from pkm._memory_types import CURRENT_SCHEMA_VERSION, IMPORTANCE_DEFAULT
 
 def _require_transformers(model_name: str):
     """Lazily import and return a SentenceTransformer, raising a friendly error if missing."""
@@ -32,6 +34,10 @@ class IndexEntry:
     backlink_count: int
     tags: list[str]
     title: str
+    # Schema v2 fields
+    memory_type: str | None = None
+    importance: float = IMPORTANCE_DEFAULT
+    created_at: str | None = None  # ISO 8601 datetime string
 
 
 @dataclass
@@ -39,6 +45,7 @@ class VectorIndex:
     model: str
     created_at: str
     entries: list[IndexEntry] = field(default_factory=list)
+    schema_version: int = 1
 
 
 @dataclass
@@ -49,6 +56,20 @@ class SearchResult:
     backlink_count: int
     tags: list[str]
     rank: int
+    memory_type: str | None = None
+    importance: float = IMPORTANCE_DEFAULT
+    path: str = ""
+
+
+def _extract_created_at(note_path: Path, frontmatter_data: dict) -> str | None:
+    """Extract created_at from frontmatter, falling back to filename date pattern."""
+    if ca := frontmatter_data.get("created_at"):
+        return str(ca)
+    # Try YYYY-MM-DD from filename
+    match = _re.match(r"(\d{4}-\d{2}-\d{2})", note_path.stem)
+    if match:
+        return f"{match.group(1)}T00:00:00+00:00"
+    return None
 
 
 def build_index(vault: VaultConfig, model_name: str = "all-MiniLM-L6-v2") -> VectorIndex:
@@ -77,6 +98,9 @@ def build_index(vault: VaultConfig, model_name: str = "all-MiniLM-L6-v2") -> Vec
                 backlink_count=backlink_counts.get(note_id, 0),
                 tags=[str(t) for t in note.tags],
                 title=str(note.title),
+                memory_type=note.meta.get("memory_type"),
+                importance=float(note.meta.get("importance", IMPORTANCE_DEFAULT)),
+                created_at=_extract_created_at(note.path, note.meta),
             )
         )
 
@@ -84,6 +108,7 @@ def build_index(vault: VaultConfig, model_name: str = "all-MiniLM-L6-v2") -> Vec
         model=model_name,
         created_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         entries=entries,
+        schema_version=CURRENT_SCHEMA_VERSION,
     )
 
     vault.pkm_dir.mkdir(parents=True, exist_ok=True)
@@ -101,6 +126,7 @@ def build_index(vault: VaultConfig, model_name: str = "all-MiniLM-L6-v2") -> Vec
             {
                 "model": index.model,
                 "created_at": index.created_at,
+                "schema_version": index.schema_version,
                 "entries": [asdict(e) for e in index.entries],
             },
             ensure_ascii=False,
@@ -121,11 +147,15 @@ def load_index(vault: VaultConfig) -> VectorIndex:
         )
 
     data = json.loads(index_path.read_text(encoding="utf-8"))
-    entries = [IndexEntry(**e) for e in data["entries"]]
+    entries = [
+        IndexEntry(**{k: v for k, v in e.items() if k in IndexEntry.__dataclass_fields__})
+        for e in data["entries"]
+    ]
     return VectorIndex(
         model=data["model"],
         created_at=data["created_at"],
         entries=entries,
+        schema_version=data.get("schema_version", 1),
     )
 
 
@@ -134,24 +164,56 @@ def search(
     index: VectorIndex,
     top_n: int = 10,
     model_name: str = "all-MiniLM-L6-v2",
+    memory_type_filter: str | None = None,
+    recency_weight: float = 0.0,
+    min_importance: float = 1.0,
 ) -> list[SearchResult]:
     """Search the index for notes semantically similar to the query."""
     import numpy as np
+    from datetime import datetime, timezone
 
     model = _require_transformers(model_name)
     query_emb = model.encode([query], show_progress_bar=False)[0]
 
+    now = datetime.now(timezone.utc)
+
     scored: list[tuple[float, IndexEntry]] = []
     for entry in index.entries:
+        # Filter by memory_type
+        if memory_type_filter and entry.memory_type != memory_type_filter:
+            continue
+        # Filter by importance
+        if entry.importance < min_importance:
+            continue
+
         emb = np.array(entry.embedding, dtype=float)
         q = np.array(query_emb, dtype=float)
         norm_e = np.linalg.norm(emb)
         norm_q = np.linalg.norm(q)
         if norm_e == 0 or norm_q == 0:
-            score = 0.0
+            cos_sim = 0.0
         else:
-            score = float(np.dot(q, emb) / (norm_q * norm_e))
-        scored.append((score, entry))
+            cos_sim = float(np.dot(q, emb) / (norm_q * norm_e))
+
+        # Compute recency score
+        recency_score = 1.0
+        if recency_weight > 0 and entry.created_at:
+            try:
+                created = datetime.fromisoformat(entry.created_at)
+                if created.tzinfo is None:
+                    created = created.replace(tzinfo=timezone.utc)
+                hours_ago = (now - created).total_seconds() / 3600
+                recency_score = 0.995 ** hours_ago
+            except ValueError:
+                recency_score = 0.5  # fallback for unparseable dates
+
+        importance_norm = entry.importance / 10.0
+        final_score = (
+            (1 - recency_weight) * cos_sim
+            + recency_weight * recency_score * importance_norm
+        )
+
+        scored.append((final_score, entry))
 
     # Sort by score DESC, then backlink_count DESC for ties
     scored.sort(key=lambda x: (x[0], x[1].backlink_count), reverse=True)
@@ -166,6 +228,9 @@ def search(
                 backlink_count=entry.backlink_count,
                 tags=entry.tags,
                 rank=rank,
+                memory_type=entry.memory_type,
+                importance=entry.importance,
+                path=entry.path,
             )
         )
 
@@ -173,9 +238,17 @@ def search(
 
 
 def is_index_stale(vault: VaultConfig) -> bool:
-    """Return True if any .md file is newer than the index."""
+    """Return True if any .md file is newer than the index, or schema version mismatch."""
     index_path = vault.pkm_dir / "index.json"
     if not index_path.exists():
+        return True
+
+    # Check schema version
+    try:
+        data = json.loads(index_path.read_text(encoding="utf-8"))
+        if data.get("schema_version", 1) != CURRENT_SCHEMA_VERSION:
+            return True
+    except (json.JSONDecodeError, KeyError):
         return True
 
     index_mtime = index_path.stat().st_mtime

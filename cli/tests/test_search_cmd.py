@@ -43,6 +43,7 @@ def cli_runner(runner, tmp_vault: VaultConfig, monkeypatch):
             lambda root=None: {"test-vault": tmp_vault},
         )
         monkeypatch.setattr("pkm.config.load_config", lambda: {})
+        monkeypatch.delenv("PKM_DEFAULT_VAULT", raising=False)
         return runner.invoke(main, list(args), catch_exceptions=False)
 
     return invoke

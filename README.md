@@ -97,6 +97,35 @@ pkm config set editor "vim"
 pkm config set editor "code --wait"
 ```
 
+## LLM Agent Memory Layer
+
+PKM doubles as a persistent memory layer for LLM agents (Claude Code, Codex, opencode, etc.). Agents store decisions, findings, and errors as atomic notes; semantic search retrieves relevant context at session start.
+
+```bash
+# Store a memory
+pkm memory store "content" --type semantic --importance 7
+pkm memory store "content" --type episodic --importance 5 --session my-session
+
+# Search before storing (avoid duplicates)
+pkm memory search "topic" --top 5
+
+# Recall session memories
+pkm memory session my-session
+
+# Inject session context into agent prompt
+pkm agent hook session-start --format system-reminder
+
+# Set up hooks for your agent runtime
+pkm agent setup-hooks --agent claude-code   # writes ~/.claude/settings.json
+pkm agent setup-hooks --agent codex
+pkm agent setup-hooks --agent opencode
+
+# Consolidate daily episodic notes into semantic memories
+pkm consolidate --run
+```
+
+See [`docs/agent-memory-policy.md`](docs/agent-memory-policy.md) for the full usage guide including importance scoring, memory types, and hook configuration.
+
 ## 구조
 
 ```
