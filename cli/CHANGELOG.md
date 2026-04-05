@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.4.0 (2026-04-05)
+
+### Features
+
+- **agent**: Inject PKM role directive in turn-start hook
+  ([`2d4bfa6`](https://github.com/ksm0709/pkm/commit/2d4bfa67fa8b812a97218307bf5f1365a611df70))
+
+
 ## v2.3.1 (2026-04-05)
 
 ### Bug Fixes
