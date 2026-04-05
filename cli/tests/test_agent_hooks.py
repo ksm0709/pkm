@@ -97,8 +97,10 @@ def test_turn_start_plain(runner, vault_env):
     """turn-start --format plain outputs memory command reminders."""
     result = runner.invoke(main, ["agent", "hook", "turn-start", "--format", "plain"])
     assert result.exit_code == 0
-    assert "pkm memory store" in result.output
-    assert "pkm memory search" in result.output
+    assert "pkm daily add" in result.output
+    assert "pkm note add" in result.output
+    assert "pkm note show" in result.output
+    assert "pkm" in result.output and "skill" in result.output
 
 
 def test_turn_start_system_reminder(runner, vault_env):
