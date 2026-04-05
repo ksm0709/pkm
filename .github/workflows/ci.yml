@@ -24,7 +24,9 @@ jobs:
 
       - name: Install dependencies
         working-directory: cli
-        run: uv pip install -e ".[search,dev]"
+        run: |
+          uv venv
+          uv pip install -e ".[search,dev]"
 
       - name: Run tests
         working-directory: cli

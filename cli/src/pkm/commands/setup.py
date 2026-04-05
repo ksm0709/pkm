@@ -43,18 +43,21 @@ def setup_cmd() -> None:
     console.print()
     console.print(f"Installing {extra_spec}...")
 
-    # Find the pkm-cli directory (parent of src/pkm): setup.py -> commands -> pkm -> src -> pkm-cli
-    pkm_cli_dir = Path(__file__).parent.parent.parent.parent
-    if not (pkm_cli_dir / "pyproject.toml").exists():
+    # Find the cli/ directory: walk up from this file until pyproject.toml is found
+    pkm_cli_dir = Path(__file__).parent
+    while pkm_cli_dir != pkm_cli_dir.parent:
+        if (pkm_cli_dir / "pyproject.toml").exists():
+            break
+        pkm_cli_dir = pkm_cli_dir.parent
+    else:
         raise click.ClickException(
-            f"Could not locate pkm-cli root (expected pyproject.toml at {pkm_cli_dir}). "
-            "Please run 'uv pip install -e .[search]' manually from the pkm-cli directory."
+            "Could not locate pyproject.toml in any parent directory. "
+            "Please run 'uv pip install -e .[search]' manually from the cli/ directory."
         )
 
     result = subprocess.run(
         ["uv", "pip", "install", "-e", extra_spec],
         cwd=pkm_cli_dir,
-        capture_output=False,
     )
     if result.returncode != 0:
         raise click.ClickException("Dependency installation failed. Check uv output above.")
