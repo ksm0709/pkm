@@ -2,6 +2,39 @@
 
 <!-- version list -->
 
+## v2.1.0 (2026-04-05)
+
+### Bug Fixes
+
+- Update pkm new → pkm note add after v2.0.0 rename
+  ([`2885425`](https://github.com/ksm0709/pkm/commit/28854253beedb437f2a61517c0f60b01d86b00b8))
+
+### Chores
+
+- Remove accidentally committed OMC state file
+  ([`d26b811`](https://github.com/ksm0709/pkm/commit/d26b8112dbff970d9a1e87d95350b2a267e301a4))
+
+### Continuous Integration
+
+- Remove unused latest moving tag step
+  ([`a13e88a`](https://github.com/ksm0709/pkm/commit/a13e88af8fa2008530958a51e49b056b888b4bdc))
+
+### Documentation
+
+- Update README to v2.0.0 with new command structure
+  ([`b4b3b1e`](https://github.com/ksm0709/pkm/commit/b4b3b1ee3e691524bef3b8cce1385a6799e5f90e))
+
+### Features
+
+- **memory**: PKM as LLM agent memory layer
+  ([`171e935`](https://github.com/ksm0709/pkm/commit/171e935cc2cbf08231ec0361a927deebf5bf22b1))
+
+### Refactoring
+
+- **memory**: Migrate pkm memory → pkm note add + pkm search
+  ([`3daa763`](https://github.com/ksm0709/pkm/commit/3daa763727973298ddb3029989c0deba6586297f))
+
+
 ## v2.0.1 (2026-04-05)
 
 ### Bug Fixes
