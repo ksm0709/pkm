@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v2.3.0 (2026-04-05)
+
+### Bug Fixes
+
+- **config**: Include missing get_vault_context implementation
+  ([`99af0f2`](https://github.com/ksm0709/pkm/commit/99af0f2f34aad08fbbdf9bfdf99a8fdff509b79f))
+
+### Features
+
+- **cli**: Display active vault and its resolution source on main command and vault list
+  ([`9017a6c`](https://github.com/ksm0709/pkm/commit/9017a6c7acb6f0b12a13b5313be185438d90fccb))
+
+
 ## v2.2.0 (2026-04-05)
 
 ### Features
