@@ -33,8 +33,7 @@ def mock_model(monkeypatch):
                 [[hash(t) % 100 / 100.0] * 384 for t in texts_list]
             )
 
-    monkeypatch.setattr("pkm.search_engine.HAS_TRANSFORMERS", True)
-    monkeypatch.setattr("pkm.search_engine.SentenceTransformer", lambda name: FakeModel())
+    monkeypatch.setattr("pkm.search_engine._require_transformers", lambda name: FakeModel())
 
 
 def test_build_index(tmp_vault: VaultConfig, mock_model):
@@ -103,8 +102,7 @@ def test_search_backlink_tiebreaker(tmp_vault: VaultConfig, monkeypatch):
             texts_list = texts if isinstance(texts, list) else [texts]
             return np.array([fixed_emb for _ in texts_list])
 
-    monkeypatch.setattr("pkm.search_engine.HAS_TRANSFORMERS", True)
-    monkeypatch.setattr("pkm.search_engine.SentenceTransformer", lambda name: TiedModel())
+    monkeypatch.setattr("pkm.search_engine._require_transformers", lambda name: TiedModel())
 
     # Build index so all embeddings are identical (score ties guaranteed)
     index = build_index(tmp_vault)
@@ -144,10 +142,13 @@ def test_is_index_stale_detects_new_file(tmp_vault: VaultConfig, mock_model):
 
 
 def test_graceful_import_error(tmp_vault: VaultConfig, monkeypatch):
-    """build_index raises ClickException when HAS_TRANSFORMERS is False."""
+    """build_index raises ClickException when sentence-transformers is not installed."""
     import click
 
-    monkeypatch.setattr("pkm.search_engine.HAS_TRANSFORMERS", False)
+    def _missing(_name):
+        raise click.ClickException("sentence-transformers is not installed. Run: pkm setup")
+
+    monkeypatch.setattr("pkm.search_engine._require_transformers", _missing)
 
     with pytest.raises(click.ClickException, match="sentence-transformers"):
         build_index(tmp_vault)

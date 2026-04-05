@@ -13,26 +13,15 @@ from pkm.config import VaultConfig
 from pkm.frontmatter import parse
 from pkm.wikilinks import count_backlinks
 
-try:
-    from sentence_transformers import SentenceTransformer
-    HAS_TRANSFORMERS = True
-except ImportError:
-    HAS_TRANSFORMERS = False
-
-    class SentenceTransformer:  # type: ignore[no-redef]
-        """Stub used when sentence-transformers is not installed."""
-
-        def __init__(self, model_name: str) -> None:
-            raise click.ClickException(
-                "sentence-transformers is not installed. "
-                "Install it with: uv pip install -e \".[search]\""
-            )
-
-        def encode(self, texts, **kwargs):  # pragma: no cover
-            raise click.ClickException(
-                "sentence-transformers is not installed. "
-                "Install it with: uv pip install -e \".[search]\""
-            )
+def _require_transformers(model_name: str):
+    """Lazily import and return a SentenceTransformer, raising a friendly error if missing."""
+    try:
+        from sentence_transformers import SentenceTransformer  # noqa: PLC0415
+    except ImportError:
+        raise click.ClickException(
+            "sentence-transformers is not installed. Run: pkm setup"
+        )
+    return SentenceTransformer(model_name)
 
 
 @dataclass
@@ -64,13 +53,7 @@ class SearchResult:
 
 def build_index(vault: VaultConfig, model_name: str = "all-MiniLM-L6-v2") -> VectorIndex:
     """Build a vector index for all notes and daily notes in the vault."""
-    if not HAS_TRANSFORMERS:
-        raise click.ClickException(
-            "sentence-transformers is not installed. "
-            "Install it with: uv pip install -e \".[search]\""
-        )
-
-    model = SentenceTransformer(model_name)
+    model = _require_transformers(model_name)
     backlink_counts = count_backlinks(vault)
 
     md_files: list[Path] = []
@@ -153,15 +136,9 @@ def search(
     model_name: str = "all-MiniLM-L6-v2",
 ) -> list[SearchResult]:
     """Search the index for notes semantically similar to the query."""
-    if not HAS_TRANSFORMERS:
-        raise click.ClickException(
-            "sentence-transformers is not installed. "
-            "Install it with: uv pip install -e \".[search]\""
-        )
-
     import numpy as np
 
-    model = SentenceTransformer(model_name)
+    model = _require_transformers(model_name)
     query_emb = model.encode([query], show_progress_bar=False)[0]
 
     scored: list[tuple[float, IndexEntry]] = []

@@ -30,8 +30,7 @@ def mock_model(monkeypatch):
                 [[hash(t) % 100 / 100.0] * 384 for t in texts_list]
             )
 
-    monkeypatch.setattr("pkm.search_engine.HAS_TRANSFORMERS", True)
-    monkeypatch.setattr("pkm.search_engine.SentenceTransformer", lambda name: FakeModel())
+    monkeypatch.setattr("pkm.search_engine._require_transformers", lambda name: FakeModel())
 
 
 @pytest.fixture
