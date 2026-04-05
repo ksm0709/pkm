@@ -30,7 +30,7 @@ def cli_runner(runner, tmp_vault: VaultConfig, monkeypatch):
 
 
 def test_orphans_command(cli_runner, tmp_vault: VaultConfig):
-    result = cli_runner("orphans")
+    result = cli_runner("note", "orphans")
     assert result.exit_code == 0
     # Both orphan notes should appear in output
     assert "고립된-노트.md" in result.output

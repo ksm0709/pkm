@@ -9,9 +9,8 @@ from pkm import __version__
 from pkm.version_check import available_update
 from pkm.commands.config import config
 from pkm.commands.daily import daily
-from pkm.commands.links import orphans
-from pkm.commands.notes import new
-from pkm.commands.maintenance import stale, stats, tags
+from pkm.commands.notes import note
+from pkm.commands.maintenance import stats, tags
 from pkm.commands.search import index_cmd, search_cmd
 from pkm.commands.setup import setup_cmd
 from pkm.commands.update import update_cmd
@@ -47,13 +46,11 @@ def main(ctx: click.Context, vault: str | None) -> None:
 
 
 main.add_command(daily)
-main.add_command(new)
-main.add_command(orphans)
+main.add_command(note)
 main.add_command(index_cmd)
 main.add_command(search_cmd)
 main.add_command(tags)
 main.add_command(stats)
-main.add_command(stale)
 main.add_command(vault)
 main.add_command(config)
 main.add_command(setup_cmd)

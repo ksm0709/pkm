@@ -46,7 +46,7 @@ def test_stale_with_old_note(tmp_vault: VaultConfig, monkeypatch):
     os.utime(old_note, (old_time, old_time))
 
     runner = CliRunner()
-    result = runner.invoke(main, ["--vault", tmp_vault.name, "stale", "--days", "30"])
+    result = runner.invoke(main, ["--vault", tmp_vault.name, "note", "stale", "--days", "30"])
     assert result.exit_code == 0
     assert "고립된-노트" in result.output
 
@@ -55,6 +55,6 @@ def test_stale_no_results(tmp_vault: VaultConfig, monkeypatch):
     _patch_vaults(monkeypatch, tmp_vault)
     runner = CliRunner()
     # Very large days threshold — nothing should be stale
-    result = runner.invoke(main, ["--vault", tmp_vault.name, "stale", "--days", "9999"])
+    result = runner.invoke(main, ["--vault", tmp_vault.name, "note", "stale", "--days", "9999"])
     assert result.exit_code == 0
     assert "0 stale note(s)" in result.output

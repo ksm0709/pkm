@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 import shlex
 import subprocess
@@ -13,6 +12,7 @@ import click
 from rich.console import Console
 
 from pkm.config import load_config
+from pkm.editor import get_editor
 
 console = Console()
 
@@ -35,20 +35,6 @@ tags: []
 ---
 
 """
-
-
-def _get_editor(config_data: dict) -> str:
-    """Resolve editor command: config → $VISUAL → $EDITOR → nano."""
-    editor = config_data.get("defaults", {}).get("editor")
-    if editor:
-        return editor
-    visual = os.environ.get("VISUAL")
-    if visual:
-        return visual
-    env_editor = os.environ.get("EDITOR")
-    if env_editor:
-        return env_editor
-    return "nano"
 
 
 def _get_subnotes(daily_dir: Path, date_str: str) -> list[Path]:
@@ -110,7 +96,7 @@ def edit(ctx: click.Context, sub_title: str | None) -> None:
     vault.daily_dir.mkdir(parents=True, exist_ok=True)
 
     config_data = load_config()
-    editor_cmd = _get_editor(config_data)
+    editor_cmd = get_editor(config_data)
 
     if sub_title is not None:
         if sub_title:

@@ -108,15 +108,17 @@ pkm daily --vault <name>           # Specific vault
 pkm daily add "학습 내용"           # Append timestamped entry
 pkm daily todo "할 일"              # Add to TODO section
 
-# Note creation
-pkm new "Note Title" --tags t1,t2  # Create atomic note with frontmatter
-pkm new "제목" --vault <name>      # In specific vault
+# Note management (pkm note group)
+pkm note add "Note Title" --tags t1,t2  # Create atomic note with frontmatter
+pkm note add "제목" --vault <name>      # In specific vault
+pkm note show <query>                   # Show note content by title keyword
+pkm note edit <query>                   # Open note in editor by title keyword
+pkm note stale --days 30               # Notes not updated in 30+ days
+pkm note orphans                        # Find notes with no wikilinks (dead knowledge)
 
 # Maintenance
-pkm orphans                        # Find notes with no wikilinks (dead knowledge)
 pkm tags                           # List all tags with counts
 pkm stats                          # Vault statistics
-pkm stale --days 30                # Notes not updated in 30+ days
 ```
 
 ### Design Principles
