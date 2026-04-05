@@ -32,7 +32,14 @@ jobs:
           uv run pytest tests/ -v
 
       - name: Python Semantic Release
+        id: release
         uses: python-semantic-release/python-semantic-release@v9
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           root_options: "-C cli"
+
+      - name: Update latest tag
+        if: steps.release.outputs.released == 'true'
+        run: |
+          git tag -f latest
+          git push origin -f latest
