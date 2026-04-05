@@ -1,7 +1,3 @@
-"""Vault discovery and configuration."""
-
-from __future__ import annotations
-
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -87,22 +83,98 @@ def discover_vaults(root: Path | None = None) -> dict[str, VaultConfig]:
     return vaults
 
 
+def get_local_config_vault() -> str | None:
+    """Check for .pkm file in cwd or parents and extract vault name."""
+    current = Path.cwd()
+    while True:
+        pkm_file = current / ".pkm"
+        if pkm_file.exists():
+            try:
+                import tomllib
+                with open(pkm_file, "rb") as f:
+                    data = tomllib.load(f)
+                    if "defaults" in data and "vault" in data["defaults"]:
+                        return data["defaults"]["vault"]
+                    elif "vault" in data:
+                        return data["vault"]
+            except Exception:
+                pass
+            
+            try:
+                content = pkm_file.read_text(encoding="utf-8").strip()
+                for line in content.splitlines():
+                    line = line.strip()
+                    if line.startswith("vault=") or line.startswith("vault ="):
+                        return line.split("=", 1)[1].strip().strip('"\'')
+            except Exception:
+                pass
+                
+        if current.parent == current:
+            break
+        current = current.parent
+    return None
+
+
+def get_git_project_name() -> str | None:
+    """Check if we are in a git repository and return its basename."""
+    current = Path.cwd()
+    while True:
+        if (current / ".git").exists() and (current / ".git").is_dir():
+            return current.name
+        if current.parent == current:
+            break
+        current = current.parent
+    return None
+
+
+def ensure_vault_exists(name: str) -> None:
+    """Create vault directory structure if it doesn't exist."""
+    vault_path = get_vaults_root() / name
+    if not vault_path.exists():
+        (vault_path / "daily").mkdir(parents=True, exist_ok=True)
+        (vault_path / "notes").mkdir(parents=True, exist_ok=True)
+
+
 def get_vault(name: str | None = None) -> VaultConfig:
-    """Get a vault by name. If name is None, use PKM_DEFAULT_VAULT env or first discovered."""
+    """Get a vault by name following precedence rules."""
+    
+    # Precedence a: CLI argument
+    if name is not None:
+        pass
+    else:
+        # Precedence b: Local config
+        name = get_local_config_vault()
+        
+        # Precedence c: Env var
+        if name is None:
+            name = os.environ.get("PKM_DEFAULT_VAULT")
+            
+        # Precedence d: Git project mapping
+        if name is None:
+            proj_name = get_git_project_name()
+            if proj_name:
+                name = proj_name
+                ensure_vault_exists(name)
+                
+        # Precedence e: Global config
+        if name is None:
+            name = load_config().get("defaults", {}).get("vault")
+
     vaults = discover_vaults()
-    if not vaults:
-        raise click.ClickException(
-            f"No vaults found under {get_vaults_root()}. "
-            "A vault needs a daily/ or notes/ subdirectory."
-        )
+    
     if name is None:
-        name = os.environ.get("PKM_DEFAULT_VAULT")
-    if name is None:
-        name = load_config().get("defaults", {}).get("vault")
-    if name is None:
-        name = next(iter(vaults))
+        if vaults:
+            # Precedence f: First discovered
+            name = next(iter(vaults))
+        else:
+            raise click.ClickException(
+                f"No vaults found under {get_vaults_root()}. "
+                "A vault needs a daily/ or notes/ subdirectory."
+            )
+
     if name not in vaults:
         raise click.ClickException(
-            f"Unknown vault: {name}. Available: {', '.join(vaults)}"
+            f"Unknown vault: {name}. Available: {', '.join(vaults) if vaults else 'None'}"
         )
+        
     return vaults[name]

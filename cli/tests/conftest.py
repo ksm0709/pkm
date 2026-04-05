@@ -14,7 +14,15 @@ from pkm.config import VaultConfig
 def tmp_vault(tmp_path: Path) -> VaultConfig:
     """Create a temporary vault with standard structure and sample files."""
     vault_path = tmp_path / "test-vault"
-    for d in ("daily", "notes", "tasks", "tasks/archive", "data", ".pkm", ".pkm/artifacts"):
+    for d in (
+        "daily",
+        "notes",
+        "tasks",
+        "tasks/archive",
+        "data",
+        ".pkm",
+        ".pkm/artifacts",
+    ):
         (vault_path / d).mkdir(parents=True)
 
     # Sample daily note
@@ -59,8 +67,7 @@ def tmp_vault(tmp_path: Path) -> VaultConfig:
     # Note without tags (for capture-triage testing)
     no_tags = vault_path / "notes" / "untagged-note.md"
     no_tags.write_text(
-        "---\nid: untagged-note\naliases: []\ntags: []\n---\n\n"
-        "태그가 없는 노트.\n",
+        "---\nid: untagged-note\naliases: []\ntags: []\n---\n\n태그가 없는 노트.\n",
         encoding="utf-8",
     )
 
@@ -80,3 +87,12 @@ def tmp_vault(tmp_path: Path) -> VaultConfig:
 def vault_config(tmp_vault: VaultConfig) -> VaultConfig:
     """Alias for tmp_vault for readability."""
     return tmp_vault
+
+
+@pytest.fixture(autouse=True)
+def disable_auto_vault(monkeypatch):
+    """Disable auto git project and local config mapping during tests."""
+    from pkm import config
+
+    monkeypatch.setattr(config, "get_git_project_name", lambda: None)
+    monkeypatch.setattr(config, "get_local_config_vault", lambda: None)
