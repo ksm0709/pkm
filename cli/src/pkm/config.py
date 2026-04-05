@@ -14,6 +14,7 @@ def load_config() -> dict:
     if not CONFIG_PATH.exists():
         return {}
     import tomllib
+
     with open(CONFIG_PATH, "rb") as f:
         return tomllib.load(f)
 
@@ -91,6 +92,7 @@ def get_local_config_vault() -> str | None:
         if pkm_file.exists():
             try:
                 import tomllib
+
                 with open(pkm_file, "rb") as f:
                     data = tomllib.load(f)
                     if "defaults" in data and "vault" in data["defaults"]:
@@ -99,16 +101,16 @@ def get_local_config_vault() -> str | None:
                         return data["vault"]
             except Exception:
                 pass
-            
+
             try:
                 content = pkm_file.read_text(encoding="utf-8").strip()
                 for line in content.splitlines():
                     line = line.strip()
                     if line.startswith("vault=") or line.startswith("vault ="):
-                        return line.split("=", 1)[1].strip().strip('"\'')
+                        return line.split("=", 1)[1].strip().strip("\"'")
             except Exception:
                 pass
-                
+
         if current.parent == current:
             break
         current = current.parent
@@ -135,37 +137,40 @@ def ensure_vault_exists(name: str) -> None:
         (vault_path / "notes").mkdir(parents=True, exist_ok=True)
 
 
-def get_vault(name: str | None = None) -> VaultConfig:
-    """Get a vault by name following precedence rules."""
-    
-    # Precedence a: CLI argument
+def get_vault_context(name: str | None = None) -> tuple[VaultConfig, str]:
+    """Get a vault by name following precedence rules, returning the vault and the resolution source."""
+    source = "CLI Arg"
+
     if name is not None:
         pass
     else:
-        # Precedence b: Local config
         name = get_local_config_vault()
-        
-        # Precedence c: Env var
+        if name is not None:
+            source = "Local Config"
+
         if name is None:
             name = os.environ.get("PKM_DEFAULT_VAULT")
-            
-        # Precedence d: Git project mapping
+            if name is not None:
+                source = "Env Var"
+
         if name is None:
             proj_name = get_git_project_name()
             if proj_name:
                 name = proj_name
                 ensure_vault_exists(name)
-                
-        # Precedence e: Global config
+                source = "Git Project"
+
         if name is None:
             name = load_config().get("defaults", {}).get("vault")
+            if name is not None:
+                source = "Global Config"
 
     vaults = discover_vaults()
-    
+
     if name is None:
         if vaults:
-            # Precedence f: First discovered
             name = next(iter(vaults))
+            source = "First Discovered"
         else:
             raise click.ClickException(
                 f"No vaults found under {get_vaults_root()}. "
@@ -176,5 +181,10 @@ def get_vault(name: str | None = None) -> VaultConfig:
         raise click.ClickException(
             f"Unknown vault: {name}. Available: {', '.join(vaults) if vaults else 'None'}"
         )
-        
-    return vaults[name]
+
+    return vaults[name], source
+
+
+def get_vault(name: str | None = None) -> VaultConfig:
+    """Get a vault by name following precedence rules."""
+    return get_vault_context(name)[0]
