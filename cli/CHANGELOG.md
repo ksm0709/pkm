@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.0.1 (2026-04-05)
+
+### Bug Fixes
+
+- **setup**: Install skill to ~/.agents/skills/pkm/ in addition to ~/.claude
+  ([`7f23ec2`](https://github.com/ksm0709/pkm/commit/7f23ec2ab61e80116f2b5b665302db148d2cb597))
+
+
 ## v2.0.0 (2026-04-05)
 
 ### Features
