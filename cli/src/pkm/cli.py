@@ -32,8 +32,7 @@ def main(ctx: click.Context, vault: str | None) -> None:
     if ctx.invoked_subcommand is None:
         _console.print(f"[bold]pkm[/bold] v{__version__} — Personal Knowledge Management CLI")
         _console.print()
-        _console.print("Run [bold cyan]pkm --help[/bold cyan] for available commands.")
-        _console.print("Run [bold cyan]pkm setup[/bold cyan] to configure vaults and install the skill.")
+        click.echo(ctx.get_help())
         return
     if ctx.invoked_subcommand not in VAULT_FREE_COMMANDS:
         ctx.obj["vault"] = get_vault(vault)
