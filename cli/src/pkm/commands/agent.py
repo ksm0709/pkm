@@ -122,6 +122,11 @@ def turn_start(ctx: click.Context, output_format: str, session_id: str | None) -
     lines.append("Long-term memory: `pkm note add <content> --type semantic|episodic --importance 1-10`")
     lines.append("Search notes: `pkm note show <query>`")
     lines.append("For detailed PKM workflows (Zettelkasten, linking, consolidation): invoke the `pkm` skill.")
+    lines.append("")
+    lines.append("PKM Role: You are the active manager of this knowledge base. Before concluding your response, check:")
+    lines.append("  - Code changes / bug fixes / new features? → `pkm daily add <summary>`")
+    lines.append("  - New concepts / decisions / patterns learned? → `pkm note add <content> --type semantic --importance N`")
+    lines.append("  - Important session context to preserve? → `pkm daily add <text>`")
 
     content = "\n".join(lines)
     if output_format == "system-reminder":
