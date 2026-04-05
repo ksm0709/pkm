@@ -10,7 +10,7 @@
 ## Tools
 - Glob (`notes/YYYY-MM-*.md` — 이번 달 노트)
 - Read (월간 노트 내용 확인)
-- `pkm new` (종합 노트 생성)
+- `pkm note add` (종합 노트 생성)
 
 ## Principles
 - 개별 노트를 복사하지 않고 패턴과 테마를 추출한다
@@ -19,7 +19,7 @@
 
 ## Edge Cases
 - 이번 달 노트가 5개 미만이면 "데이터 부족" 경고 후 진행 여부를 사용자에게 묻는다
-- `pkm new` 실패 시 Write로 직접 생성한다
+- `pkm note add` 실패 시 Write로 직접 생성한다
 - 이미 해당 월의 synthesis 노트가 존재하면 덮어쓰지 않고 Edit으로 업데이트한다
 
 ## Example Flow
@@ -38,7 +38,7 @@
    - 비동기 아키텍처 패턴 (6개 노트)
    - 팀 온보딩 프로세스 (4개 노트)
 
-5. `pkm new "2026-03-synthesis"` → 파일 생성
+5. `pkm note add "2026-03-synthesis"` → 파일 생성
 
 6. 종합 노트 작성:
    - 핵심 발견 2-3개
