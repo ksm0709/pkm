@@ -104,9 +104,13 @@ def setup_cmd() -> None:
     # Step 6: Install skill files to ~/.claude/skills/pkm/
     skill_src = Path(__file__).parent.parent / "skill"
     if skill_src.is_dir():
-        skill_dest = Path.home() / ".claude" / "skills" / "pkm"
-        shutil.copytree(str(skill_src), str(skill_dest), dirs_exist_ok=True)
+        skill_dest_claude = Path.home() / ".claude" / "skills" / "pkm"
+        shutil.copytree(str(skill_src), str(skill_dest_claude), dirs_exist_ok=True)
         console.print("[green]✓ PKM skill installed to ~/.claude/skills/pkm/[/green]")
+
+        skill_dest_agents = Path.home() / ".agents" / "skills" / "pkm"
+        shutil.copytree(str(skill_src), str(skill_dest_agents), dirs_exist_ok=True)
+        console.print("[green]✓ PKM skill installed to ~/.agents/skills/pkm/[/green]")
     else:
         console.print("[yellow]⚠ Skill files not found in package — skipping skill install[/yellow]")
 
@@ -116,7 +120,7 @@ def setup_cmd() -> None:
     console.print()
     console.print("Try these commands to get started:")
     console.print("  [bold]pkm daily[/bold]       — show/create today's daily note")
-    console.print("  [bold]pkm new[/bold] 'Title'  — create a new atomic note")
+    console.print("  [bold]pkm note add[/bold] 'Title'  — create a new atomic note")
     if install_search:
         console.print("  [bold]pkm index[/bold]       — build search index")
         console.print("  [bold]pkm search[/bold] '...' — semantic search")
