@@ -10,10 +10,11 @@ from pkm.config import load_config, save_config, discover_vaults
 
 console = Console()
 
-VALID_KEYS = {"default-vault"}
+VALID_KEYS = {"default-vault", "editor"}
 
 CONFIG_HELP = {
     "default-vault": "Default vault name used when --vault is not specified",
+    "editor": "Editor command used by pkm daily edit (e.g. 'vim', 'code --wait')",
 }
 
 
@@ -24,10 +25,12 @@ def config() -> None:
     \b
     Available keys:
       default-vault   Default vault name used when --vault is not specified
+      editor          Editor command used by pkm daily edit (e.g. 'vim', 'code --wait')
 
     \b
     Examples:
       pkm config set default-vault bear
+      pkm config set editor vim
       pkm config get default-vault
       pkm config list
     """
@@ -43,20 +46,24 @@ def set_config(key: str, value: str) -> None:
             f"Unknown key '{key}'. Valid keys: {', '.join(sorted(VALID_KEYS))}"
         )
 
+    data = load_config()
+    defaults = dict(data.get("defaults", {}))
+    data = dict(data)
+
     if key == "default-vault":
         vaults = discover_vaults()
         if value not in vaults:
             console.print(
                 f"[yellow]Warning: vault '{value}' not found in discovered vaults.[/yellow]"
             )
-
-        data = load_config()
-        defaults = dict(data.get("defaults", {}))
         defaults["vault"] = value
-        data = dict(data)
-        data["defaults"] = defaults
-        save_config(data)
         console.print(f"[green]✓ Set default-vault = {value}[/green]")
+    elif key == "editor":
+        defaults["editor"] = value
+        console.print(f"[green]✓ Set editor = {value}[/green]")
+
+    data["defaults"] = defaults
+    save_config(data)
 
 
 @config.command(name="get")
@@ -68,8 +75,13 @@ def get_config(key: str) -> None:
             f"Unknown key '{key}'. Valid keys: {', '.join(sorted(VALID_KEYS))}"
         )
 
+    defaults = load_config().get("defaults", {})
+
     if key == "default-vault":
-        value = load_config().get("defaults", {}).get("vault")
+        value = defaults.get("vault")
+        console.print(value if value is not None else "not set")
+    elif key == "editor":
+        value = defaults.get("editor")
         console.print(value if value is not None else "not set")
 
 
@@ -82,6 +94,8 @@ def list_config() -> None:
     defaults = data.get("defaults", {})
     if "vault" in defaults:
         rows.append(("default-vault", defaults["vault"]))
+    if "editor" in defaults:
+        rows.append(("editor", defaults["editor"]))
 
     if not rows:
         console.print("No configuration set.")

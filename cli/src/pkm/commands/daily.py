@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import os
+import re
+import shlex
+import subprocess
 from datetime import datetime
 from pathlib import Path
 
 import click
 from rich.console import Console
+
+from pkm.config import load_config
 
 console = Console()
 
@@ -20,6 +26,45 @@ tags:
 
 ## TODO
 """
+
+SUBNOTE_TEMPLATE = """\
+---
+id: {note_id}
+aliases: []
+tags: []
+---
+
+"""
+
+
+def _get_editor(config_data: dict) -> str:
+    """Resolve editor command: config → $VISUAL → $EDITOR → nano."""
+    editor = config_data.get("defaults", {}).get("editor")
+    if editor:
+        return editor
+    visual = os.environ.get("VISUAL")
+    if visual:
+        return visual
+    env_editor = os.environ.get("EDITOR")
+    if env_editor:
+        return env_editor
+    return "nano"
+
+
+def _get_subnotes(daily_dir: Path, date_str: str) -> list[Path]:
+    """Return sub-notes for a given date, sorted alphabetically."""
+    if not daily_dir.is_dir():
+        return []
+    return sorted(daily_dir.glob(f"{date_str}-*.md"))
+
+
+def _sanitize_title(raw: str) -> str:
+    """Sanitize a sub-note title: replace spaces with hyphens, strip path traversal."""
+    title = raw.replace(" ", "-")
+    title = re.sub(r"[/\\]", "", title)   # strip path separators
+    title = re.sub(r"\.\.+", "", title)   # strip traversal sequences
+    title = title.strip("-").strip()
+    return title
 
 
 @click.group(invoke_without_command=True)
@@ -38,6 +83,66 @@ def daily(ctx: click.Context) -> None:
         content = DAILY_TEMPLATE.format(date=today)
         note_path.write_text(content, encoding="utf-8")
         console.print(content, end="")
+
+    subnotes = _get_subnotes(vault.daily_dir, today)
+    for subnote in subnotes:
+        title = subnote.stem[len(today) + 1:]
+        if not title:
+            continue
+        console.print(f"\n--- {title} ---")
+        console.print(subnote.read_text(encoding="utf-8"), end="")
+
+
+@daily.command()
+@click.option(
+    "--sub", "sub_title",
+    is_flag=False, flag_value="", default=None,
+    help="Create and edit a sub-note. Optionally provide a title directly.",
+)
+@click.pass_context
+def edit(ctx: click.Context, sub_title: str | None) -> None:
+    """Open today's daily note in an editor.
+
+    Use --sub to create a sub-note interactively, or --sub <title> to skip the prompt.
+    """
+    vault = ctx.obj["vault"]
+    today = datetime.now().strftime("%Y-%m-%d")
+    vault.daily_dir.mkdir(parents=True, exist_ok=True)
+
+    config_data = load_config()
+    editor_cmd = _get_editor(config_data)
+
+    if sub_title is not None:
+        if sub_title:
+            raw_title = sub_title
+        else:
+            default_title = datetime.now().strftime("%H-%M")
+            raw_title = click.prompt("Title", default=default_title)
+
+        title = _sanitize_title(raw_title)
+        if not title:
+            raise click.ClickException("Title cannot be empty.")
+
+        note_id = f"{today}-{title}"
+        note_path = vault.daily_dir / f"{note_id}.md"
+
+        # Guard against path traversal
+        if not str(note_path.resolve()).startswith(str(vault.daily_dir.resolve())):
+            raise click.ClickException("Invalid title: would create file outside daily directory.")
+
+        if not note_path.exists():
+            note_path.write_text(SUBNOTE_TEMPLATE.format(note_id=note_id), encoding="utf-8")
+            console.print(f"[green]Created:[/green] {note_path.name}")
+        else:
+            console.print(f"[dim]Opening existing:[/dim] {note_path.name}")
+    else:
+        note_path = vault.daily_dir / f"{today}.md"
+        if not note_path.exists():
+            note_path.write_text(DAILY_TEMPLATE.format(date=today), encoding="utf-8")
+
+    result = subprocess.run([*shlex.split(editor_cmd), str(note_path)])
+    if result.returncode != 0:
+        console.print(f"[yellow]Editor exited with code {result.returncode}[/yellow]")
 
 
 @daily.command()

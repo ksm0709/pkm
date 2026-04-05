@@ -200,3 +200,55 @@ def test_config_works_without_vault(monkeypatch):
     runner = CliRunner()
     result = runner.invoke(main, ["config", "list"])
     assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# editor config key
+# ---------------------------------------------------------------------------
+
+def test_config_set_editor_saves(monkeypatch, tmp_path):
+    config_path = _patch_config_path(monkeypatch, tmp_path)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["config", "set", "editor", "vim"])
+    assert result.exit_code == 0, result.output
+    assert "vim" in result.output
+
+    saved = _load(config_path)
+    assert saved["defaults"]["editor"] == "vim"
+
+
+def test_config_set_editor_with_args(monkeypatch, tmp_path):
+    config_path = _patch_config_path(monkeypatch, tmp_path)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["config", "set", "editor", "code --wait"])
+    assert result.exit_code == 0, result.output
+
+    saved = _load(config_path)
+    assert saved["defaults"]["editor"] == "code --wait"
+
+
+def test_config_get_editor(monkeypatch):
+    monkeypatch.setattr(
+        "pkm.commands.config.load_config",
+        lambda: {"defaults": {"editor": "code --wait"}},
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["config", "get", "editor"])
+    assert result.exit_code == 0
+    assert "code --wait" in result.output
+
+
+def test_config_list_includes_editor(monkeypatch):
+    monkeypatch.setattr(
+        "pkm.commands.config.load_config",
+        lambda: {"defaults": {"vault": "bear", "editor": "vim"}},
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["config", "list"])
+    assert result.exit_code == 0
+    assert "editor" in result.output
+    assert "vim" in result.output
