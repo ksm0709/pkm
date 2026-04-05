@@ -1,0 +1,1 @@
+"""PKM CLI tests."""
