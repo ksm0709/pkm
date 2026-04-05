@@ -11,7 +11,7 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from pkm.config import VaultConfig, discover_vaults, get_vaults_root, load_config
+from pkm.config import VaultConfig, discover_vaults, get_vaults_root, load_config, save_config
 
 console = Console()
 
@@ -132,6 +132,22 @@ def remove(name: str, yes: bool) -> None:
 
     shutil.move(str(vault_path), str(trash_path))
     console.print(f"[yellow]Moved to trash:[/yellow] {trash_path}")
+
+
+@vault.command()
+@click.argument("name")
+def open(name: str) -> None:
+    """Switch the active vault (set as default)."""
+    vaults = discover_vaults()
+    if name not in vaults:
+        raise click.ClickException(
+            f"Vault '{name}' not found. Available: {', '.join(vaults) or 'none'}"
+        )
+    data = dict(load_config())
+    data["defaults"] = dict(data.get("defaults", {}))
+    data["defaults"]["vault"] = name
+    save_config(data)
+    console.print(f"[green]★ Switched to vault '{name}'[/green]")
 
 
 def _count_md(directory: Path) -> int:

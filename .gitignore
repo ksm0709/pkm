@@ -35,3 +35,10 @@ Thumbs.db
 
 # OMC / local state
 .omc/
+
+# Claude / agent context (local-only)
+AGENTS.md
+CLAUDE.md
+.context/*
+!.context/memory
+!.context/memory/**

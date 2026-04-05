@@ -186,3 +186,48 @@ def test_vault_remove_not_found(tmp_path: Path, monkeypatch):
     result = runner.invoke(main, ["vault", "remove", "--yes", "nonexistent"])
     assert result.exit_code != 0
     assert "not found" in result.output
+
+
+# ---------------------------------------------------------------------------
+# vault open
+# ---------------------------------------------------------------------------
+
+def test_vault_open_sets_default(tmp_path: Path, monkeypatch):
+    vaults = _make_vaults(tmp_path)
+    _patch_vaults(monkeypatch, vaults)
+
+    saved = {}
+
+    def fake_save(data):
+        saved.update(data)
+
+    monkeypatch.setattr("pkm.commands.vault.load_config", lambda: {})
+    monkeypatch.setattr("pkm.commands.vault.save_config", fake_save)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["vault", "open", "beta"])
+    assert result.exit_code == 0, result.output
+    assert saved["defaults"]["vault"] == "beta"
+
+
+def test_vault_open_shows_success(tmp_path: Path, monkeypatch):
+    vaults = _make_vaults(tmp_path)
+    _patch_vaults(monkeypatch, vaults)
+
+    monkeypatch.setattr("pkm.commands.vault.load_config", lambda: {})
+    monkeypatch.setattr("pkm.commands.vault.save_config", lambda d: None)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["vault", "open", "alpha"])
+    assert result.exit_code == 0
+    assert "alpha" in result.output
+
+
+def test_vault_open_not_found(tmp_path: Path, monkeypatch):
+    vaults = _make_vaults(tmp_path)
+    _patch_vaults(monkeypatch, vaults)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["vault", "open", "nonexistent"])
+    assert result.exit_code != 0
+    assert "not found" in result.output or "nonexistent" in result.output
