@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.5.0 (2026-04-06)
+
+### Features
+
+- Add backlinks, tag index notes, and git vault naming
+  ([`28bbee6`](https://github.com/ksm0709/pkm/commit/28bbee66f47ec0c298f8e3a3d6d529d001f3003f))
+
+
 ## v2.4.0 (2026-04-05)
 
 ### Features
