@@ -3,24 +3,16 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 import click
 from rich.console import Console
 
+from pkm._install_source import cli_source, find_local_cli_dir
 from pkm.version_check import get_recent_versions
 
 console = Console()
-
-
-def _find_cli_dir() -> Path | None:
-    """Walk up from this file to find the cli/ root (has pyproject.toml)."""
-    d = Path(__file__).parent
-    while d != d.parent:
-        if (d / "pyproject.toml").exists():
-            return d
-        d = d.parent
-    return None
 
 
 def _normalize_tag(version: str) -> str:
@@ -28,14 +20,22 @@ def _normalize_tag(version: str) -> str:
     return version if version.startswith("v") else f"v{version}"
 
 
+def _search_installed() -> bool:
+    return subprocess.run(
+        [sys.executable, "-c", "import sentence_transformers"],
+        capture_output=True,
+    ).returncode == 0
+
+
 @click.command("update")
 @click.argument("version", default=None, required=False)
 def update_cmd(version: str | None) -> None:
     """Update pkm to the latest version, or a specific VERSION tag (e.g. v0.3.0)."""
-    cli_dir = _find_cli_dir()
+    cli_dir = find_local_cli_dir()
+    in_git_repo = cli_dir is not None and (cli_dir.parent / ".git").exists()
 
-    if cli_dir is not None and (cli_dir.parent / ".git").exists():
-        repo_dir = cli_dir.parent
+    if in_git_repo:
+        repo_dir = cli_dir.parent  # type: ignore[union-attr]
 
         if version:
             tag = _normalize_tag(version)
@@ -51,7 +51,6 @@ def update_cmd(version: str | None) -> None:
             )
             if result.returncode != 0:
                 console.print(f"[red]✗ Version {tag} not found.[/red]")
-                # Try GitHub releases first, fallback to local git tags
                 versions = get_recent_versions(5)
                 if not versions:
                     local = subprocess.run(
@@ -73,12 +72,7 @@ def update_cmd(version: str | None) -> None:
                 raise click.ClickException("git pull failed.")
 
         console.print("[cyan]Reinstalling...[/cyan]")
-        import sys
-        search_installed = subprocess.run(
-            [sys.executable, "-c", "import sentence_transformers"],
-            capture_output=True,
-        ).returncode == 0
-        install_target = str(cli_dir) + ("[search]" if search_installed else "")
+        install_target = str(cli_dir) + ("[search]" if _search_installed() else "")
         result = subprocess.run(
             ["uv", "tool", "install", "--editable", install_target, "--reinstall-package", "pkm"],
         )
@@ -92,44 +86,19 @@ def update_cmd(version: str | None) -> None:
                 "Clone the repo: git clone https://github.com/ksm0709/pkm ~/repos/pkm"
             )
         # Installed without a local git repo (e.g. via curl | bash).
-        # uv tool upgrade would try to re-fetch from the original (now-deleted) tmp
-        # path, so we re-download the latest tarball from GitHub and reinstall.
-        import sys
-        import tempfile
-        import tarfile
-        import urllib.request
-
-        GITHUB_REPO = "ksm0709/pkm"
-        tarball_url = f"https://github.com/{GITHUB_REPO}/archive/refs/heads/main.tar.gz"
-        console.print(f"[cyan]Downloading latest from GitHub...[/cyan]")
-        with tempfile.TemporaryDirectory() as tmp:
-            tarball_path = Path(tmp) / "pkm.tar.gz"
-            try:
-                urllib.request.urlretrieve(tarball_url, tarball_path)
-            except Exception as e:
-                raise click.ClickException(f"Download failed: {e}")
-
-            with tarfile.open(tarball_path, "r:gz") as tf:
-                tf.extractall(tmp)
-
-            # The tarball extracts to pkm-main/; cli/ is the package root.
-            extracted_dirs = [p for p in Path(tmp).iterdir() if p.is_dir() and p.name != "__MACOSX"]
-            if not extracted_dirs:
-                raise click.ClickException("Unexpected tarball structure.")
-            repo_root = extracted_dirs[0]
-            cli_dir = repo_root / "cli"
-
-            search_installed = subprocess.run(
-                [sys.executable, "-c", "import sentence_transformers"],
-                capture_output=True,
-            ).returncode == 0
-            install_target = str(cli_dir) + ("[search]" if search_installed else "")
-            console.print("[cyan]Reinstalling...[/cyan]")
-            result = subprocess.run(
-                ["uv", "tool", "install", install_target, "--reinstall-package", "pkm"],
-            )
-            if result.returncode != 0:
-                raise click.ClickException("uv tool install failed.")
+        # Re-download the latest tarball from GitHub and reinstall.
+        console.print("[cyan]Downloading latest from GitHub...[/cyan]")
+        try:
+            with cli_source() as (dl_cli_dir, is_local):
+                install_target = str(dl_cli_dir) + ("[search]" if _search_installed() else "")
+                console.print("[cyan]Reinstalling...[/cyan]")
+                result = subprocess.run(
+                    ["uv", "tool", "install", install_target, "--reinstall-package", "pkm"],
+                )
+                if result.returncode != 0:
+                    raise click.ClickException("uv tool install failed.")
+        except RuntimeError as e:
+            raise click.ClickException(str(e))
 
     console.print("[green]✓ pkm updated.[/green]")
     result = subprocess.run(["pkm", "--version"], capture_output=True, text=True)

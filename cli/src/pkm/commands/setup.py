@@ -38,28 +38,23 @@ def setup_cmd() -> None:
     if install_dev:
         extras.append("dev")
 
-    # Find the cli/ directory: walk up from this file until pyproject.toml is found
-    pkm_cli_dir = Path(__file__).parent
-    while pkm_cli_dir != pkm_cli_dir.parent:
-        if (pkm_cli_dir / "pyproject.toml").exists():
-            break
-        pkm_cli_dir = pkm_cli_dir.parent
-    else:
-        raise click.ClickException(
-            "Could not locate pyproject.toml in any parent directory. "
-            "Please run 'uv tool install -e .[search]' manually from the cli/ directory."
-        )
-
-    extra_spec = str(pkm_cli_dir) + (f"[{','.join(extras)}]" if extras else "")
-
     console.print()
     console.print(f"Installing pkm{('[' + ','.join(extras) + ']') if extras else ''}...")
 
-    result = subprocess.run(
-        ["uv", "tool", "install", "--editable", extra_spec, "--reinstall-package", "pkm"],
-    )
-    if result.returncode != 0:
-        raise click.ClickException("Dependency installation failed. Check uv output above.")
+    try:
+        from pkm._install_source import cli_source
+        with cli_source() as (cli_dir, is_local):
+            extra_spec = str(cli_dir) + (f"[{','.join(extras)}]" if extras else "")
+            flags = ["--editable"] if is_local else []
+            if not is_local:
+                console.print("[cyan]Downloading latest source from GitHub...[/cyan]")
+            result = subprocess.run(
+                ["uv", "tool", "install", *flags, extra_spec, "--reinstall-package", "pkm"],
+            )
+            if result.returncode != 0:
+                raise click.ClickException("Dependency installation failed. Check uv output above.")
+    except RuntimeError as e:
+        raise click.ClickException(str(e))
 
     console.print("[green]✓ Dependencies installed[/green]")
     console.print()
