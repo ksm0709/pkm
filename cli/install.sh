@@ -6,6 +6,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+
 echo "=== PKM CLI Installer ==="
 echo ""
 
@@ -39,13 +40,24 @@ fi
 
 echo "✓ uv $(uv --version)"
 
-# Install pkm with search extras
+# Install pkm as a uv-managed tool so no pre-existing virtualenv is required.
 echo ""
 echo "Installing pkm..."
 cd "$SCRIPT_DIR"
-uv pip install -e ".[search]"
+uv tool install --editable ".[search]"
+
+TOOL_BIN_DIR="$(uv tool dir --bin)"
+
 
 echo ""
 echo "✓ pkm installed successfully!"
+if [[ ":$PATH:" != *":$TOOL_BIN_DIR:"* ]]; then
+  echo ""
+  echo "Note: $TOOL_BIN_DIR is not on your PATH in this shell."
+  echo "If 'pkm' is not found, run:"
+  echo "  export PATH=\"$TOOL_BIN_DIR:\$PATH\""
+  echo "Or configure your shell once with:"
+  echo "  uv tool update-shell"
+fi
 echo ""
 echo "Next step: run 'pkm setup' to configure your vaults."
