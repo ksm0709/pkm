@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.6.0 (2026-04-06)
+
+### Features
+
+- Add /pkm:<workflow> Claude Code slash commands
+  ([`4be0f73`](https://github.com/ksm0709/pkm/commit/4be0f73ce014baa08692aa763db92251a1c6f599))
+
+
 ## v2.5.3 (2026-04-06)
 
 ### Bug Fixes
