@@ -17,6 +17,7 @@ def tmp_vault(tmp_path: Path) -> VaultConfig:
     for d in (
         "daily",
         "notes",
+        "tags",
         "tasks",
         "tasks/archive",
         "data",
@@ -53,6 +54,15 @@ def tmp_vault(tmp_path: Path) -> VaultConfig:
     note_b.write_text(
         "---\nid: database-isolation\naliases: []\ntags:\n  - database\n---\n\n"
         "격리 수준에 대한 설명.\n\n관련: [[2026-04-01-mvcc]]\n",
+        encoding="utf-8",
+    )
+
+    # Note with description (for backlink display testing)
+    note_desc = vault_path / "notes" / "concurrency-note.md"
+    note_desc.write_text(
+        "---\nid: concurrency-note\naliases: []\ntags:\n  - database\n"
+        "description: 동시성 제어 기법 비교 노트\n---\n\n"
+        "다양한 동시성 제어 기법을 비교한다.\n\n관련: [[2026-04-01-mvcc]]\n",
         encoding="utf-8",
     )
 
@@ -94,5 +104,5 @@ def disable_auto_vault(monkeypatch):
     """Disable auto git project and local config mapping during tests."""
     from pkm import config
 
-    monkeypatch.setattr(config, "get_git_project_name", lambda: None)
+    monkeypatch.setattr(config, "get_git_vault_name", lambda: None)
     monkeypatch.setattr(config, "get_local_config_vault", lambda: None)

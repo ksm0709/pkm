@@ -78,7 +78,7 @@ def build_index(vault: VaultConfig, model_name: str = "all-MiniLM-L6-v2") -> Vec
     backlink_counts = count_backlinks(vault)
 
     md_files: list[Path] = []
-    for d in (vault.notes_dir, vault.daily_dir):
+    for d in (vault.notes_dir, vault.daily_dir, vault.tags_dir):
         if d.is_dir():
             md_files.extend(sorted(d.glob("*.md")))
 
@@ -253,7 +253,7 @@ def is_index_stale(vault: VaultConfig) -> bool:
 
     index_mtime = index_path.stat().st_mtime
 
-    for d in (vault.notes_dir, vault.daily_dir):
+    for d in (vault.notes_dir, vault.daily_dir, vault.tags_dir):
         if not d.is_dir():
             continue
         for md_file in d.glob("*.md"):

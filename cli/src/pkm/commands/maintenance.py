@@ -1,10 +1,9 @@
-"""Maintenance commands for PKM CLI: tags, stats, stale."""
+"""Maintenance commands for PKM CLI: stats, stale."""
 
 from __future__ import annotations
 
 import os
 import time
-from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
@@ -17,37 +16,6 @@ from pkm.frontmatter import parse
 from pkm.wikilinks import extract_links, find_orphans
 
 console = Console()
-
-
-@click.command()
-@click.pass_context
-def tags(ctx: click.Context) -> None:
-    """Show all tags used across notes and dailies, sorted by count."""
-    vault = ctx.obj["vault"]
-
-    tag_counter: Counter[str] = Counter()
-
-    dirs = [vault.notes_dir, vault.daily_dir]
-    for d in dirs:
-        if not d.is_dir():
-            continue
-        for md_file in d.glob("*.md"):
-            try:
-                note = parse(md_file)
-                for tag in note.tags:
-                    if tag:
-                        tag_counter[tag] += 1
-            except Exception:
-                pass
-
-    table = Table(title="Tags", show_header=True, header_style="bold cyan")
-    table.add_column("Tag", style="green")
-    table.add_column("Count", justify="right")
-
-    for tag, count in tag_counter.most_common():
-        table.add_row(tag, str(count))
-
-    console.print(table)
 
 
 @click.command()

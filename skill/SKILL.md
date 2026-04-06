@@ -1,6 +1,6 @@
 ---
 name: pkm
-description: "Personal Knowledge Management for Obsidian vaults — Zettelkasten workflow with daily notes, atomic notes, wikilinks, and a Python CLI tool (pkm). Use this skill whenever the user mentions: daily notes, 데일리 노트, note management, 노트 정리, knowledge extraction, 지식 추출, Zettelkasten, 제텔카스텐, note search, backlinks, wikilinks, PKM, 노트 검색, 노트 작성, or wants to create/update/search notes in their Obsidian vaults. Also trigger when the user says /pkm. Workflow triggers: dream, 노트 정리, 주간 리뷰, weekly review, 1:1 준비, 건강도, health check, 연결 찾기, 태스크 동기화, 작업기억, 미분류 정리, 오늘 시작, 월간 종합."
+description: "Personal Knowledge Management for Obsidian vaults — Zettelkasten workflow with daily notes, atomic notes, wikilinks, and a Python CLI tool (pkm). Use this skill whenever the user mentions: daily notes, 데일리 노트, note management, 노트 정리, knowledge extraction, 지식 추출, Zettelkasten, 제텔카스텐, note search, backlinks, wikilinks, PKM, 노트 검색, 노트 작성, tag search, 태그 검색, 태그 탐색, 백링크, 백링크 탐색, or wants to create/update/search notes in their Obsidian vaults. Also trigger when the user says /pkm. Workflow triggers: dream, 노트 정리, 주간 리뷰, weekly review, 1:1 준비, 건강도, health check, 연결 찾기, 태스크 동기화, 작업기억, 미분류 정리, 오늘 시작, 월간 종합, 태그 탐색, tag explore, 백링크 탐색, backlink traverse."
 ---
 
 # PKM — Personal Knowledge Management
@@ -15,12 +15,15 @@ Obsidian 볼트 기반 제텔카스텐 지식 관리 시스템. 데일리 노트
 <vault>/
 ├── daily/              # YYYY-MM-DD.md — 시간순 기록
 ├── notes/              # 플랫 구조의 제텔카스텐 원자 노트
+├── tags/               # 태그 인덱스 노트 (태그별 .md 파일)
 ├── tasks/              # ongoing.md + task-<slug>.md
 │   └── archive/        # 완료된 태스크
 └── data/               # 노트 첨부파일
 ```
 
 볼트는 `PKM_VAULTS_ROOT` (기본: `~/vaults`) 하위에서 자동 발견된다. `daily/` 또는 `notes/` 디렉토리가 있으면 볼트로 인식한다.
+
+Git 저장소 내에서 사용하면 볼트 이름이 `@owner--repo` 형식으로 자동 지정되어 일반 볼트와 구분된다 (예: `@taeho--pkm`).
 
 ## Core Workflow
 
@@ -68,12 +71,15 @@ aliases:
   - <short alias>
 tags:
   - <topic-tag>
+description: "한줄 요약 (선택)"
 ---
 
 내용...
 
 관련: [[YYYY-MM-DD]] (첫 학습), [[related-concept]]
 ```
+
+`description` 필드는 선택적이며, 백링크 목록에서 제목 옆에 표시된다.
 
 ### 3. Knowledge Extraction — 승격 판단 기준
 
@@ -99,7 +105,7 @@ export PKM_VAULTS_ROOT=~/vaults        # 볼트 루트 디렉토리 (기본: ~/v
 export PKM_DEFAULT_VAULT=<vault-name>  # 기본 볼트 (미설정 시 첫 번째 발견된 볼트)
 ```
 
-### Commands (v0.1)
+### Commands
 
 ```bash
 # Daily notes
@@ -108,17 +114,32 @@ pkm daily --vault <name>           # Specific vault
 pkm daily add "학습 내용"           # Append timestamped entry
 pkm daily todo "할 일"              # Add to TODO section
 
-# Note management (pkm note group)
+# Note management
 pkm note add "Note Title" --tags t1,t2  # Create atomic note with frontmatter
 pkm note add "제목" --vault <name>      # In specific vault
-pkm note show <query>                   # Show note content by title keyword
+pkm note show <query>                   # Show note content + backlinks section
 pkm note edit <query>                   # Open note in editor by title keyword
+pkm note links <query>                  # Show backlinks for a note (who links here?)
 pkm note stale --days 30               # Notes not updated in 30+ days
 pkm note orphans                        # Find notes with no wikilinks (dead knowledge)
 
-# Maintenance
+# Tag index notes
 pkm tags                           # List all tags with counts
+pkm tags show <tag>                # Show tag note + notes with that tag
+pkm tags edit <tag>                # Open tag note in editor
+pkm tags search "python*"          # Glob pattern search
+pkm tags search "python+ml"        # AND: notes with both tags
+pkm tags search "python,rust"      # OR: notes with either tag
+
+# Vault management
+pkm vault list                     # List vaults (git vaults show @owner--repo)
+pkm vault add <name>               # Create new vault
+pkm vault open <name>              # Switch active vault
+
+# Maintenance
 pkm stats                          # Vault statistics
+pkm search <query>                 # Semantic search (requires pkm index first)
+pkm index                          # Build/rebuild search index
 ```
 
 ### Design Principles
@@ -128,6 +149,14 @@ pkm stats                          # Vault statistics
 - **한국어 네이티브** — 파일명, 본문, 검색 모두 한국어 지원
 
 When helping the user, prefer using the CLI tool for automation. For interactive knowledge work (writing, linking, extracting), work directly with the files using Read/Write/Edit tools.
+
+### Tag Index Notes & Backlinks
+
+태그는 `tags/` 디렉토리의 물리적 .md 파일로 관리된다. 태그 노트는 조회 시 자동 생성(lazy creation)되며, 설명을 추가하면 인덱스 카드로 활용된다. 백링크는 `note show`에서 자동 표시되며, `note links`로 전용 조회도 가능하다.
+
+자세한 워크플로우는 아래 참조:
+- 태그 탐색/검색/인덱스 활용 → `workflows/tag-explore.md`
+- 백링크 기반 지식 탐색/고립 노트 정리 → `workflows/backlink-traverse.md`
 
 ## Workflows
 
@@ -145,6 +174,8 @@ PKM 워크플로우는 `workflows/` 폴더에 독립 문서로 정의된다. 사
 | Capture Triage | 미분류 정리 | workflows/capture-triage.md |
 | Daily Seed | 오늘 시작 | workflows/daily-seed.md |
 | Monthly Synthesis | 월간 종합 | workflows/monthly-synthesis.md |
+| Tag Explore | 태그 탐색 | workflows/tag-explore.md |
+| Backlink Traverse | 백링크 탐색 | workflows/backlink-traverse.md |
 
 사용자 요청이 위 트리거와 매칭되면 해당 `workflows/*.md`를 읽고 실행한다. 여러 워크플로우가 매칭될 수 있으면 사용자에게 어떤 것을 원하는지 확인한다.
 

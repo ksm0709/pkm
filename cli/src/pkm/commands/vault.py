@@ -71,6 +71,7 @@ def list_vaults() -> None:
 
     table = Table(show_header=True, header_style="bold")
     table.add_column("Name")
+    table.add_column("Type")
     table.add_column("Path")
     table.add_column("Notes", justify="right")
     table.add_column("Dailies", justify="right")
@@ -83,8 +84,9 @@ def list_vaults() -> None:
             active_mark = f"[bold green]★[/bold green] [dim]via {active_source}[/dim]"
         else:
             active_mark = ""
+        vault_type = "[cyan]git[/cyan]" if name.startswith("@") else "local"
         table.add_row(
-            name, str(vc.path), str(notes_count), str(dailies_count), active_mark
+            name, vault_type, str(vc.path), str(notes_count), str(dailies_count), active_mark
         )
 
     console.print(table)
@@ -95,6 +97,7 @@ def init_vault_dirs(vault_path: Path, name: str) -> None:
     dirs = [
         vault_path / "daily",
         vault_path / "notes",
+        vault_path / "tags",
         vault_path / "tasks" / "archive",
         vault_path / "data",
         vault_path / ".pkm" / "artifacts",

@@ -11,7 +11,8 @@ from pkm.commands.config import config
 from pkm.commands.daily import daily
 from pkm.commands.links import orphans
 from pkm.commands.notes import note
-from pkm.commands.maintenance import stats, tags
+from pkm.commands.maintenance import stats
+from pkm.commands.tag_commands import tags
 from pkm.commands.search import index_cmd, search_cmd
 from pkm.commands.setup import setup_cmd
 from pkm.commands.agent import agent

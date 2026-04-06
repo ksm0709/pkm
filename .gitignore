@@ -35,6 +35,9 @@ Thumbs.db
 
 # OMC / local state
 .omc/
+.claire/
+.logs/
+state/
 
 # Claude / agent context (local-only)
 AGENTS.md

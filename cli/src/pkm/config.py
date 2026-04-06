@@ -50,6 +50,10 @@ class VaultConfig:
         return self.path / "tasks"
 
     @property
+    def tags_dir(self) -> Path:
+        return self.path / "tags"
+
+    @property
     def data_dir(self) -> Path:
         return self.path / "data"
 
@@ -117,24 +121,85 @@ def get_local_config_vault() -> str | None:
     return None
 
 
-def get_git_project_name() -> str | None:
-    """Check if we are in a git repository and return its basename."""
+def _find_git_root() -> Path | None:
+    """Find the git root directory from cwd, or None."""
     current = Path.cwd()
     while True:
         if (current / ".git").exists() and (current / ".git").is_dir():
-            return current.name
+            return current
         if current.parent == current:
             break
         current = current.parent
     return None
 
 
-def ensure_vault_exists(name: str) -> None:
-    """Create vault directory structure if it doesn't exist."""
-    vault_path = get_vaults_root() / name
-    if not vault_path.exists():
-        (vault_path / "daily").mkdir(parents=True, exist_ok=True)
-        (vault_path / "notes").mkdir(parents=True, exist_ok=True)
+def get_git_vault_name() -> str | None:
+    """Return @owner--repo vault name from git remote, or @basename fallback."""
+    import re
+    import subprocess
+
+    git_root = _find_git_root()
+    if git_root is None:
+        return None
+
+    try:
+        result = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            capture_output=True, text=True, timeout=5,
+            cwd=str(git_root),
+        )
+        if result.returncode == 0:
+            url = result.stdout.strip()
+            m = re.match(
+                r'(?:https?://[^/]+/|git@[^:]+:)([^/]+)/([^/.]+)',
+                url,
+            )
+            if m:
+                owner, repo = m.group(1), m.group(2)
+                return f"@{owner}--{repo}"
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+
+    return f"@{git_root.name}"
+
+
+def _get_git_project_name_legacy() -> str | None:
+    """Return plain basename of git root (for migration detection only)."""
+    git_root = _find_git_root()
+    return git_root.name if git_root else None
+
+
+def ensure_vault_exists(name: str, old_name: str | None = None) -> None:
+    """Create vault directory structure if it doesn't exist.
+
+    If old_name is provided and its directory exists, migrate it to the new name.
+    """
+    root = get_vaults_root()
+    vault_path = root / name
+    if vault_path.exists():
+        return
+
+    # Migrate from old vault name if it exists
+    if old_name:
+        old_path = root / old_name
+        if old_path.exists():
+            import shutil
+            shutil.move(str(old_path), str(vault_path))
+            _update_config_vault_reference(old_name, name)
+            return
+
+    (vault_path / "daily").mkdir(parents=True, exist_ok=True)
+    (vault_path / "notes").mkdir(parents=True, exist_ok=True)
+    (vault_path / "tags").mkdir(parents=True, exist_ok=True)
+
+
+def _update_config_vault_reference(old_name: str, new_name: str) -> None:
+    """Update vault name references in global config after migration."""
+    data = load_config()
+    defaults = data.get("defaults", {})
+    if defaults.get("vault") == old_name:
+        data.setdefault("defaults", {})["vault"] = new_name
+        save_config(data)
 
 
 def get_vault_context(name: str | None = None) -> tuple[VaultConfig, str]:
@@ -154,10 +219,11 @@ def get_vault_context(name: str | None = None) -> tuple[VaultConfig, str]:
                 source = "Env Var"
 
         if name is None:
-            proj_name = get_git_project_name()
-            if proj_name:
-                name = proj_name
-                ensure_vault_exists(name)
+            vault_name = get_git_vault_name()
+            if vault_name:
+                old_name = _get_git_project_name_legacy()
+                name = vault_name
+                ensure_vault_exists(name, old_name=old_name)
                 source = "Git Project"
 
         if name is None:

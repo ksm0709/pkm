@@ -31,6 +31,10 @@ class Note:
         return self.meta.get("aliases", [])
 
     @property
+    def description(self) -> str | None:
+        return self.meta.get("description")
+
+    @property
     def title(self) -> str:
         return self.meta.get("title", self.path.stem)
 
@@ -56,9 +60,12 @@ def generate_frontmatter(
     note_id: str,
     tags: list[str] | None = None,
     aliases: list[str] | None = None,
+    description: str | None = None,
     **extra,
 ) -> dict:
     meta: dict = {"id": note_id, "aliases": aliases or [], "tags": tags or []}
+    if description is not None:
+        meta["description"] = description
     meta.update(extra)
     return meta
 

@@ -11,10 +11,12 @@ from pathlib import Path
 
 import click
 from rich.console import Console
+from rich.table import Table
 
 from pkm.config import load_config
 from pkm.editor import get_editor
 from pkm.frontmatter import generate_frontmatter, generate_memory_frontmatter, parse, render
+from pkm.wikilinks import find_backlinks
 
 console = Console()
 
@@ -172,6 +174,50 @@ def show(ctx: click.Context, query: str) -> None:
     if selected is None:
         raise SystemExit(1)
     console.print(selected.path.read_text(encoding="utf-8"), end="")
+
+    backlink_paths = find_backlinks(vault, selected.id)
+    if backlink_paths:
+        console.print("\n[bold]Backlinks[/bold]")
+        for bp in backlink_paths:
+            try:
+                bl_note = parse(bp)
+                if bl_note.description:
+                    console.print(f"  · {bl_note.title} — [dim]{bl_note.description}[/dim]")
+                else:
+                    console.print(f"  · {bl_note.title}")
+            except Exception:
+                pass
+
+
+@note.command()
+@click.argument("query")
+@click.pass_context
+def links(ctx: click.Context, query: str) -> None:
+    """Show backlinks for a note."""
+    vault = ctx.obj["vault"]
+    matches = _search_notes(vault, query)
+    selected = _select_note(matches, query)
+    if selected is None:
+        raise SystemExit(1)
+
+    backlink_paths = find_backlinks(vault, selected.id)
+    if not backlink_paths:
+        console.print(f"[dim]No backlinks found for '{selected.title}'[/dim]")
+        return
+
+    table = Table(title=f"Backlinks for '{selected.title}'")
+    table.add_column("Title", style="cyan")
+    table.add_column("Description", style="dim")
+    table.add_column("Path", style="dim")
+
+    for bp in backlink_paths:
+        try:
+            bl_note = parse(bp)
+            table.add_row(bl_note.title, bl_note.description or "", bp.name)
+        except Exception:
+            pass
+
+    console.print(table)
 
 
 from pkm.commands.maintenance import stale
