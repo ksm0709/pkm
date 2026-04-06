@@ -4,11 +4,30 @@
 # Requires: Python 3.10+
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-
 echo "=== PKM CLI Installer ==="
 echo ""
+
+# When run via `curl | bash`, BASH_SOURCE[0] is unbound (stdin).
+# Detect this and download the source from GitHub instead.
+GITHUB_REPO="ksm0709/pkm"
+CLEANUP_TMP=false
+
+if [[ -n "${BASH_SOURCE[0]+x}" && "${BASH_SOURCE[0]}" != "" && "${BASH_SOURCE[0]}" != "bash" ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # Walk up to find the cli/ directory containing pyproject.toml
+  if [[ ! -f "$SCRIPT_DIR/pyproject.toml" ]]; then
+    SCRIPT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)/cli"
+  fi
+else
+  echo "Running via pipe — downloading source from GitHub..."
+  TMP_DIR="$(mktemp -d)"
+  CLEANUP_TMP=true
+  # Extract the full repo (not just cli/) so that symlinks inside cli/ that
+  # point to sibling directories (e.g. src/pkm/skill -> ../../../skill) resolve.
+  curl -fsSL "https://github.com/$GITHUB_REPO/archive/refs/heads/main.tar.gz" \
+    | tar -xz -C "$TMP_DIR" --strip-components=1
+  SCRIPT_DIR="$TMP_DIR/cli"
+fi
 
 # Check Python
 if ! command -v python3 &>/dev/null; then
@@ -44,7 +63,13 @@ echo "✓ uv $(uv --version)"
 echo ""
 echo "Installing pkm..."
 cd "$SCRIPT_DIR"
-uv tool install --editable ".[search]"
+if [[ "$CLEANUP_TMP" == "true" ]]; then
+  # Temp source dir — install normally (editable would require the dir to persist)
+  uv tool install ".[search]"
+  rm -rf "$TMP_DIR"
+else
+  uv tool install --editable ".[search]"
+fi
 
 TOOL_BIN_DIR="$(uv tool dir --bin)"
 
