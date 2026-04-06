@@ -133,6 +133,7 @@ pkm tags search "python,rust"      # OR: notes with either tag
 
 # Vault management
 pkm vault list                     # List vaults (git vaults show @owner--repo)
+pkm vault where                    # Show active vault name and path (2 lines)
 pkm vault add <name>               # Create new vault
 pkm vault open <name>              # Switch active vault
 
@@ -147,6 +148,32 @@ pkm index                          # Build/rebuild search index
 - **No database** — files are the single source of truth. No conflict with Obsidian
 - **Auto vault discovery** — vaults are recognized by directory structure, no hardcoding
 - **Native language support** — filenames, content, and search all support non-ASCII characters
+
+## Vault Context (MANDATORY)
+
+PKM 명령을 실행하기 전, 항상 다음 순서로 vault 컨텍스트를 확인합니다:
+
+1. **현재 vault 확인**: `pkm vault where` — 이름(1줄)과 경로(1줄) 출력
+2. **올바른 vault인지 검증**: 현재 작업 프로젝트/디렉토리에 맞는 vault인지 확인
+3. **불일치 시 전환**: `pkm vault open <name>` 으로 명시적 전환 후 다시 확인
+4. **PKM 명령 실행**: `pkm daily add ...`, `pkm note add ...` 등 실행
+
+> vault 디렉토리로 직접 이동(cd)할 필요 없음 — pkm 명령은 어느 디렉토리에서든 실행 가능.
+> vault 경로가 필요하면 `pkm vault where` 두 번째 줄을 사용하세요.
+
+**예시:**
+```bash
+$ pkm vault where
+@bearrobotics--pennybot
+/home/taeho/vaults/@bearrobotics--pennybot
+
+# vault가 맞지 않으면:
+$ pkm vault open @taeho--pkm
+★ Switched to vault '@taeho--pkm'
+
+# 이후 PKM 명령 실행:
+$ pkm daily add "오늘의 작업 내용"
+```
 
 ## Write Gates (MANDATORY)
 
@@ -216,7 +243,8 @@ Read `references/workflows.md` for specific workflow patterns and automation rec
 When the user asks for PKM help, follow this flow:
 
 1. **Identify intent**: daily logging, note creation, knowledge extraction, or maintenance?
-2. **Choose vault**: Infer from context if not specified. Use `--vault` flag or `PKM_DEFAULT_VAULT`.
+2. **Check vault context**: Run `pkm vault where` to confirm active vault. If wrong, run `pkm vault open <name>` to switch. No need to cd into vault directory.
+3. **Choose vault**: Infer from context if not specified. Use `--vault` flag or `PKM_DEFAULT_VAULT`.
 3. **Check existing notes**: Search before creating — avoid duplicates.
 4. **Maintain connections**: Every new note must link to at least one existing note.
 5. **Use appropriate tool**: CLI as the write gate (creation/append), Read/Edit for subsequent content editing.

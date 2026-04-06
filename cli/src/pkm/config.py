@@ -5,6 +5,10 @@ from pathlib import Path
 
 import click
 
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib  # type: ignore[no-redef]
 
 DEFAULT_VAULTS_ROOT = Path.home() / "vaults"
 CONFIG_PATH = Path.home() / ".config" / "pkm" / "config"
@@ -14,8 +18,6 @@ def load_config() -> dict:
     """Load ~/.config/pkm/config as a dict. Returns {} if file missing."""
     if not CONFIG_PATH.exists():
         return {}
-    import tomllib
-
     with open(CONFIG_PATH, "rb") as f:
         return tomllib.load(f)
 
@@ -103,8 +105,6 @@ def get_local_config_vault() -> str | None:
         pkm_file = current / ".pkm"
         if pkm_file.exists():
             try:
-                import tomllib
-
                 with open(pkm_file, "rb") as f:
                     data = tomllib.load(f)
                     if "defaults" in data and "vault" in data["defaults"]:

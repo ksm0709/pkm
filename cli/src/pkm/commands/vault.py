@@ -113,6 +113,19 @@ def init_vault_dirs(vault_path: Path, name: str) -> None:
 
 
 @vault.command()
+def where() -> None:
+    """Show the currently active vault name and path."""
+    from pkm.config import get_vault_context
+
+    try:
+        vc, _source = get_vault_context()
+        click.echo(vc.name)
+        click.echo(str(vc.path))
+    except click.ClickException:
+        click.echo("No vault detected. Run 'pkm vault list' to see available vaults.")
+
+
+@vault.command()
 @click.argument("name")
 def add(name: str) -> None:
     """Create a new vault."""
