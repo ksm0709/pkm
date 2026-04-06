@@ -10,6 +10,7 @@ import click
 from rich.console import Console
 
 from pkm._install_source import cli_source, find_local_cli_dir
+from pkm.commands.setup import install_skill_files
 from pkm.version_check import get_recent_versions
 
 console = Console()
@@ -101,6 +102,10 @@ def update_cmd(version: str | None) -> None:
             raise click.ClickException(str(e))
 
     console.print("[green]✓ pkm updated.[/green]")
+
+    # Sync skill and command files — removes stale commands from old versions
+    install_skill_files()
+
     result = subprocess.run(["pkm", "--version"], capture_output=True, text=True)
     if result.returncode == 0:
         console.print(result.stdout.strip())

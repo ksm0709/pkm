@@ -15,6 +15,44 @@ from pkm.config import discover_vaults, save_config
 console = Console()
 
 
+def _sync_dir(src: Path, dst: Path) -> None:
+    """Sync src into dst: remove files/dirs in dst not present in src, then copy all from src."""
+    dst.mkdir(parents=True, exist_ok=True)
+    src_names = {p.name for p in src.iterdir()}
+    for existing in list(dst.iterdir()):
+        if existing.name not in src_names:
+            if existing.is_dir():
+                shutil.rmtree(existing)
+            else:
+                existing.unlink()
+    shutil.copytree(str(src), str(dst), dirs_exist_ok=True)
+
+
+def install_skill_files() -> bool:
+    """Install/sync skill and command files to ~/.claude and ~/.agents. Returns True if found."""
+    skill_src = Path(__file__).parent.parent / "skill"
+    if not skill_src.is_dir():
+        return False
+
+    for dest, label in [
+        (Path.home() / ".claude" / "skills" / "pkm", "~/.claude/skills/pkm/"),
+        (Path.home() / ".agents" / "skills" / "pkm", "~/.agents/skills/pkm/"),
+    ]:
+        _sync_dir(skill_src, dest)
+        console.print(f"[green]✓ PKM skill synced ({label})[/green]")
+
+    commands_src = skill_src / "commands" / "pkm"
+    if commands_src.is_dir():
+        for dest, label in [
+            (Path.home() / ".claude" / "commands" / "pkm", "~/.claude/commands/pkm/"),
+            (Path.home() / ".agents" / "commands" / "pkm", "~/.agents/commands/pkm/"),
+        ]:
+            _sync_dir(commands_src, dest)
+            console.print(f"[green]✓ PKM commands synced ({label})[/green]")
+
+    return True
+
+
 @click.command("setup")
 def setup_cmd() -> None:
     """Interactive setup wizard: install dependencies, configure vaults."""
@@ -96,27 +134,8 @@ def setup_cmd() -> None:
     save_config({"defaults": {"vault": default_vault}})
     console.print(f"[green]✓ Default vault set to '{default_vault}'[/green]")
 
-    # Step 6: Install skill files to ~/.claude/skills/pkm/
-    skill_src = Path(__file__).parent.parent / "skill"
-    if skill_src.is_dir():
-        skill_dest_claude = Path.home() / ".claude" / "skills" / "pkm"
-        shutil.copytree(str(skill_src), str(skill_dest_claude), dirs_exist_ok=True)
-        console.print("[green]✓ PKM skill installed to ~/.claude/skills/pkm/[/green]")
-
-        skill_dest_agents = Path.home() / ".agents" / "skills" / "pkm"
-        shutil.copytree(str(skill_src), str(skill_dest_agents), dirs_exist_ok=True)
-        console.print("[green]✓ PKM skill installed to ~/.agents/skills/pkm/[/green]")
-
-        # Install slash commands to both Claude Code and Agents
-        commands_src = skill_src / "commands" / "pkm"
-        if commands_src.is_dir():
-            for dest_base, label in [
-                (Path.home() / ".claude" / "commands" / "pkm", "~/.claude/commands/pkm/"),
-                (Path.home() / ".agents" / "commands" / "pkm", "~/.agents/commands/pkm/"),
-            ]:
-                shutil.copytree(str(commands_src), str(dest_base), dirs_exist_ok=True)
-                console.print(f"[green]✓ PKM commands installed ({label})[/green]")
-    else:
+    # Step 6: Sync skill and command files (removes stale, copies current)
+    if not install_skill_files():
         console.print("[yellow]⚠ Skill files not found in package — skipping skill install[/yellow]")
 
     # Step 7: Done
