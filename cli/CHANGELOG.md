@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v2.10.0 (2026-04-06)
+
+### Chores
+
+- Remove unintended files created during translation
+  ([`fa546f1`](https://github.com/ksm0709/pkm/commit/fa546f1d2e90903eedd3c4242d43df34a113780e))
+
+### Features
+
+- **workflows**: Introduce zettel-loop and refine-loop as canonical top-level orchestrators
+  ([`b365815`](https://github.com/ksm0709/pkm/commit/b365815be23c3c839cbb2903658ceeecc8c3a843))
+
+
 ## v2.9.0 (2026-04-06)
 
 ### Bug Fixes
