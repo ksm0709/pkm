@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.5.1 (2026-04-06)
+
+### Bug Fixes
+
+- Make install.sh work when piped via curl | bash
+  ([`e97b060`](https://github.com/ksm0709/pkm/commit/e97b0603a45dfd93a005758be4ab59110bb0099e))
+
+
 ## v2.5.0 (2026-04-06)
 
 ### Features
