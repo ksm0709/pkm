@@ -91,10 +91,45 @@ def update_cmd(version: str | None) -> None:
                 "Specific version installs require a local git checkout. "
                 "Clone the repo: git clone https://github.com/ksm0709/pkm ~/repos/pkm"
             )
-        console.print("[cyan]Upgrading via uv tool...[/cyan]")
-        result = subprocess.run(["uv", "tool", "upgrade", "pkm"])
-        if result.returncode != 0:
-            raise click.ClickException("uv tool upgrade failed.")
+        # Installed without a local git repo (e.g. via curl | bash).
+        # uv tool upgrade would try to re-fetch from the original (now-deleted) tmp
+        # path, so we re-download the latest tarball from GitHub and reinstall.
+        import sys
+        import tempfile
+        import tarfile
+        import urllib.request
+
+        GITHUB_REPO = "ksm0709/pkm"
+        tarball_url = f"https://github.com/{GITHUB_REPO}/archive/refs/heads/main.tar.gz"
+        console.print(f"[cyan]Downloading latest from GitHub...[/cyan]")
+        with tempfile.TemporaryDirectory() as tmp:
+            tarball_path = Path(tmp) / "pkm.tar.gz"
+            try:
+                urllib.request.urlretrieve(tarball_url, tarball_path)
+            except Exception as e:
+                raise click.ClickException(f"Download failed: {e}")
+
+            with tarfile.open(tarball_path, "r:gz") as tf:
+                tf.extractall(tmp)
+
+            # The tarball extracts to pkm-main/; cli/ is the package root.
+            extracted_dirs = [p for p in Path(tmp).iterdir() if p.is_dir() and p.name != "__MACOSX"]
+            if not extracted_dirs:
+                raise click.ClickException("Unexpected tarball structure.")
+            repo_root = extracted_dirs[0]
+            cli_dir = repo_root / "cli"
+
+            search_installed = subprocess.run(
+                [sys.executable, "-c", "import sentence_transformers"],
+                capture_output=True,
+            ).returncode == 0
+            install_target = str(cli_dir) + ("[search]" if search_installed else "")
+            console.print("[cyan]Reinstalling...[/cyan]")
+            result = subprocess.run(
+                ["uv", "tool", "install", install_target, "--reinstall-package", "pkm"],
+            )
+            if result.returncode != 0:
+                raise click.ClickException("uv tool install failed.")
 
     console.print("[green]✓ pkm updated.[/green]")
     result = subprocess.run(["pkm", "--version"], capture_output=True, text=True)
