@@ -106,6 +106,13 @@ def setup_cmd() -> None:
         skill_dest_agents = Path.home() / ".agents" / "skills" / "pkm"
         shutil.copytree(str(skill_src), str(skill_dest_agents), dirs_exist_ok=True)
         console.print("[green]✓ PKM skill installed to ~/.agents/skills/pkm/[/green]")
+
+        # Install Claude Code slash commands (/pkm:<workflow>)
+        commands_src = skill_src / "commands" / "pkm"
+        if commands_src.is_dir():
+            commands_dest = Path.home() / ".claude" / "commands" / "pkm"
+            shutil.copytree(str(commands_src), str(commands_dest), dirs_exist_ok=True)
+            console.print("[green]✓ PKM commands installed (~/.claude/commands/pkm/)[/green]")
     else:
         console.print("[yellow]⚠ Skill files not found in package — skipping skill install[/yellow]")
 
@@ -119,3 +126,9 @@ def setup_cmd() -> None:
     if install_search:
         console.print("  [bold]pkm index[/bold]       — build search index")
         console.print("  [bold]pkm search[/bold] '...' — semantic search")
+    console.print()
+    console.print("Claude Code slash commands (after restarting Claude Code):")
+    console.print("  [bold]/pkm:daily-seed[/bold]    — start today's note")
+    console.print("  [bold]/pkm:dream[/bold]          — promote daily → atomic notes")
+    console.print("  [bold]/pkm:weekly-review[/bold]  — weekly synthesis")
+    console.print("  [bold]/pkm:capture-triage[/bold] — sort untagged notes")
