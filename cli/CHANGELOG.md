@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.12.1 (2026-04-06)
+
+### Bug Fixes
+
+- Python 3.10 tomllib compat, add vault where command, vault context guide
+  ([`51a79cd`](https://github.com/ksm0709/pkm/commit/51a79cdab361d66643312bf31a7e64e26fa4aea1))
+
+
 ## v2.12.0 (2026-04-06)
 
 ### Features
