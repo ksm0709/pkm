@@ -176,6 +176,7 @@ PKM 워크플로우는 `workflows/` 폴더에 독립 문서로 정의된다. 사
 | Monthly Synthesis | 월간 종합 | workflows/monthly-synthesis.md |
 | Tag Explore | 태그 탐색 | workflows/tag-explore.md |
 | Backlink Traverse | 백링크 탐색 | workflows/backlink-traverse.md |
+| Add Workflow | add-workflow, 워크플로우 추가, 새 워크플로우 | workflows/add-workflow.md |
 
 사용자 요청이 위 트리거와 매칭되면 해당 `workflows/*.md`를 읽고 실행한다. 여러 워크플로우가 매칭될 수 있으면 사용자에게 어떤 것을 원하는지 확인한다.
 
