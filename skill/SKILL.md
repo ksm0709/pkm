@@ -164,15 +164,15 @@ PKM 워크플로우는 `workflows/` 폴더에 독립 문서로 정의된다. 사
 
 | Workflow | Primary Trigger | 문서 |
 |----------|----------------|------|
-| Dream | dream | workflows/dream.md |
+| Extract Note | dream, 지식 승격, 데일리 정리 | workflows/extract-note-from-daily.md |
 | Weekly Review | 주간 리뷰 | workflows/weekly-review.md |
 | 1:1 Prep | 1:1 준비 | workflows/1on1-prep.md |
 | Health Check | 건강도 | workflows/health-check.md |
-| Connect | 연결 찾기 | workflows/connect.md |
+| Link Notes | 연결 찾기 | workflows/link-notes.md |
 | Task Sync | 태스크 동기화 | workflows/task-sync.md |
-| Working Memory | 작업기억 | workflows/working-memory.md |
-| Capture Triage | 미분류 정리 | workflows/capture-triage.md |
-| Daily Seed | 오늘 시작 | workflows/daily-seed.md |
+| Add Context | 작업기억, 컨텍스트 기록 | workflows/add-context-to-daily.md |
+| Auto Tagging | 미분류 정리, 태그 없는 노트 | workflows/auto-tagging.md |
+| Init Daily | 오늘 시작, 데일리 시작 | workflows/init-daily.md |
 | Monthly Synthesis | 월간 종합 | workflows/monthly-synthesis.md |
 | Tag Explore | 태그 탐색 | workflows/tag-explore.md |
 | Backlink Traverse | 백링크 탐색 | workflows/backlink-traverse.md |

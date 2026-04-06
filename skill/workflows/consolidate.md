@@ -10,7 +10,7 @@
 ## Tools
 - `pkm consolidate` (후보 목록 조회 — 읽기 전용)
 - `pkm consolidate mark YYYY-MM-DD` (통합 준비 완료 표시)
-- Dream 워크플로우 (`workflows/dream.md`) — 실제 원자 노트 추출
+- Dream 워크플로우 (`workflows/extract-note-from-daily.md`) — 실제 원자 노트 추출
 
 ## Principles
 - 통합은 2단계로 분리: 후보 확인 → 마킹. 데이터 손실 방지를 위해 절대 합치지 않는다
@@ -48,8 +48,8 @@ pkm consolidate
 pkm consolidate mark 2026-04-03
 pkm consolidate mark 2026-04-04
 
-# 3. 마킹 후 dream 워크플로우 실행
-# → workflows/dream.md 참고
+# 3. 마킹 후 extract-note-from-daily 워크플로우 실행
+# → workflows/extract-note-from-daily.md 참고
 ```
 
 ## Safety Rules
