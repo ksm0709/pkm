@@ -68,9 +68,15 @@ def update_cmd(version: str | None) -> None:
                 raise click.ClickException(f"Could not checkout {tag}.")
         else:
             console.print(f"[cyan]Pulling latest from {repo_dir}...[/cyan]")
-            result = subprocess.run(["git", "-C", str(repo_dir), "pull"])
+            result = subprocess.run(["git", "-C", str(repo_dir), "pull", "--ff-only"])
             if result.returncode != 0:
-                raise click.ClickException("git pull failed.")
+                raise click.ClickException(
+                    "git pull --ff-only failed. Your local branch has diverged from remote.\n"
+                    "To resolve, run one of:\n"
+                    "  git -C {repo_dir} pull --rebase   # rebase local commits on top of remote\n"
+                    "  git -C {repo_dir} reset --hard origin/main  # discard local changes"
+                    .format(repo_dir=repo_dir)
+                )
 
         console.print("[cyan]Reinstalling...[/cyan]")
         install_target = str(cli_dir) + ("[search]" if _search_installed() else "")
