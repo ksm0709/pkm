@@ -10,7 +10,7 @@ import click
 from rich.console import Console
 
 from pkm.commands.vault import init_vault_dirs
-from pkm.config import discover_vaults, save_config
+from pkm.config import CONFIG_PATH, discover_vaults, load_config
 
 console = Console()
 
@@ -53,30 +53,105 @@ def install_skill_files() -> bool:
     return True
 
 
+def _load_setup_choices() -> dict | None:
+    """Return saved setup choices from config, or None if not previously saved."""
+    cfg = load_config()
+    s = cfg.get("setup", {})
+    required = {"install_search", "install_dev", "vaults_root", "default_vault"}
+    return s if required.issubset(s.keys()) else None
+
+
+def _save_config_merged(setup_choices: dict, default_vault: str) -> None:
+    """Merge setup choices + defaults into ~/.config/pkm/config (preserves other sections)."""
+    cfg = load_config()
+    cfg["setup"] = setup_choices
+    cfg.setdefault("defaults", {})["vault"] = default_vault
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    lines: list[str] = []
+    for section, values in cfg.items():
+        lines.append(f"[{section}]")
+        for k, v in values.items():
+            if isinstance(v, bool):
+                lines.append(f"{k} = {'true' if v else 'false'}")
+            else:
+                lines.append(f'{k} = "{v}"')
+        lines.append("")
+    CONFIG_PATH.write_text("\n".join(lines), encoding="utf-8")
+
+
 @click.command("setup")
 def setup_cmd() -> None:
     """Interactive setup wizard: install dependencies, configure vaults."""
     console.print("[bold]PKM Setup Wizard[/bold]")
     console.print()
 
-    # Step 1: Feature selection
-    install_search = click.confirm(
-        "Install search features? (sentence-transformers ~500MB, enables 'pkm search')",
-        default=True,
-    )
-    install_dev = click.confirm(
-        "Install dev tools? (pytest, for running tests)",
-        default=False,
-    )
+    # Check for previously saved setup choices
+    saved = _load_setup_choices()
+    use_saved = False
+    if saved:
+        console.print("[cyan]이전 설정이 발견되었습니다:[/cyan]")
+        console.print(f"  search 기능: {'예' if saved['install_search'] == 'true' or saved['install_search'] is True else '아니요'}")
+        console.print(f"  dev 도구:    {'예' if saved['install_dev'] == 'true' or saved['install_dev'] is True else '아니요'}")
+        console.print(f"  vault 루트:  {saved['vaults_root']}")
+        console.print(f"  기본 vault:  {saved['default_vault']}")
+        console.print()
+        use_saved = click.confirm("기존 설정을 유지하시겠습니까?", default=True)
+        console.print()
 
-    # Step 2: Install selected extras
+    if use_saved and saved:
+        # Quick path: reuse saved choices
+        install_search = saved["install_search"] in (True, "true")
+        install_dev = saved["install_dev"] in (True, "true")
+        vaults_root = Path(saved["vaults_root"]).expanduser()
+        default_vault = saved["default_vault"]
+    else:
+        # Full interactive setup
+        install_search = click.confirm(
+            "Install search features? (sentence-transformers ~500MB, enables 'pkm search')",
+            default=True,
+        )
+        install_dev = click.confirm(
+            "Install dev tools? (pytest, for running tests)",
+            default=False,
+        )
+
+        default_root = str(Path.home() / "vaults")
+        vaults_root_str = click.prompt("Vault root directory", default=default_root)
+        vaults_root = Path(vaults_root_str).expanduser()
+
+        existing = discover_vaults(vaults_root)
+        if existing:
+            vault_names = ", ".join(existing.keys())
+            console.print(f"[cyan]ℹ Found existing vaults:[/cyan] {vault_names}")
+            first_name = next(iter(existing))
+            default_vault = click.prompt("Default vault", default=first_name)
+            if default_vault not in existing:
+                console.print(
+                    f"[yellow]Warning:[/yellow] '{default_vault}' not found in {vaults_root}. "
+                    "Creating it..."
+                )
+                vault_path = vaults_root / default_vault
+                init_vault_dirs(vault_path, default_vault)
+                console.print(f"[green]✓ Created vault '{default_vault}'[/green]")
+        else:
+            console.print(f"No vaults found under {vaults_root}.")
+            vault_name = click.prompt("New vault name")
+            if not vault_name or "/" in vault_name or "\\" in vault_name:
+                raise click.ClickException(
+                    f"Invalid vault name '{vault_name}': must be non-empty and contain no slashes."
+                )
+            vault_path = vaults_root / vault_name
+            init_vault_dirs(vault_path, vault_name)
+            console.print(f"[green]✓ Created vault '{vault_name}'[/green] at {vault_path}")
+            default_vault = vault_name
+
+    # Install selected extras
     extras: list[str] = []
     if install_search:
         extras.append("search")
     if install_dev:
         extras.append("dev")
 
-    console.print()
     console.print(f"Installing pkm{('[' + ','.join(extras) + ']') if extras else ''}...")
 
     try:
@@ -97,48 +172,23 @@ def setup_cmd() -> None:
     console.print("[green]✓ Dependencies installed[/green]")
     console.print()
 
-    # Step 3: Vault root
-    default_root = str(Path.home() / "vaults")
-    vaults_root_str = click.prompt("Vault root directory", default=default_root)
-    vaults_root = Path(vaults_root_str).expanduser()
-
-    # Step 4: Detect existing vaults
-    existing = discover_vaults(vaults_root)
-
-    if existing:
-        vault_names = ", ".join(existing.keys())
-        console.print(f"[cyan]ℹ Found existing vaults:[/cyan] {vault_names}")
-        first_name = next(iter(existing))
-        default_vault = click.prompt("Default vault", default=first_name)
-        if default_vault not in existing:
-            console.print(
-                f"[yellow]Warning:[/yellow] '{default_vault}' not found in {vaults_root}. "
-                "Creating it..."
-            )
-            vault_path = vaults_root / default_vault
-            init_vault_dirs(vault_path, default_vault)
-            console.print(f"[green]✓ Created vault '{default_vault}'[/green]")
-    else:
-        console.print(f"No vaults found under {vaults_root}.")
-        vault_name = click.prompt("New vault name")
-        if not vault_name or "/" in vault_name or "\\" in vault_name:
-            raise click.ClickException(
-                f"Invalid vault name '{vault_name}': must be non-empty and contain no slashes."
-            )
-        vault_path = vaults_root / vault_name
-        init_vault_dirs(vault_path, vault_name)
-        console.print(f"[green]✓ Created vault '{vault_name}'[/green] at {vault_path}")
-        default_vault = vault_name
-
-    # Step 5: Save config
-    save_config({"defaults": {"vault": default_vault}})
+    # Save config (setup choices + default vault), merging with any existing sections
+    _save_config_merged(
+        setup_choices={
+            "install_search": install_search,
+            "install_dev": install_dev,
+            "vaults_root": str(vaults_root),
+            "default_vault": default_vault,
+        },
+        default_vault=default_vault,
+    )
     console.print(f"[green]✓ Default vault set to '{default_vault}'[/green]")
 
-    # Step 6: Sync skill and command files (removes stale, copies current)
+    # Sync skill and command files (removes stale, copies current)
     if not install_skill_files():
         console.print("[yellow]⚠ Skill files not found in package — skipping skill install[/yellow]")
 
-    # Step 7: Done
+    # Done
     console.print()
     console.print("[bold green]✓ Setup complete![/bold green]")
     console.print()
@@ -150,7 +200,8 @@ def setup_cmd() -> None:
         console.print("  [bold]pkm search[/bold] '...' — semantic search")
     console.print()
     console.print("Claude Code slash commands (after restarting Claude Code):")
-    console.print("  [bold]/pkm:init-daily[/bold]              — start today's note")
-    console.print("  [bold]/pkm:extract-note-from-daily[/bold] — promote daily → atomic notes")
-    console.print("  [bold]/pkm:weekly-review[/bold]           — weekly synthesis")
-    console.print("  [bold]/pkm:auto-tagging[/bold]            — tag untagged notes")
+    console.print("  [bold]/pkm:init-daily[/bold]        — start today's note")
+    console.print("  [bold]/pkm:distill-daily[/bold]     — promote daily → atomic notes")
+    console.print("  [bold]/pkm:dream[/bold]             — nightly knowledge consolidation")
+    console.print("  [bold]/pkm:weekly-review[/bold]     — weekly synthesis")
+    console.print("  [bold]/pkm:auto-tagging[/bold]      — tag untagged notes")

@@ -27,14 +27,13 @@ def test_setup_help(runner: CliRunner) -> None:
 def test_setup_new_vault(tmp_path: Path, runner: CliRunner) -> None:
     """setup creates a new vault when none exist."""
     vaults_root = tmp_path / "vaults"
-    config_path = tmp_path / "config"
 
     with (
         patch("pkm.commands.setup.discover_vaults", return_value={}),
-        patch("pkm.commands.setup.save_config") as mock_save,
+        patch("pkm.commands.setup._load_setup_choices", return_value=None),
+        patch("pkm.commands.setup._save_config_merged") as mock_save,
         patch("pkm.commands.setup.init_vault_dirs") as mock_init,
         patch("pkm.commands.setup.subprocess.run") as mock_run,
-        patch("pkm.config.CONFIG_PATH", config_path),
     ):
         mock_run.return_value.returncode = 0
 
@@ -48,7 +47,9 @@ def test_setup_new_vault(tmp_path: Path, runner: CliRunner) -> None:
     assert result.exit_code == 0, result.output
     assert "Setup complete" in result.output
     mock_init.assert_called_once()
-    mock_save.assert_called_once_with({"defaults": {"vault": "mynotes"}})
+    mock_save.assert_called_once()
+    _, kwargs = mock_save.call_args
+    assert kwargs["default_vault"] == "mynotes"
 
 
 def test_setup_existing_vault(tmp_path: Path, runner: CliRunner) -> None:
@@ -62,7 +63,8 @@ def test_setup_existing_vault(tmp_path: Path, runner: CliRunner) -> None:
 
     with (
         patch("pkm.commands.setup.discover_vaults", return_value=existing),
-        patch("pkm.commands.setup.save_config") as mock_save,
+        patch("pkm.commands.setup._load_setup_choices", return_value=None),
+        patch("pkm.commands.setup._save_config_merged") as mock_save,
         patch("pkm.commands.setup.init_vault_dirs") as mock_init,
         patch("pkm.commands.setup.subprocess.run") as mock_run,
     ):
@@ -81,7 +83,9 @@ def test_setup_existing_vault(tmp_path: Path, runner: CliRunner) -> None:
     assert "bear" in result.output
     assert "taeho" in result.output
     mock_init.assert_not_called()
-    mock_save.assert_called_once_with({"defaults": {"vault": "bear"}})
+    mock_save.assert_called_once()
+    _, kwargs = mock_save.call_args
+    assert kwargs["default_vault"] == "bear"
 
 
 def test_setup_registers_as_vault_free(runner: CliRunner) -> None:
