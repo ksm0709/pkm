@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.5.2 (2026-04-06)
+
+### Bug Fixes
+
+- Pkm update re-downloads from GitHub when no local git repo
+  ([`a0d0720`](https://github.com/ksm0709/pkm/commit/a0d0720dac6e126e0adecbd82818f484a069986b))
+
+
 ## v2.5.1 (2026-04-06)
 
 ### Bug Fixes
