@@ -104,5 +104,5 @@ def disable_auto_vault(monkeypatch):
     """Disable auto git project and local config mapping during tests."""
     from pkm import config
 
-    monkeypatch.setattr(config, "get_git_vault_name", lambda: None)
+    monkeypatch.setattr(config, "get_git_vault_name", lambda cwd=None: None)
     monkeypatch.setattr(config, "get_local_config_vault", lambda: None)

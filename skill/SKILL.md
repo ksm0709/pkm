@@ -148,7 +148,15 @@ pkm index                          # Build/rebuild search index
 - **Auto vault discovery** — vaults are recognized by directory structure, no hardcoding
 - **Native language support** — filenames, content, and search all support non-ASCII characters
 
-When helping the user, prefer using the CLI tool for automation. For interactive knowledge work (writing, linking, extracting), work directly with the files using Read/Write/Edit tools.
+## Write Gates (MANDATORY)
+
+**Never create or append to daily/note files directly with Write/Edit tools as the first action.** Always use the CLI as the entry gate:
+
+- **Daily entries**: `pkm daily add "<text>"` — ensures timestamp format, frontmatter, and TODO section integrity
+- **New notes**: `pkm note add "<Title>" --tags t1,t2` — ensures required frontmatter (id, aliases, tags, description)
+- **TODO items**: `pkm daily todo "<task>"` — places item in the correct section
+
+**After** the CLI creates the file/entry, using Read/Edit to modify the internal content is fine (e.g., expanding a note body, fixing wording). The gate applies to creation and appending only.
 
 ### Tag Index Notes & Backlinks
 
@@ -211,4 +219,4 @@ When the user asks for PKM help, follow this flow:
 2. **Choose vault**: Infer from context if not specified. Use `--vault` flag or `PKM_DEFAULT_VAULT`.
 3. **Check existing notes**: Search before creating — avoid duplicates.
 4. **Maintain connections**: Every new note must link to at least one existing note.
-5. **Use appropriate tool**: CLI for automation/batch, direct file ops for interactive work.
+5. **Use appropriate tool**: CLI as the write gate (creation/append), Read/Edit for subsequent content editing.

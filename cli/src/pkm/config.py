@@ -1,3 +1,4 @@
+import getpass
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,6 +31,13 @@ def save_config(data: dict) -> None:
             lines.append(f'{k} = "{v}"')
         lines.append("")
     CONFIG_PATH.write_text("\n".join(lines), encoding="utf-8")
+
+
+@dataclass
+class VaultSuggestion:
+    name: str
+    git_root: Path | None
+    is_subdir: bool
 
 
 @dataclass(frozen=True)
@@ -121,9 +129,9 @@ def get_local_config_vault() -> str | None:
     return None
 
 
-def _find_git_root() -> Path | None:
+def _find_git_root(cwd: Path | None = None) -> Path | None:
     """Find the git root directory from cwd, or None."""
-    current = Path.cwd()
+    current = cwd or Path.cwd()
     while True:
         if (current / ".git").exists() and (current / ".git").is_dir():
             return current
@@ -133,15 +141,20 @@ def _find_git_root() -> Path | None:
     return None
 
 
-def get_git_vault_name() -> str | None:
-    """Return @owner--repo vault name from git remote, or @basename fallback."""
+def get_git_vault_name(cwd: Path | None = None) -> str | None:
+    """Return @owner--repo vault name from git remote, or @basename fallback.
+
+    If cwd is inside a git repo but not at the root, appends --subdir suffix.
+    """
     import re
     import subprocess
 
-    git_root = _find_git_root()
+    actual_cwd = cwd or Path.cwd()
+    git_root = _find_git_root(cwd=actual_cwd)
     if git_root is None:
         return None
 
+    base_name: str
     try:
         result = subprocess.run(
             ["git", "remote", "get-url", "origin"],
@@ -156,11 +169,50 @@ def get_git_vault_name() -> str | None:
             )
             if m:
                 owner, repo = m.group(1), m.group(2)
-                return f"@{owner}--{repo}"
+                base_name = f"@{owner}--{repo}"
+            else:
+                base_name = f"@{git_root.name}"
+        else:
+            base_name = f"@{git_root.name}"
     except (subprocess.TimeoutExpired, FileNotFoundError):
-        pass
+        base_name = f"@{git_root.name}"
 
-    return f"@{git_root.name}"
+    # Append subdir suffix when cwd is not the git root
+    if actual_cwd.resolve() != git_root.resolve():
+        try:
+            rel = actual_cwd.resolve().relative_to(git_root.resolve())
+            subdir = "--".join(rel.parts)
+            return f"{base_name}--{subdir}"
+        except ValueError:
+            pass
+
+    return base_name
+
+
+def suggest_vault_name(cwd: Path | None = None) -> VaultSuggestion:
+    """Suggest a vault name based on the current directory context.
+
+    Returns a VaultSuggestion with name, git_root, and is_subdir fields.
+    Uses getpass.getuser() (not os.getlogin()) for safety in headless environments.
+    """
+    actual_cwd = cwd or Path.cwd()
+    git_root = _find_git_root(cwd=actual_cwd)
+
+    if git_root is not None:
+        name = get_git_vault_name(cwd=actual_cwd) or f"@{git_root.name}"
+        is_subdir = actual_cwd.resolve() != git_root.resolve()
+        return VaultSuggestion(name=name, git_root=git_root, is_subdir=is_subdir)
+
+    # Non-git: derive from home-relative path components
+    username = getpass.getuser()
+    try:
+        rel = actual_cwd.relative_to(Path.home())
+        name = "--".join([username] + list(rel.parts))
+    except ValueError:
+        # Outside $HOME: fallback to directory basename only
+        name = actual_cwd.name
+
+    return VaultSuggestion(name=name, git_root=None, is_subdir=False)
 
 
 def _get_git_project_name_legacy() -> str | None:

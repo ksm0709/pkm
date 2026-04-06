@@ -13,10 +13,12 @@ from rich.table import Table
 
 from pkm.config import (
     VaultConfig,
+    VaultSuggestion,
     discover_vaults,
     get_vaults_root,
     load_config,
     save_config,
+    suggest_vault_name,
 )
 
 console = Console()
@@ -173,6 +175,54 @@ def open(name: str) -> None:
     data["defaults"]["vault"] = name
     save_config(data)
     console.print(f"[green]★ Switched to vault '{name}'[/green]")
+
+
+@vault.command()
+def setup() -> None:
+    """Declare the current directory as a PKM vault."""
+    from pathlib import Path
+
+    cwd = Path.cwd()
+    pkm_file = cwd / ".pkm"
+
+    if pkm_file.exists():
+        raise click.ClickException(
+            f"This directory is already set up as a vault (.pkm exists). "
+            "Run 'pkm vault list' to see all configured vaults."
+        )
+
+    suggestion = suggest_vault_name(cwd=cwd)
+
+    final_name = click.prompt(
+        f"Suggested vault name: {suggestion.name}\nPress Enter to confirm or type a new name",
+        default=suggestion.name,
+    )
+
+    # Create vault directory structure
+    vault_path = get_vaults_root() / final_name
+    init_vault_dirs(vault_path, final_name)
+
+    # Write .pkm in current directory
+    pkm_file.write_text(f'vault = "{final_name}"\n', encoding="utf-8")
+    console.print(f"[green]✔[/green] Created vault [bold]{final_name}[/bold] at {vault_path}")
+    console.print(f"[green]✔[/green] Written .pkm in {cwd}")
+
+    # Side effect: ensure repo root has a .pkm if we're in a subdir
+    if suggestion.is_subdir and suggestion.git_root is not None:
+        root_pkm = suggestion.git_root / ".pkm"
+        if not root_pkm.exists():
+            root_suggestion = suggest_vault_name(cwd=suggestion.git_root)
+            root_name = root_suggestion.name
+            root_pkm.write_text(f'vault = "{root_name}"\n', encoding="utf-8")
+            console.print(
+                f"[green]✔[/green] Also created .pkm at repo root: "
+                f"{suggestion.git_root} (vault={root_name})"
+            )
+
+    console.print(
+        "[dim]Tip: commit .pkm to share vault mapping with your team, "
+        "or add to .gitignore for personal use.[/dim]"
+    )
 
 
 def _count_md(directory: Path) -> int:

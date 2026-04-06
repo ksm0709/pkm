@@ -231,3 +231,209 @@ def test_vault_open_not_found(tmp_path: Path, monkeypatch):
     result = runner.invoke(main, ["vault", "open", "nonexistent"])
     assert result.exit_code != 0
     assert "not found" in result.output or "nonexistent" in result.output
+
+
+# ---------------------------------------------------------------------------
+# vault setup
+# ---------------------------------------------------------------------------
+
+def test_vault_setup_creates_pkm_and_dirs(tmp_path: Path, monkeypatch):
+    """Happy path: setup creates .pkm file and vault directories."""
+    from pkm.config import VaultSuggestion
+
+    cwd = tmp_path / "myproject"
+    cwd.mkdir()
+    vaults_root = tmp_path / "vaults"
+
+    monkeypatch.setattr(
+        "pkm.commands.vault.suggest_vault_name",
+        lambda cwd=None: VaultSuggestion(name="@taeho--myproject", git_root=None, is_subdir=False),
+    )
+    monkeypatch.setattr("pkm.commands.vault.get_vaults_root", lambda: vaults_root)
+
+    runner = CliRunner()
+    import os
+    orig_cwd = os.getcwd()
+    try:
+        os.chdir(cwd)
+        result = runner.invoke(main, ["vault", "setup"], input="\n", catch_exceptions=False)
+    finally:
+        os.chdir(orig_cwd)
+
+    assert result.exit_code == 0, result.output
+    assert (cwd / ".pkm").exists()
+    pkm_content = (cwd / ".pkm").read_text()
+    assert "@taeho--myproject" in pkm_content
+    assert (vaults_root / "@taeho--myproject" / "daily").is_dir()
+    assert (vaults_root / "@taeho--myproject" / "notes").is_dir()
+
+
+def test_vault_setup_custom_name(tmp_path: Path, monkeypatch):
+    """User overrides the suggested name."""
+    from pkm.config import VaultSuggestion
+    import os
+
+    cwd = tmp_path / "myproject"
+    cwd.mkdir()
+    vaults_root = tmp_path / "vaults"
+
+    monkeypatch.setattr(
+        "pkm.commands.vault.suggest_vault_name",
+        lambda cwd=None: VaultSuggestion(name="@taeho--myproject", git_root=None, is_subdir=False),
+    )
+    monkeypatch.setattr("pkm.commands.vault.get_vaults_root", lambda: vaults_root)
+
+    runner = CliRunner()
+    orig_cwd = os.getcwd()
+    try:
+        os.chdir(cwd)
+        result = runner.invoke(main, ["vault", "setup"], input="my-custom-vault\n", catch_exceptions=False)
+    finally:
+        os.chdir(orig_cwd)
+
+    assert result.exit_code == 0, result.output
+    pkm_content = (cwd / ".pkm").read_text()
+    assert "my-custom-vault" in pkm_content
+    assert (vaults_root / "my-custom-vault" / "daily").is_dir()
+
+
+def test_vault_setup_already_exists(tmp_path: Path, monkeypatch):
+    """Running setup when .pkm already exists shows error."""
+    import os
+
+    cwd = tmp_path / "myproject"
+    cwd.mkdir()
+    (cwd / ".pkm").write_text('vault = "existing"\n')
+
+    runner = CliRunner()
+    orig_cwd = os.getcwd()
+    try:
+        os.chdir(cwd)
+        result = runner.invoke(main, ["vault", "setup"])
+    finally:
+        os.chdir(orig_cwd)
+
+    assert result.exit_code != 0
+    assert "already" in result.output.lower() or "pkm vault list" in result.output
+
+
+def test_vault_setup_git_subdir_creates_root_pkm(tmp_path: Path, monkeypatch):
+    """In a git subdir, repo root gets a .pkm file (if not present)."""
+    from pkm.config import VaultSuggestion
+    import os
+
+    repo_root = tmp_path / "myrepo"
+    repo_root.mkdir()
+    subdir = repo_root / "auth"
+    subdir.mkdir()
+    vaults_root = tmp_path / "vaults"
+
+    monkeypatch.setattr(
+        "pkm.commands.vault.suggest_vault_name",
+        lambda cwd=None: (
+            VaultSuggestion(name="@taeho--myrepo--auth", git_root=repo_root, is_subdir=True)
+            if cwd is None or cwd == subdir
+            else VaultSuggestion(name="@taeho--myrepo", git_root=repo_root, is_subdir=False)
+        ),
+    )
+    monkeypatch.setattr("pkm.commands.vault.get_vaults_root", lambda: vaults_root)
+
+    runner = CliRunner()
+    orig_cwd = os.getcwd()
+    try:
+        os.chdir(subdir)
+        result = runner.invoke(main, ["vault", "setup"], input="\n", catch_exceptions=False)
+    finally:
+        os.chdir(orig_cwd)
+
+    assert result.exit_code == 0, result.output
+    assert (repo_root / ".pkm").exists()
+    root_content = (repo_root / ".pkm").read_text()
+    assert "@taeho--myrepo" in root_content
+    assert "Also created .pkm at repo root" in result.output
+
+
+def test_vault_setup_git_subdir_no_overwrite_root(tmp_path: Path, monkeypatch):
+    """Root .pkm is NOT overwritten if it already exists."""
+    from pkm.config import VaultSuggestion
+    import os
+
+    repo_root = tmp_path / "myrepo"
+    repo_root.mkdir()
+    subdir = repo_root / "auth"
+    subdir.mkdir()
+    existing_root_pkm = repo_root / ".pkm"
+    existing_root_pkm.write_text('vault = "original"\n')
+    vaults_root = tmp_path / "vaults"
+
+    monkeypatch.setattr(
+        "pkm.commands.vault.suggest_vault_name",
+        lambda cwd=None: VaultSuggestion(name="@taeho--myrepo--auth", git_root=repo_root, is_subdir=True),
+    )
+    monkeypatch.setattr("pkm.commands.vault.get_vaults_root", lambda: vaults_root)
+
+    runner = CliRunner()
+    orig_cwd = os.getcwd()
+    try:
+        os.chdir(subdir)
+        result = runner.invoke(main, ["vault", "setup"], input="\n", catch_exceptions=False)
+    finally:
+        os.chdir(orig_cwd)
+
+    assert result.exit_code == 0, result.output
+    assert existing_root_pkm.read_text() == 'vault = "original"\n'
+
+
+def test_vault_setup_non_git(tmp_path: Path, monkeypatch):
+    """Non-git directory uses username--path naming."""
+    from pkm.config import VaultSuggestion
+    import os
+
+    cwd = tmp_path / "projects" / "myapp"
+    cwd.mkdir(parents=True)
+    vaults_root = tmp_path / "vaults"
+
+    monkeypatch.setattr(
+        "pkm.commands.vault.suggest_vault_name",
+        lambda cwd=None: VaultSuggestion(name="taeho--projects--myapp", git_root=None, is_subdir=False),
+    )
+    monkeypatch.setattr("pkm.commands.vault.get_vaults_root", lambda: vaults_root)
+
+    runner = CliRunner()
+    orig_cwd = os.getcwd()
+    try:
+        os.chdir(cwd)
+        result = runner.invoke(main, ["vault", "setup"], input="\n", catch_exceptions=False)
+    finally:
+        os.chdir(orig_cwd)
+
+    assert result.exit_code == 0, result.output
+    pkm_content = (cwd / ".pkm").read_text()
+    assert "taeho--projects--myapp" in pkm_content
+
+
+def test_vault_setup_gitignore_tip(tmp_path: Path, monkeypatch):
+    """Success output includes the .gitignore tip."""
+    from pkm.config import VaultSuggestion
+    import os
+
+    cwd = tmp_path / "myproject"
+    cwd.mkdir()
+    vaults_root = tmp_path / "vaults"
+
+    monkeypatch.setattr(
+        "pkm.commands.vault.suggest_vault_name",
+        lambda cwd=None: VaultSuggestion(name="myproject", git_root=None, is_subdir=False),
+    )
+    monkeypatch.setattr("pkm.commands.vault.get_vaults_root", lambda: vaults_root)
+
+    runner = CliRunner()
+    orig_cwd = os.getcwd()
+    try:
+        os.chdir(cwd)
+        result = runner.invoke(main, ["vault", "setup"], input="\n", catch_exceptions=False)
+    finally:
+        os.chdir(orig_cwd)
+
+    assert result.exit_code == 0, result.output
+    assert ".gitignore" in result.output
