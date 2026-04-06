@@ -1,6 +1,6 @@
 # Sample AGENTS.md — Memory Layer Integration
 
-아래 스니펫을 프로젝트의 `AGENTS.md`에 추가하면 에이전트 팀이 공유 메모리를 활용한다.
+Add the snippet below to your project's `AGENTS.md` to enable the agent team to use shared memory.
 
 ---
 
@@ -8,43 +8,43 @@
 ## Agent Memory Protocol
 
 ### Session Initialization
-모든 에이전트는 작업 시작 전 반드시 다음을 실행한다:
+All agents must run the following before starting any task:
 
 ```bash
-# 1. 관련 메모리 검색
+# 1. Search for relevant memories
 pkm search "$TASK_DESCRIPTION" --top 5
 pkm search "$TASK_DESCRIPTION" --type procedural --top 3
 
-# 2. 세션 ID 설정
+# 2. Set session ID
 export SESSION_ID="$(date +%Y-%m-%d)-$(echo $TASK_NAME | tr ' ' '-' | head -c 20)"
 ```
 
 ### During Work
-중요한 발견은 즉시 저장한다 — 세션 종료까지 미루지 않는다:
+Save important discoveries immediately — don't wait until the session ends:
 
 ```bash
-# 오류 해결 시 (즉시 저장)
-pkm note add --content "오류명: 원인 및 해결 방법" --type procedural --importance 8
+# When resolving an error (save immediately)
+pkm note add --content "error name: cause and resolution" --type procedural --importance 8
 
-# 아키텍처 결정 시 (즉시 저장)
-pkm note add --content "결정 내용 — 근거" --type semantic --importance 7 --session $SESSION_ID
+# When making an architecture decision (save immediately)
+pkm note add --content "decision — rationale" --type semantic --importance 7 --session $SESSION_ID
 ```
 
 ### Before Claiming Completion
-작업 완료를 선언하기 전:
+Before declaring task completion:
 
 ```bash
-# 1. 세션 메모리 확인
+# 1. Review session memory
 pkm search --session $SESSION_ID
 
-# 2. 저장되지 않은 중요 발견이 있으면 저장
-# 3. 통합 후보 확인 (선택적)
+# 2. Save any unsaved important discoveries
+# 3. Check consolidation candidates (optional)
 pkm consolidate
 ```
 
 ### Shared Memory Rules
-- 같은 오류를 두 번 보고하지 않는다 — 저장 전 검색 필수
-- `importance >= 7`인 메모리는 팀 전체가 공유하는 지식으로 간주
-- 에이전트 간 충돌하는 메모리 발견 시 더 최근 + 높은 중요도 우선
-- 실험적/미검증 발견은 `importance <= 5`로 저장
+- Don't report the same error twice — search before saving
+- Memories with `importance >= 7` are considered knowledge shared across the entire team
+- When conflicting memories are found between agents, prefer the more recent + higher importance
+- Experimental/unverified discoveries should be saved with `importance <= 5`
 ```

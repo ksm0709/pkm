@@ -1,52 +1,52 @@
 # Weekly Review
 
 ## Purpose
-한 주간의 활동을 통계·이상치·액션 아이템으로 요약하여 다음 주 방향을 설정한다.
+Summarize the week's activity into statistics, anomalies, and action items to set the direction for the next week.
 
 ## Trigger
-- **Primary:** "주간 리뷰"
-- **Secondary:** "weekly review", "이번 주 정리", "주간 정리"
+- **Primary:** "weekly review"
+- **Secondary:** "weekly review", "this week's summary", "weekly summary"
 
 ## Tools
-- `pkm stats` (노트 수, 생성·수정 통계)
-- `pkm orphans` (고아 노트 목록)
-- `pkm stale` (오래된 노트 목록)
-- Read (`daily/YYYY-MM-DD.md` — 최근 7일)
+- `pkm stats` (note count, creation/modification statistics)
+- `pkm orphans` (list of orphan notes)
+- `pkm stale` (list of stale notes)
+- Read (`daily/YYYY-MM-DD.md` — last 7 days)
 
 ## Principles
-- 판단보다 측정 먼저 — 숫자를 보고 나서 해석한다
-- 액션 아이템은 3개 이하로 제한한다 (많으면 실행되지 않는다)
-- 지난 주 액션 아이템 이행 여부를 먼저 점검한다
+- Measure before judging — interpret only after seeing the numbers
+- Limit action items to 3 or fewer (more than that and they won't get done)
+- Check whether last week's action items were completed first
 
 ## Edge Cases
-- `pkm stats`가 빈 결과를 반환하면 Glob으로 직접 파일 수를 센다
-- 데일리 노트가 3일 미만이면 "기록 부족" 경고를 포함한다
-- `pkm stale` 결과가 20개 초과면 상위 5개만 표시하고 나머지는 요약한다
+- If `pkm stats` returns empty results, count files directly with Glob
+- If there are fewer than 3 daily notes, include a "insufficient records" warning
+- If `pkm stale` returns more than 20 results, show only the top 5 and summarize the rest
 
 ## Example Flow
-1. Read 최근 7일 데일리 (`daily/2026-03-30.md` ~ `daily/2026-04-05.md`)
-2. `pkm stats` 실행 → 생성 노트 수, 수정 노트 수 확인
-3. `pkm orphans` 실행 → 고아 노트 수 및 목록 확인
-4. `pkm stale` 실행 → 30일 이상 미수정 노트 확인
-5. 데일리에서 반복 키워드·완료 태스크·미완료 태스크 집계
-6. 이상치 식별 (예: 특정 주제 급증, 고아 노트 급증)
-7. 주간 요약 작성
+1. Read the last 7 daily notes (`daily/2026-03-30.md` ~ `daily/2026-04-05.md`)
+2. Run `pkm stats` → check number of notes created and modified
+3. Run `pkm orphans` → check orphan note count and list
+4. Run `pkm stale` → check notes not modified in 30+ days
+5. Tally recurring keywords, completed tasks, and incomplete tasks from dailies
+6. Identify anomalies (e.g., sudden spike in a topic, surge in orphan notes)
+7. Write the weekly summary
 
 ## Expected Output
 ```
-## 주간 리뷰 — 2026-W14
+## Weekly Review — 2026-W14
 
-### 통계
-- 신규 노트: 5개
-- 수정 노트: 12개
-- 고아 노트: 3개 (↑1)
-- Stale 노트: 8개
+### Statistics
+- New notes: 5
+- Modified notes: 12
+- Orphan notes: 3 (↑1)
+- Stale notes: 8
 
-### 이상치
-- "비동기 패턴" 관련 노트 3개 신규 생성 → 클러스터 형성 중
+### Anomalies
+- 3 new notes related to "async patterns" → cluster forming
 
-### 액션 아이템
-1. 고아 노트 3개 연결 (extract-note-from-daily 워크플로우 실행)
-2. stale 노트 중 "React 훅 패턴" 검토
-3. 다음 주 1:1 준비 (1on1-prep 워크플로우)
+### Action Items
+1. Link 3 orphan notes (run extract-note-from-daily workflow)
+2. Review "React hook patterns" among stale notes
+3. Prepare for next week's 1:1 (1on1-prep workflow)
 ```

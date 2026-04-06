@@ -1,25 +1,25 @@
 # <Workflow Name>
 
 ## Purpose
-한 줄 설명
+One-line description
 
 ## Trigger
-- **Primary:** <unique keyword> (이 워크플로우만의 고유 트리거)
+- **Primary:** <unique keyword> (unique trigger for this workflow only)
 - **Secondary:** <shared keywords>
 
 ## Tools
-- pkm 명령어 목록
-- Read/Write/Edit 등 파일 도구
+- List of pkm commands
+- File tools such as Read/Write/Edit
 
 ## Principles
-- 핵심 원칙 2-3개
+- 2-3 core principles
 
 ## Edge Cases
-- 도구가 빈 결과를 반환할 때의 처리
-- 에러 상황 처리
+- How to handle when a tool returns empty results
+- How to handle error conditions
 
 ## Example Flow
-구체적 실행 예시 1개
+One concrete execution example
 
 ## Expected Output
-완료 시 사용자가 받는 결과물
+The result the user receives upon completion

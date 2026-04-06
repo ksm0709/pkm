@@ -1,100 +1,100 @@
 # Dream — Nightly Knowledge Consolidation
 
 ## Purpose
-데일리 노트부터 지식 베이스 정제까지, 야간 정보 통합 전체 파이프라인을 자동 실행한다.
-6개 sub-workflow를 순서대로 오케스트레이션하며, 각 step 실패 시 skip 후 계속 진행한다.
+Automatically runs the full nightly knowledge consolidation pipeline, from daily notes to knowledge base refinement.
+Orchestrates 6 sub-workflows in sequence; if any step fails, it is skipped and execution continues.
 
 ## Trigger
-- **Primary:** "dream", "드림"
-- **Secondary:** "야간 정리", "nightly consolidation", "전체 정리", "지식 정리 전체"
+- **Primary:** "dream"
+- **Secondary:** "nightly review", "nightly consolidation", "full cleanup", "full knowledge cleanup"
 
 ## Pipeline
 
 ```
-[1/6] consolidate       — 미통합 데일리 마킹
-[2/6] distill-daily     — 데일리 → 영구 노트 승격
-[3/6] auto-linking      — 연결 없는 노트 wikilink 추가
-[4/6] auto-tagging      — 미태그 노트 태그 추가
-[5/6] health-check      — 고아/stale 노트 감지 및 보고
-[6/6] prune-merge-split — stale 제거, 중복 병합, 대형 노트 분할
+[1/6] consolidate       — mark unconsolidated dailies
+[2/6] distill-daily     — promote daily → permanent notes
+[3/6] auto-linking      — add wikilinks to disconnected notes
+[4/6] auto-tagging      — add tags to untagged notes
+[5/6] health-check      — detect and report orphan/stale notes
+[6/6] prune-merge-split — remove stale, merge duplicates, split large notes
 ```
 
 ## Tools
 - `pkm consolidate` / `pkm consolidate mark`
 - `pkm note add`, `pkm search`, `pkm orphans`
 - Read, Edit, Glob
-- (각 step의 전용 도구는 해당 sub-workflow 참고)
+- (For tools specific to each step, refer to the corresponding sub-workflow)
 
 ## Principles
-- 각 step은 독립적으로 실행 — 한 step 실패가 전체를 중단하지 않음
-- 완료 후 반드시 step별 결과 요약 출력 (✓/⚠/✗)
-- 노트 수정은 자동 수행 (사용자 승인 없음)
-- 오늘 데일리는 절대 수정/마킹하지 않음
+- Each step runs independently — a failure in one step does not halt the entire pipeline
+- After completion, a per-step result summary must be printed (✓/⚠/✗)
+- Note modifications are performed automatically (no user approval required)
+- Today's daily is never modified or marked under any circumstances
 
 ## Execution Protocol
 
-각 step은 순서대로 실행한다. 실패 시:
-1. 오류 메시지를 캡처하여 최종 요약에 포함
-2. 다음 step으로 계속 진행
-3. 모든 step 완료 후 통합 요약 출력
+Each step is executed in order. On failure:
+1. Capture the error message and include it in the final summary
+2. Continue to the next step
+3. Print a consolidated summary after all steps complete
 
 ## Step References
 
-| Step | Workflow | 설명 |
-|------|----------|------|
-| 1 | `workflows/consolidate.md` | 미통합 데일리 후보 확인 및 마킹 |
-| 2 | `workflows/distill-daily.md` | 마킹된 데일리에서 영구 노트 추출·승격 |
-| 3 | `workflows/auto-linking.md` | 연결 없는 노트쌍 wikilink 추가 |
-| 4 | `workflows/auto-tagging.md` | 미태그 노트 자동 태그 |
-| 5 | `workflows/health-check.md` | 고아·stale 노트 감지 및 보고 |
-| 6 | `workflows/prune-merge-split.md` | stale 제거, 중복 병합, 대형 노트 분할 |
+| Step | Workflow | Description |
+|------|----------|-------------|
+| 1 | `workflows/consolidate.md` | Identify and mark unconsolidated daily candidates |
+| 2 | `workflows/distill-daily.md` | Extract and promote permanent notes from marked dailies |
+| 3 | `workflows/auto-linking.md` | Add wikilinks between disconnected note pairs |
+| 4 | `workflows/auto-tagging.md` | Auto-tag untagged notes |
+| 5 | `workflows/health-check.md` | Detect and report orphan and stale notes |
+| 6 | `workflows/prune-merge-split.md` | Remove stale, merge duplicates, split large notes |
 
 ## Example Flow
 
 ```
-/pkm:dream 실행
+/pkm:dream triggered
 
 [1/6] consolidate...
-  → workflows/consolidate.md 실행
-  → 4개 데일리 마킹 완료 ✓
+  → workflows/consolidate.md executed
+  → 4 dailies marked ✓
 
 [2/6] distill-daily...
-  → workflows/distill-daily.md 실행
-  → 3개 영구 노트 생성 ✓
+  → workflows/distill-daily.md executed
+  → 3 permanent notes created ✓
 
 [3/6] auto-linking...
-  → workflows/auto-linking.md 실행
-  → 7개 wikilink 추가 ✓
+  → workflows/auto-linking.md executed
+  → 7 wikilinks added ✓
 
 [4/6] auto-tagging...
-  → workflows/auto-tagging.md 실행
-  → 12개 노트 태그 완료 ✓
+  → workflows/auto-tagging.md executed
+  → 12 notes tagged ✓
 
 [5/6] health-check...
-  → workflows/health-check.md 실행
-  → 고아 2개, stale 1개 발견 ✓
+  → workflows/health-check.md executed
+  → 2 orphans, 1 stale found ✓
 
 [6/6] prune-merge-split...
-  → workflows/prune-merge-split.md 실행
-  → 1개 병합, 1개 분할 ✓
+  → workflows/prune-merge-split.md executed
+  → 1 merged, 1 split ✓
 
-✅ dream 완료
-  [1] consolidate:       ✓ 4개 데일리 마킹
-  [2] distill-daily:     ✓ 3개 노트 생성
-  [3] auto-linking:      ✓ 7개 링크 추가
-  [4] auto-tagging:      ✓ 12개 노트 태그
-  [5] health-check:      ✓ 고아 2개 보고
-  [6] prune-merge-split: ✓ 1개 병합, 1개 분할
+✅ dream complete
+  [1] consolidate:       ✓ 4 dailies marked
+  [2] distill-daily:     ✓ 3 notes created
+  [3] auto-linking:      ✓ 7 links added
+  [4] auto-tagging:      ✓ 12 notes tagged
+  [5] health-check:      ✓ 2 orphans reported
+  [6] prune-merge-split: ✓ 1 merged, 1 split
 ```
 
 ## Edge Cases
-- consolidate 대상 없음: "마킹할 미통합 데일리 없음" 후 step 2 진행
-- distill-daily 승격 후보 없음: "승격할 인사이트 없음" 후 step 3 진행
-- 모든 step 실패 시: 각 오류 요약 출력 후 개별 워크플로 수동 실행 안내
-- 어떤 step도 작업이 없으면: "이미 최신 상태 — 모든 step 대상 없음" 보고
+- No consolidate targets: report "no unconsolidated dailies to mark" then proceed to step 2
+- No distill-daily promotion candidates: report "no insights to promote" then proceed to step 3
+- All steps fail: print each error summary then guide the user to run individual workflows manually
+- No step has any work to do: report "already up to date — no targets for any step"
 
 ## Expected Output
-- 각 step별 ✓/⚠/✗ 결과
-- 생성/수정/발견된 항목 수
-- 실패한 step의 오류 메시지 (있는 경우)
-- 총 소요 시간 (선택)
+- ✓/⚠/✗ result per step
+- Count of items created/modified/found
+- Error messages for failed steps (if any)
+- Total elapsed time (optional)

@@ -1,53 +1,53 @@
-# Tag Explore — 태그 인덱스 탐색
+# Tag Explore — Tag Index Exploration
 
 ## Purpose
-태그를 인덱스 카드로 활용하여 주제별 지식을 탐색하고, 태그 노트에 설명을 추가하여 지식 네트워크의 진입점을 구축한다.
+Use tags as index cards to explore knowledge by topic, and add descriptions to tag notes to build entry points into the knowledge network.
 
 ## Trigger
-- **Primary:** 태그 탐색, tag explore
-- **Secondary:** 태그 검색, 태그 정리, 인덱스 노트, 주제별 정리
+- **Primary:** tag explore, tag explore
+- **Secondary:** tag search, tag organization, index notes, organize by topic
 
 ## Tools
-- `pkm tags` — 전체 태그 목록 + 사용 횟수 조회
-- `pkm tags show <tag>` — 태그 노트 내용 + 해당 태그를 가진 노트 목록
-- `pkm tags edit <tag>` — 태그 노트를 에디터로 열기
-- `pkm tags search <pattern>` — 태그 패턴 검색 (glob, AND, OR)
+- `pkm tags` — view full tag list + usage counts
+- `pkm tags show <tag>` — tag note content + list of notes with that tag
+- `pkm tags edit <tag>` — open tag note in editor
+- `pkm tags search <pattern>` — tag pattern search (glob, AND, OR)
 
 ## Principles
-- **태그는 인덱스 카드다**: 단순 분류가 아니라 해당 주제의 진입점. 태그 노트에 주제 개요, 핵심 개념, 관련 링크를 적어 지식 탐색의 출발점으로 만든다.
-- **Lazy creation**: 태그 노트는 `tags show` 시 자동 생성된다. 모든 태그에 설명을 쓸 필요 없이, 의미 있는 태그부터 점진적으로 채워 나간다.
-- **교차 검색으로 발견**: AND/OR 검색으로 태그 간 교차점에서 새로운 연결을 발견한다.
+- **Tags are index cards**: not just classification, but an entry point to the topic. Write a topic overview, key concepts, and related links in the tag note to make it a starting point for knowledge exploration.
+- **Lazy creation**: tag notes are automatically created when `tags show` is run. No need to write descriptions for every tag — fill them in gradually, starting with the meaningful ones.
+- **Discovery through cross-search**: use AND/OR search to discover new connections at the intersection of tags.
 
 ## Edge Cases
-- `pkm tags show`에 존재하지 않는 태그를 넣으면 빈 태그 노트가 생성됨 — 의도적 동작이나, 불필요하면 `tags/` 에서 삭제
-- 태그명에 특수문자 (`../`, 공백 외 비허용 문자) 사용 시 에러 반환
-- `pkm tags search "c++"` — 연속 `++`는 태그명으로 인식, 단일 `+`만 AND 연산자
+- Passing a non-existent tag to `pkm tags show` creates an empty tag note — this is intentional, but delete it from `tags/` if not needed
+- Using special characters (`../`, non-allowed characters other than spaces) in tag names returns an error
+- `pkm tags search "c++"` — consecutive `++` is recognized as a tag name; only a single `+` acts as the AND operator
 
 ## Example Flow
 
 ```bash
-# 1. 현재 태그 현황 파악
+# 1. Check the current state of tags
 pkm tags
 # → database (5), python (3), postgresql (2), ...
 
-# 2. 주요 태그의 인덱스 페이지 조회
+# 2. View the index page for a major tag
 pkm tags show database
-# → 태그 노트 (빈 상태) + database 태그를 가진 5개 노트 목록
+# → tag note (empty) + list of 5 notes with the database tag
 
-# 3. 태그 노트에 주제 개요 작성
+# 3. Write a topic overview in the tag note
 pkm tags edit database
-# → tags/database.md에 "데이터베이스 관련 노트 모음. 주요 주제: MVCC, 격리수준, 인덱싱" 등 작성
+# → write in tags/database.md: "Collection of database-related notes. Key topics: MVCC, isolation levels, indexing", etc.
 
-# 4. 교차 검색으로 관련 노트 발견
+# 4. Discover related notes through cross-search
 pkm tags search "database+postgresql"
-# → 두 태그를 모두 가진 노트만 필터링
+# → filter to only notes with both tags
 
-# 5. 유사 태그 계열 탐색
+# 5. Explore related tag families
 pkm tags search "data*"
-# → database, data-pipeline, data-modeling 등 관련 태그의 노트
+# → notes for related tags like database, data-pipeline, data-modeling
 ```
 
 ## Expected Output
-- 주요 태그에 설명이 작성된 인덱스 노트 (`tags/*.md`)
-- 태그 기반으로 주제별 노트 그룹이 파악된 상태
-- 교차 검색으로 발견한 새로운 연결 관계
+- Index notes with descriptions written for major tags (`tags/*.md`)
+- Note groups identified by topic based on tags
+- New connections discovered through cross-search

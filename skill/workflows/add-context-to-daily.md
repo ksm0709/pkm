@@ -1,53 +1,53 @@
 # Working Memory — Context Preservation
 
 ## Purpose
-진행 중인 프로젝트의 컨텍스트를 오늘 데일리 노트에 기록하여 세션 간 작업기억을 보존한다.
+Record the context of an in-progress project in today's daily note to preserve working memory across sessions.
 
 ## Trigger
-- **Primary:** "작업기억"
-- **Secondary:** "컨텍스트 보존", "작업 맥락", "working memory"
+- **Primary:** "working memory"
+- **Secondary:** "preserve context", "working context", "working memory"
 
 ## Tools
-- `pkm search` (진행 중 프로젝트 노트 탐색)
-- Read (진행 중 프로젝트 노트)
-- `pkm daily add` (오늘 데일리에 섹션 추가)
+- `pkm search` (explore in-progress project notes)
+- Read (in-progress project notes)
+- `pkm daily add` (add a section to today's daily)
 
 ## Principles
-- 지금 이 순간 중요한 것만 기록한다 — 전체 프로젝트 문서가 아니다
-- "어디까지 했나", "다음 단계", "블로커"의 세 항목이 핵심이다
-- 데일리에 추가하되 기존 내용을 덮어쓰지 않는다
+- Record only what matters right now — not the full project documentation
+- The three core items are "how far along", "next steps", and "blockers"
+- Add to the daily without overwriting existing content
 
 ## Edge Cases
-- `pkm search`가 빈 결과를 반환하면 `tasks/ongoing.md`에서 WIP 항목을 읽는다
-- 진행 중 프로젝트가 없으면 "현재 활성 프로젝트 없음" 메시지 후 종료한다
-- `pkm daily add` 실패 시 오늘 데일리 파일을 Read 후 Edit으로 직접 추가한다
+- If `pkm search` returns empty results, read WIP items from `tasks/ongoing.md`
+- If there are no in-progress projects, output "no active projects" and exit
+- If `pkm daily add` fails, Read today's daily file first and add directly with Edit
 
 ## Example Flow
 ```
-사용자: "작업기억 저장"
+User: "save working memory"
 
-1. Read `tasks/ongoing.md` → WIP 항목 확인
-   예: "프로젝트-알파 API 연동"
+1. Read `tasks/ongoing.md` → check WIP items
+   e.g., "Project-Alpha API integration"
 
-2. `pkm search "프로젝트-알파"` → 관련 노트 탐색
-   결과: "notes/2026-04-03-프로젝트-알파-설계.md"
+2. `pkm search "Project-Alpha"` → explore related notes
+   Result: "notes/2026-04-03-project-alpha-design.md"
 
-3. Read 해당 노트 → 현재 상태 파악
-   - 어디까지: "인증 모듈 완료, 데이터 레이어 진행 중"
-   - 다음 단계: "Repository 패턴 구현"
-   - 블로커: "DB 스키마 확정 대기"
+3. Read that note → understand current status
+   - How far: "Auth module complete, data layer in progress"
+   - Next steps: "Implement Repository pattern"
+   - Blockers: "Waiting for DB schema finalization"
 
-4. `pkm daily add` 또는 Edit 오늘 데일리:
-   ## 작업기억
-   - 프로젝트: [[프로젝트-알파-API-연동]]
-   - 어디까지: 인증 완료, 데이터 레이어 진행 중
-   - 다음: Repository 패턴 구현
-   - 블로커: DB 스키마 확정 대기
+4. `pkm daily add` or Edit today's daily:
+   ## Working Memory
+   - Project: [[project-alpha-api-integration]]
+   - How far: auth complete, data layer in progress
+   - Next: implement Repository pattern
+   - Blockers: waiting for DB schema finalization
 ```
 
 ## Expected Output
-오늘 데일리 노트에 추가된 `## 작업기억` 섹션:
-- 프로젝트명 (wikilink)
-- 현재 진행 상태
-- 다음 단계
-- 블로커 (있을 경우)
+`## Working Memory` section added to today's daily note:
+- Project name (wikilink)
+- Current progress status
+- Next steps
+- Blockers (if any)

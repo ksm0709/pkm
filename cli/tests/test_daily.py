@@ -77,17 +77,17 @@ def test_daily_add(cli_runner, tmp_vault):
         encoding="utf-8",
     )
 
-    result = cli_runner("daily", "add", "작업 로그 항목")
+    result = cli_runner("daily", "add", "work log entry")
     assert result.exit_code == 0
 
     content = note_path.read_text(encoding="utf-8")
     # The entry should appear before ## TODO
-    log_pos = content.index("작업 로그 항목")
+    log_pos = content.index("work log entry")
     todo_pos = content.index("## TODO")
     assert log_pos < todo_pos
 
     # Should contain timestamp pattern [HH:MM]
-    assert re.search(r"\[\d{2}:\d{2}\] 작업 로그 항목", content)
+    assert re.search(r"\[\d{2}:\d{2}\] work log entry", content)
 
 
 def test_daily_todo(cli_runner, tmp_vault):
@@ -99,16 +99,16 @@ def test_daily_todo(cli_runner, tmp_vault):
         encoding="utf-8",
     )
 
-    result = cli_runner("daily", "todo", "할 일 항목")
+    result = cli_runner("daily", "todo", "todo item")
     assert result.exit_code == 0
 
     content = note_path.read_text(encoding="utf-8")
     # The entry should appear after ## TODO
     todo_pos = content.index("## TODO")
-    entry_pos = content.index("할 일 항목")
+    entry_pos = content.index("todo item")
     assert entry_pos > todo_pos
 
-    assert re.search(r"\[\d{2}:\d{2}\] 할 일 항목", content)
+    assert re.search(r"\[\d{2}:\d{2}\] todo item", content)
 
 
 def test_daily_add_no_todo_section(cli_runner, tmp_vault):
@@ -116,16 +116,16 @@ def test_daily_add_no_todo_section(cli_runner, tmp_vault):
     today_str = today()
     note_path = tmp_vault.daily_dir / f"{today_str}.md"
     note_path.write_text(
-        f"---\nid: {today_str}\naliases: []\ntags:\n  - daily-notes\n---\n\n로그 내용\n",
+        f"---\nid: {today_str}\naliases: []\ntags:\n  - daily-notes\n---\n\nlog content\n",
         encoding="utf-8",
     )
 
-    result = cli_runner("daily", "add", "새 항목")
+    result = cli_runner("daily", "add", "new entry")
     assert result.exit_code == 0
 
     content = note_path.read_text(encoding="utf-8")
-    assert "새 항목" in content
-    assert re.search(r"\[\d{2}:\d{2}\] 새 항목", content)
+    assert "new entry" in content
+    assert re.search(r"\[\d{2}:\d{2}\] new entry", content)
 
 
 # ---------------------------------------------------------------------------
@@ -233,12 +233,12 @@ def test_daily_edit_sub_creates_subnote(cli_runner, tmp_vault, monkeypatch):
     monkeypatch.setattr("pkm.commands.daily.subprocess.run", _fake_run(calls))
 
     today_str = today()
-    result = cli_runner("daily", "edit", "--sub", input="회의\n")
+    result = cli_runner("daily", "edit", "--sub", input="meeting\n")
     assert result.exit_code == 0, result.output
 
-    expected = tmp_vault.daily_dir / f"{today_str}-회의.md"
+    expected = tmp_vault.daily_dir / f"{today_str}-meeting.md"
     assert expected.exists()
-    assert "회의" in result.output
+    assert "meeting" in result.output
     assert len(calls) == 1
     assert str(expected) in calls[0][-1]
 
@@ -250,10 +250,10 @@ def test_daily_edit_sub_title_arg_skips_prompt(cli_runner, tmp_vault, monkeypatc
     monkeypatch.setattr("pkm.commands.daily.subprocess.run", _fake_run(calls))
 
     today_str = today()
-    result = cli_runner("daily", "edit", "--sub", "아이디어")
+    result = cli_runner("daily", "edit", "--sub", "idea")
     assert result.exit_code == 0, result.output
 
-    expected = tmp_vault.daily_dir / f"{today_str}-아이디어.md"
+    expected = tmp_vault.daily_dir / f"{today_str}-idea.md"
     assert expected.exists()
     assert len(calls) == 1
 
@@ -291,10 +291,10 @@ def test_daily_edit_sub_existing_note_not_overwritten(cli_runner, tmp_vault, mon
     monkeypatch.setattr("pkm.commands.daily.subprocess.run", _fake_run())
 
     today_str = today()
-    existing = tmp_vault.daily_dir / f"{today_str}-기존.md"
+    existing = tmp_vault.daily_dir / f"{today_str}-existing.md"
     existing.write_text("original content\n", encoding="utf-8")
 
-    result = cli_runner("daily", "edit", "--sub", input="기존\n")
+    result = cli_runner("daily", "edit", "--sub", input="existing\n")
     assert result.exit_code == 0, result.output
     assert existing.read_text(encoding="utf-8") == "original content\n"
     assert "Opening existing" in result.output
@@ -327,13 +327,13 @@ def test_daily_shows_subnotes_below_main(cli_runner, tmp_vault, monkeypatch):
     note_path = tmp_vault.daily_dir / f"{today_str}.md"
     note_path.write_text("main content\n", encoding="utf-8")
 
-    sub = tmp_vault.daily_dir / f"{today_str}-회의.md"
+    sub = tmp_vault.daily_dir / f"{today_str}-meeting.md"
     sub.write_text("sub content\n", encoding="utf-8")
 
     result = cli_runner("daily")
     assert result.exit_code == 0, result.output
     assert "main content" in result.output
-    assert "--- 회의 ---" in result.output
+    assert "--- meeting ---" in result.output
     assert "sub content" in result.output
     # Main must appear before sub-note
     assert result.output.index("main content") < result.output.index("sub content")

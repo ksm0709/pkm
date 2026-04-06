@@ -59,7 +59,7 @@ def test_tags_show_existing_content(cli_runner, tmp_vault):
     """pkm tags show preserves existing tag note content."""
     tag_file = tmp_vault.tags_dir / "postgresql.md"
     tag_file.write_text(
-        "---\nid: postgresql\naliases: []\ntags: []\n---\n\nPostgreSQL 관련 노트 모음.\n",
+        "---\nid: postgresql\naliases: []\ntags: []\n---\n\nPostgreSQL related notes collection.\n",
         encoding="utf-8",
     )
     result = cli_runner("tags", "show", "postgresql")
@@ -85,13 +85,13 @@ def test_tags_search_and(cli_runner, tmp_vault):
 
 
 def test_tags_search_or(cli_runner, tmp_vault):
-    """pkm tags search 'database,미분류' matches notes from both tags."""
-    result = cli_runner("tags", "search", "database,미분류")
+    """pkm tags search 'database,untagged' matches notes from both tags."""
+    result = cli_runner("tags", "search", "database,untagged")
     assert result.exit_code == 0
     # database tag notes
     assert "mvcc" in result.output.lower() or "database-isolation" in result.output.lower()
-    # 미분류 tag note
-    assert "고립된" in result.output
+    # untagged tag note
+    assert "isolated" in result.output
 
 
 def test_tags_search_no_results(cli_runner, tmp_vault):

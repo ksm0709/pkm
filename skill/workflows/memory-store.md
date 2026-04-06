@@ -1,65 +1,65 @@
 # Memory Store Workflow
 
 ## Purpose
-에이전트가 발견한 사실, 결정, 오류 해결책, 패턴을 PKM 볼트의 원자 노트로 저장한다. 이 노트들은 시맨틱 + 시간 가중 검색을 통해 재사용 가능한 장기 기억이 된다.
+Store facts, decisions, error fixes, and patterns discovered by agents as atomic notes in the PKM vault. These notes become reusable long-term memory through semantic + time-weighted search.
 
 ## Trigger
-- **Primary:** memory store, 메모리 저장
-- **Secondary:** remember this, 기억해, store finding, 발견 저장
+- **Primary:** memory store
+- **Secondary:** remember this, store finding
 
 ## Tools
-- `pkm note add --content` (메모리 저장 CLI)
-- `pkm search` (저장 전 중복 확인)
+- `pkm note add --content` (memory storage CLI)
+- `pkm search` (duplicate check before storing)
 
 ## Principles
-- 저장 전 반드시 검색하여 중복을 방지한다
-- 메모리 타입과 중요도를 명시적으로 지정한다
-- 세션 추적이 필요하면 `--session` 플래그를 사용한다
+- Always search before storing to prevent duplicates
+- Explicitly specify memory type and importance
+- Use the `--session` flag when session tracking is needed
 
 ## Memory Types
 
-| Type | 언제 | 예시 |
-|------|------|------|
-| `semantic` | 안정적 지식, 사실, 패턴 | 아키텍처 결정, API 동작 |
-| `episodic` | 세션 내 이벤트, 진행 상황 | "세션 X에서 로그인 버그 수정" |
-| `procedural` | 방법론, 수정 레시피 | "Y를 수정하려면 Z를 하라" |
+| Type | When | Example |
+|------|------|---------|
+| `semantic` | Stable knowledge, facts, patterns | Architecture decisions, API behavior |
+| `episodic` | In-session events, progress | "Fixed login bug in session X" |
+| `procedural` | Methods, fix recipes | "To fix Y, do Z" |
 
 ## Importance Scale
 
-| 점수 | 의미 |
-|------|------|
-| 1-3 | 사소한, 낮은 가치 |
-| 4-6 | 보통, 유용한 컨텍스트 |
-| 7-8 | 중요, 재등장해야 함 |
-| 9-10 | 핵심, 항상 관련됨 |
+| Score | Meaning |
+|-------|---------|
+| 1-3 | Trivial, low value |
+| 4-6 | Moderate, useful context |
+| 7-8 | Important, should resurface |
+| 9-10 | Critical, always relevant |
 
 ## Edge Cases
-- 유사한 메모리가 이미 있으면 새로 저장하지 말고 기존 노트를 보강한다
-- 중요도 판단이 어려우면 5로 설정 후 나중에 조정한다
-- stdin 모드는 멀티라인 내용에 사용한다
+- If a similar memory already exists, do not store a new one — augment the existing note instead
+- If importance is hard to judge, set to 5 and adjust later
+- Use stdin mode for multi-line content
 
 ## Example Flow
 
 ```bash
-# 1. 저장 전 중복 확인
+# 1. Check for duplicates before storing
 pkm search "IndexEntry crash unknown fields" --top 3
 
-# 2. 유사 항목 없으면 저장
-pkm note add --content "IndexEntry crash는 새 필드 추가 시 발생 — fix: load_index()에서 unknown fields 필터링" \
+# 2. If no similar entry exists, store it
+pkm note add --content "IndexEntry crash occurs when adding new fields — fix: filter unknown fields in load_index()" \
   --type procedural --importance 8
 
-# 3. 세션 추적 포함 저장
-pkm note add --content "WS-1 frontmatter 구현 완료" \
+# 3. Store with session tracking
+pkm note add --content "WS-1 frontmatter implementation complete" \
   --type episodic --importance 5 --session 2026-04-05-memory-layer
 
-# 4. 멀티라인 내용 (stdin)
+# 4. Multi-line content (stdin)
 cat << 'EOF' | pkm note add --content --stdin --type semantic --importance 7
-Generative Agents 점수 공식:
+Generative Agents scoring formula:
 score = (1 - α) * cosine_similarity + α * recency * (importance / 10)
 recency = 0.995^hours_elapsed
 EOF
 ```
 
 ## Expected Output
-- 저장된 노트 경로 (`memory/YYYY-MM-DD-<slug>.md`)
-- 중복 경고 (유사 메모리 발견 시)
+- Stored note path (`memory/YYYY-MM-DD-<slug>.md`)
+- Duplicate warning (if a similar memory is found)

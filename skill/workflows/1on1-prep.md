@@ -1,57 +1,57 @@
 # 1:1 Meeting Preparation
 
 ## Purpose
-특정 인물과의 1:1 미팅 전에 관련 노트를 수집하고 어젠다 초안을 생성한다.
+Collect relevant notes and generate an agenda draft before a 1:1 meeting with a specific person.
 
 ## Trigger
-- **Primary:** "1:1 준비"
-- **Secondary:** "미팅 준비", "1on1", "one-on-one 준비"
+- **Primary:** "1:1 prep"
+- **Secondary:** "meeting prep", "1on1", "one-on-one prep"
 
 ## Tools
-- Grep (사람 이름·태그로 관련 노트 검색)
-- Read (관련 노트 내용 확인)
-- `pkm search` (키워드 검색)
+- Grep (search related notes by person name or tag)
+- Read (review related note contents)
+- `pkm search` (keyword search)
 
 ## Principles
-- 상대방 이름이나 태그로 먼저 검색하고, 없으면 프로젝트·팀명으로 확장한다
-- 미결 사항(액션 아이템)과 칭찬/피드백 포인트를 분리한다
-- 어젠다는 5개 이하로 압축한다
+- Search by the person's name or tag first; if no results, expand to project or team name
+- Separate open items (action items) from praise/feedback points
+- Compress the agenda to 5 items or fewer
 
 ## Edge Cases
-- 검색 결과가 없으면 데일리 노트에서 이름을 직접 Grep한다
-- 첫 1:1이면 "초면 어젠다" 템플릿(자기소개, 기대사항, 협업 스타일)을 제안한다
-- 마지막 1:1 노트가 30일 이상 지났으면 "오래된 컨텍스트" 경고를 표시한다
+- If no search results, Grep the person's name directly from daily notes
+- If this is a first 1:1, suggest a "first-meeting agenda" template (introduction, expectations, collaboration style)
+- If the last 1:1 note is more than 30 days old, display a "stale context" warning
 
 ## Example Flow
 ```
-사용자: "김민준과 1:1 준비"
+User: "Prep 1:1 with Kim Minjun"
 
-1. Grep `notes/` for "김민준" → 관련 노트 목록 수집
-2. `pkm search "김민준"` → 추가 검색
-3. Grep `daily/` for "김민준" → 최근 데일리에서 언급 수집
-4. Read 관련 노트 3-5개
-5. 미결 액션 아이템 추출
-6. 칭찬/피드백 포인트 추출
-7. 어젠다 초안 생성
+1. Grep `notes/` for "Kim Minjun" → collect related note list
+2. `pkm search "Kim Minjun"` → additional search
+3. Grep `daily/` for "Kim Minjun" → collect recent daily mentions
+4. Read 3-5 related notes
+5. Extract open action items
+6. Extract praise/feedback points
+7. Generate agenda draft
 ```
 
 ## Expected Output
 ```markdown
-## 김민준 1:1 어젠다 — 2026-04-05
+## Kim Minjun 1:1 Agenda — 2026-04-05
 
-### 미결 액션 아이템
-- [ ] API 문서 리뷰 피드백 전달 (지난 주 약속)
-- [ ] 온보딩 체크리스트 공유
+### Open Action Items
+- [ ] Deliver API documentation review feedback (promised last week)
+- [ ] Share onboarding checklist
 
-### 논의 포인트
-1. Q2 목표 얼라인먼트
-2. 현재 블로커 확인
-3. 협업 개선 제안
+### Discussion Points
+1. Q2 goal alignment
+2. Check current blockers
+3. Collaboration improvement suggestions
 
-### 칭찬/피드백
-- 코드리뷰 응답 속도 향상 — 언급할 것
+### Praise/Feedback
+- Improved code review response time — mention this
 
-### 참고 노트
-- [[김민준-1on1-2026-03-22]]
-- [[프로젝트-알파-현황]]
+### Reference Notes
+- [[KimMinjun-1on1-2026-03-22]]
+- [[Project-Alpha-Status]]
 ```

@@ -1,58 +1,58 @@
 # Daily Seed — Morning Startup
 
 ## Purpose
-오늘 데일리 노트를 생성하고 어제의 이월 TODO와 작업기억을 포함한 시작 컨텍스트를 준비한다.
+Create today's daily note and prepare a startup context that includes carry-over TODOs and working memory from yesterday.
 
 ## Trigger
-- **Primary:** "오늘 시작"
-- **Secondary:** "daily seed", "아침 시작", "오늘 데일리", "데일리 시작"
+- **Primary:** "start today"
+- **Secondary:** "daily seed", "morning startup", "today's daily", "start daily"
 
 ## Tools
-- Read (어제 데일리 노트 및 서브노트)
-- `pkm daily` (오늘 데일리 생성 및 모든 서브노트 표시)
-- `pkm daily edit` (오늘 데일리 노트 편집)
-- `pkm daily edit --sub` (서브노트 생성 및 편집)
-- `pkm daily todo` (이월 TODO 추가)
+- Read (yesterday's daily note and sub-notes)
+- `pkm daily` (create today's daily and display all sub-notes)
+- `pkm daily edit` (edit today's daily note)
+- `pkm daily edit --sub` (create and edit sub-notes)
+- `pkm daily todo` (add carry-over TODOs)
 
 ## Principles
-- 어제의 미완료 항목만 이월한다 — 완료 항목은 가져오지 않는다
-- 오늘 데일리가 이미 존재하면 덮어쓰지 않고 섹션만 추가한다
-- 이월 항목이 3일 연속 미완료면 "#stale-todo" 표시를 추가한다
+- Carry over only yesterday's incomplete items — do not bring completed items forward
+- If today's daily already exists, only add sections rather than overwriting
+- If a carry-over item has been incomplete for 3 consecutive days, add a "#stale-todo" marker
 
 ## Sub-Notes
-데일리 노트는 이제 서브노트를 지원한다. 서브노트는 `daily/YYYY-MM-DD-{title}.md` 패턴으로 저장되며, `pkm daily` 명령어가 메인 노트와 함께 모든 서브노트를 순차적으로 표시한다. 어제의 컨텍스트를 읽을 때 `daily/` 디렉토리의 `YYYY-MM-DD-*.md` 파일들도 함께 확인한다.
+Daily notes now support sub-notes. Sub-notes are stored with the pattern `daily/YYYY-MM-DD-{title}.md`, and the `pkm daily` command displays all sub-notes sequentially alongside the main note. When reading yesterday's context, also check `YYYY-MM-DD-*.md` files in the `daily/` directory.
 
 ## Edge Cases
-- 어제 데일리가 없으면 마지막 데일리를 찾아 이월한다
-- `pkm daily` 실패 시 Write로 오늘 날짜 파일을 직접 생성한다
-- 주말·공휴일 이후 첫 시작이면 금요일 데일리부터 이월한다
+- If yesterday's daily does not exist, find the most recent daily and carry over from there
+- If `pkm daily` fails, create today's file directly with Write
+- After a weekend or holiday, carry over starting from the Friday daily
 
 ## Example Flow
 ```
-사용자: "오늘 시작"
+User: "start today"
 
-1. 오늘 날짜 확인: 2026-04-05 (일요일)
-   → 금요일 2026-04-03 데일리를 참조
+1. Confirm today's date: 2026-04-05 (Sunday)
+   → Reference Friday's 2026-04-03 daily
 
-2. Read `daily/2026-04-03.md` → ## TODO 섹션 추출
-   미완료: "- [ ] API 문서 작성"
-           "- [ ] 배포 스크립트 검토"  (2일 연속)
-   완료:   "- [x] 코드리뷰"
-   
-   서브노트 확인: `daily/2026-04-03-*.md` 파일들도 함께 읽음
+2. Read `daily/2026-04-03.md` → extract the ## TODO section
+   Incomplete: "- [ ] Write API documentation"
+               "- [ ] Review deployment script"  (2 days in a row)
+   Complete:   "- [x] Code review"
 
-3. `pkm daily` → `daily/2026-04-05.md` 생성 (또는 존재 확인)
-   메인 노트와 모든 서브노트를 순차적으로 표시
+   Check sub-notes: also read `daily/2026-04-03-*.md` files
 
-4. `pkm daily todo` 또는 Edit으로 이월 섹션 추가:
+3. `pkm daily` → create `daily/2026-04-05.md` (or confirm it exists)
+   Display main note and all sub-notes sequentially
+
+4. `pkm daily todo` or Edit to add carry-over section:
    ## TODO
-   - [ ] API 문서 작성 (이월: 04-03)
-   - [ ] 배포 스크립트 검토 (이월: 04-03, ⚠️ 2일째)
+   - [ ] Write API documentation (carried over: 04-03)
+   - [ ] Review deployment script (carried over: 04-03, ⚠️ day 2)
 
-5. working-memory 워크플로우 연계 제안
+5. Suggest linking the working-memory workflow
 ```
 
 ## Expected Output
-- 생성/확인된 오늘 데일리 파일 경로
-- 이월된 TODO 목록 (이월 날짜 포함)
-- 장기 미완료(3일+) 항목 경고 목록
+- File path of today's daily (created or confirmed)
+- List of carried-over TODOs (with carry-over date)
+- Warning list of long-overdue items (3+ days)

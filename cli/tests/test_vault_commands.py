@@ -107,7 +107,7 @@ def test_vault_add_ongoing_md_content(tmp_path: Path, monkeypatch):
     ongoing = tmp_path / "myvault" / "tasks" / "ongoing.md"
     content = ongoing.read_text(encoding="utf-8")
     assert "myvault-ongoing-tasks" in content
-    assert "진행 중인 일" in content
+    assert "In Progress" in content
     assert "🔴" in content
 
 

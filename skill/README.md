@@ -1,44 +1,44 @@
 # PKM Skill — Workflows Index
 
-PKM 워크플로우 목록. 사용자 요청에 맞는 워크플로우를 찾아 해당 문서를 읽고 실행한다.
+PKM workflow list. Find the workflow matching the user's request, read that document, and execute it.
 
-## Memory Layer Workflows (LLM Agent용)
+## Memory Layer Workflows (For LLM Agents)
 
-| Workflow | Primary Trigger | 문서 | 설명 |
+| Workflow | Primary Trigger | Document | Description |
 |----------|----------------|------|------|
-| Memory Store | memory store | [workflows/memory-store.md](workflows/memory-store.md) | 에이전트 발견/결정을 원자 노트로 저장 |
-| Memory Search | memory search | [workflows/memory-search.md](workflows/memory-search.md) | 시맨틱 + 시간 가중 메모리 검색 |
-| Memory Session | memory session | [workflows/memory-session.md](workflows/memory-session.md) | 세션 범위 메모리 추적 및 조회 |
-| Consolidate | consolidate | [workflows/consolidate.md](workflows/consolidate.md) | 데일리 통합 후보 식별 및 마킹 |
-| Dream | dream | [workflows/dream.md](workflows/dream.md) | 통합된 데일리에서 원자 노트 추출 |
+| Memory Store | memory store | [workflows/memory-store.md](workflows/memory-store.md) | Store agent discoveries/decisions as atomic notes |
+| Memory Search | memory search | [workflows/memory-search.md](workflows/memory-search.md) | Semantic + time-weighted memory search |
+| Memory Session | memory session | [workflows/memory-session.md](workflows/memory-session.md) | Session-scoped memory tracking and retrieval |
+| Consolidate | consolidate | [workflows/consolidate.md](workflows/consolidate.md) | Identify and mark daily consolidation candidates |
+| Dream | dream | [workflows/dream.md](workflows/dream.md) | Extract atomic notes from consolidated dailies |
 
-## Knowledge Management Workflows (사용자 인터랙티브)
+## Knowledge Management Workflows (User Interactive)
 
-| Workflow | Primary Trigger | 문서 | 설명 |
+| Workflow | Primary Trigger | Document | Description |
 |----------|----------------|------|------|
-| Weekly Review | 주간 리뷰 | [workflows/weekly-review.md](workflows/weekly-review.md) | 주간 지식 정리 및 연결 |
-| 1:1 Prep | 1:1 준비 | [workflows/1on1-prep.md](workflows/1on1-prep.md) | 1:1 미팅 준비 |
-| Health Check | 건강도 | [workflows/health-check.md](workflows/health-check.md) | 볼트 건강도 점검 |
-| Connect | 연결 찾기 | [workflows/connect.md](workflows/connect.md) | 고아 노트 연결 |
-| Task Sync | 태스크 동기화 | [workflows/task-sync.md](workflows/task-sync.md) | 태스크 동기화 |
-| Working Memory | 작업기억 | [workflows/working-memory.md](workflows/working-memory.md) | 현재 작업 컨텍스트 관리 |
-| Capture Triage | 미분류 정리 | [workflows/capture-triage.md](workflows/capture-triage.md) | 미분류 항목 정리 |
-| Daily Seed | 오늘 시작 | [workflows/daily-seed.md](workflows/daily-seed.md) | 하루 시작 루틴 |
-| Monthly Synthesis | 월간 종합 | [workflows/monthly-synthesis.md](workflows/monthly-synthesis.md) | 월간 지식 종합 |
+| Weekly Review | weekly review | [workflows/weekly-review.md](workflows/weekly-review.md) | Weekly knowledge organization and linking |
+| 1:1 Prep | 1:1 prep | [workflows/1on1-prep.md](workflows/1on1-prep.md) | 1:1 meeting preparation |
+| Health Check | health check | [workflows/health-check.md](workflows/health-check.md) | Vault health inspection |
+| Connect | find connections | [workflows/connect.md](workflows/connect.md) | Connect orphan notes |
+| Task Sync | task sync | [workflows/task-sync.md](workflows/task-sync.md) | Task synchronization |
+| Working Memory | working memory | [workflows/working-memory.md](workflows/working-memory.md) | Current task context management |
+| Capture Triage | untagged cleanup | [workflows/capture-triage.md](workflows/capture-triage.md) | Triage unclassified items |
+| Daily Seed | start today | [workflows/daily-seed.md](workflows/daily-seed.md) | Daily start routine |
+| Monthly Synthesis | monthly synthesis | [workflows/monthly-synthesis.md](workflows/monthly-synthesis.md) | Monthly knowledge synthesis |
 
 ## Memory Layer Architecture
 
 ```
-[에이전트 발견] → pkm note add --content → memory/YYYY-MM-DD-<slug>.md
+[agent discovery] → pkm note add --content → memory/YYYY-MM-DD-<slug>.md
                                               ↓
-[세션 시작]    ← pkm search ← 시맨틱 + 시간 가중 검색
+[session start]    ← pkm search ← semantic + time-weighted search
                                               ↓
-[일일 통합]    → pkm consolidate mark → consolidated: true
+[daily consolidation] → pkm consolidate mark → consolidated: true
                                               ↓
-[지식 승격]    → dream workflow → notes/<atomic-note>.md
+[knowledge promotion] → dream workflow → notes/<atomic-note>.md
 ```
 
 ## Integration Snippets
 
-- [CLAUDE.md 통합 예시](references/sample-claude-md.md)
-- [AGENTS.md 통합 예시](references/sample-agents-md.md)
+- [CLAUDE.md integration example](references/sample-claude-md.md)
+- [AGENTS.md integration example](references/sample-agents-md.md)

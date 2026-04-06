@@ -86,7 +86,7 @@ def test_count_backlinks(tmp_vault: VaultConfig):
     # database-isolation is linked from 2026-04-01-mvcc.md
     assert counts["database-isolation"] >= 1
     # orphan notes have zero backlinks
-    assert counts["고립된-노트"] == 0
+    assert counts["isolated-note"] == 0
     assert counts["untagged-note"] == 0
 
 
@@ -99,7 +99,7 @@ def test_find_orphans(tmp_vault: VaultConfig):
     orphans = find_orphans(tmp_vault)
     orphan_names = {p.name for p in orphans}
     # Both notes with no in/out links are orphans
-    assert "고립된-노트.md" in orphan_names
+    assert "isolated-note.md" in orphan_names
     assert "untagged-note.md" in orphan_names
     # Connected notes are NOT orphans
     assert "2026-04-01-mvcc.md" not in orphan_names

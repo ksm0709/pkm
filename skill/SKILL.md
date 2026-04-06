@@ -1,44 +1,44 @@
 ---
 name: pkm
-description: "Personal Knowledge Management for Obsidian vaults — Zettelkasten workflow with daily notes, atomic notes, wikilinks, and a Python CLI tool (pkm). Use this skill whenever the user mentions: daily notes, 데일리 노트, note management, 노트 정리, knowledge extraction, 지식 추출, Zettelkasten, 제텔카스텐, note search, backlinks, wikilinks, PKM, 노트 검색, 노트 작성, tag search, 태그 검색, 태그 탐색, 백링크, 백링크 탐색, or wants to create/update/search notes in their Obsidian vaults. Also trigger when the user says /pkm. Workflow triggers: dream, 노트 정리, 주간 리뷰, weekly review, 1:1 준비, 건강도, health check, 연결 찾기, 태스크 동기화, 작업기억, 미분류 정리, 오늘 시작, 월간 종합, 태그 탐색, tag explore, 백링크 탐색, backlink traverse."
+description: "Personal Knowledge Management for Obsidian vaults — Zettelkasten workflow with daily notes, atomic notes, wikilinks, and a Python CLI tool (pkm). Use this skill whenever the user mentions: daily notes, note management, knowledge extraction, Zettelkasten, note search, backlinks, wikilinks, PKM, note writing, tag search, tag explore, backlink traverse, or wants to create/update/search notes in their Obsidian vaults. Also trigger when the user says /pkm. Workflow triggers: dream, note cleanup, weekly review, 1:1 prep, health check, find links, task sync, working memory, untagged cleanup, start today, monthly synthesis, tag explore, backlink traverse."
 ---
 
 # PKM — Personal Knowledge Management
 
-Obsidian 볼트 기반 제텔카스텐 지식 관리 시스템. 데일리 노트를 지식의 진입점으로 사용하고, 원자 노트로 지식을 정제하며, wikilink로 지식의 네트워크를 구축한다.
+Obsidian vault-based Zettelkasten knowledge management system. Uses daily notes as the entry point for knowledge, refines knowledge into atomic notes, and builds a knowledge network with wikilinks.
 
 ## Vault Structure
 
-모든 볼트는 아래 표준 구조를 따른다:
+All vaults follow the standard structure below:
 
 ```
 <vault>/
-├── daily/              # YYYY-MM-DD.md — 시간순 기록
-├── notes/              # 플랫 구조의 제텔카스텐 원자 노트
-├── tags/               # 태그 인덱스 노트 (태그별 .md 파일)
+├── daily/              # YYYY-MM-DD.md — chronological records
+├── notes/              # flat-structure Zettelkasten atomic notes
+├── tags/               # tag index notes (one .md file per tag)
 ├── tasks/              # ongoing.md + task-<slug>.md
-│   └── archive/        # 완료된 태스크
-└── data/               # 노트 첨부파일
+│   └── archive/        # completed tasks
+└── data/               # note attachments
 ```
 
-볼트는 `PKM_VAULTS_ROOT` (기본: `~/vaults`) 하위에서 자동 발견된다. `daily/` 또는 `notes/` 디렉토리가 있으면 볼트로 인식한다.
+Vaults are automatically discovered under `PKM_VAULTS_ROOT` (default: `~/vaults`). A directory is recognized as a vault if it contains a `daily/` or `notes/` subdirectory.
 
-Git 저장소 내에서 사용하면 볼트 이름이 `@owner--repo` 형식으로 자동 지정되어 일반 볼트와 구분된다 (예: `@taeho--pkm`).
+When used inside a Git repository, the vault name is automatically assigned in `@owner--repo` format to distinguish it from regular vaults (e.g., `@taeho--pkm`).
 
 ## Core Workflow
 
 ```
-[경험/학습] → daily/ (시간순 기록) → 반복·구조화 가치 발견 → notes/ (원자 노트 승격)
-                                                              ↕ [[wikilink]] 연결
-                                                         notes/ ↔ notes/ (지식 네트워크)
-                                                              |
-                                               pkm search (시맨틱 검색)
-                                               workflows/ (자동화된 지식 관리)
+[experience/learning] → daily/ (chronological record) → repeated/structured value found → notes/ (atomic note promotion)
+                                                                                         ↕ [[wikilink]] connections
+                                                                                    notes/ ↔ notes/ (knowledge network)
+                                                                                         |
+                                                                          pkm search (semantic search)
+                                                                          workflows/ (automated knowledge management)
 ```
 
-### 1. Daily Note — 지식의 진입점
+### 1. Daily Note — Entry Point for Knowledge
 
-당일 경험, 학습, 아이디어를 시간순으로 기록한다. 완벽하지 않아도 된다 — 기록이 먼저다.
+Record the day's experiences, learning, and ideas in chronological order. It doesn't need to be perfect — capturing it comes first.
 
 ```markdown
 ---
@@ -47,22 +47,22 @@ aliases: []
 tags:
   - daily-notes
 ---
-- [09:30] 오늘 배운 것: ...
-- [14:20] 미팅에서 나온 아이디어: ...
+- [09:30] Learned today: ...
+- [14:20] Ideas from the meeting: ...
 
 ## TODO
-- [09:30] 할 일 항목
+- [09:30] Task item
 ```
 
-### 2. Atomic Note — 정제된 지식
+### 2. Atomic Note — Refined Knowledge
 
-데일리에서 반복되거나 구조화할 가치가 있는 지식을 원자 노트로 승격한다.
+Promote knowledge that appears repeatedly in dailies or is worth structuring into an atomic note.
 
-**원칙:**
-- **원자성**: 하나의 노트 = 하나의 주제. 여러 주제를 섞지 않는다.
-- **연결**: 모든 노트는 `[[wikilink]]`로 관련 노트에 연결. 고립된 노트는 죽은 지식이다.
-- **자기 언어**: 복사-붙여넣기가 아닌, 핵심을 이해하고 간결하게 서술한다.
-- **플랫 구조**: `notes/` 내 폴더 중첩 없이 태그로 분류한다.
+**Principles:**
+- **Atomicity**: One note = one topic. Don't mix multiple topics.
+- **Connection**: Every note must be connected to related notes via `[[wikilink]]`. Isolated notes are dead knowledge.
+- **Own words**: Not copy-paste — understand the core and write it concisely.
+- **Flat structure**: Classify with tags, no nested folders inside `notes/`.
 
 ```markdown
 ---
@@ -71,24 +71,24 @@ aliases:
   - <short alias>
 tags:
   - <topic-tag>
-description: "한줄 요약 (선택)"
+description: "one-line summary (optional)"
 ---
 
-내용...
+Content...
 
-관련: [[YYYY-MM-DD]] (첫 학습), [[related-concept]]
+Related: [[YYYY-MM-DD]] (first learned), [[related-concept]]
 ```
 
-`description` 필드는 선택적이며, 백링크 목록에서 제목 옆에 표시된다.
+The `description` field is optional and appears next to the title in backlink lists.
 
-### 3. Knowledge Extraction — 승격 판단 기준
+### 3. Knowledge Extraction — Criteria for Promotion
 
-데일리 노트에서 원자 노트로 승격할 때의 판단 기준:
+Criteria for deciding when to promote from a daily note to an atomic note:
 
-- **반복성**: 같은 주제가 3일 이상 데일리에 등장하면 승격 후보
-- **참조 가능성**: 다른 맥락에서 참조할 가치가 있는 독립적 지식
-- **구조화 가치**: 산발적 메모를 하나의 개념으로 정리할 수 있을 때
-- **연결 가능성**: 기존 원자 노트와 의미 있는 연결이 가능할 때
+- **Recurrence**: If the same topic appears in dailies for 3+ days, it's a promotion candidate
+- **Reference potential**: Independent knowledge worth referencing in other contexts
+- **Structuring value**: When scattered notes can be organized into a single concept
+- **Connection potential**: When meaningful connections can be made with existing atomic notes
 
 ## CLI Tool: `pkm`
 
@@ -101,8 +101,8 @@ cd ~/.claude/skills/pkm/scripts/pkm-cli && uv pip install -e ".[search]"
 ### Configuration
 
 ```bash
-export PKM_VAULTS_ROOT=~/vaults        # 볼트 루트 디렉토리 (기본: ~/vaults)
-export PKM_DEFAULT_VAULT=<vault-name>  # 기본 볼트 (미설정 시 첫 번째 발견된 볼트)
+export PKM_VAULTS_ROOT=~/vaults        # vault root directory (default: ~/vaults)
+export PKM_DEFAULT_VAULT=<vault-name>  # default vault (first discovered vault if not set)
 ```
 
 ### Commands
@@ -111,12 +111,12 @@ export PKM_DEFAULT_VAULT=<vault-name>  # 기본 볼트 (미설정 시 첫 번째
 # Daily notes
 pkm daily                          # Show/create today's daily note
 pkm daily --vault <name>           # Specific vault
-pkm daily add "학습 내용"           # Append timestamped entry
-pkm daily todo "할 일"              # Add to TODO section
+pkm daily add "learning content"   # Append timestamped entry
+pkm daily todo "task"              # Add to TODO section
 
 # Note management
 pkm note add "Note Title" --tags t1,t2  # Create atomic note with frontmatter
-pkm note add "제목" --vault <name>      # In specific vault
+pkm note add "Title" --vault <name>     # In specific vault
 pkm note show <query>                   # Show note content + backlinks section
 pkm note edit <query>                   # Open note in editor by title keyword
 pkm note links <query>                  # Show backlinks for a note (who links here?)
@@ -144,56 +144,56 @@ pkm index                          # Build/rebuild search index
 
 ### Design Principles
 
-- **No database** — 파일이 유일한 진실의 원천. Obsidian과 충돌 없음
-- **볼트 자동 발견** — 하드코딩 없이 디렉토리 구조로 볼트를 인식
-- **한국어 네이티브** — 파일명, 본문, 검색 모두 한국어 지원
+- **No database** — files are the single source of truth. No conflict with Obsidian
+- **Auto vault discovery** — vaults are recognized by directory structure, no hardcoding
+- **Native language support** — filenames, content, and search all support non-ASCII characters
 
 When helping the user, prefer using the CLI tool for automation. For interactive knowledge work (writing, linking, extracting), work directly with the files using Read/Write/Edit tools.
 
 ### Tag Index Notes & Backlinks
 
-태그는 `tags/` 디렉토리의 물리적 .md 파일로 관리된다. 태그 노트는 조회 시 자동 생성(lazy creation)되며, 설명을 추가하면 인덱스 카드로 활용된다. 백링크는 `note show`에서 자동 표시되며, `note links`로 전용 조회도 가능하다.
+Tags are managed as physical .md files in the `tags/` directory. Tag notes are created lazily on access, and adding a description turns them into index cards. Backlinks are automatically shown in `note show`, and can also be queried directly with `note links`.
 
-자세한 워크플로우는 아래 참조:
-- 태그 탐색/검색/인덱스 활용 → `workflows/tag-explore.md`
-- 백링크 기반 지식 탐색/고립 노트 정리 → `workflows/backlink-traverse.md`
+For detailed workflows, see:
+- Tag exploration/search/index usage → `workflows/tag-explore.md`
+- Backlink-based knowledge traversal/orphan cleanup → `workflows/backlink-traverse.md`
 
 ## Workflows
 
-PKM 워크플로우는 `workflows/` 폴더에 독립 문서로 정의된다. 사용자 요청에 맞는 워크플로우를 찾아 해당 문서를 읽고 실행한다.
+PKM workflows are defined as independent documents in the `workflows/` folder. Find the workflow matching the user's request, read that document, and execute it.
 
-| Workflow | Primary Trigger | 문서 |
+| Workflow | Primary Trigger | Document |
 |----------|----------------|------|
-| Extract Note | dream, 지식 승격, 데일리 정리 | workflows/extract-note-from-daily.md |
-| Weekly Review | 주간 리뷰 | workflows/weekly-review.md |
-| 1:1 Prep | 1:1 준비 | workflows/1on1-prep.md |
-| Health Check | 건강도 | workflows/health-check.md |
-| Auto Linking | 연결 찾기 | workflows/auto-linking.md |
-| Task Sync | 태스크 동기화 | workflows/task-sync.md |
-| Add Context | 작업기억, 컨텍스트 기록 | workflows/add-context-to-daily.md |
-| Auto Tagging | 미분류 정리, 태그 없는 노트 | workflows/auto-tagging.md |
-| Init Daily | 오늘 시작, 데일리 시작 | workflows/init-daily.md |
-| Monthly Synthesis | 월간 종합 | workflows/monthly-synthesis.md |
-| Tag Explore | 태그 탐색 | workflows/tag-explore.md |
-| Backlink Traverse | 백링크 탐색 | workflows/backlink-traverse.md |
-| Add Workflow | add-workflow, 워크플로우 추가, 새 워크플로우 | workflows/add-workflow.md |
+| Extract Note | dream, knowledge promotion, daily cleanup | workflows/extract-note-from-daily.md |
+| Weekly Review | weekly review | workflows/weekly-review.md |
+| 1:1 Prep | 1:1 prep | workflows/1on1-prep.md |
+| Health Check | health check | workflows/health-check.md |
+| Auto Linking | find connections | workflows/auto-linking.md |
+| Task Sync | task sync | workflows/task-sync.md |
+| Add Context | working memory, context capture | workflows/add-context-to-daily.md |
+| Auto Tagging | untagged cleanup, notes without tags | workflows/auto-tagging.md |
+| Init Daily | start today, daily start | workflows/init-daily.md |
+| Monthly Synthesis | monthly synthesis | workflows/monthly-synthesis.md |
+| Tag Explore | tag explore | workflows/tag-explore.md |
+| Backlink Traverse | backlink traverse | workflows/backlink-traverse.md |
+| Add Workflow | add-workflow, add workflow, new workflow | workflows/add-workflow.md |
 
-사용자 요청이 위 트리거와 매칭되면 해당 `workflows/*.md`를 읽고 실행한다. 여러 워크플로우가 매칭될 수 있으면 사용자에게 어떤 것을 원하는지 확인한다.
+When a user request matches one of the triggers above, read the corresponding `workflows/*.md` and execute it. If multiple workflows could match, ask the user which one they want.
 
 ## Workflow Extension Guide
 
-새 워크플로우를 추가하려면:
-1. `workflows/_template.md`를 복사하여 새 파일 생성
-2. Purpose, Trigger, Tools, Principles, Edge Cases, Example Flow, Expected Output 작성
-3. 위 Workflows 테이블에 항목 추가
-4. references/principles.md에 관련 노하우 축적
+To add a new workflow:
+1. Copy `workflows/_template.md` to create a new file
+2. Fill in Purpose, Trigger, Tools, Principles, Edge Cases, Example Flow, Expected Output
+3. Add an entry to the Workflows table above
+4. Accumulate related know-how in references/principles.md
 
-좋은 워크플로우의 기준:
-- pkm CLI 명령어 또는 파일 도구로 실행 가능
-- 에이전트 재량을 존중 (과도한 단계 지시 금지)
-- 명확한 결과물 정의
-- 반복 실행 시 일관된 품질
-- 고유한 Primary Trigger (다른 워크플로우와 겹치지 않을 것)
+Criteria for a good workflow:
+- Executable via pkm CLI commands or file tools
+- Respects agent discretion (no excessive step-by-step directives)
+- Clear output definition
+- Consistent quality on repeated execution
+- Unique Primary Trigger (must not overlap with other workflows)
 
 ## Principles & Know-how
 

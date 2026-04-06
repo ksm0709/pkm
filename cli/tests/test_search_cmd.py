@@ -69,7 +69,7 @@ def test_search_command(cli_runner, tmp_vault: VaultConfig, mock_model):
     # Build index first
     cli_runner("index")
 
-    result = cli_runner("search", "MVCC 동시성")
+    result = cli_runner("search", "MVCC concurrency")
     assert result.exit_code == 0, result.output
 
     # Should show a table with at least rank column

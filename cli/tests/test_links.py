@@ -33,7 +33,7 @@ def test_orphans_command(cli_runner, tmp_vault: VaultConfig):
     result = cli_runner("note", "orphans")
     assert result.exit_code == 0
     # Both orphan notes should appear in output
-    assert "고립된-노트.md" in result.output
+    assert "isolated-note.md" in result.output
     assert "untagged-note.md" in result.output
     # Count line should appear
     assert "orphan" in result.output.lower()

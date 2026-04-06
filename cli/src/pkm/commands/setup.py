@@ -89,13 +89,13 @@ def setup_cmd() -> None:
     saved = _load_setup_choices()
     use_saved = False
     if saved:
-        console.print("[cyan]이전 설정이 발견되었습니다:[/cyan]")
-        console.print(f"  search 기능: {'예' if saved['install_search'] == 'true' or saved['install_search'] is True else '아니요'}")
-        console.print(f"  dev 도구:    {'예' if saved['install_dev'] == 'true' or saved['install_dev'] is True else '아니요'}")
-        console.print(f"  vault 루트:  {saved['vaults_root']}")
-        console.print(f"  기본 vault:  {saved['default_vault']}")
+        console.print("[cyan]Previous configuration found:[/cyan]")
+        console.print(f"  search features: {'Yes' if saved['install_search'] == 'true' or saved['install_search'] is True else 'No'}")
+        console.print(f"  dev tools:       {'Yes' if saved['install_dev'] == 'true' or saved['install_dev'] is True else 'No'}")
+        console.print(f"  vault root:      {saved['vaults_root']}")
+        console.print(f"  default vault:   {saved['default_vault']}")
         console.print()
-        use_saved = click.confirm("기존 설정을 유지하시겠습니까?", default=True)
+        use_saved = click.confirm("Keep existing configuration?", default=True)
         console.print()
 
     if use_saved and saved:

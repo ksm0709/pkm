@@ -30,18 +30,18 @@ tags:
   - tasks
   - ongoing
 ---
-# 진행 중인 일
+# In Progress
 
-## 🔴 진행 중 (WIP)
+## 🔴 In Progress (WIP)
 
-## 🟡 예정 (TODO)
+## 🟡 Upcoming (TODO)
 
-## ✅ 이번 주 완료
+## ✅ Completed This Week
 
-## ⏸ 보류
+## ⏸ On Hold
 
 ---
-_태스크 상세: `tasks/task-<slug>.md` | 완료 태스크: `tasks/archive/`_
+_Task details: `tasks/task-<slug>.md` | Completed tasks: `tasks/archive/`_
 """
 
 

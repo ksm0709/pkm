@@ -78,14 +78,14 @@ def test_new_korean_title(tmp_vault):
     runner = CliRunner()
     result = runner.invoke(
         main,
-        ["--vault", "test-vault", "note", "add", "한글 제목"],
+        ["--vault", "test-vault", "note", "add", "english title"],
         catch_exceptions=False,
     )
     assert result.exit_code == 0
 
     today = date.today().isoformat()
-    # Korean slug fallback: spaces replaced by hyphens
-    note_path = tmp_vault.notes_dir / f"{today}-한글-제목.md"
+    # Spaces replaced by hyphens in slug
+    note_path = tmp_vault.notes_dir / f"{today}-english-title.md"
     assert note_path.exists(), f"Expected {note_path} to exist. Notes dir: {list(tmp_vault.notes_dir.iterdir())}"
 
 

@@ -40,12 +40,12 @@ def test_note_show_backlink_with_description(cli_runner, tmp_vault):
     """note show mvcc should include concurrency-note's description."""
     result = cli_runner("note", "show", "mvcc")
     assert result.exit_code == 0
-    assert "동시성 제어 기법 비교 노트" in result.output
+    assert "Concurrency control technique comparison note" in result.output
 
 
 def test_note_show_no_backlinks(cli_runner, tmp_vault):
     """Orphan note should not show a Backlinks section."""
-    result = cli_runner("note", "show", "고립된")
+    result = cli_runner("note", "show", "isolated")
     assert result.exit_code == 0
     assert "Backlinks" not in result.output
 

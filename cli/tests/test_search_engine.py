@@ -80,7 +80,7 @@ def test_load_index_missing_raises(tmp_vault: VaultConfig):
 def test_search_returns_results(tmp_vault: VaultConfig, mock_model):
     """search returns sorted SearchResult list."""
     index = build_index(tmp_vault)
-    results = search("MVCC 동시성", index, top_n=5)
+    results = search("MVCC concurrency", index, top_n=5)
 
     assert isinstance(results, list)
     assert len(results) <= 5

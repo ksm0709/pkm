@@ -41,14 +41,14 @@ def test_stats_command(tmp_vault: VaultConfig, monkeypatch):
 def test_stale_with_old_note(tmp_vault: VaultConfig, monkeypatch):
     _patch_vaults(monkeypatch, tmp_vault)
     # Set one note to be 60 days old
-    old_note = tmp_vault.notes_dir / "고립된-노트.md"
+    old_note = tmp_vault.notes_dir / "isolated-note.md"
     old_time = time.time() - 60 * 86400
     os.utime(old_note, (old_time, old_time))
 
     runner = CliRunner()
     result = runner.invoke(main, ["--vault", tmp_vault.name, "note", "stale", "--days", "30"])
     assert result.exit_code == 0
-    assert "고립된-노트" in result.output
+    assert "isolated-note" in result.output
 
 
 def test_stale_no_results(tmp_vault: VaultConfig, monkeypatch):

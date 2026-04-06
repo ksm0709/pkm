@@ -1,24 +1,24 @@
 # PKM Workflows
 
-워크플로우는 `workflows/` 폴더에 독립 문서로 정의된다. 각 워크플로우는 Purpose, Trigger, Tools, Principles, Edge Cases, Example Flow, Expected Output을 포함한다.
+Workflows are defined as independent documents in the `workflows/` folder. Each workflow includes Purpose, Trigger, Tools, Principles, Edge Cases, Example Flow, and Expected Output.
 
-## 워크플로우 목록
+## Workflow List
 
-| Workflow | Primary Trigger | 문서 |
+| Workflow | Primary Trigger | Document |
 |----------|----------------|------|
 | Dream | dream | ../workflows/dream.md |
-| Weekly Review | 주간 리뷰 | ../workflows/weekly-review.md |
-| 1:1 Prep | 1:1 준비 | ../workflows/1on1-prep.md |
-| Health Check | 건강도 | ../workflows/health-check.md |
-| Connect | 연결 찾기 | ../workflows/connect.md |
-| Task Sync | 태스크 동기화 | ../workflows/task-sync.md |
-| Working Memory | 작업기억 | ../workflows/working-memory.md |
-| Capture Triage | 미분류 정리 | ../workflows/capture-triage.md |
-| Daily Seed | 오늘 시작 | ../workflows/daily-seed.md |
-| Monthly Synthesis | 월간 종합 | ../workflows/monthly-synthesis.md |
+| Weekly Review | weekly review | ../workflows/weekly-review.md |
+| 1:1 Prep | 1:1 prep | ../workflows/1on1-prep.md |
+| Health Check | health check | ../workflows/health-check.md |
+| Connect | find connections | ../workflows/connect.md |
+| Task Sync | task sync | ../workflows/task-sync.md |
+| Working Memory | working memory | ../workflows/working-memory.md |
+| Capture Triage | untagged cleanup | ../workflows/capture-triage.md |
+| Daily Seed | start today | ../workflows/daily-seed.md |
+| Monthly Synthesis | monthly synthesis | ../workflows/monthly-synthesis.md |
 
-## 워크플로우 실행 방법
+## How to Execute a Workflow
 
-사용자 요청이 위 Primary Trigger와 매칭되면 해당 `workflows/*.md`를 읽고 지시에 따라 실행한다.
+When a user request matches one of the Primary Triggers above, read the corresponding `workflows/*.md` and execute it according to the instructions.
 
-새 워크플로우 추가는 `SKILL.md`의 **Workflow Extension Guide** 참고.
+To add a new workflow, refer to the **Workflow Extension Guide** in `SKILL.md`.
