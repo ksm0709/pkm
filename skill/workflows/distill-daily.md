@@ -2,7 +2,7 @@
 
 > **Prerequisites:** Run `pkm consolidate` to review candidates, then mark them ready with `pkm consolidate mark YYYY-MM-DD` before running this workflow. Only dailies with `consolidated: true` set will be processed. See `workflows/consolidate.md` for details.
 >
-> **When run from dream:** automatically called as step 2. This workflow can also be run standalone.
+> **When run from zettel-loop:** automatically called as step 2. This workflow can also be run standalone.
 
 ## Purpose
 Discover insights from marked daily notes that appear repeatedly or have driven behavioral change, and promote them to permanent knowledge notes.

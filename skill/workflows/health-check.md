@@ -56,7 +56,7 @@ Diagnose the overall health of the vault and report on orphan notes, stale ratio
 - #dev: 58 | #meeting: 23 | #idea: 19 | untagged: 12
 
 ### Recommended Actions
-1. Use dream workflow to connect orphan notes
+1. Use refine-loop workflow to reconnect orphan notes
 2. Review 5 stale notes (this week)
 3. 12 untagged notes → run capture-triage
 ```

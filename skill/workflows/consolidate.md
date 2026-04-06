@@ -10,7 +10,10 @@ Identify and mark daily notes (episodic memory) that are ready for consolidation
 ## Tools
 - `pkm consolidate` (list candidates — read-only)
 - `pkm consolidate mark YYYY-MM-DD` (mark as ready for consolidation)
-- Dream workflow (`workflows/dream.md`) — full nightly consolidation pipeline (includes distill-daily)
+- Zettel Loop workflow (`workflows/zettel-loop.md`) — full knowledge production pipeline (includes distill-daily)
+
+> **Ownership note:** `consolidate` is the staging step for `zettel-loop`. It prepares daily captures
+> for promotion into the knowledge graph and is not part of the cleanup/reduction pipeline.
 
 ## Principles
 - Consolidation is split into two phases: review candidates → mark. Never merge in one step, to prevent data loss
@@ -26,7 +29,7 @@ Phase 1 (read-only): pkm consolidate
 Phase 2 (marking): pkm consolidate mark YYYY-MM-DD
   → set consolidated: true in the daily's frontmatter
 
-Phase 3 (dream): run Dream workflow
+Phase 3 (zettel-loop): run Zettel Loop workflow
   → extract atomic notes from consolidated: true dailies
 ```
 

@@ -1,6 +1,6 @@
 # Prune-Merge-Split — Note Refinement
 
-> **When run from dream:** automatically called as step 6. This workflow can also be run standalone.
+> **When run from refine-loop:** automatically called as step 4. This workflow can also be run standalone.
 
 ## Purpose
 Maintain note quality in the knowledge base:
@@ -18,11 +18,15 @@ Maintain note quality in the knowledge base:
 - Read, Edit, Write, Glob
 
 ## Principles
-- **Prune criteria**: last modified 6+ months ago AND zero incoming links
-- **Merge criteria**: note pairs with 80%+ content similarity
-- **Split criteria**: notes containing 2 or more independent topics
-- Prune (deletion): report candidates only — actual deletion requires user confirmation
-- Merge and Split: performed automatically (original content preserved)
+- **Prune criteria**: last modified 6+ months ago AND zero incoming links AND zero unique information
+  not already present in another note — length or age alone is insufficient
+- **Merge criteria**: two notes have effectively identical claims AND effectively identical
+  link neighborhoods; they would be indistinguishable to a future reader — similarity score alone
+  (e.g. 80%) is insufficient; content redundancy must be confirmed by reading both notes
+- **Split criteria**: a note contains two or more independently reusable concepts that can each
+  stand alone without referencing the other — length alone is not a criterion
+- Prune (deletion): report candidates only — actual deletion requires explicit user confirmation
+- Merge and Split: performed automatically (original content preserved before changes)
 
 ## Three Operations
 
@@ -30,7 +34,7 @@ Maintain note quality in the knowledge base:
 Identify stale candidates:
 1. `pkm orphans` → list notes with no links
 2. Check last modified date for each note → filter for 6+ months
-3. Report candidates (in dream: list only / standalone: prompt for deletion confirmation)
+3. Report candidates (in refine-loop: list only / standalone: prompt for deletion confirmation)
 
 ### 2. Merge (consolidation)
 Consolidate duplicate notes:

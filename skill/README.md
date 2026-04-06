@@ -9,8 +9,10 @@ PKM workflow list. Find the workflow matching the user's request, read that docu
 | Memory Store | memory store | [workflows/memory-store.md](workflows/memory-store.md) | Store agent discoveries/decisions as atomic notes |
 | Memory Search | memory search | [workflows/memory-search.md](workflows/memory-search.md) | Semantic + time-weighted memory search |
 | Memory Session | memory session | [workflows/memory-session.md](workflows/memory-session.md) | Session-scoped memory tracking and retrieval |
-| Consolidate | consolidate | [workflows/consolidate.md](workflows/consolidate.md) | Identify and mark daily consolidation candidates |
-| Dream | dream | [workflows/dream.md](workflows/dream.md) | Extract atomic notes from consolidated dailies |
+| Consolidate | consolidate | [workflows/consolidate.md](workflows/consolidate.md) | Identify and mark daily consolidation candidates (staging for zettel-loop) |
+| Zettel Loop | zettel-loop, knowledge production | [workflows/zettel-loop.md](workflows/zettel-loop.md) | Knowledge production: promote, link, and tag new notes |
+| Refine Loop | refine-loop, knowledge cleanup | [workflows/refine-loop.md](workflows/refine-loop.md) | Cleanup/reduction: orphan repair, tag correction, prune/merge/split |
+| Dream | dream *(deprecated — use refine-loop)* | [workflows/dream.md](workflows/dream.md) | Deprecated alias → redirects to refine-loop |
 
 ## Knowledge Management Workflows (User Interactive)
 
@@ -35,7 +37,7 @@ PKM workflow list. Find the workflow matching the user's request, read that docu
                                               ↓
 [daily consolidation] → pkm consolidate mark → consolidated: true
                                               ↓
-[knowledge promotion] → dream workflow → notes/<atomic-note>.md
+[knowledge promotion] → zettel-loop workflow → notes/<atomic-note>.md
 ```
 
 ## Integration Snippets

@@ -6,7 +6,9 @@ Workflows are defined as independent documents in the `workflows/` folder. Each 
 
 | Workflow | Primary Trigger | Document |
 |----------|----------------|------|
-| Dream | dream | ../workflows/dream.md |
+| Zettel Loop | zettel-loop, knowledge production | ../workflows/zettel-loop.md |
+| Refine Loop | refine-loop, knowledge cleanup | ../workflows/refine-loop.md |
+| Dream | dream *(deprecated alias → refine-loop)* | ../workflows/dream.md |
 | Weekly Review | weekly review | ../workflows/weekly-review.md |
 | 1:1 Prep | 1:1 prep | ../workflows/1on1-prep.md |
 | Health Check | health check | ../workflows/health-check.md |

@@ -1,6 +1,6 @@
 ---
 name: pkm
-description: "Personal Knowledge Management for Obsidian vaults — Zettelkasten workflow with daily notes, atomic notes, wikilinks, and a Python CLI tool (pkm). Use this skill whenever the user mentions: daily notes, note management, knowledge extraction, Zettelkasten, note search, backlinks, wikilinks, PKM, note writing, tag search, tag explore, backlink traverse, or wants to create/update/search notes in their Obsidian vaults. Also trigger when the user says /pkm. Workflow triggers: dream, note cleanup, weekly review, 1:1 prep, health check, find links, task sync, working memory, untagged cleanup, start today, monthly synthesis, tag explore, backlink traverse."
+description: "Personal Knowledge Management for Obsidian vaults — Zettelkasten workflow with daily notes, atomic notes, wikilinks, and a Python CLI tool (pkm). Use this skill whenever the user mentions: daily notes, note management, knowledge extraction, Zettelkasten, note search, backlinks, wikilinks, PKM, note writing, tag search, tag explore, backlink traverse, or wants to create/update/search notes in their Obsidian vaults. Also trigger when the user says /pkm. Workflow triggers: zettel-loop, refine-loop, knowledge production, knowledge cleanup, note cleanup, weekly review, 1:1 prep, health check, find links, task sync, working memory, untagged cleanup, start today, monthly synthesis, tag explore, backlink traverse."
 ---
 
 # PKM — Personal Knowledge Management
@@ -164,7 +164,9 @@ PKM workflows are defined as independent documents in the `workflows/` folder. F
 
 | Workflow | Primary Trigger | Document |
 |----------|----------------|------|
-| Extract Note | dream, knowledge promotion, daily cleanup | workflows/extract-note-from-daily.md |
+| Zettel Loop | zettel-loop, knowledge production, promote knowledge | workflows/zettel-loop.md |
+| Refine Loop | refine-loop, knowledge cleanup, vault refinement | workflows/refine-loop.md |
+| Extract Note | knowledge promotion, daily cleanup | workflows/extract-note-from-daily.md |
 | Weekly Review | weekly review | workflows/weekly-review.md |
 | 1:1 Prep | 1:1 prep | workflows/1on1-prep.md |
 | Health Check | health check | workflows/health-check.md |
