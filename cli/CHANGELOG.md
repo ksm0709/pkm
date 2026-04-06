@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.11.0 (2026-04-06)
+
+### Features
+
+- **skill**: Add command descriptions and remove dream workflow
+  ([`2b3e7f1`](https://github.com/ksm0709/pkm/commit/2b3e7f1dc26f30f67ec551fd4cc2bbabdf12505f))
+
+
 ## v2.10.0 (2026-04-06)
 
 ### Chores
