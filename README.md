@@ -1,16 +1,291 @@
-# pkm — Personal Knowledge Management CLI
+# PKM
 
-Obsidian 볼트 기반 제텔카스텐 지식 관리 CLI. 데일리 노트, 원자 노트, wikilink, 시맨틱 검색을 지원합니다.
+**Your Obsidian vault, upgraded into a real workflow.**
 
-## 설치
+PKM is a terminal-first personal knowledge management CLI for people who live in Markdown, think in notes, and want their vault to stay useful over time. It combines fast daily capture, atomic notes, backlinks, tags, semantic search, vault management, and an AI-ready memory layer in one lightweight tool.
 
-### 빠른 설치 (권장)
+Whether you use Obsidian as a personal knowledge base, a work notebook, or a shared context layer for coding agents, PKM helps you capture ideas faster, retrieve them by meaning, and keep your vault organized without leaving the terminal.
+
+---
+
+## Why PKM
+
+Most Markdown note systems start simple and slowly become hard to use:
+
+- daily notes turn into messy timelines
+- good ideas disappear into unsearchable files
+- tags and links drift out of sync
+- context from previous work sessions gets lost
+- AI tools have no durable memory beyond chat history
+
+PKM is designed to fix that.
+
+It gives you a practical command-line layer for your Obsidian vault: quick capture for humans, durable memory for agents, and structure that scales as your notes grow.
+
+---
+
+## Quick start
+
+### Install in one line
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ksm0709/pkm/main/cli/install.sh | bash
 ```
 
-### 소스에서 설치
+### Run the setup wizard
+
+```bash
+pkm setup
+```
+
+The setup flow can:
+
+- install optional semantic search dependencies
+- create or discover your vaults
+- choose a default vault
+- install PKM skill files for agent workflows
+
+### First commands to try
+
+```bash
+pkm daily
+pkm daily add "What I learned today"
+pkm note add "A note worth keeping" --tags pkm,idea
+pkm index
+pkm search "what was that concurrency idea?"
+```
+
+---
+
+## What PKM does
+
+### 1. Daily note workflows that stay lightweight
+
+PKM makes daily notes feel fast instead of ceremonial.
+
+```bash
+pkm daily
+pkm daily add "Shipped the installer fix"
+pkm daily todo "Write release notes"
+pkm daily edit
+pkm daily edit --sub "meeting"
+```
+
+Highlights:
+
+- creates today’s daily note automatically
+- appends timestamped log entries
+- appends timestamped TODOs under a dedicated section
+- supports sub-notes like `2026-04-06-meeting.md`
+- prints daily notes and same-day sub-notes together for quick review
+
+This gives you a frictionless working log without forcing you into a heavy journaling system.
+
+---
+
+### 2. Atomic note management built for actual use
+
+Create small, reusable notes and find them again without memorizing filenames.
+
+```bash
+pkm note add "Postgres MVCC"
+pkm note add "Retry strategy" --tags backend,reliability
+pkm note edit postgres
+pkm note show retry
+pkm note links retry
+pkm note stale --days 30
+pkm note orphans
+```
+
+Highlights:
+
+- creates atomic notes with frontmatter
+- supports tag assignment at creation time
+- lets you open or show notes by title search
+- shows backlinks for linked notes
+- finds stale notes that may need attention
+- finds orphan notes with no wikilink connections
+
+PKM helps your vault become a living system instead of a pile of Markdown files.
+
+---
+
+### 3. Semantic search, not just filename search
+
+When exact wording fails, PKM can search by meaning.
+
+```bash
+pkm index
+pkm search "vector database tradeoffs"
+pkm search "recent debugging lessons" --type semantic --min-importance 7
+pkm search "what did I do in this session?" --session feat-auth
+```
+
+Highlights:
+
+- builds a semantic index of your vault
+- retrieves notes by meaning instead of exact matches
+- supports memory-type filtering
+- supports importance filtering
+- supports session-specific recall
+- warns when your index may be stale
+
+Semantic search is optional during setup because it installs heavier dependencies, but it is one of PKM’s biggest quality-of-life upgrades once your vault gets large.
+
+---
+
+### 4. A real memory layer for AI agents
+
+This is one of PKM’s standout features.
+
+PKM can store structured memories inside your vault so coding agents and assistants can reuse decisions, discoveries, errors, and workflow knowledge across sessions.
+
+```bash
+pkm note add --content "Use WAL mode for concurrent SQLite reads" \
+  --type semantic --importance 8
+
+pkm note add --content "Stopped at the auth middleware refactor" \
+  --type episodic --importance 5 --session feat-auth
+
+pkm search "sqlite concurrency"
+pkm search "auth middleware" --session feat-auth
+pkm consolidate
+pkm consolidate mark 2026-04-05
+```
+
+Memory features:
+
+- supports `semantic`, `episodic`, and `procedural` memory types
+- stores importance scores for ranking and prioritization
+- supports session-scoped recall
+- encourages search-before-store to avoid duplicates
+- surfaces recent memories at agent session start
+- can append summaries back into daily notes
+- supports consolidation of past daily notes into durable memory candidates
+
+If you use Claude Code, Codex, or opencode, PKM gives you a practical persistent memory layer instead of relying on chat transcripts alone.
+
+Full guide: [`docs/agent-memory-policy.md`](docs/agent-memory-policy.md)
+
+---
+
+### 5. Agent hooks and integrations
+
+PKM includes commands for wiring memory into tool-driven workflows.
+
+```bash
+pkm agent hook session-start --format system-reminder
+pkm agent hook turn-start --format system-reminder --session my-task
+pkm agent setup-hooks --tool claude-code
+pkm agent setup-hooks --tool codex
+pkm agent setup-hooks --tool opencode
+```
+
+Highlights:
+
+- injects recent daily context at session start
+- surfaces recent high-importance memories automatically
+- prints lightweight turn-start reminders for active workflows
+- can write or print hook configuration for supported tools
+- installs PKM skill files during setup for agent-friendly usage
+
+This makes PKM useful both as a human note system and as shared context infrastructure for AI-assisted work.
+
+---
+
+### 6. Multi-vault management
+
+PKM is not limited to a single notes folder.
+
+```bash
+pkm vault list
+pkm vault add personal
+pkm vault open personal
+pkm --vault work daily
+```
+
+Highlights:
+
+- discovers vaults automatically from your vault root
+- creates new vaults with a standard PKM structure
+- switches the active vault with one command
+- supports explicit `--vault` overrides
+- can resolve the active vault from local config, environment, git project context, or global config
+- can create git-aware vault names like `@owner--repo`
+
+That last point is especially useful if you want one vault per codebase or project.
+
+---
+
+### 7. Tag navigation and vault maintenance
+
+PKM helps you keep the vault healthy, not just write more into it.
+
+```bash
+pkm tags
+pkm tags show backend
+pkm tags search "backend+reliability"
+pkm tags search "proj-*"
+pkm stats
+```
+
+Highlights:
+
+- lists tags and usage counts
+- opens or creates dedicated tag notes
+- shows all notes associated with a tag
+- supports exact, AND, OR, and glob tag searches
+- shows vault-level stats like notes, dailies, tasks, orphans, unique tags, average links, and index status
+
+---
+
+### 8. Configuration and update flow
+
+PKM keeps setup simple and maintenance straightforward.
+
+```bash
+pkm config set default-vault personal
+pkm config set editor "code --wait"
+pkm config list
+pkm update
+pkm update v2.4.0
+```
+
+Highlights:
+
+- stores global config in `~/.config/pkm/config`
+- lets you set a default vault and preferred editor
+- supports updating to the latest version
+- supports checking out and reinstalling a specific tagged version from a local clone
+- uses `uv tool install` for tool-style installation and upgrades
+
+---
+
+## Example workflow
+
+A typical PKM flow looks like this:
+
+1. Run `pkm setup`
+2. Open today’s note with `pkm daily`
+3. Log progress with `pkm daily add "..."`
+4. Turn a useful insight into an atomic note with `pkm note add`
+5. Build the semantic index with `pkm index`
+6. Retrieve the idea later with `pkm search "..."`
+7. Save a durable lesson as a semantic memory for future sessions
+
+The result is a vault that is easier to write to, easier to search, and more useful tomorrow than it was today.
+
+---
+
+## Installation options
+
+### One-line install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ksm0709/pkm/main/cli/install.sh | bash
+```
+
+### Install from source
 
 ```bash
 git clone https://github.com/ksm0709/pkm ~/repos/pkm
@@ -18,135 +293,75 @@ cd ~/repos/pkm/cli
 uv tool install --editable ".[search]"
 ```
 
-## 초기 설정
-
-```bash
-pkm setup
-```
-
-- 의존성 선택 설치 (search: sentence-transformers ~500MB)
-- vault 경로 설정
-- Claude Code 스킬 자동 설치 (`~/.claude/skills/pkm/`, `~/.agents/skills/pkm/`)
-
-## 주요 명령어
-
-```bash
-# 데일리 노트
-pkm daily                             # 오늘의 데일리 노트 출력 (서브노트 포함)
-pkm daily add "학습 내용"              # 타임스탬프 항목 추가 (## TODO 위)
-pkm daily todo "할 일"                 # TODO 섹션에 추가
-pkm daily edit                        # 에디터로 오늘 데일리 노트 오픈
-pkm daily edit --sub                  # 서브노트 생성 후 에디터로 오픈 (제목 프롬프트)
-pkm daily edit --sub "회의"           # 서브노트 직접 생성 (daily/YYYY-MM-DD-회의.md)
-
-# 노트 관리
-pkm note add "Note Title" --tags t1,t2  # 원자 노트 생성
-pkm note edit <query>                   # 제목 검색 후 에디터로 오픈
-pkm note show <query>                   # 제목 검색 후 내용 출력
-pkm note stale --days 30               # 30일 이상 미수정 노트
-pkm note orphans                        # wikilink 없는 고립 노트
-
-# 시맨틱 검색
-pkm index                             # 검색 인덱스 빌드
-pkm search "MVCC 동시성"              # 시맨틱 검색
-
-# Vault 관리
-pkm vault list                        # vault 목록
-pkm vault add <name>                  # 새 vault 생성
-pkm vault open <name>                 # 기본 vault 전환
-
-# 설정
-pkm config set default-vault <name>  # 기본 vault 설정
-pkm config set editor "code --wait"  # 에디터 설정
-pkm config get editor                # 현재 에디터 확인
-pkm config list                      # 전체 설정 목록
-
-# 유지보수
-pkm stats                            # vault 통계
-pkm tags                             # 태그 목록 및 사용 수
-
-# 업데이트
-pkm update                           # 최신 버전으로 업데이트
-pkm update v1.0.0                    # 특정 버전으로 업데이트
-```
-
-## 서브노트 구조
-
-데일리 노트는 서브노트를 지원합니다:
-
-```
-daily/
-├── 2026-04-05.md           # 메인 데일리 노트
-├── 2026-04-05-회의.md      # 서브노트
-└── 2026-04-05-아이디어.md  # 서브노트
-```
-
-`pkm daily` 실행 시 메인 노트 아래에 모든 서브노트가 순차 출력됩니다.
-
-## 에디터 설정
-
-`pkm daily edit` / `pkm note edit`에서 사용할 에디터 우선순위:
-
-1. `pkm config set editor <cmd>` 설정값
-2. `$VISUAL` 환경변수
-3. `$EDITOR` 환경변수
-4. `nano` (기본값)
-
-```bash
-pkm config set editor "vim"
-pkm config set editor "code --wait"
-```
-
-## LLM Agent Memory Layer
-
-PKM doubles as a persistent memory layer for LLM agents (Claude Code, Codex, opencode, etc.). Agents store decisions, findings, and errors as atomic notes; semantic search retrieves relevant context at session start.
-
-```bash
-# Store a memory
-pkm memory store "content" --type semantic --importance 7
-pkm memory store "content" --type episodic --importance 5 --session my-session
-
-# Search before storing (avoid duplicates)
-pkm memory search "topic" --top 5
-
-# Recall session memories
-pkm memory session my-session
-
-# Inject session context into agent prompt
-pkm agent hook session-start --format system-reminder
-
-# Set up hooks for your agent runtime
-pkm agent setup-hooks --agent claude-code   # writes ~/.claude/settings.json
-pkm agent setup-hooks --agent codex
-pkm agent setup-hooks --agent opencode
-
-# Consolidate daily episodic notes into semantic memories
-pkm consolidate --run
-```
-
-See [`docs/agent-memory-policy.md`](docs/agent-memory-policy.md) for the full usage guide including importance scoring, memory types, and hook configuration.
-
-## 구조
-
-```
-pkm/
-├── cli/          # Python 패키지 (pkm CLI)
-│   ├── src/pkm/
-│   │   ├── commands/   # daily, note, vault, config, search, ...
-│   │   └── ...
-│   └── tests/
-├── skill/        # Claude Code 스킬 (SKILL.md, workflows, references)
-└── README.md
-```
-
-## 개발
+### Development setup
 
 ```bash
 cd cli
-uv venv && uv pip install -e ".[search,dev]"
+uv venv
+uv pip install -e ".[search,dev]"
 pytest tests/
 ```
 
-## 버전
+Requirements:
 
-현재: v2.0.0
+- Python 3.10+
+- [`uv`](https://github.com/astral-sh/uv)
+
+---
+
+## Repository layout
+
+```text
+pkm/
+├── cli/          # Python package and CLI implementation
+│   ├── src/pkm/
+│   │   ├── commands/   # daily, note, search, vault, config, agent, update...
+│   │   └── ...
+│   └── tests/
+├── docs/         # usage and policy docs
+├── skill/        # PKM skill files for agent workflows
+└── README.md
+```
+
+---
+
+## Why people end up liking PKM
+
+Because it solves a real workflow problem:
+
+- you can capture ideas quickly
+- you can find them later without remembering exact words
+- you can keep notes linked and maintained
+- you can manage multiple vaults without ad hoc shell scripts
+- you can give AI tools a durable memory layer that lives in your own Markdown files
+
+PKM is opinionated, practical, and built for people who want their notes to stay useful.
+
+---
+
+## Contributing
+
+Contributions are welcome.
+
+If you want to work on PKM locally:
+
+```bash
+cd cli
+uv venv
+uv pip install -e ".[search,dev]"
+pytest tests/
+```
+
+Good contribution areas include:
+
+- improving onboarding and docs
+- expanding note and vault workflows
+- search quality and ranking
+- agent-memory integrations
+- UX polish for terminal output
+
+---
+
+## License
+
+See the repository for license details.
