@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.12.0 (2026-04-06)
+
+### Features
+
+- Add pkm vault setup command for subdirectory vault declaration
+  ([`1ea5177`](https://github.com/ksm0709/pkm/commit/1ea517763dee0aae915c2d2d1081b608bbc480f2))
+
+
 ## v2.11.0 (2026-04-06)
 
 ### Features
