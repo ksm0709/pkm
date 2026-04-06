@@ -2,6 +2,25 @@
 
 <!-- version list -->
 
+## v2.9.0 (2026-04-06)
+
+### Bug Fixes
+
+- Sync commands/skills on setup and update, removing stale files
+  ([`ace07d3`](https://github.com/ksm0709/pkm/commit/ace07d370a90422dcbb9611641614724b7de695e))
+
+- Use git pull --ff-only to avoid divergent branch prompt
+  ([`9450ef3`](https://github.com/ksm0709/pkm/commit/9450ef3c41075635f295237fd624fe0f95006c2a))
+
+### Features
+
+- Restore dream as meta-workflow, add distill-daily and prune-merge-split
+  ([`f94cb5d`](https://github.com/ksm0709/pkm/commit/f94cb5dc9188c8c800a044c0122616936086a5c1))
+
+- Setup remembers previous choices, skips prompts on reuse
+  ([`3e8028d`](https://github.com/ksm0709/pkm/commit/3e8028dc1455ea800f76ec1ff936a3938f49fcd0))
+
+
 ## v2.8.0 (2026-04-06)
 
 ### Features
