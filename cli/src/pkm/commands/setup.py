@@ -107,12 +107,15 @@ def setup_cmd() -> None:
         shutil.copytree(str(skill_src), str(skill_dest_agents), dirs_exist_ok=True)
         console.print("[green]✓ PKM skill installed to ~/.agents/skills/pkm/[/green]")
 
-        # Install Claude Code slash commands (/pkm:<workflow>)
+        # Install slash commands to both Claude Code and Agents
         commands_src = skill_src / "commands" / "pkm"
         if commands_src.is_dir():
-            commands_dest = Path.home() / ".claude" / "commands" / "pkm"
-            shutil.copytree(str(commands_src), str(commands_dest), dirs_exist_ok=True)
-            console.print("[green]✓ PKM commands installed (~/.claude/commands/pkm/)[/green]")
+            for dest_base, label in [
+                (Path.home() / ".claude" / "commands" / "pkm", "~/.claude/commands/pkm/"),
+                (Path.home() / ".agents" / "commands" / "pkm", "~/.agents/commands/pkm/"),
+            ]:
+                shutil.copytree(str(commands_src), str(dest_base), dirs_exist_ok=True)
+                console.print(f"[green]✓ PKM commands installed ({label})[/green]")
     else:
         console.print("[yellow]⚠ Skill files not found in package — skipping skill install[/yellow]")
 

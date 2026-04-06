@@ -237,8 +237,9 @@ Read `~/.claude/skills/pkm/workflows/<name>.md` and execute the workflow describ
 
 **즉시 배포:**
 ```bash
-mkdir -p ~/.claude/commands/pkm
+mkdir -p ~/.claude/commands/pkm ~/.agents/commands/pkm
 cp skill/commands/pkm/<name>.md ~/.claude/commands/pkm/<name>.md
+cp skill/commands/pkm/<name>.md ~/.agents/commands/pkm/<name>.md
 ```
 
 ### Phase 3: 완료
@@ -264,7 +265,7 @@ SKILL.md 업데이트 완료
 ## Edge Cases
 - 이름이 기존 워크플로우와 충돌 → 다른 이름 제안
 - Primary Trigger가 기존 워크플로우와 겹침 → 경고 후 확인
-- `~/.claude/commands/pkm/` 없으면 자동 생성
+- `~/.claude/commands/pkm/`, `~/.agents/commands/pkm/` 없으면 자동 생성
 - Ambiguity가 3라운드 연속 ±5% 이내로 정체 → "개념 자체를 재정의해봅시다" 리프레이밍
 
 ## Expected Output
@@ -272,3 +273,4 @@ SKILL.md 업데이트 완료
 - `skill/commands/pkm/<name>.md` (슬래시 커맨드 래퍼)
 - `skill/SKILL.md` (테이블 업데이트)
 - `~/.claude/commands/pkm/<name>.md` (즉시 배포)
+- `~/.agents/commands/pkm/<name>.md` (즉시 배포)
