@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.7.0 (2026-04-06)
+
+### Features
+
+- Add /pkm:add-workflow wizard command
+  ([`2fcbf7b`](https://github.com/ksm0709/pkm/commit/2fcbf7be77b43db58026b95f472abc857ca54fb3))
+
+
 ## v2.6.1 (2026-04-06)
 
 ### Bug Fixes
