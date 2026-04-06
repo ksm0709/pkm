@@ -1,105 +1,98 @@
-# Zettel Loop — Knowledge Production Pipeline
+# Zettel Loop — Knowledge Production Orchestrator
 
 ## Purpose
-Orchestrate the full knowledge production pipeline: from marked daily notes through promotion,
-linking, and tagging into the knowledge graph. This loop is strictly additive — it creates and
-connects knowledge; it never merges, splits, or deletes notes.
+Run the canonical batch workflow for turning consolidated daily captures into connected, reusable knowledge notes. This loop extracts new knowledge, integrates it into the note graph, and creates structure notes when clusters become strong enough.
 
 ## Trigger
-- **Primary:** "zettel-loop", "knowledge production", "promote knowledge"
-- **Secondary:** "distill and link", "nightly production", "promote and connect"
+- **Primary:** "zettel-loop"
+- **Secondary:** "zettel", "knowledge loop", "knowledge production", "promote and connect"
 
 ## Pipeline
 
 ```
-[1/4] consolidate    — identify and mark daily notes ready for promotion
-[2/4] distill-daily  — promote marked dailies → permanent knowledge notes
-[3/4] auto-linking   — add wikilinks to newly promoted and disconnected notes
-[4/4] auto-tagging   — add tags to newly promoted and untagged notes
+[1/5] consolidate       — stage eligible dailies for promotion
+[2/5] distill-daily     — promote daily → durable notes
+[3/5] auto-linking      — connect newly promoted notes into the graph
+[4/5] auto-tagging      — normalize tags on newly promoted notes
+[5/5] structure-pass    — create or update structure notes when note clusters emerge
 ```
-
-## Ownership Boundaries
-
-**zettel-loop owns:**
-- Promoting daily captures to atomic notes
-- Adding wikilinks to newly promoted notes so they enter the graph correctly
-- Tagging newly promoted notes so they are discoverable
-- Creating structure notes (topic overviews, indexes) where a cluster needs one
-
-**zettel-loop does NOT own:**
-- Merge: combining existing notes (→ `refine-loop`)
-- Split: decomposing existing notes (→ `refine-loop`)
-- Delete: removing stale or absorbed notes (→ `refine-loop`)
-- Orphan repair on legacy notes (→ `refine-loop`)
-
-`consolidate` is the staging step for `zettel-loop`. It identifies and marks daily notes that are
-ready for promotion; the rest of the pipeline then acts on those marks.
 
 ## Tools
 - `pkm consolidate` / `pkm consolidate mark`
-- `pkm note add`, `pkm search`, `pkm orphans`
-- Read, Edit, Glob
-- (For tools specific to each step, refer to the corresponding sub-workflow)
+- `pkm note add`, `pkm search`, `pkm note show`, `pkm note links`
+- `pkm note orphans`, `pkm tags show`
+- Read, Edit, Write, Glob
 
 ## Principles
-- Each step runs independently — a failure in one step does not halt the entire pipeline
-- After completion, a per-step result summary must be printed (✓/⚠/✗)
-- Note modifications are performed automatically (no user approval required)
-- **Today's daily is never modified or marked under any circumstances**
-- No destructive operations: this loop only adds knowledge to the graph
+- Production only: create, connect, and clarify knowledge, but do not merge, split, or delete notes
+- Newly promoted notes must be linked and tagged before the loop is considered complete
+- Structure notes are created only when a meaningful cluster emerges; they are not generic tag indexes
+- Today's daily is never modified or marked
 
 ## Execution Protocol
 
 Each step is executed in order. On failure:
 1. Capture the error message and include it in the final summary
-2. Continue to the next step
-3. Print a consolidated summary after all steps complete
+2. Continue to the next step when the failure is local to that step
+3. Stop only if the workflow can no longer promote or connect notes safely
 
 ## Step References
 
 | Step | Workflow | Description |
 |------|----------|-------------|
-| 1 | `workflows/consolidate.md` | Identify and mark unconsolidated daily candidates |
-| 2 | `workflows/distill-daily.md` | Extract and promote permanent notes from marked dailies |
-| 3 | `workflows/auto-linking.md` | Add wikilinks to newly promoted and disconnected notes |
-| 4 | `workflows/auto-tagging.md` | Tag newly promoted and untagged notes |
+| 1 | `workflows/consolidate.md` | Stage daily notes that are ready for promotion |
+| 2 | `workflows/distill-daily.md` | Promote daily captures into durable notes |
+| 3 | `workflows/auto-linking.md` | Add wikilinks so new notes enter the graph |
+| 4 | `workflows/auto-tagging.md` | Correct and normalize tags for newly promoted notes |
+| 5 | structure-pass | Create or update authored structure notes for dense note clusters |
+
+## Structure-Pass Rules
+
+- Consider a structure note when 4+ notes repeatedly cluster around one topic
+- Each linked note in a structure note must include one line explaining why it belongs
+- Structure notes are maps for writing and navigation, not just tag dumps
+- Structure note creation is allowed here because it increases the usability of newly created knowledge
 
 ## Example Flow
 
 ```
 /pkm:zettel-loop triggered
 
-[1/4] consolidate...
+[1/5] consolidate...
   → workflows/consolidate.md executed
   → 4 dailies marked ✓
 
-[2/4] distill-daily...
+[2/5] distill-daily...
   → workflows/distill-daily.md executed
-  → 3 permanent notes created ✓
+  → 3 durable notes created ✓
 
-[3/4] auto-linking...
+[3/5] auto-linking...
   → workflows/auto-linking.md executed
-  → 7 wikilinks added ✓
+  → 6 wikilinks added to new notes ✓
 
-[4/4] auto-tagging...
+[4/5] auto-tagging...
   → workflows/auto-tagging.md executed
-  → 5 notes tagged ✓
+  → 3 promoted notes retagged ✓
+
+[5/5] structure-pass...
+  → 1 structure note created for recurring workflow notes ✓
 
 ✅ zettel-loop complete
   [1] consolidate:    ✓ 4 dailies marked
   [2] distill-daily:  ✓ 3 notes created
-  [3] auto-linking:   ✓ 7 links added
-  [4] auto-tagging:   ✓ 5 notes tagged
+  [3] auto-linking:   ✓ 6 links added
+  [4] auto-tagging:   ✓ 3 notes normalized
+  [5] structure-pass: ✓ 1 structure note created
 ```
 
 ## Edge Cases
-- No consolidate targets: report "no unconsolidated dailies to mark" then proceed to step 2
-- No distill-daily promotion candidates: report "no insights to promote" then proceed to step 3
-- All steps fail: print each error summary then guide the user to run individual workflows manually
-- No step has any work to do: report "already up to date — no targets for any step"
+- No consolidate targets: report "no unconsolidated dailies to stage" and continue to distillation
+- No promotion candidates: report "no knowledge to promote" and skip linking/tagging on absent notes
+- No structure-note candidate: report "no cluster strong enough for a structure note"
+- If linking finds no valid neighbor, keep at least a source link to the originating daily and report it
 
 ## Expected Output
 - ✓/⚠/✗ result per step
-- Count of items created/modified/found
-- Error messages for failed steps (if any)
-- Total elapsed time (optional)
+- Count of notes created, links added, tags corrected, and structure notes created
+- Error messages for failed steps
+- Remaining notes that still need manual judgment

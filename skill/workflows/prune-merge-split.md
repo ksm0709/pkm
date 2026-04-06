@@ -4,9 +4,9 @@
 
 ## Purpose
 Maintain note quality in the knowledge base:
-- **Prune**: remove old, disconnected stale notes
-- **Merge**: consolidate note pairs with duplicate content
-- **Split**: decompose notes covering multiple topics into atomic notes
+- **Prune**: remove notes that are empty or fully absorbed elsewhere
+- **Merge**: consolidate note pairs with the same claim and link neighborhood
+- **Split**: decompose notes covering multiple independently reusable concepts into atomic notes
 
 ## Trigger
 - **Primary:** "prune", "merge", "split", "refine", "prune-merge-split"
@@ -33,18 +33,19 @@ Maintain note quality in the knowledge base:
 ### 1. Prune (removal)
 Identify stale candidates:
 1. `pkm orphans` → list notes with no links
-2. Check last modified date for each note → filter for 6+ months
+2. Confirm the note is empty or fully absorbed elsewhere with zero unique information remaining
 3. Report candidates (in refine-loop: list only / standalone: prompt for deletion confirmation)
 
 ### 2. Merge (consolidation)
 Consolidate duplicate notes:
 1. Identify similar note pairs using `pkm search` + Read
-2. Merge content into the more complete note
-3. Replace merged note with a `→ [[consolidated note name]]` redirect wikilink
+2. Confirm the pair shares the same core claim and link neighborhood, not just topic overlap
+3. Merge content into the more complete note
+4. Replace merged note with a `→ [[consolidated note name]]` redirect wikilink
 
 ### 3. Split (decomposition / atomization)
 Decompose large notes:
-1. Analyze note structure with Read → identify independent topics
+1. Analyze note structure with Read → identify independently reusable concepts
 2. Create new atomic note for each topic (`pkm note add` or Write)
 3. Convert original note into a table of contents / link collection
 
@@ -52,20 +53,21 @@ Decompose large notes:
 
 ```
 1. pkm orphans → ["old-scratch-2023.md", "temp-note.md"]
-2. Check modified date → "old-scratch-2023.md" 8 months old → Prune candidate
-3. pkm search → "perf-metrics.md" ↔ "benchmark-records.md" similarity 0.87 → Merge
+2. Confirm "old-scratch-2023.md" has no unique information left → Prune candidate
+3. pkm search + Read → "perf-metrics.md" ↔ "benchmark-records.md" share the same claim and neighbors → Merge
 4. Read "docker-setup-and-deploy.md" → 2 topics found → Split
    → create "docker-setup.md" + "docker-deploy.md"
    → convert original to a link list pointing to both notes
 
 Report:
-  Prune candidates: 1 (pending deletion)
+  Prune candidates: 1 (pending deletion under strict criteria)
   Merged: 1 pair (perf-metrics ← benchmark-records)
   Split: 1 (docker-setup-and-deploy → 2 notes)
 ```
 
 ## Edge Cases
 - If no candidates found: report "no notes to refine — knowledge base is healthy"
+- If notes are similar but do not share the same claim, do not merge them
 - If original deletion fails after Merge: add redirect wikilink only and continue
 - If new filename conflicts during Split: append date suffix (`note-name-2026-04.md`)
 

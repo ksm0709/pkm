@@ -1,31 +1,32 @@
-# Dream — Deprecated Compatibility Alias
+# Dream — Deprecated Alias for Refine Loop
 
-> **DEPRECATED:** `dream` is a compatibility alias for `refine-loop`.
-> The canonical top-level workflows are now `zettel-loop` (knowledge production) and
-> `refine-loop` (cleanup/reduction). Use those names going forward.
->
-> This alias is retained for one transition cycle only and will be removed in a future release.
+## Purpose
+Compatibility surface for older `dream` invocations.
+Use `refine-loop` as the canonical cleanup/reduction orchestrator.
+
+## Trigger
+- **Primary:** "dream"
+- **Secondary:** "nightly review", "nightly consolidation"
+
+## Status
+
+- Deprecated for one transition cycle
+- Kept only to avoid breaking existing trigger habits
+- Not a canonical workflow name anymore
 
 ## Redirect
 
-When the user invokes `dream`, execute `workflows/refine-loop.md` instead.
+- Canonical cleanup path: `workflows/refine-loop.md`
+- Canonical production path: `workflows/zettel-loop.md`
 
-The old `dream` pipeline mapped to the following canonical split:
+## Principles
+- Keep old invocations working, but steer users to `refine-loop`
+- Do not describe `dream` as canonical in tables or docs
+- Today's daily remains protected under both canonical loops
 
-| Old dream step | New canonical home |
-|----------------|--------------------|
-| consolidate (mark) | `zettel-loop` step 1 |
-| distill-daily (promote) | `zettel-loop` step 2 |
-| auto-linking (new notes) | `zettel-loop` step 3 |
-| auto-tagging (new notes) | `zettel-loop` step 4 |
-| health-check | `refine-loop` step 1 |
-| prune-merge-split | `refine-loop` step 4 |
+## Execution
+When `dream` is triggered, execute `workflows/refine-loop.md`.
 
-If the user wants the full production + cleanup pipeline in one pass, run `zettel-loop` first,
-then `refine-loop`.
-
-## Migration Note
-
-- `/pkm:dream` → use `/pkm:refine-loop` (cleanup) or `/pkm:zettel-loop` (production)
-- Trigger word "dream" → routes to `refine-loop` (deprecated secondary trigger)
-- All workflow indexes and tables now list `zettel-loop` and `refine-loop` as canonical
+## Expected Output
+- A deprecation redirect to `refine-loop`
+- Compatibility for one transition cycle

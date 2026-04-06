@@ -30,7 +30,7 @@ Phase 2 (marking): pkm consolidate mark YYYY-MM-DD
   → set consolidated: true in the daily's frontmatter
 
 Phase 3 (zettel-loop): run Zettel Loop workflow
-  → extract atomic notes from consolidated: true dailies
+  → promote and connect knowledge from consolidated: true dailies
 ```
 
 ## Edge Cases
@@ -58,7 +58,7 @@ pkm consolidate mark 2026-04-04
 ## Safety Rules
 - Today's daily can never be marked (actively in use)
 - Marking only sets `consolidated: true` in frontmatter (no content changes)
-- If Dream fails, marking state is not persisted — safe to retry
+- If Zettel Loop fails, marking state can be retried safely on the next run
 
 ## Expected Output
 - Candidate list: date, entry count (Phase 1)
