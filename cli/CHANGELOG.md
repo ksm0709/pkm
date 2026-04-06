@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.5.3 (2026-04-06)
+
+### Bug Fixes
+
+- Setup and update work without a local source dir (curl|bash installs)
+  ([`915a785`](https://github.com/ksm0709/pkm/commit/915a7855545d7f71a18d88323976519ff82f6c10))
+
+
 ## v2.5.2 (2026-04-06)
 
 ### Bug Fixes
