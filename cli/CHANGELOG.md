@@ -2,6 +2,22 @@
 
 <!-- version list -->
 
+## v2.6.1 (2026-04-06)
+
+### Bug Fixes
+
+- Update setup.py help text to reflect renamed commands
+  ([`74b8baf`](https://github.com/ksm0709/pkm/commit/74b8baf8b1ffde8723f4cfa6cd5778bcf8a9c3e5))
+
+### Refactoring
+
+- Rename ambiguous workflow names for clarity
+  ([`2f96061`](https://github.com/ksm0709/pkm/commit/2f9606113a899aaea2d42e2cf1fc4c4a837eb4c0))
+
+- Rename link-notes → auto-linking
+  ([`92d8de1`](https://github.com/ksm0709/pkm/commit/92d8de1cc6ae16f7b56ea2b8f18b1b08dbc927f4))
+
+
 ## v2.6.0 (2026-04-06)
 
 ### Features
