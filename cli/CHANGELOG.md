@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v2.8.0 (2026-04-06)
+
+### Features
+
+- Install commands to ~/.agents/commands/pkm/ as well
+  ([`d59ed81`](https://github.com/ksm0709/pkm/commit/d59ed8116638af07fbe0b98fd6a3e3677981a11e))
+
+### Refactoring
+
+- Add-workflow now uses Socratic interview with ambiguity scoring
+  ([`6ae792a`](https://github.com/ksm0709/pkm/commit/6ae792a782a33dff3da24c84d7dd46dff2bd65b6))
+
+
 ## v2.7.0 (2026-04-06)
 
 ### Features
