@@ -43,5 +43,6 @@ state/
 AGENTS.md
 CLAUDE.md
 .context/*
+!.context/config.jsonc
 !.context/memory
 !.context/memory/**

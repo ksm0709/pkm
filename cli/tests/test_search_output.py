@@ -26,7 +26,7 @@ def vault_env(tmp_vault: VaultConfig, monkeypatch):
 @pytest.fixture
 def indexed_vault(vault_env, tmp_vault, runner):
     """Build search index for the tmp vault before tests."""
-    result = runner.invoke(main, ["index"])
+    runner.invoke(main, ["index"])
     return tmp_vault
 
 
@@ -107,7 +107,7 @@ def test_search_json_is_valid_parseable(runner, indexed_vault):
         if line.startswith("* ") or (
             json_lines
             and line == ""
-            and any(l.startswith("* ") for l in lines[lines.index(line) :])
+            and any(ln.startswith("* ") for ln in lines[lines.index(line) :])
         ):
             break
         json_lines.append(line)

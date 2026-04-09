@@ -2,16 +2,11 @@
 
 from __future__ import annotations
 
-import subprocess
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from pkm.config import (
-    VaultConfig,
     VaultSuggestion,
-    _find_git_root,
     discover_vaults,
     ensure_vault_exists,
     get_git_vault_name,

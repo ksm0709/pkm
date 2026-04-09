@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import date, timedelta
 from pathlib import Path
 
-import pytest
 from click.testing import CliRunner
 
 from pkm.commands.consolidate import (

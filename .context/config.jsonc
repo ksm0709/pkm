@@ -1,0 +1,34 @@
+{
+  // Context Plugin Configuration
+  // See: https://github.com/ksm0709/context
+  "knowledge": {
+    "dir": ".context/memory",
+    "sources": ["AGENTS.md"]
+  },
+  "omx": {
+    // Inject turn-end after native turn-complete via tmux send-keys
+    "turnEnd": {
+      "strategy": "turn-complete-sendkeys"
+    }
+  },
+  "smokeChecks": [
+    {
+      // Fast non-ML tests (~0.5s). ML/search tests (test_hooks, test_agent_hooks,
+      // test_search_*) are excluded because they load sentence-transformers (~70s).
+      // Run the full suite manually: cd cli && .venv/bin/python -m pytest tests/
+      "name": "tests",
+      "command": "cd /home/taeho/repos/pkm/cli && .venv/bin/python -m pytest tests/test_daily.py tests/test_notes.py tests/test_config_commands.py tests/test_vault_commands.py tests/test_vault_naming.py tests/test_wikilinks.py tests/test_backlinks.py tests/test_tag_commands.py tests/test_maintenance.py tests/test_consolidate.py tests/test_links.py -q --tb=short 2>&1 | tail -5",
+      "signal": ".context/.check-tests-passed"
+    },
+    {
+      "name": "lint",
+      "command": "ruff check /home/taeho/repos/pkm/cli/src/pkm/ /home/taeho/repos/pkm/cli/tests/ 2>&1",
+      "signal": ".context/.check-lint-passed"
+    },
+    {
+      "name": "format",
+      "command": "ruff format --check /home/taeho/repos/pkm/cli/src/pkm/ /home/taeho/repos/pkm/cli/tests/ 2>&1 | head -5",
+      "signal": ".context/.check-format-passed"
+    }
+  ]
+}

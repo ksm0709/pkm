@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
 
 from pkm.cli import main
-from pkm.config import VaultConfig
 
 
 @pytest.fixture
@@ -132,7 +130,6 @@ def test_daily_add_no_todo_section(cli_runner, tmp_vault):
 # daily edit helpers
 # ---------------------------------------------------------------------------
 
-import types as _types
 
 
 class _FakeProc:

@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 
-import pytest
 
 from pkm.config import VaultConfig
 from pkm.wikilinks import (
     count_backlinks,
     extract_links,
-    find_backlinks,
     find_orphans,
     resolve_link,
 )

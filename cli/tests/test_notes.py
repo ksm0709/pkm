@@ -10,7 +10,6 @@ import pytest
 from click.testing import CliRunner
 
 from pkm.cli import main
-from pkm.config import VaultConfig
 
 
 @pytest.fixture(autouse=True)
