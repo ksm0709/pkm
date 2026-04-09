@@ -20,7 +20,7 @@ console = Console()
 
 def ensure_tag_note(vault: VaultConfig, tag_name: str) -> Path:
     """Ensure a tag note exists in tags/ dir, creating it lazily if needed."""
-    if not re.match(r'^[\w\-. ]+$', tag_name):
+    if not re.match(r"^[\w\-. ]+$", tag_name):
         raise click.BadParameter(f"Invalid tag name: {tag_name!r}")
     tag_path = (vault.tags_dir / f"{tag_name}.md").resolve()
     if not str(tag_path).startswith(str(vault.tags_dir.resolve())):
@@ -122,7 +122,13 @@ def show(ctx: click.Context, tag: str) -> None:
     if body:
         console.print(Panel(body, title=header, border_style="green"))
     else:
-        console.print(Panel("[dim]No description yet. Edit with: pkm tags edit " + tag + "[/dim]", title=header, border_style="green"))
+        console.print(
+            Panel(
+                "[dim]No description yet. Edit with: pkm tags edit " + tag + "[/dim]",
+                title=header,
+                border_style="green",
+            )
+        )
 
     # Show notes with this tag
     notes = _collect_notes_with_tag(vault, tag)
@@ -131,7 +137,9 @@ def show(ctx: click.Context, tag: str) -> None:
         console.print(f"\n[dim]No notes found with tag '{tag}'[/dim]")
         return
 
-    table = Table(title=f"Notes tagged '{tag}'", show_header=True, header_style="bold cyan")
+    table = Table(
+        title=f"Notes tagged '{tag}'", show_header=True, header_style="bold cyan"
+    )
     table.add_column("Title", style="cyan")
     table.add_column("Description", style="dim")
     table.add_column("Path", style="dim")
@@ -164,7 +172,7 @@ def search(ctx: click.Context, pattern: str) -> None:
 
     # Parse pattern
     # Single + is AND operator (but ++ in tag names like c++ is preserved)
-    and_parts = re.split(r'(?<!\+)\+(?!\+)', pattern)
+    and_parts = re.split(r"(?<!\+)\+(?!\+)", pattern)
     if len(and_parts) > 1:
         # AND: note must have ALL tags
         required_tags = [t.strip() for t in and_parts if t.strip()]
@@ -178,8 +186,7 @@ def search(ctx: click.Context, pattern: str) -> None:
     elif "*" in pattern or "?" in pattern:
         # Glob: match tag names
         matched = [
-            n for n in all_notes
-            if any(fnmatch.fnmatch(t, pattern) for t in n.tags)
+            n for n in all_notes if any(fnmatch.fnmatch(t, pattern) for t in n.tags)
         ]
         mode = f"glob({pattern})"
     else:
@@ -191,7 +198,9 @@ def search(ctx: click.Context, pattern: str) -> None:
         console.print(f"[dim]No notes found matching {mode}[/dim]")
         return
 
-    table = Table(title=f"Tag Search: {mode}", show_header=True, header_style="bold cyan")
+    table = Table(
+        title=f"Tag Search: {mode}", show_header=True, header_style="bold cyan"
+    )
     table.add_column("Title", style="cyan")
     table.add_column("Tags", style="green")
     table.add_column("Path", style="dim")

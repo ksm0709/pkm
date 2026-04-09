@@ -26,11 +26,11 @@ def mock_model(monkeypatch):
             import numpy as np
 
             texts_list = texts if isinstance(texts, list) else [texts]
-            return np.array(
-                [[hash(t) % 100 / 100.0] * 384 for t in texts_list]
-            )
+            return np.array([[hash(t) % 100 / 100.0] * 384 for t in texts_list])
 
-    monkeypatch.setattr("pkm.search_engine._require_transformers", lambda name: FakeModel())
+    monkeypatch.setattr(
+        "pkm.search_engine._require_transformers", lambda name: FakeModel()
+    )
 
 
 @pytest.fixture
@@ -73,7 +73,11 @@ def test_search_command(cli_runner, tmp_vault: VaultConfig, mock_model):
     assert result.exit_code == 0, result.output
 
     # Should show a table with at least rank column
-    assert "#" in result.output or "rank" in result.output.lower() or "Title" in result.output
+    assert (
+        "#" in result.output
+        or "rank" in result.output.lower()
+        or "Title" in result.output
+    )
 
 
 def test_search_memory_type_filter(cli_runner, tmp_vault: VaultConfig, mock_model):
@@ -97,7 +101,9 @@ def test_search_recency_weight(cli_runner, tmp_vault: VaultConfig, mock_model):
     assert result.exit_code == 0, result.output
 
 
-def test_search_session_filter(cli_runner, tmp_vault: VaultConfig, mock_model, tmp_path):
+def test_search_session_filter(
+    cli_runner, tmp_vault: VaultConfig, mock_model, tmp_path
+):
     """pkm search --session returns only notes with matching session_id."""
     # Create a note with session_id in tmp_vault
     session_note = tmp_vault.notes_dir / "2026-01-01-session-test-note.md"
@@ -125,4 +131,8 @@ def test_search_stale_warning(cli_runner, tmp_vault: VaultConfig, mock_model):
 
     result = cli_runner("search", "something")
     assert result.exit_code == 0, result.output
-    assert "Warning" in result.output or "out of date" in result.output or "stale" in result.output.lower()
+    assert (
+        "Warning" in result.output
+        or "out of date" in result.output
+        or "stale" in result.output.lower()
+    )

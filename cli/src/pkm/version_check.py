@@ -11,7 +11,7 @@ from urllib.request import urlopen
 GITHUB_REPO = "ksm0709/pkm"
 CACHE_FILE = Path.home() / ".cache" / "pkm" / "version_check.json"
 CACHE_TTL = 86400  # 24 hours
-FETCH_TIMEOUT = 2   # seconds
+FETCH_TIMEOUT = 2  # seconds
 
 
 def _parse_version(v: str) -> tuple[int, ...]:

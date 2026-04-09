@@ -9,19 +9,19 @@ from pkm.config import VaultConfig
 
 # Skip ![[embeds]] — use negative lookbehind for !
 # Match [[target]] and [[target|alias]] — capture only target
-_LINK_PATTERN = re.compile(r'(?<!\!)\[\[([^\]|]+?)(?:\|[^\]]+?)?\]\]')
-_CODE_BLOCK = re.compile(r'```.*?```', re.DOTALL)
+_LINK_PATTERN = re.compile(r"(?<!\!)\[\[([^\]|]+?)(?:\|[^\]]+?)?\]\]")
+_CODE_BLOCK = re.compile(r"```.*?```", re.DOTALL)
 
 
 def extract_links(text: str) -> list[str]:
     """Extract all wikilink targets from text, deduped, code blocks excluded."""
-    text = _CODE_BLOCK.sub('', text)
+    text = _CODE_BLOCK.sub("", text)
     targets = []
     seen: set[str] = set()
     for match in _LINK_PATTERN.finditer(text):
         target = match.group(1).strip()
         # Strip .md extension
-        if target.endswith('.md'):
+        if target.endswith(".md"):
             target = target[:-3]
         if target not in seen:
             seen.add(target)
@@ -58,8 +58,8 @@ def find_backlinks(vault: VaultConfig, note_id: str) -> list[Path]:
     for d in dirs:
         if not d.is_dir():
             continue
-        for md_file in sorted(d.rglob('*.md')):
-            text = md_file.read_text(encoding='utf-8')
+        for md_file in sorted(d.rglob("*.md")):
+            text = md_file.read_text(encoding="utf-8")
             links = extract_links(text)
             if note_id in links:
                 result.append(md_file)
@@ -74,15 +74,15 @@ def count_backlinks(vault: VaultConfig) -> dict[str, int]:
     if not vault.notes_dir.is_dir():
         return {}
 
-    note_ids = [f.stem for f in vault.notes_dir.glob('*.md')]
+    note_ids = [f.stem for f in vault.notes_dir.glob("*.md")]
     counts: dict[str, int] = {note_id: 0 for note_id in note_ids}
 
     dirs = [vault.daily_dir, vault.notes_dir, vault.tasks_dir]
     for d in dirs:
         if not d.is_dir():
             continue
-        for md_file in sorted(d.rglob('*.md')):
-            text = md_file.read_text(encoding='utf-8')
+        for md_file in sorted(d.rglob("*.md")):
+            text = md_file.read_text(encoding="utf-8")
             links = extract_links(text)
             for link in links:
                 if link in counts:
@@ -99,8 +99,8 @@ def find_orphans(vault: VaultConfig) -> list[Path]:
     backlink_counts = count_backlinks(vault)
     orphans: list[Path] = []
 
-    for md_file in sorted(vault.notes_dir.glob('*.md')):
-        text = md_file.read_text(encoding='utf-8')
+    for md_file in sorted(vault.notes_dir.glob("*.md")):
+        text = md_file.read_text(encoding="utf-8")
         outbound = extract_links(text)
         inbound_count = backlink_counts.get(md_file.stem, 0)
         if not outbound and inbound_count == 0:

@@ -1,4 +1,5 @@
 """Tests for pkm hook commands (new primary interface)."""
+
 from __future__ import annotations
 
 import json
@@ -28,6 +29,7 @@ def vault_env(tmp_vault: VaultConfig, monkeypatch):
 # pkm hook run session-start
 # ---------------------------------------------------------------------------
 
+
 def test_hook_run_session_start_plain(runner, vault_env):
     result = runner.invoke(main, ["hook", "run", "session-start", "--format", "plain"])
     assert result.exit_code == 0
@@ -36,7 +38,9 @@ def test_hook_run_session_start_plain(runner, vault_env):
 
 
 def test_hook_run_session_start_system_reminder(runner, vault_env):
-    result = runner.invoke(main, ["hook", "run", "session-start", "--format", "system-reminder"])
+    result = runner.invoke(
+        main, ["hook", "run", "session-start", "--format", "system-reminder"]
+    )
     assert result.exit_code == 0
     assert result.output.startswith("<system-reminder>")
     assert result.output.strip().endswith("</system-reminder>")
@@ -55,13 +59,16 @@ def test_hook_run_session_start_with_daily_notes(runner, vault_env, tmp_vault):
 
 def test_hook_run_session_start_ignores_irrelevant_options(runner, vault_env):
     """--summary is irrelevant for session-start and must be silently ignored."""
-    result = runner.invoke(main, ["hook", "run", "session-start", "--summary", "ignored"])
+    result = runner.invoke(
+        main, ["hook", "run", "session-start", "--summary", "ignored"]
+    )
     assert result.exit_code == 0
 
 
 # ---------------------------------------------------------------------------
 # pkm hook run turn-start
 # ---------------------------------------------------------------------------
+
 
 def test_hook_run_turn_start_includes_search_instruction(runner, vault_env):
     result = runner.invoke(main, ["hook", "run", "turn-start", "--format", "plain"])
@@ -80,7 +87,9 @@ def test_hook_run_turn_start_no_format_json_mention(runner, vault_env):
 
 
 def test_hook_run_turn_start_system_reminder(runner, vault_env):
-    result = runner.invoke(main, ["hook", "run", "turn-start", "--format", "system-reminder"])
+    result = runner.invoke(
+        main, ["hook", "run", "turn-start", "--format", "system-reminder"]
+    )
     assert result.exit_code == 0
     assert result.output.startswith("<system-reminder>")
     assert result.output.strip().endswith("</system-reminder>")
@@ -95,6 +104,7 @@ def test_hook_run_turn_start_with_session(runner, vault_env):
 # ---------------------------------------------------------------------------
 # pkm hook run turn-end
 # ---------------------------------------------------------------------------
+
 
 def test_hook_run_turn_end_always_emits(runner, vault_env):
     """turn-end must emit preservation guide even without --summary."""
@@ -115,14 +125,18 @@ def test_hook_run_turn_end_includes_slash_commands(runner, vault_env):
 def test_hook_run_turn_end_with_summary_writes_daily(runner, vault_env, tmp_vault):
     today = date.today().isoformat()
     daily_path = tmp_vault.daily_dir / f"{today}.md"
-    result = runner.invoke(main, ["hook", "run", "turn-end", "--summary", "test summary xyz"])
+    result = runner.invoke(
+        main, ["hook", "run", "turn-end", "--summary", "test summary xyz"]
+    )
     assert result.exit_code == 0
     assert daily_path.exists()
     assert "test summary xyz" in daily_path.read_text(encoding="utf-8")
 
 
 def test_hook_run_turn_end_system_reminder(runner, vault_env):
-    result = runner.invoke(main, ["hook", "run", "turn-end", "--format", "system-reminder"])
+    result = runner.invoke(
+        main, ["hook", "run", "turn-end", "--format", "system-reminder"]
+    )
     assert result.exit_code == 0
     assert result.output.startswith("<system-reminder>")
     assert result.output.strip().endswith("</system-reminder>")
@@ -132,10 +146,13 @@ def test_hook_run_turn_end_system_reminder(runner, vault_env):
 # pkm hook setup (non-destructive registration)
 # ---------------------------------------------------------------------------
 
+
 def test_hook_setup_dry_run_claude_code(runner, vault_env, tmp_path, monkeypatch):
     """dry-run with fresh HOME shows only pkm hook run commands."""
     monkeypatch.setenv("HOME", str(tmp_path))
-    result = runner.invoke(main, ["hook", "setup", "--tool", "claude-code", "--dry-run"])
+    result = runner.invoke(
+        main, ["hook", "setup", "--tool", "claude-code", "--dry-run"]
+    )
     assert result.exit_code == 0
     assert "pkm hook run session-start" in result.output
     assert "pkm hook run turn-start" in result.output
@@ -143,16 +160,25 @@ def test_hook_setup_dry_run_claude_code(runner, vault_env, tmp_path, monkeypatch
     assert "pkm agent hook" not in result.output
 
 
-def test_hook_setup_appends_to_existing_settings(runner, vault_env, tmp_path, monkeypatch):
+def test_hook_setup_appends_to_existing_settings(
+    runner, vault_env, tmp_path, monkeypatch
+):
     """pkm hook setup must NOT overwrite existing hooks (omc coexistence)."""
     settings = tmp_path / ".claude" / "settings.json"
     settings.parent.mkdir(parents=True)
     existing_hook_cmd = "omc-existing-hook --arg"
-    settings.write_text(json.dumps({
-        "hooks": {
-            "UserPromptSubmit": [{"hooks": [{"type": "command", "command": existing_hook_cmd}]}]
-        }
-    }), encoding="utf-8")
+    settings.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "UserPromptSubmit": [
+                        {"hooks": [{"type": "command", "command": existing_hook_cmd}]}
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
     monkeypatch.setenv("HOME", str(tmp_path))
 
     result = runner.invoke(main, ["hook", "setup", "--tool", "claude-code"])
@@ -162,7 +188,9 @@ def test_hook_setup_appends_to_existing_settings(runner, vault_env, tmp_path, mo
     matchers = merged["hooks"]["UserPromptSubmit"]
     commands = [h["command"] for m in matchers for h in m.get("hooks", [])]
     assert existing_hook_cmd in commands, "Existing hook must be preserved"
-    assert any("pkm hook run turn-start" in cmd for cmd in commands), "pkm hook must be added"
+    assert any("pkm hook run turn-start" in cmd for cmd in commands), (
+        "pkm hook must be added"
+    )
 
 
 def test_hook_setup_idempotent(runner, vault_env, tmp_path, monkeypatch):
@@ -185,14 +213,19 @@ def test_hook_setup_idempotent(runner, vault_env, tmp_path, monkeypatch):
 # pkm agent deprecation warnings
 # ---------------------------------------------------------------------------
 
+
 def test_deprecated_agent_hook_session_start_warns(runner, vault_env):
     result = runner.invoke(main, ["agent", "hook", "session-start"])
     assert result.exit_code == 0
-    assert "deprecated" in result.output.lower() or "DeprecationWarning" in (result.output + str(result.exception or ""))
+    assert "deprecated" in result.output.lower() or "DeprecationWarning" in (
+        result.output + str(result.exception or "")
+    )
 
 
 def test_deprecated_agent_setup_hooks_warns(runner, vault_env, tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     (tmp_path / ".claude").mkdir(parents=True)
-    result = runner.invoke(main, ["agent", "setup-hooks", "--tool", "claude-code", "--dry-run"])
+    result = runner.invoke(
+        main, ["agent", "setup-hooks", "--tool", "claude-code", "--dry-run"]
+    )
     assert result.exit_code == 0

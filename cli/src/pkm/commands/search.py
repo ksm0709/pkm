@@ -7,14 +7,18 @@ import io
 import json
 import logging
 import os
-import sys
 from pathlib import Path
 
 import click
 from rich.console import Console
 from rich.table import Table
 
-from pkm.search_engine import build_index, is_index_stale, load_index, search as search_fn
+from pkm.search_engine import (
+    build_index,
+    is_index_stale,
+    load_index,
+    search as search_fn,
+)
 
 console = Console()
 
@@ -23,6 +27,7 @@ def _get_description(result) -> str | None:
     """Extract description from frontmatter or first 200 chars of body."""
     try:
         from pkm.frontmatter import parse as parse_note
+
         note = parse_note(Path(result.path))
         desc = note.meta.get("description")
         if desc:
@@ -47,16 +52,18 @@ def format_search_results(
     if output_format == "json":
         items = []
         for r in results:
-            items.append({
-                "rank": r.rank,
-                "title": r.title,
-                "description": _get_description(r),
-                "score": round(r.score, 6),
-                "importance": getattr(r, "importance", None),
-                "memory_type": getattr(r, "memory_type", None),
-                "tags": r.tags if r.tags else [],
-                "note_id": r.note_id,
-            })
+            items.append(
+                {
+                    "rank": r.rank,
+                    "title": r.title,
+                    "description": _get_description(r),
+                    "score": round(r.score, 6),
+                    "importance": getattr(r, "importance", None),
+                    "memory_type": getattr(r, "memory_type", None),
+                    "tags": r.tags if r.tags else [],
+                    "note_id": r.note_id,
+                }
+            )
         payload: dict = {
             "query": query,
             "result_count": len(results),
@@ -67,7 +74,9 @@ def format_search_results(
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         print("")
         print("* Next: pkm note show <title>  — open a specific note")
-        print("* Search more: pkm search <keyword>  (add --top N to change result count)")
+        print(
+            "* Search more: pkm search <keyword>  (add --top N to change result count)"
+        )
         print("* Save insight: pkm note add --content '<insight>' --type semantic")
     else:
         if stale_warning:
@@ -117,17 +126,36 @@ def index_cmd(ctx: click.Context) -> None:
 
 @click.command("search")
 @click.argument("query")
-@click.option("--top", "-n", default=10, show_default=True, help="Number of results to return")
 @click.option(
-    "--format", "output_format",
+    "--top", "-n", default=10, show_default=True, help="Number of results to return"
+)
+@click.option(
+    "--format",
+    "output_format",
     type=click.Choice(["json", "table"]),
     default="json",
     show_default=True,
     help="Output format",
 )
-@click.option("--type", "memory_type", type=click.Choice(["episodic", "semantic", "procedural"]), default=None, help="Filter by memory type")
-@click.option("--min-importance", type=click.FloatRange(1, 10), default=1.0, help="Minimum importance score")
-@click.option("--recency-weight", type=click.FloatRange(0, 1), default=0.0, help="Weight for recency+importance scoring (0=pure semantic)")
+@click.option(
+    "--type",
+    "memory_type",
+    type=click.Choice(["episodic", "semantic", "procedural"]),
+    default=None,
+    help="Filter by memory type",
+)
+@click.option(
+    "--min-importance",
+    type=click.FloatRange(1, 10),
+    default=1.0,
+    help="Minimum importance score",
+)
+@click.option(
+    "--recency-weight",
+    type=click.FloatRange(0, 1),
+    default=0.0,
+    help="Weight for recency+importance scoring (0=pure semantic)",
+)
 @click.option("--session", "session_id", default=None, help="Filter by session ID")
 @click.pass_context
 def search_cmd(
@@ -189,6 +217,7 @@ def search_cmd(
 
     if session_id:
         import yaml
+
         filtered = []
         for r in results:
             try:

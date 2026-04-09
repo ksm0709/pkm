@@ -1,4 +1,5 @@
 """Tests for JSON output and agent-friendly formatting of search/note commands."""
+
 from __future__ import annotations
 
 import json
@@ -32,6 +33,7 @@ def indexed_vault(vault_env, tmp_vault, runner):
 # ---------------------------------------------------------------------------
 # pkm search — JSON default
 # ---------------------------------------------------------------------------
+
 
 def test_search_defaults_to_json(runner, indexed_vault):
     """pkm search without --format must output valid JSON."""
@@ -102,7 +104,11 @@ def test_search_json_is_valid_parseable(runner, indexed_vault):
     lines = result.output.split("\n")
     json_lines = []
     for line in lines:
-        if line.startswith("* ") or (json_lines and line == "" and any(l.startswith("* ") for l in lines[lines.index(line):])):
+        if line.startswith("* ") or (
+            json_lines
+            and line == ""
+            and any(l.startswith("* ") for l in lines[lines.index(line) :])
+        ):
             break
         json_lines.append(line)
     json_text = "\n".join(json_lines).strip()
@@ -113,6 +119,7 @@ def test_search_json_is_valid_parseable(runner, indexed_vault):
 # ---------------------------------------------------------------------------
 # pkm note search
 # ---------------------------------------------------------------------------
+
 
 def test_note_search_defaults_to_json(runner, indexed_vault):
     """pkm note search must output JSON by default."""
@@ -143,6 +150,7 @@ def test_note_search_action_guide(runner, indexed_vault):
 # ---------------------------------------------------------------------------
 # pkm note show — JSON redesign
 # ---------------------------------------------------------------------------
+
 
 def test_note_show_defaults_to_json(runner, vault_env):
     """pkm note show without --format outputs JSON array."""
@@ -193,7 +201,10 @@ def test_note_show_top_n(runner, vault_env):
 def test_note_show_no_interactive_prompt(runner, vault_env):
     """note show must never call click.prompt — safe for non-TTY agents."""
     from pkm.commands import notes as notes_mod
-    assert not hasattr(notes_mod, "_select_note") or not callable(getattr(notes_mod, "_select_note", None))
+
+    assert not hasattr(notes_mod, "_select_note") or not callable(
+        getattr(notes_mod, "_select_note", None)
+    )
 
 
 def test_note_show_json_action_guide(runner, vault_env):

@@ -1,4 +1,5 @@
 """pkm hook command group — lifecycle hooks for LLM agent tool integrations."""
+
 from __future__ import annotations
 
 import functools
@@ -11,22 +12,27 @@ import click
 
 def _safe_hook(fn):
     """Decorator: catch all exceptions, log to stderr, always exit 0."""
+
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
         try:
             return fn(*args, **kwargs)
         except BaseException as e:
             import traceback
+
             print(f"[pkm hook error] {e}", file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
             sys.exit(0)
+
     return wrapper
+
 
 def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None:
     vault = ctx.obj["vault"]
     lines = []
 
     from datetime import date, timedelta
+
     daily_dir = vault.daily_dir
     for i in range(1, 4):
         d = (date.today() - timedelta(days=i)).isoformat()
@@ -36,13 +42,13 @@ def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None
             if text.startswith("---"):
                 end = text.find("---", 3)
                 if end != -1:
-                    text = text[end + 3:].strip()
+                    text = text[end + 3 :].strip()
             preview = text[:300].strip()
             if preview:
                 if not lines:
                     lines.append("## Recent Daily Notes")
                 lines.append(f"### {d}\n{preview}")
-                if len([l for l in lines if l.startswith("###")]) >= 2:
+                if len([ln for ln in lines if ln.startswith("###")]) >= 2:
                     break
 
     if lines:
@@ -50,6 +56,7 @@ def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None
 
     try:
         from pkm.search_engine import load_index, search as engine_search
+
         index = load_index(vault)
         results = engine_search(
             "important decision error finding pattern",
@@ -77,20 +84,36 @@ def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None
         click.echo(content)
 
 
-def _handle_turn_start(ctx, output_format: str, session_id: str | None, **_ignored) -> None:
+def _handle_turn_start(
+    ctx, output_format: str, session_id: str | None, **_ignored
+) -> None:
     lines = []
     if session_id:
         lines.append(f"Session: {session_id}")
-    lines.append("Working memory (daily log): `pkm daily add <text>` to log, `pkm daily` to review today's entries")
-    lines.append("Long-term memory: `pkm note add <content> --type semantic|episodic --importance 1-10 --tags <tag1,tag2>`")
+    lines.append(
+        "Working memory (daily log): `pkm daily add <text>` to log, `pkm daily` to review today's entries"
+    )
+    lines.append(
+        "Long-term memory: `pkm note add <content> --type semantic|episodic --importance 1-10 --tags <tag1,tag2>`"
+    )
     lines.append("Search notes: `pkm search <query>` to recall relevant past knowledge")
-    lines.append("  - Before starting work, consider searching: `pkm search \"<topic of current task>\"`")
+    lines.append(
+        '  - Before starting work, consider searching: `pkm search "<topic of current task>"`'
+    )
     lines.append("  - Read specific notes: `pkm note show <title>`")
-    lines.append("For detailed PKM workflows (Zettelkasten, linking, consolidation): invoke the `pkm` skill.")
+    lines.append(
+        "For detailed PKM workflows (Zettelkasten, linking, consolidation): invoke the `pkm` skill."
+    )
     lines.append("")
-    lines.append("PKM Role: You are the active manager of this knowledge base. Before concluding your response, check:")
-    lines.append("  - Code changes / bug fixes / new features? → `pkm daily add <summary>`")
-    lines.append("  - New concepts / decisions / patterns learned? → `pkm note add <content> --type semantic --importance N`")
+    lines.append(
+        "PKM Role: You are the active manager of this knowledge base. Before concluding your response, check:"
+    )
+    lines.append(
+        "  - Code changes / bug fixes / new features? → `pkm daily add <summary>`"
+    )
+    lines.append(
+        "  - New concepts / decisions / patterns learned? → `pkm note add <content> --type semantic --importance N`"
+    )
     lines.append("  - Important session context to preserve? → `pkm daily add <text>`")
 
     content = "\n".join(lines)
@@ -100,13 +123,15 @@ def _handle_turn_start(ctx, output_format: str, session_id: str | None, **_ignor
         click.echo(content)
 
 
-def _handle_turn_end(ctx, session_id: str | None, summary: str | None, output_format: str, **_ignored) -> None:
+def _handle_turn_end(
+    ctx, session_id: str | None, summary: str | None, output_format: str, **_ignored
+) -> None:
     # Always emit preservation guide
     guide_lines = [
         "Before ending this session, preserve valuable knowledge:",
-        "  - Code changes / decisions / patterns? → `pkm daily add \"<summary>\"`",
-        "  - New reusable knowledge? → `pkm note add --content \"<insight>\" --type semantic --importance N --tags <tags>`",
-        "  - Session discoveries worth long-term recall? → `pkm note add --content \"<content>\" --type episodic --importance N`",
+        '  - Code changes / decisions / patterns? → `pkm daily add "<summary>"`',
+        '  - New reusable knowledge? → `pkm note add --content "<insight>" --type semantic --importance N --tags <tags>`',
+        '  - Session discoveries worth long-term recall? → `pkm note add --content "<content>" --type episodic --importance N`',
         "",
         "For deeper knowledge workflows (invoke as slash commands):",
         "  - `/pkm:memory-store` — store facts, decisions, and patterns as atomic notes",
@@ -123,6 +148,7 @@ def _handle_turn_end(ctx, session_id: str | None, summary: str | None, output_fo
     if summary:
         vault = ctx.obj["vault"]
         from datetime import datetime, timezone, date
+
         now = datetime.now(timezone.utc)
         today = date.today().isoformat()
         daily_dir = vault.daily_dir
@@ -144,19 +170,39 @@ def hook(ctx: click.Context) -> None:
 
 
 @hook.command(name="run")
-@click.argument("hook_name", metavar="HOOK_NAME", type=click.Choice(["session-start", "turn-start", "turn-end"]))
-@click.option("--format", "output_format", type=click.Choice(["plain", "system-reminder"]), default="plain")
-@click.option("--top", default=5, help="Number of recent memories to inject (session-start only)")
+@click.argument(
+    "hook_name",
+    metavar="HOOK_NAME",
+    type=click.Choice(["session-start", "turn-start", "turn-end"]),
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["plain", "system-reminder"]),
+    default="plain",
+)
+@click.option(
+    "--top", default=5, help="Number of recent memories to inject (session-start only)"
+)
 @click.option("--session", "session_id", default=None, help="Session ID")
 @click.option("--summary", default=None, help="Summary to persist (turn-end only)")
 @click.pass_context
 @_safe_hook
-def run_hook(ctx: click.Context, hook_name: str, output_format: str, top: int, session_id: str | None, summary: str | None) -> None:
+def run_hook(
+    ctx: click.Context,
+    hook_name: str,
+    output_format: str,
+    top: int,
+    session_id: str | None,
+    summary: str | None,
+) -> None:
     """Run a lifecycle hook handler.
 
     HOOK_NAME: session-start | turn-start | turn-end
     """
-    kwargs = dict(output_format=output_format, top=top, session_id=session_id, summary=summary)
+    kwargs = dict(
+        output_format=output_format, top=top, session_id=session_id, summary=summary
+    )
     if hook_name == "session-start":
         _handle_session_start(ctx, **kwargs)
     elif hook_name == "turn-start":
@@ -213,9 +259,36 @@ def _setup_claude_code_hooks(dry_run: bool) -> None:
             pass
 
     pkm_hooks = {
-        "SessionStart": [{"hooks": [{"type": "command", "command": "pkm hook run session-start --format system-reminder"}]}],
-        "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "pkm hook run turn-start --format system-reminder"}]}],
-        "Stop": [{"hooks": [{"type": "command", "command": "pkm hook run turn-end --format system-reminder"}]}],
+        "SessionStart": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "pkm hook run session-start --format system-reminder",
+                    }
+                ]
+            }
+        ],
+        "UserPromptSubmit": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "pkm hook run turn-start --format system-reminder",
+                    }
+                ]
+            }
+        ],
+        "Stop": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "pkm hook run turn-end --format system-reminder",
+                    }
+                ]
+            }
+        ],
     }
 
     existing_hooks = existing.get("hooks", {})
@@ -223,7 +296,9 @@ def _setup_claude_code_hooks(dry_run: bool) -> None:
     merged_config = json.dumps({"hooks": merged}, indent=2)
 
     if dry_run:
-        click.echo("# Claude Code hooks configuration (appended to ~/.claude/settings.json):")
+        click.echo(
+            "# Claude Code hooks configuration (appended to ~/.claude/settings.json):"
+        )
         click.echo(merged_config)
         return
 
@@ -236,12 +311,9 @@ def _setup_codex_hooks(dry_run: bool) -> None:
     """Print or append Codex CLI hook configuration."""
     # Use existing tomllib compat pattern
     try:
-        import tomllib
+        import tomllib as _tomllib  # noqa: F401
     except ImportError:
-        try:
-            import tomli as tomllib  # type: ignore
-        except ImportError:
-            tomllib = None  # type: ignore
+        pass
 
     config_text = (
         "# Add to ~/.codex/config.toml:\n"

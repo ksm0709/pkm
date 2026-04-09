@@ -1,8 +1,8 @@
 """pkm consolidate command — identify and mark daily notes for dream consolidation."""
+
 from __future__ import annotations
 
 from datetime import date
-from pathlib import Path
 
 import click
 import yaml
@@ -45,17 +45,18 @@ def _list_candidates(ctx: click.Context) -> None:
 
         # Count entries (lines starting with -, *, or [)
         body_start = text.find("---", 3)
-        body = text[body_start + 3:] if body_start != -1 else text
+        body = text[body_start + 3 :] if body_start != -1 else text
         entry_count = sum(
-            1 for line in body.splitlines()
-            if line.strip().startswith(("-", "*", "["))
+            1 for line in body.splitlines() if line.strip().startswith(("-", "*", "["))
         )
 
-        candidates.append({
-            "date": date_str,
-            "path": str(md_file),
-            "entry_count": entry_count,
-        })
+        candidates.append(
+            {
+                "date": date_str,
+                "path": str(md_file),
+                "entry_count": entry_count,
+            }
+        )
 
     if not candidates:
         click.echo("No daily notes eligible for consolidation.")
@@ -65,7 +66,9 @@ def _list_candidates(ctx: click.Context) -> None:
     click.echo("-" * 60)
     for c in candidates:
         click.echo(f"{c['date']:>12}  {c['entry_count']:>7}  {c['path']}")
-    click.echo(f"\n{len(candidates)} note(s) eligible. Run: pkm consolidate mark <date>")
+    click.echo(
+        f"\n{len(candidates)} note(s) eligible. Run: pkm consolidate mark <date>"
+    )
 
 
 @consolidate.command()
@@ -134,5 +137,5 @@ def _set_frontmatter_field(text: str, key: str, value: object) -> str:
 
     fm[key] = value
     new_fm_str = yaml.dump(fm, allow_unicode=True, default_flow_style=False)
-    after_fm = text[end + 3:]
+    after_fm = text[end + 3 :]
     return f"---\n{new_fm_str}---{after_fm}"

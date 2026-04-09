@@ -31,11 +31,11 @@ def mock_model(monkeypatch):
             import numpy as np
 
             texts_list = texts if isinstance(texts, list) else [texts]
-            return np.array(
-                [[hash(t) % 100 / 100.0] * 384 for t in texts_list]
-            )
+            return np.array([[hash(t) % 100 / 100.0] * 384 for t in texts_list])
 
-    monkeypatch.setattr("pkm.search_engine._require_transformers", lambda name: FakeModel())
+    monkeypatch.setattr(
+        "pkm.search_engine._require_transformers", lambda name: FakeModel()
+    )
 
 
 def test_build_index(tmp_vault: VaultConfig, mock_model):
@@ -104,7 +104,9 @@ def test_search_backlink_tiebreaker(tmp_vault: VaultConfig, monkeypatch):
             texts_list = texts if isinstance(texts, list) else [texts]
             return np.array([fixed_emb for _ in texts_list])
 
-    monkeypatch.setattr("pkm.search_engine._require_transformers", lambda name: TiedModel())
+    monkeypatch.setattr(
+        "pkm.search_engine._require_transformers", lambda name: TiedModel()
+    )
 
     # Build index so all embeddings are identical (score ties guaranteed)
     index = build_index(tmp_vault)
@@ -148,7 +150,9 @@ def test_graceful_import_error(tmp_vault: VaultConfig, monkeypatch):
     import click
 
     def _missing(_name):
-        raise click.ClickException("sentence-transformers is not installed. Run: pkm setup")
+        raise click.ClickException(
+            "sentence-transformers is not installed. Run: pkm setup"
+        )
 
     monkeypatch.setattr("pkm.search_engine._require_transformers", _missing)
 
@@ -158,28 +162,31 @@ def test_graceful_import_error(tmp_vault: VaultConfig, monkeypatch):
 
 # --- New schema v2 tests ---
 
+
 def test_load_index_field_filtering(tmp_vault: VaultConfig):
     """load_index does not crash when index.json has unknown extra fields."""
     tmp_vault.pkm_dir.mkdir(parents=True, exist_ok=True)
     index_path = tmp_vault.pkm_dir / "index.json"
     index_path.write_text(
-        json.dumps({
-            "model": "all-MiniLM-L6-v2",
-            "created_at": "2024-01-01T00:00:00Z",
-            "schema_version": CURRENT_SCHEMA_VERSION,
-            "entries": [
-                {
-                    "note_id": "note-1",
-                    "path": "/vault/note-1.md",
-                    "embedding": [0.1] * 384,
-                    "backlink_count": 0,
-                    "tags": [],
-                    "title": "Note 1",
-                    "unknown_future_field": "should be ignored",
-                    "another_unknown": 42,
-                }
-            ],
-        }),
+        json.dumps(
+            {
+                "model": "all-MiniLM-L6-v2",
+                "created_at": "2024-01-01T00:00:00Z",
+                "schema_version": CURRENT_SCHEMA_VERSION,
+                "entries": [
+                    {
+                        "note_id": "note-1",
+                        "path": "/vault/note-1.md",
+                        "embedding": [0.1] * 384,
+                        "backlink_count": 0,
+                        "tags": [],
+                        "title": "Note 1",
+                        "unknown_future_field": "should be ignored",
+                        "another_unknown": 42,
+                    }
+                ],
+            }
+        ),
         encoding="utf-8",
     )
     index = load_index(tmp_vault)
@@ -193,20 +200,22 @@ def test_load_index_old_schema_uses_defaults(tmp_vault: VaultConfig):
     index_path = tmp_vault.pkm_dir / "index.json"
     # Old v1 index: no memory_type, importance, created_at, schema_version
     index_path.write_text(
-        json.dumps({
-            "model": "all-MiniLM-L6-v2",
-            "created_at": "2024-01-01T00:00:00Z",
-            "entries": [
-                {
-                    "note_id": "note-1",
-                    "path": "/vault/note-1.md",
-                    "embedding": [0.1] * 384,
-                    "backlink_count": 2,
-                    "tags": ["test"],
-                    "title": "Note 1",
-                }
-            ],
-        }),
+        json.dumps(
+            {
+                "model": "all-MiniLM-L6-v2",
+                "created_at": "2024-01-01T00:00:00Z",
+                "entries": [
+                    {
+                        "note_id": "note-1",
+                        "path": "/vault/note-1.md",
+                        "embedding": [0.1] * 384,
+                        "backlink_count": 2,
+                        "tags": ["test"],
+                        "title": "Note 1",
+                    }
+                ],
+            }
+        ),
         encoding="utf-8",
     )
     index = load_index(tmp_vault)
@@ -222,12 +231,14 @@ def test_is_index_stale_schema_version_mismatch(tmp_vault: VaultConfig):
     tmp_vault.pkm_dir.mkdir(parents=True, exist_ok=True)
     index_path = tmp_vault.pkm_dir / "index.json"
     index_path.write_text(
-        json.dumps({
-            "model": "all-MiniLM-L6-v2",
-            "created_at": "2024-01-01T00:00:00Z",
-            "schema_version": 1,  # old version
-            "entries": [],
-        }),
+        json.dumps(
+            {
+                "model": "all-MiniLM-L6-v2",
+                "created_at": "2024-01-01T00:00:00Z",
+                "schema_version": 1,  # old version
+                "entries": [],
+            }
+        ),
         encoding="utf-8",
     )
     assert is_index_stale(tmp_vault) is True
@@ -238,12 +249,14 @@ def test_is_index_stale_current_schema(tmp_vault: VaultConfig):
     tmp_vault.pkm_dir.mkdir(parents=True, exist_ok=True)
     index_path = tmp_vault.pkm_dir / "index.json"
     index_path.write_text(
-        json.dumps({
-            "model": "all-MiniLM-L6-v2",
-            "created_at": "2024-01-01T00:00:00Z",
-            "schema_version": CURRENT_SCHEMA_VERSION,
-            "entries": [],
-        }),
+        json.dumps(
+            {
+                "model": "all-MiniLM-L6-v2",
+                "created_at": "2024-01-01T00:00:00Z",
+                "schema_version": CURRENT_SCHEMA_VERSION,
+                "entries": [],
+            }
+        ),
         encoding="utf-8",
     )
     # No .md files newer than index
@@ -292,20 +305,37 @@ def test_search_memory_type_filter(monkeypatch):
             texts_list = texts if isinstance(texts, list) else [texts]
             return np.array([[0.5] * 384 for _ in texts_list])
 
-    monkeypatch.setattr("pkm.search_engine._require_transformers", lambda name: FakeModel())
+    monkeypatch.setattr(
+        "pkm.search_engine._require_transformers", lambda name: FakeModel()
+    )
 
     entries = [
         IndexEntry(
-            note_id="ep-1", path="/ep-1.md", embedding=[0.5] * 384,
-            backlink_count=0, tags=[], title="Episodic", memory_type="episodic",
+            note_id="ep-1",
+            path="/ep-1.md",
+            embedding=[0.5] * 384,
+            backlink_count=0,
+            tags=[],
+            title="Episodic",
+            memory_type="episodic",
         ),
         IndexEntry(
-            note_id="sem-1", path="/sem-1.md", embedding=[0.5] * 384,
-            backlink_count=0, tags=[], title="Semantic", memory_type="semantic",
+            note_id="sem-1",
+            path="/sem-1.md",
+            embedding=[0.5] * 384,
+            backlink_count=0,
+            tags=[],
+            title="Semantic",
+            memory_type="semantic",
         ),
         IndexEntry(
-            note_id="ep-2", path="/ep-2.md", embedding=[0.5] * 384,
-            backlink_count=0, tags=[], title="Episodic 2", memory_type="episodic",
+            note_id="ep-2",
+            path="/ep-2.md",
+            embedding=[0.5] * 384,
+            backlink_count=0,
+            tags=[],
+            title="Episodic 2",
+            memory_type="episodic",
         ),
     ]
     index = _make_index_with_entries(entries)
@@ -323,16 +353,28 @@ def test_search_min_importance_filter(monkeypatch):
             texts_list = texts if isinstance(texts, list) else [texts]
             return np.array([[0.5] * 384 for _ in texts_list])
 
-    monkeypatch.setattr("pkm.search_engine._require_transformers", lambda name: FakeModel())
+    monkeypatch.setattr(
+        "pkm.search_engine._require_transformers", lambda name: FakeModel()
+    )
 
     entries = [
         IndexEntry(
-            note_id="low", path="/low.md", embedding=[0.5] * 384,
-            backlink_count=0, tags=[], title="Low", importance=2.0,
+            note_id="low",
+            path="/low.md",
+            embedding=[0.5] * 384,
+            backlink_count=0,
+            tags=[],
+            title="Low",
+            importance=2.0,
         ),
         IndexEntry(
-            note_id="high", path="/high.md", embedding=[0.5] * 384,
-            backlink_count=0, tags=[], title="High", importance=8.0,
+            note_id="high",
+            path="/high.md",
+            embedding=[0.5] * 384,
+            backlink_count=0,
+            tags=[],
+            title="High",
+            importance=8.0,
         ),
     ]
     index = _make_index_with_entries(entries)
@@ -350,22 +392,37 @@ def test_search_recency_weight_prefers_recent(monkeypatch):
             texts_list = texts if isinstance(texts, list) else [texts]
             return np.array([[0.5] * 384 for _ in texts_list])
 
-    monkeypatch.setattr("pkm.search_engine._require_transformers", lambda name: FakeModel())
+    monkeypatch.setattr(
+        "pkm.search_engine._require_transformers", lambda name: FakeModel()
+    )
 
     # Recent: 1 hour ago, Old: 10000 hours ago
     from datetime import datetime, timezone, timedelta
+
     now = datetime.now(timezone.utc)
     recent_ts = (now - timedelta(hours=1)).isoformat()
     old_ts = (now - timedelta(hours=10000)).isoformat()
 
     entries = [
         IndexEntry(
-            note_id="old", path="/old.md", embedding=[0.5] * 384,
-            backlink_count=0, tags=[], title="Old", created_at=old_ts, importance=5.0,
+            note_id="old",
+            path="/old.md",
+            embedding=[0.5] * 384,
+            backlink_count=0,
+            tags=[],
+            title="Old",
+            created_at=old_ts,
+            importance=5.0,
         ),
         IndexEntry(
-            note_id="recent", path="/recent.md", embedding=[0.5] * 384,
-            backlink_count=0, tags=[], title="Recent", created_at=recent_ts, importance=5.0,
+            note_id="recent",
+            path="/recent.md",
+            embedding=[0.5] * 384,
+            backlink_count=0,
+            tags=[],
+            title="Recent",
+            created_at=recent_ts,
+            importance=5.0,
         ),
     ]
     index = _make_index_with_entries(entries)
@@ -383,18 +440,28 @@ def test_search_time_decay(monkeypatch):
             texts_list = texts if isinstance(texts, list) else [texts]
             return np.array([[0.5] * 384 for _ in texts_list])
 
-    monkeypatch.setattr("pkm.search_engine._require_transformers", lambda name: FakeModel())
+    monkeypatch.setattr(
+        "pkm.search_engine._require_transformers", lambda name: FakeModel()
+    )
 
     now = datetime.now(timezone.utc)
     entry_1h = IndexEntry(
-        note_id="1h", path="/1h.md", embedding=[0.5] * 384,
-        backlink_count=0, tags=[], title="1h ago",
+        note_id="1h",
+        path="/1h.md",
+        embedding=[0.5] * 384,
+        backlink_count=0,
+        tags=[],
+        title="1h ago",
         created_at=(now - timedelta(hours=1)).isoformat(),
         importance=5.0,
     )
     entry_1000h = IndexEntry(
-        note_id="1000h", path="/1000h.md", embedding=[0.5] * 384,
-        backlink_count=0, tags=[], title="1000h ago",
+        note_id="1000h",
+        path="/1000h.md",
+        embedding=[0.5] * 384,
+        backlink_count=0,
+        tags=[],
+        title="1000h ago",
         created_at=(now - timedelta(hours=1000)).isoformat(),
         importance=5.0,
     )

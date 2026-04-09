@@ -10,7 +10,9 @@ from pkm.cli import main
 
 @pytest.fixture(autouse=True)
 def patch_vaults(monkeypatch, tmp_vault):
-    monkeypatch.setattr("pkm.config.discover_vaults", lambda *a, **kw: {"test-vault": tmp_vault})
+    monkeypatch.setattr(
+        "pkm.config.discover_vaults", lambda *a, **kw: {"test-vault": tmp_vault}
+    )
 
 
 @pytest.fixture
@@ -23,7 +25,9 @@ def cli_runner(monkeypatch, tmp_vault):
             "pkm.config.discover_vaults",
             lambda *a, **kw: {"test-vault": tmp_vault},
         )
-        return runner.invoke(main, ["--vault", "test-vault", *args], catch_exceptions=False)
+        return runner.invoke(
+            main, ["--vault", "test-vault", *args], catch_exceptions=False
+        )
 
     return invoke
 
@@ -72,7 +76,9 @@ def test_tags_search_glob(cli_runner, tmp_vault):
     """pkm tags search 'data*' matches notes with database tag."""
     result = cli_runner("tags", "search", "data*")
     assert result.exit_code == 0
-    assert "mvcc" in result.output.lower() or "database-isolation" in result.output.lower()
+    assert (
+        "mvcc" in result.output.lower() or "database-isolation" in result.output.lower()
+    )
 
 
 def test_tags_search_and(cli_runner, tmp_vault):
@@ -89,7 +95,9 @@ def test_tags_search_or(cli_runner, tmp_vault):
     result = cli_runner("tags", "search", "database,untagged")
     assert result.exit_code == 0
     # database tag notes
-    assert "mvcc" in result.output.lower() or "database-isolation" in result.output.lower()
+    assert (
+        "mvcc" in result.output.lower() or "database-isolation" in result.output.lower()
+    )
     # untagged tag note
     assert "isolated" in result.output
 

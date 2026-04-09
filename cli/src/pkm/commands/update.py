@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from pathlib import Path
 
 import click
 from rich.console import Console
@@ -22,10 +21,13 @@ def _normalize_tag(version: str) -> str:
 
 
 def _search_installed() -> bool:
-    return subprocess.run(
-        [sys.executable, "-c", "import sentence_transformers"],
-        capture_output=True,
-    ).returncode == 0
+    return (
+        subprocess.run(
+            [sys.executable, "-c", "import sentence_transformers"],
+            capture_output=True,
+        ).returncode
+        == 0
+    )
 
 
 @click.command("update")
@@ -56,9 +58,12 @@ def update_cmd(version: str | None) -> None:
                 if not versions:
                     local = subprocess.run(
                         ["git", "-C", str(repo_dir), "tag", "--sort=-version:refname"],
-                        capture_output=True, text=True,
+                        capture_output=True,
+                        text=True,
                     )
-                    versions = [t for t in local.stdout.splitlines() if t.startswith("v")][:5]
+                    versions = [
+                        t for t in local.stdout.splitlines() if t.startswith("v")
+                    ][:5]
                 if versions:
                     console.print("[yellow]Available versions:[/yellow]")
                     for v in versions:
@@ -74,14 +79,23 @@ def update_cmd(version: str | None) -> None:
                     "git pull --ff-only failed. Your local branch has diverged from remote.\n"
                     "To resolve, run one of:\n"
                     "  git -C {repo_dir} pull --rebase   # rebase local commits on top of remote\n"
-                    "  git -C {repo_dir} reset --hard origin/main  # discard local changes"
-                    .format(repo_dir=repo_dir)
+                    "  git -C {repo_dir} reset --hard origin/main  # discard local changes".format(
+                        repo_dir=repo_dir
+                    )
                 )
 
         console.print("[cyan]Reinstalling...[/cyan]")
         install_target = str(cli_dir) + ("[search]" if _search_installed() else "")
         result = subprocess.run(
-            ["uv", "tool", "install", "--editable", install_target, "--reinstall-package", "pkm"],
+            [
+                "uv",
+                "tool",
+                "install",
+                "--editable",
+                install_target,
+                "--reinstall-package",
+                "pkm",
+            ],
         )
         if result.returncode != 0:
             raise click.ClickException("uv tool install failed.")
@@ -97,10 +111,19 @@ def update_cmd(version: str | None) -> None:
         console.print("[cyan]Downloading latest from GitHub...[/cyan]")
         try:
             with cli_source() as (dl_cli_dir, is_local):
-                install_target = str(dl_cli_dir) + ("[search]" if _search_installed() else "")
+                install_target = str(dl_cli_dir) + (
+                    "[search]" if _search_installed() else ""
+                )
                 console.print("[cyan]Reinstalling...[/cyan]")
                 result = subprocess.run(
-                    ["uv", "tool", "install", install_target, "--reinstall-package", "pkm"],
+                    [
+                        "uv",
+                        "tool",
+                        "install",
+                        install_target,
+                        "--reinstall-package",
+                        "pkm",
+                    ],
                 )
                 if result.returncode != 0:
                     raise click.ClickException("uv tool install failed.")

@@ -116,6 +116,7 @@ def test_discover_vaults_includes_at_prefix(tmp_path, monkeypatch):
 # suggest_vault_name
 # ---------------------------------------------------------------------------
 
+
 def test_suggest_vault_name_returns_vault_suggestion(tmp_path, monkeypatch):
     """suggest_vault_name returns a VaultSuggestion dataclass."""
     monkeypatch.setattr("pkm.config._find_git_root", lambda cwd=None: None)
@@ -140,7 +141,9 @@ def test_suggest_vault_name_git_subdir(tmp_path, monkeypatch):
     # Override the autouse fixture which patches get_git_vault_name to return None
     monkeypatch.setattr(
         "pkm.config.get_git_vault_name",
-        lambda cwd=None: "@taeho--myrepo--services--auth" if cwd == subdir else "@taeho--myrepo",
+        lambda cwd=None: (
+            "@taeho--myrepo--services--auth" if cwd == subdir else "@taeho--myrepo"
+        ),
     )
 
     result = suggest_vault_name(cwd=subdir)

@@ -158,13 +158,15 @@ def get_git_vault_name(cwd: Path | None = None) -> str | None:
     try:
         result = subprocess.run(
             ["git", "remote", "get-url", "origin"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
             cwd=str(git_root),
         )
         if result.returncode == 0:
             url = result.stdout.strip()
             m = re.match(
-                r'(?:https?://[^/]+/|git@[^:]+:)([^/]+)/([^/.]+)',
+                r"(?:https?://[^/]+/|git@[^:]+:)([^/]+)/([^/.]+)",
                 url,
             )
             if m:
@@ -236,6 +238,7 @@ def ensure_vault_exists(name: str, old_name: str | None = None) -> None:
         old_path = root / old_name
         if old_path.exists():
             import shutil
+
             shutil.move(str(old_path), str(vault_path))
             _update_config_vault_reference(old_name, name)
             return

@@ -90,8 +90,12 @@ def setup_cmd() -> None:
     use_saved = False
     if saved:
         console.print("[cyan]Previous configuration found:[/cyan]")
-        console.print(f"  search features: {'Yes' if saved['install_search'] == 'true' or saved['install_search'] is True else 'No'}")
-        console.print(f"  dev tools:       {'Yes' if saved['install_dev'] == 'true' or saved['install_dev'] is True else 'No'}")
+        console.print(
+            f"  search features: {'Yes' if saved['install_search'] == 'true' or saved['install_search'] is True else 'No'}"
+        )
+        console.print(
+            f"  dev tools:       {'Yes' if saved['install_dev'] == 'true' or saved['install_dev'] is True else 'No'}"
+        )
         console.print(f"  vault root:      {saved['vaults_root']}")
         console.print(f"  default vault:   {saved['default_vault']}")
         console.print()
@@ -142,7 +146,9 @@ def setup_cmd() -> None:
                 )
             vault_path = vaults_root / vault_name
             init_vault_dirs(vault_path, vault_name)
-            console.print(f"[green]✓ Created vault '{vault_name}'[/green] at {vault_path}")
+            console.print(
+                f"[green]✓ Created vault '{vault_name}'[/green] at {vault_path}"
+            )
             default_vault = vault_name
 
     # Install selected extras
@@ -152,20 +158,33 @@ def setup_cmd() -> None:
     if install_dev:
         extras.append("dev")
 
-    console.print(f"Installing pkm{('[' + ','.join(extras) + ']') if extras else ''}...")
+    console.print(
+        f"Installing pkm{('[' + ','.join(extras) + ']') if extras else ''}..."
+    )
 
     try:
         from pkm._install_source import cli_source
+
         with cli_source() as (cli_dir, is_local):
             extra_spec = str(cli_dir) + (f"[{','.join(extras)}]" if extras else "")
             flags = ["--editable"] if is_local else []
             if not is_local:
                 console.print("[cyan]Downloading latest source from GitHub...[/cyan]")
             result = subprocess.run(
-                ["uv", "tool", "install", *flags, extra_spec, "--reinstall-package", "pkm"],
+                [
+                    "uv",
+                    "tool",
+                    "install",
+                    *flags,
+                    extra_spec,
+                    "--reinstall-package",
+                    "pkm",
+                ],
             )
             if result.returncode != 0:
-                raise click.ClickException("Dependency installation failed. Check uv output above.")
+                raise click.ClickException(
+                    "Dependency installation failed. Check uv output above."
+                )
     except RuntimeError as e:
         raise click.ClickException(str(e))
 
@@ -186,7 +205,9 @@ def setup_cmd() -> None:
 
     # Sync skill and command files (removes stale, copies current)
     if not install_skill_files():
-        console.print("[yellow]⚠ Skill files not found in package — skipping skill install[/yellow]")
+        console.print(
+            "[yellow]⚠ Skill files not found in package — skipping skill install[/yellow]"
+        )
 
     # Done
     console.print()
@@ -201,7 +222,11 @@ def setup_cmd() -> None:
     console.print()
     console.print("Claude Code slash commands (after restarting Claude Code):")
     console.print("  [bold]/pkm:init-daily[/bold]        — start today's note")
-    console.print("  [bold]/pkm:distill-daily[/bold]     — promote daily → atomic notes")
-    console.print("  [bold]/pkm:dream[/bold]             — nightly knowledge consolidation")
+    console.print(
+        "  [bold]/pkm:distill-daily[/bold]     — promote daily → atomic notes"
+    )
+    console.print(
+        "  [bold]/pkm:dream[/bold]             — nightly knowledge consolidation"
+    )
     console.print("  [bold]/pkm:weekly-review[/bold]     — weekly synthesis")
     console.print("  [bold]/pkm:auto-tagging[/bold]      — tag untagged notes")

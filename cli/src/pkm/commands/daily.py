@@ -47,8 +47,8 @@ def _get_subnotes(daily_dir: Path, date_str: str) -> list[Path]:
 def _sanitize_title(raw: str) -> str:
     """Sanitize a sub-note title: replace spaces with hyphens, strip path traversal."""
     title = raw.replace(" ", "-")
-    title = re.sub(r"[/\\]", "", title)   # strip path separators
-    title = re.sub(r"\.\.+", "", title)   # strip traversal sequences
+    title = re.sub(r"[/\\]", "", title)  # strip path separators
+    title = re.sub(r"\.\.+", "", title)  # strip traversal sequences
     title = title.strip("-").strip()
     return title
 
@@ -72,7 +72,7 @@ def daily(ctx: click.Context) -> None:
 
     subnotes = _get_subnotes(vault.daily_dir, today)
     for subnote in subnotes:
-        title = subnote.stem[len(today) + 1:]
+        title = subnote.stem[len(today) + 1 :]
         if not title:
             continue
         console.print(f"\n--- {title} ---")
@@ -81,8 +81,11 @@ def daily(ctx: click.Context) -> None:
 
 @daily.command()
 @click.option(
-    "--sub", "sub_title",
-    is_flag=False, flag_value="", default=None,
+    "--sub",
+    "sub_title",
+    is_flag=False,
+    flag_value="",
+    default=None,
     help="Create and edit a sub-note. Optionally provide a title directly.",
 )
 @click.pass_context
@@ -114,10 +117,14 @@ def edit(ctx: click.Context, sub_title: str | None) -> None:
 
         # Guard against path traversal
         if not str(note_path.resolve()).startswith(str(vault.daily_dir.resolve())):
-            raise click.ClickException("Invalid title: would create file outside daily directory.")
+            raise click.ClickException(
+                "Invalid title: would create file outside daily directory."
+            )
 
         if not note_path.exists():
-            note_path.write_text(SUBNOTE_TEMPLATE.format(note_id=note_id), encoding="utf-8")
+            note_path.write_text(
+                SUBNOTE_TEMPLATE.format(note_id=note_id), encoding="utf-8"
+            )
             console.print(f"[green]Created:[/green] {note_path.name}")
         else:
             console.print(f"[dim]Opening existing:[/dim] {note_path.name}")

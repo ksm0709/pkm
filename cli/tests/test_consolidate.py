@@ -1,4 +1,5 @@
 """Tests for pkm consolidate command."""
+
 from __future__ import annotations
 
 from datetime import date, timedelta
@@ -7,13 +8,18 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from pkm.commands.consolidate import consolidate, _parse_frontmatter, _set_frontmatter_field
+from pkm.commands.consolidate import (
+    consolidate,
+    _parse_frontmatter,
+    _set_frontmatter_field,
+)
 from pkm.config import VaultConfig
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_vault(tmp_path: Path) -> VaultConfig:
     """Create a minimal vault structure and return VaultConfig."""
@@ -37,6 +43,7 @@ def _invoke(vault: VaultConfig, *args: str):
 # ---------------------------------------------------------------------------
 # _parse_frontmatter
 # ---------------------------------------------------------------------------
+
 
 def test_parse_frontmatter_no_frontmatter():
     fm = _parse_frontmatter("just plain text")
@@ -63,6 +70,7 @@ def test_parse_frontmatter_tags():
 # ---------------------------------------------------------------------------
 # _set_frontmatter_field
 # ---------------------------------------------------------------------------
+
 
 def test_set_frontmatter_field_adds_key():
     text = "---\ntags:\n  - foo\n---\n\nbody"
@@ -92,6 +100,7 @@ def test_set_frontmatter_field_no_frontmatter():
 # ---------------------------------------------------------------------------
 # consolidate (list candidates)
 # ---------------------------------------------------------------------------
+
 
 def test_consolidate_lists_past_notes(tmp_path):
     vault = _make_vault(tmp_path)
@@ -138,10 +147,13 @@ def test_consolidate_no_daily_dir(tmp_path):
 # consolidate mark
 # ---------------------------------------------------------------------------
 
+
 def test_consolidate_mark_sets_consolidated(tmp_path):
     vault = _make_vault(tmp_path)
     yesterday = (date.today() - timedelta(days=1)).isoformat()
-    note_path = _write_daily(vault, yesterday, "---\ntags:\n  - daily-notes\n---\n\n- entry\n")
+    note_path = _write_daily(
+        vault, yesterday, "---\ntags:\n  - daily-notes\n---\n\n- entry\n"
+    )
 
     result = _invoke(vault, "mark", yesterday)
     assert result.exit_code == 0

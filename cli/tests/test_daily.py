@@ -134,16 +134,21 @@ def test_daily_add_no_todo_section(cli_runner, tmp_vault):
 
 import types as _types
 
+
 class _FakeProc:
     """Fake subprocess.CompletedProcess for subprocess.run mocks."""
+
     returncode = 0
+
 
 def _fake_run(calls=None):
     """Return a subprocess.run mock that records calls and returns returncode=0."""
+
     def _run(args):
         if calls is not None:
             calls.append(args)
         return _FakeProc()
+
     return _run
 
 
@@ -151,10 +156,13 @@ def _fake_run(calls=None):
 # daily edit
 # ---------------------------------------------------------------------------
 
+
 def test_daily_edit_opens_today_note(cli_runner, tmp_vault, monkeypatch):
     """daily edit opens today's daily note in editor."""
     calls = []
-    monkeypatch.setattr("pkm.commands.daily.load_config", lambda: {"defaults": {"editor": "vim"}})
+    monkeypatch.setattr(
+        "pkm.commands.daily.load_config", lambda: {"defaults": {"editor": "vim"}}
+    )
     monkeypatch.setattr("pkm.commands.daily.subprocess.run", _fake_run(calls))
 
     today_str = today()
@@ -211,6 +219,7 @@ def test_daily_edit_editor_fallback_nano(cli_runner, tmp_vault, monkeypatch):
 
 def test_daily_edit_nonzero_returncode_warns(cli_runner, tmp_vault, monkeypatch):
     """daily edit warns user when editor exits with non-zero code."""
+
     class _FailProc:
         returncode = 1
 
@@ -226,10 +235,13 @@ def test_daily_edit_nonzero_returncode_warns(cli_runner, tmp_vault, monkeypatch)
 # daily edit --sub (interactive prompt)
 # ---------------------------------------------------------------------------
 
+
 def test_daily_edit_sub_creates_subnote(cli_runner, tmp_vault, monkeypatch):
     """daily edit --sub creates a sub-note with given title (via prompt)."""
     calls = []
-    monkeypatch.setattr("pkm.commands.daily.load_config", lambda: {"defaults": {"editor": "vim"}})
+    monkeypatch.setattr(
+        "pkm.commands.daily.load_config", lambda: {"defaults": {"editor": "vim"}}
+    )
     monkeypatch.setattr("pkm.commands.daily.subprocess.run", _fake_run(calls))
 
     today_str = today()
@@ -285,7 +297,9 @@ def test_daily_edit_sub_default_title_is_timestamp(cli_runner, tmp_vault, monkey
     assert re.search(r"\d{2}-\d{2}", subnotes[0].stem)
 
 
-def test_daily_edit_sub_existing_note_not_overwritten(cli_runner, tmp_vault, monkeypatch):
+def test_daily_edit_sub_existing_note_not_overwritten(
+    cli_runner, tmp_vault, monkeypatch
+):
     """daily edit --sub does not overwrite an existing sub-note."""
     monkeypatch.setattr("pkm.commands.daily.load_config", lambda: {})
     monkeypatch.setattr("pkm.commands.daily.subprocess.run", _fake_run())
@@ -320,6 +334,7 @@ def test_daily_edit_sub_sanitizes_path_traversal(cli_runner, tmp_vault, monkeypa
 # ---------------------------------------------------------------------------
 # daily base — sub-note display
 # ---------------------------------------------------------------------------
+
 
 def test_daily_shows_subnotes_below_main(cli_runner, tmp_vault, monkeypatch):
     """pkm daily shows sub-notes below the main note with separators."""

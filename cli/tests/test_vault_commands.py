@@ -33,6 +33,7 @@ def _patch_vaults(monkeypatch, vaults: dict[str, VaultConfig]) -> None:
 # vault list
 # ---------------------------------------------------------------------------
 
+
 def test_vault_list_shows_table(tmp_path: Path, monkeypatch):
     vaults = _make_vaults(tmp_path)
     _patch_vaults(monkeypatch, vaults)
@@ -79,6 +80,7 @@ def test_vault_list_empty(monkeypatch):
 # ---------------------------------------------------------------------------
 # vault add
 # ---------------------------------------------------------------------------
+
 
 def test_vault_add_creates_structure(tmp_path: Path, monkeypatch):
     monkeypatch.setattr("pkm.commands.vault.get_vaults_root", lambda: tmp_path)
@@ -134,13 +136,12 @@ def test_vault_add_invalid_name(tmp_path: Path, monkeypatch):
 # vault remove
 # ---------------------------------------------------------------------------
 
+
 def test_vault_remove_moves_to_trash(tmp_path: Path, monkeypatch):
     vaults = _make_vaults(tmp_path)
     _patch_vaults(monkeypatch, vaults)
 
-    monkeypatch.setattr(
-        "pkm.commands.vault.Path.home", lambda: tmp_path / "home"
-    )
+    monkeypatch.setattr("pkm.commands.vault.Path.home", lambda: tmp_path / "home")
 
     runner = CliRunner()
     result = runner.invoke(main, ["vault", "remove", "--yes", "alpha"])
@@ -192,6 +193,7 @@ def test_vault_remove_not_found(tmp_path: Path, monkeypatch):
 # vault open
 # ---------------------------------------------------------------------------
 
+
 def test_vault_open_sets_default(tmp_path: Path, monkeypatch):
     vaults = _make_vaults(tmp_path)
     _patch_vaults(monkeypatch, vaults)
@@ -237,6 +239,7 @@ def test_vault_open_not_found(tmp_path: Path, monkeypatch):
 # vault setup
 # ---------------------------------------------------------------------------
 
+
 def test_vault_setup_creates_pkm_and_dirs(tmp_path: Path, monkeypatch):
     """Happy path: setup creates .pkm file and vault directories."""
     from pkm.config import VaultSuggestion
@@ -247,16 +250,21 @@ def test_vault_setup_creates_pkm_and_dirs(tmp_path: Path, monkeypatch):
 
     monkeypatch.setattr(
         "pkm.commands.vault.suggest_vault_name",
-        lambda cwd=None: VaultSuggestion(name="@taeho--myproject", git_root=None, is_subdir=False),
+        lambda cwd=None: VaultSuggestion(
+            name="@taeho--myproject", git_root=None, is_subdir=False
+        ),
     )
     monkeypatch.setattr("pkm.commands.vault.get_vaults_root", lambda: vaults_root)
 
     runner = CliRunner()
     import os
+
     orig_cwd = os.getcwd()
     try:
         os.chdir(cwd)
-        result = runner.invoke(main, ["vault", "setup"], input="\n", catch_exceptions=False)
+        result = runner.invoke(
+            main, ["vault", "setup"], input="\n", catch_exceptions=False
+        )
     finally:
         os.chdir(orig_cwd)
 
@@ -279,7 +287,9 @@ def test_vault_setup_custom_name(tmp_path: Path, monkeypatch):
 
     monkeypatch.setattr(
         "pkm.commands.vault.suggest_vault_name",
-        lambda cwd=None: VaultSuggestion(name="@taeho--myproject", git_root=None, is_subdir=False),
+        lambda cwd=None: VaultSuggestion(
+            name="@taeho--myproject", git_root=None, is_subdir=False
+        ),
     )
     monkeypatch.setattr("pkm.commands.vault.get_vaults_root", lambda: vaults_root)
 
@@ -287,7 +297,9 @@ def test_vault_setup_custom_name(tmp_path: Path, monkeypatch):
     orig_cwd = os.getcwd()
     try:
         os.chdir(cwd)
-        result = runner.invoke(main, ["vault", "setup"], input="my-custom-vault\n", catch_exceptions=False)
+        result = runner.invoke(
+            main, ["vault", "setup"], input="my-custom-vault\n", catch_exceptions=False
+        )
     finally:
         os.chdir(orig_cwd)
 
@@ -331,9 +343,13 @@ def test_vault_setup_git_subdir_creates_root_pkm(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(
         "pkm.commands.vault.suggest_vault_name",
         lambda cwd=None: (
-            VaultSuggestion(name="@taeho--myrepo--auth", git_root=repo_root, is_subdir=True)
+            VaultSuggestion(
+                name="@taeho--myrepo--auth", git_root=repo_root, is_subdir=True
+            )
             if cwd is None or cwd == subdir
-            else VaultSuggestion(name="@taeho--myrepo", git_root=repo_root, is_subdir=False)
+            else VaultSuggestion(
+                name="@taeho--myrepo", git_root=repo_root, is_subdir=False
+            )
         ),
     )
     monkeypatch.setattr("pkm.commands.vault.get_vaults_root", lambda: vaults_root)
@@ -342,7 +358,9 @@ def test_vault_setup_git_subdir_creates_root_pkm(tmp_path: Path, monkeypatch):
     orig_cwd = os.getcwd()
     try:
         os.chdir(subdir)
-        result = runner.invoke(main, ["vault", "setup"], input="\n", catch_exceptions=False)
+        result = runner.invoke(
+            main, ["vault", "setup"], input="\n", catch_exceptions=False
+        )
     finally:
         os.chdir(orig_cwd)
 
@@ -368,7 +386,9 @@ def test_vault_setup_git_subdir_no_overwrite_root(tmp_path: Path, monkeypatch):
 
     monkeypatch.setattr(
         "pkm.commands.vault.suggest_vault_name",
-        lambda cwd=None: VaultSuggestion(name="@taeho--myrepo--auth", git_root=repo_root, is_subdir=True),
+        lambda cwd=None: VaultSuggestion(
+            name="@taeho--myrepo--auth", git_root=repo_root, is_subdir=True
+        ),
     )
     monkeypatch.setattr("pkm.commands.vault.get_vaults_root", lambda: vaults_root)
 
@@ -376,7 +396,9 @@ def test_vault_setup_git_subdir_no_overwrite_root(tmp_path: Path, monkeypatch):
     orig_cwd = os.getcwd()
     try:
         os.chdir(subdir)
-        result = runner.invoke(main, ["vault", "setup"], input="\n", catch_exceptions=False)
+        result = runner.invoke(
+            main, ["vault", "setup"], input="\n", catch_exceptions=False
+        )
     finally:
         os.chdir(orig_cwd)
 
@@ -395,7 +417,9 @@ def test_vault_setup_non_git(tmp_path: Path, monkeypatch):
 
     monkeypatch.setattr(
         "pkm.commands.vault.suggest_vault_name",
-        lambda cwd=None: VaultSuggestion(name="taeho--projects--myapp", git_root=None, is_subdir=False),
+        lambda cwd=None: VaultSuggestion(
+            name="taeho--projects--myapp", git_root=None, is_subdir=False
+        ),
     )
     monkeypatch.setattr("pkm.commands.vault.get_vaults_root", lambda: vaults_root)
 
@@ -403,7 +427,9 @@ def test_vault_setup_non_git(tmp_path: Path, monkeypatch):
     orig_cwd = os.getcwd()
     try:
         os.chdir(cwd)
-        result = runner.invoke(main, ["vault", "setup"], input="\n", catch_exceptions=False)
+        result = runner.invoke(
+            main, ["vault", "setup"], input="\n", catch_exceptions=False
+        )
     finally:
         os.chdir(orig_cwd)
 
@@ -423,7 +449,9 @@ def test_vault_setup_gitignore_tip(tmp_path: Path, monkeypatch):
 
     monkeypatch.setattr(
         "pkm.commands.vault.suggest_vault_name",
-        lambda cwd=None: VaultSuggestion(name="myproject", git_root=None, is_subdir=False),
+        lambda cwd=None: VaultSuggestion(
+            name="myproject", git_root=None, is_subdir=False
+        ),
     )
     monkeypatch.setattr("pkm.commands.vault.get_vaults_root", lambda: vaults_root)
 
@@ -431,7 +459,9 @@ def test_vault_setup_gitignore_tip(tmp_path: Path, monkeypatch):
     orig_cwd = os.getcwd()
     try:
         os.chdir(cwd)
-        result = runner.invoke(main, ["vault", "setup"], input="\n", catch_exceptions=False)
+        result = runner.invoke(
+            main, ["vault", "setup"], input="\n", catch_exceptions=False
+        )
     finally:
         os.chdir(orig_cwd)
 

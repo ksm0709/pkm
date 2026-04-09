@@ -13,7 +13,6 @@ from rich.table import Table
 
 from pkm.config import (
     VaultConfig,
-    VaultSuggestion,
     discover_vaults,
     get_vaults_root,
     load_config,
@@ -88,7 +87,12 @@ def list_vaults() -> None:
             active_mark = ""
         vault_type = "[cyan]git[/cyan]" if name.startswith("@") else "local"
         table.add_row(
-            name, vault_type, str(vc.path), str(notes_count), str(dailies_count), active_mark
+            name,
+            vault_type,
+            str(vc.path),
+            str(notes_count),
+            str(dailies_count),
+            active_mark,
         )
 
     console.print(table)
@@ -200,7 +204,7 @@ def setup() -> None:
 
     if pkm_file.exists():
         raise click.ClickException(
-            f"This directory is already set up as a vault (.pkm exists). "
+            "This directory is already set up as a vault (.pkm exists). "
             "Run 'pkm vault list' to see all configured vaults."
         )
 
@@ -217,7 +221,9 @@ def setup() -> None:
 
     # Write .pkm in current directory
     pkm_file.write_text(f'vault = "{final_name}"\n', encoding="utf-8")
-    console.print(f"[green]✔[/green] Created vault [bold]{final_name}[/bold] at {vault_path}")
+    console.print(
+        f"[green]✔[/green] Created vault [bold]{final_name}[/bold] at {vault_path}"
+    )
     console.print(f"[green]✔[/green] Written .pkm in {cwd}")
 
     # Side effect: ensure repo root has a .pkm if we're in a subdir

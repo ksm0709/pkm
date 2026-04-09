@@ -9,7 +9,6 @@ from pkm import __version__
 from pkm.version_check import available_update
 from pkm.commands.config import config
 from pkm.commands.daily import daily
-from pkm.commands.links import orphans
 from pkm.commands.notes import note
 from pkm.commands.maintenance import stats
 from pkm.commands.tag_commands import tags

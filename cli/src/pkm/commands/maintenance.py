@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -25,10 +24,14 @@ def stats(ctx: click.Context) -> None:
     vault = ctx.obj["vault"]
 
     # Count notes
-    note_count = len(list(vault.notes_dir.glob("*.md"))) if vault.notes_dir.is_dir() else 0
+    note_count = (
+        len(list(vault.notes_dir.glob("*.md"))) if vault.notes_dir.is_dir() else 0
+    )
 
     # Count dailies
-    daily_count = len(list(vault.daily_dir.glob("*.md"))) if vault.daily_dir.is_dir() else 0
+    daily_count = (
+        len(list(vault.daily_dir.glob("*.md"))) if vault.daily_dir.is_dir() else 0
+    )
 
     # Count tasks (excluding archive/)
     task_count = 0
@@ -108,7 +111,9 @@ def stale(ctx: click.Context, days: int) -> None:
 
     stale_notes.sort(key=lambda x: x[1])
 
-    table = Table(title=f"Stale Notes (> {days} days)", show_header=True, header_style="bold cyan")
+    table = Table(
+        title=f"Stale Notes (> {days} days)", show_header=True, header_style="bold cyan"
+    )
     table.add_column("Note", style="green")
     table.add_column("Last Modified")
     table.add_column("Days Ago", justify="right")

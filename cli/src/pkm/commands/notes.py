@@ -20,7 +20,12 @@ from rich.table import Table
 
 from pkm.config import load_config
 from pkm.editor import get_editor
-from pkm.frontmatter import generate_frontmatter, generate_memory_frontmatter, parse, render
+from pkm.frontmatter import (
+    generate_frontmatter,
+    generate_memory_frontmatter,
+    parse,
+    render,
+)
 from pkm.wikilinks import find_backlinks
 
 console = Console()
@@ -62,9 +67,18 @@ def note(ctx: click.Context) -> None:
 
 @note.command()
 @click.argument("title", required=False, default=None)
-@click.option("--content", default=None, help="Note content body (agent usage; title auto-generated from content)")
+@click.option(
+    "--content",
+    default=None,
+    help="Note content body (agent usage; title auto-generated from content)",
+)
 @click.option("--stdin", "use_stdin", is_flag=True, help="Read content from stdin")
-@click.option("--type", "memory_type", type=click.Choice(["episodic", "semantic", "procedural"]), default=None)
+@click.option(
+    "--type",
+    "memory_type",
+    type=click.Choice(["episodic", "semantic", "procedural"]),
+    default=None,
+)
 @click.option("--importance", type=click.IntRange(1, 10), default=None)
 @click.option("--session", "session_id", default=None)
 @click.option("--agent", "agent_id", default=None)
@@ -98,7 +112,9 @@ def add(
     elif title:
         effective_title = title
     else:
-        raise click.UsageError("Provide a title, or use --content / --stdin for agent usage")
+        raise click.UsageError(
+            "Provide a title, or use --content / --stdin for agent usage"
+        )
 
     vault = ctx.obj["vault"]
     today = date.today().isoformat()
@@ -116,6 +132,7 @@ def add(
     is_memory = bool(content or memory_type or importance is not None or session_id)
     if is_memory:
         from datetime import datetime, timezone
+
         meta = generate_memory_frontmatter(
             note_id=note_id,
             memory_type=memory_type or "semantic",
@@ -155,13 +172,20 @@ def edit(ctx: click.Context, query: str) -> None:
 @note.command()
 @click.argument("query")
 @click.option(
-    "--format", "output_format",
+    "--format",
+    "output_format",
     type=click.Choice(["json", "md"]),
     default="json",
     show_default=True,
     help="Output format: json (default, machine-readable) or md (markdown content)",
 )
-@click.option("--top", "-n", default=5, show_default=True, help="Max number of notes to return (json mode)")
+@click.option(
+    "--top",
+    "-n",
+    default=5,
+    show_default=True,
+    help="Max number of notes to return (json mode)",
+)
 @click.pass_context
 def show(ctx: click.Context, query: str, output_format: str, top: int) -> None:
     """Show note contents. Default: JSON array of matching notes.
@@ -201,14 +225,16 @@ def show(ctx: click.Context, query: str, output_format: str, top: int) -> None:
             except Exception:
                 pass
 
-        items.append({
-            "title": n.title,
-            "note_id": n.id,
-            "description": n.description,
-            "body": n.body,
-            "frontmatter": n.meta,
-            "backlinks": backlink_titles,
-        })
+        items.append(
+            {
+                "title": n.title,
+                "note_id": n.id,
+                "description": n.description,
+                "body": n.body,
+                "frontmatter": n.meta,
+                "backlinks": backlink_titles,
+            }
+        )
 
     payload = {
         "query": query,
@@ -226,16 +252,29 @@ def show(ctx: click.Context, query: str, output_format: str, top: int) -> None:
 @click.argument("query")
 @click.option("--top", "-n", default=5, show_default=True, help="Number of results")
 @click.option(
-    "--format", "output_format",
+    "--format",
+    "output_format",
     type=click.Choice(["json", "table"]),
     default="json",
     show_default=True,
     help="Output format",
 )
-@click.option("--type", "memory_type", type=click.Choice(["episodic", "semantic", "procedural"]), default=None)
+@click.option(
+    "--type",
+    "memory_type",
+    type=click.Choice(["episodic", "semantic", "procedural"]),
+    default=None,
+)
 @click.option("--min-importance", type=float, default=None)
 @click.pass_context
-def note_search(ctx: click.Context, query: str, top: int, output_format: str, memory_type: str | None, min_importance: float | None) -> None:
+def note_search(
+    ctx: click.Context,
+    query: str,
+    top: int,
+    output_format: str,
+    memory_type: str | None,
+    min_importance: float | None,
+) -> None:
     """Search notes semantically (default: JSON output for agents)."""
     from pkm.commands.search import format_search_results
     from pkm.search_engine import is_index_stale, load_index, search as search_fn
@@ -324,8 +363,8 @@ def links(ctx: click.Context, query: str) -> None:
     console.print(table)
 
 
-from pkm.commands.maintenance import stale
-from pkm.commands.links import orphans
+from pkm.commands.maintenance import stale  # noqa: E402
+from pkm.commands.links import orphans  # noqa: E402
 
 note.add_command(stale)
 note.add_command(orphans)

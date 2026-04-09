@@ -45,8 +45,7 @@ def cli_source() -> Generator[tuple[Path, bool], None, None]:
         with tarfile.open(tarball_path, "r:gz") as tf:
             tf.extractall(tmp)
         extracted = [
-            p for p in Path(tmp).iterdir()
-            if p.is_dir() and p.name != "__MACOSX"
+            p for p in Path(tmp).iterdir() if p.is_dir() and p.name != "__MACOSX"
         ]
         if not extracted:
             raise RuntimeError("Unexpected tarball layout from GitHub.")

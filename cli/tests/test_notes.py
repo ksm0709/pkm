@@ -15,7 +15,9 @@ from pkm.config import VaultConfig
 
 @pytest.fixture(autouse=True)
 def patch_vaults(monkeypatch, tmp_vault):
-    monkeypatch.setattr("pkm.config.discover_vaults", lambda *a, **kw: {"test-vault": tmp_vault})
+    monkeypatch.setattr(
+        "pkm.config.discover_vaults", lambda *a, **kw: {"test-vault": tmp_vault}
+    )
 
 
 @pytest.fixture
@@ -28,7 +30,9 @@ def cli_runner(monkeypatch, tmp_vault):
             "pkm.config.discover_vaults",
             lambda *a, **kw: {"test-vault": tmp_vault},
         )
-        return runner.invoke(main, ["--vault", "test-vault", *args], catch_exceptions=False)
+        return runner.invoke(
+            main, ["--vault", "test-vault", *args], catch_exceptions=False
+        )
 
     return invoke
 
@@ -42,7 +46,11 @@ def _parse_frontmatter(path: Path) -> dict:
 
 def test_new_creates_note(tmp_vault):
     runner = CliRunner()
-    result = runner.invoke(main, ["--vault", "test-vault", "note", "add", "My First Note"], catch_exceptions=False)
+    result = runner.invoke(
+        main,
+        ["--vault", "test-vault", "note", "add", "My First Note"],
+        catch_exceptions=False,
+    )
     assert result.exit_code == 0
 
     today = date.today().isoformat()
@@ -60,7 +68,15 @@ def test_new_with_tags(tmp_vault):
     runner = CliRunner()
     result = runner.invoke(
         main,
-        ["--vault", "test-vault", "note", "add", "Tagged Note", "--tags", "python,database"],
+        [
+            "--vault",
+            "test-vault",
+            "note",
+            "add",
+            "Tagged Note",
+            "--tags",
+            "python,database",
+        ],
         catch_exceptions=False,
     )
     assert result.exit_code == 0
@@ -86,7 +102,9 @@ def test_new_korean_title(tmp_vault):
     today = date.today().isoformat()
     # Spaces replaced by hyphens in slug
     note_path = tmp_vault.notes_dir / f"{today}-english-title.md"
-    assert note_path.exists(), f"Expected {note_path} to exist. Notes dir: {list(tmp_vault.notes_dir.iterdir())}"
+    assert note_path.exists(), (
+        f"Expected {note_path} to exist. Notes dir: {list(tmp_vault.notes_dir.iterdir())}"
+    )
 
 
 def test_new_refuses_overwrite(tmp_vault):
@@ -123,9 +141,11 @@ def test_new_generates_source(tmp_vault):
 # _search_notes unit tests
 # ---------------------------------------------------------------------------
 
+
 def test_search_notes_single_match(tmp_vault):
     """_search_notes finds notes by partial title match."""
     from pkm.commands.notes import _search_notes
+
     matches = _search_notes(tmp_vault, "mvcc")
     assert len(matches) >= 1
     assert any("mvcc" in m.title.lower() for m in matches)
@@ -134,6 +154,7 @@ def test_search_notes_single_match(tmp_vault):
 def test_search_notes_no_match(tmp_vault):
     """_search_notes returns empty list for unmatched query."""
     from pkm.commands.notes import _search_notes
+
     matches = _search_notes(tmp_vault, "zzz-nonexistent-zzz-xyz")
     assert matches == []
 
@@ -141,6 +162,7 @@ def test_search_notes_no_match(tmp_vault):
 def test_search_notes_case_insensitive(tmp_vault):
     """_search_notes is case-insensitive."""
     from pkm.commands.notes import _search_notes
+
     lower = _search_notes(tmp_vault, "mvcc")
     upper = _search_notes(tmp_vault, "MVCC")
     assert len(lower) == len(upper)
@@ -149,6 +171,7 @@ def test_search_notes_case_insensitive(tmp_vault):
 # ---------------------------------------------------------------------------
 # pkm note show
 # ---------------------------------------------------------------------------
+
 
 def test_note_show_single_match(cli_runner, tmp_vault):
     """pkm note show <query> with single match prints note content."""
@@ -161,6 +184,7 @@ def test_note_show_single_match(cli_runner, tmp_vault):
 def test_note_show_no_match(cli_runner, tmp_vault):
     """pkm note show with no match exits 0 with empty JSON results (agent-safe)."""
     import json as _json
+
     result = cli_runner("note", "show", "zzz-nonexistent-zzz-xyz")
     assert result.exit_code == 0
     json_text = result.output.split("\n* ")[0].strip()
@@ -173,6 +197,7 @@ def test_note_show_no_match(cli_runner, tmp_vault):
 # pkm note edit
 # ---------------------------------------------------------------------------
 
+
 def test_note_edit_single_match(cli_runner, tmp_vault, monkeypatch):
     """pkm note edit opens editor for single matching note."""
     calls = []
@@ -181,7 +206,10 @@ def test_note_edit_single_match(cli_runner, tmp_vault, monkeypatch):
         returncode = 0
 
     monkeypatch.setattr("pkm.commands.notes.load_config", lambda: {})
-    monkeypatch.setattr("pkm.commands.notes.subprocess.run", lambda args, **kw: (_FakeProc(), calls.append(args))[0])
+    monkeypatch.setattr(
+        "pkm.commands.notes.subprocess.run",
+        lambda args, **kw: (_FakeProc(), calls.append(args))[0],
+    )
 
     result = cli_runner("note", "edit", "mvcc")
     assert result.exit_code == 0
@@ -199,6 +227,7 @@ def test_note_edit_no_match(cli_runner, tmp_vault):
 # pkm note stale / pkm note orphans
 # ---------------------------------------------------------------------------
 
+
 def test_note_stale_is_accessible(cli_runner, tmp_vault):
     """pkm note stale is accessible as a subcommand of note."""
     result = cli_runner("note", "stale", "--days", "9999")
@@ -215,14 +244,28 @@ def test_note_orphans_is_accessible(cli_runner, tmp_vault):
 # pkm note add --content (agent memory usage)
 # ---------------------------------------------------------------------------
 
+
 def test_note_add_content_creates_memory_note(tmp_vault):
     """pkm note add --content creates note with memory frontmatter."""
     runner = CliRunner()
     result = runner.invoke(
         main,
-        ["--vault", "test-vault", "note", "add",
-         "--content", "learned that IndexEntry crash fix requires field filtering",
-         "--type", "semantic", "--importance", "7", "--session", "s1", "--agent", "ag1"],
+        [
+            "--vault",
+            "test-vault",
+            "note",
+            "add",
+            "--content",
+            "learned that IndexEntry crash fix requires field filtering",
+            "--type",
+            "semantic",
+            "--importance",
+            "7",
+            "--session",
+            "s1",
+            "--agent",
+            "ag1",
+        ],
         catch_exceptions=False,
     )
     assert result.exit_code == 0
@@ -270,7 +313,17 @@ def test_note_add_stdin(tmp_vault):
     runner = CliRunner()
     result = runner.invoke(
         main,
-        ["--vault", "test-vault", "note", "add", "--stdin", "--type", "episodic", "--importance", "5"],
+        [
+            "--vault",
+            "test-vault",
+            "note",
+            "add",
+            "--stdin",
+            "--type",
+            "episodic",
+            "--importance",
+            "5",
+        ],
         input="multi-line content\nfrom stdin",
         catch_exceptions=False,
     )
@@ -296,7 +349,14 @@ def test_note_add_content_defaults(tmp_vault):
     runner = CliRunner()
     result = runner.invoke(
         main,
-        ["--vault", "test-vault", "note", "add", "--content", "default type test content"],
+        [
+            "--vault",
+            "test-vault",
+            "note",
+            "add",
+            "--content",
+            "default type test content",
+        ],
         catch_exceptions=False,
     )
     assert result.exit_code == 0

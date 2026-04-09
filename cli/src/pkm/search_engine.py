@@ -15,6 +15,7 @@ from pkm.frontmatter import parse
 from pkm.wikilinks import count_backlinks
 from pkm._memory_types import CURRENT_SCHEMA_VERSION, IMPORTANCE_DEFAULT
 
+
 def _require_transformers(model_name: str):
     """Lazily import and return a SentenceTransformer, raising a friendly error if missing."""
     try:
@@ -72,7 +73,9 @@ def _extract_created_at(note_path: Path, frontmatter_data: dict) -> str | None:
     return None
 
 
-def build_index(vault: VaultConfig, model_name: str = "all-MiniLM-L6-v2") -> VectorIndex:
+def build_index(
+    vault: VaultConfig, model_name: str = "all-MiniLM-L6-v2"
+) -> VectorIndex:
     """Build a vector index for all notes and daily notes in the vault."""
     model = _require_transformers(model_name)
     backlink_counts = count_backlinks(vault)
@@ -148,7 +151,9 @@ def load_index(vault: VaultConfig) -> VectorIndex:
 
     data = json.loads(index_path.read_text(encoding="utf-8"))
     entries = [
-        IndexEntry(**{k: v for k, v in e.items() if k in IndexEntry.__dataclass_fields__})
+        IndexEntry(
+            **{k: v for k, v in e.items() if k in IndexEntry.__dataclass_fields__}
+        )
         for e in data["entries"]
     ]
     return VectorIndex(
@@ -203,15 +208,14 @@ def search(
                 if created.tzinfo is None:
                     created = created.replace(tzinfo=timezone.utc)
                 hours_ago = (now - created).total_seconds() / 3600
-                recency_score = 0.995 ** hours_ago
+                recency_score = 0.995**hours_ago
             except ValueError:
                 recency_score = 0.5  # fallback for unparseable dates
 
         importance_norm = entry.importance / 10.0
         final_score = (
-            (1 - recency_weight) * cos_sim
-            + recency_weight * recency_score * importance_norm
-        )
+            1 - recency_weight
+        ) * cos_sim + recency_weight * recency_score * importance_norm
 
         scored.append((final_score, entry))
 

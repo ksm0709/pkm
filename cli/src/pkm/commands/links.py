@@ -47,23 +47,23 @@ def _extract_tags(path: Path) -> list[str]:
         return []
 
     # Match YAML frontmatter block
-    fm_match = re.match(r'^---\n(.*?)\n---', text, re.DOTALL)
+    fm_match = re.match(r"^---\n(.*?)\n---", text, re.DOTALL)
     if not fm_match:
         return []
 
     fm_text = fm_match.group(1)
 
     # Try to parse tags: [a, b] inline style
-    inline = re.search(r'^tags:\s*\[([^\]]*)\]', fm_text, re.MULTILINE)
+    inline = re.search(r"^tags:\s*\[([^\]]*)\]", fm_text, re.MULTILINE)
     if inline:
         raw = inline.group(1)
-        return [t.strip() for t in raw.split(',') if t.strip()]
+        return [t.strip() for t in raw.split(",") if t.strip()]
 
     # Try block style tags:
     #   tags:
     #     - a
-    block = re.search(r'^tags:\s*\n((?:  - .+\n?)*)', fm_text, re.MULTILINE)
+    block = re.search(r"^tags:\s*\n((?:  - .+\n?)*)", fm_text, re.MULTILINE)
     if block:
-        return re.findall(r'  - (.+)', block.group(1))
+        return re.findall(r"  - (.+)", block.group(1))
 
     return []

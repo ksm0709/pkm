@@ -44,7 +44,7 @@ def parse(path: Path) -> Note:
     m = _FM_PATTERN.match(text)
     if m:
         meta = yaml.safe_load(m.group(1)) or {}
-        body = text[m.end():]
+        body = text[m.end() :]
     else:
         meta = {}
         body = text
@@ -85,6 +85,7 @@ def generate_memory_frontmatter(
 ) -> dict:
     """Generate YAML frontmatter for agent memory notes."""
     from datetime import datetime, timezone
+
     now = datetime.now(timezone.utc).isoformat()
     fm: dict = {
         "id": note_id,
