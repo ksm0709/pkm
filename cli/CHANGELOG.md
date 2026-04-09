@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v2.14.0 (2026-04-09)
+
+### Chores
+
+- Add pkm-agent smoke check (pkm daily add integration test)
+  ([`812c674`](https://github.com/ksm0709/pkm/commit/812c674f1bf9d32990e9ea848b927b4675dd3630))
+
+### Features
+
+- Add write-time dedup, dynamic context injection, and consolidation trigger
+  ([`398dd09`](https://github.com/ksm0709/pkm/commit/398dd09e953fa05de593a4499fee27b53f493996))
+
+
 ## v2.13.1 (2026-04-09)
 
 ### Bug Fixes
