@@ -16,6 +16,9 @@ from pkm.wikilinks import count_backlinks
 from pkm._memory_types import CURRENT_SCHEMA_VERSION, IMPORTANCE_DEFAULT
 
 
+_MODEL_CACHE: dict[str, object] = {}
+
+
 def _require_transformers(model_name: str):
     """Lazily import and return a SentenceTransformer, raising a friendly error if missing."""
     try:
@@ -239,6 +242,63 @@ def search(
         )
 
     return results
+
+
+def find_similar(
+    content: str,
+    index: VectorIndex,
+    threshold: float = 0.85,
+    top_n: int = 3,
+    model_name: str = "all-MiniLM-L6-v2",
+) -> list[SearchResult]:
+    """Find notes semantically similar to content at or above threshold.
+
+    Returns empty list on any failure — never raises exceptions.
+    """
+    try:
+        import numpy as np
+        try:
+            from sentence_transformers import SentenceTransformer  # noqa: PLC0415
+        except ImportError:
+            return []
+
+        if model_name not in _MODEL_CACHE:
+            _MODEL_CACHE[model_name] = SentenceTransformer(model_name)
+        model = _MODEL_CACHE[model_name]
+        query_emb = model.encode([content], show_progress_bar=False)[0]  # type: ignore[union-attr]
+
+        scored: list[tuple[float, IndexEntry]] = []
+        for entry in index.entries:
+            emb = np.array(entry.embedding, dtype=float)
+            q = np.array(query_emb, dtype=float)
+            norm_e = np.linalg.norm(emb)
+            norm_q = np.linalg.norm(q)
+            if norm_e == 0 or norm_q == 0:
+                continue
+            cos_sim = float(np.dot(q, emb) / (norm_q * norm_e))
+            if cos_sim >= threshold:
+                scored.append((cos_sim, entry))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+
+        results: list[SearchResult] = []
+        for rank, (score, entry) in enumerate(scored[:top_n], 1):
+            results.append(
+                SearchResult(
+                    note_id=entry.note_id,
+                    title=entry.title,
+                    score=score,
+                    backlink_count=entry.backlink_count,
+                    tags=entry.tags,
+                    rank=rank,
+                    memory_type=entry.memory_type,
+                    importance=entry.importance,
+                    path=entry.path,
+                )
+            )
+        return results
+    except Exception:
+        return []
 
 
 def is_index_stale(vault: VaultConfig) -> bool:

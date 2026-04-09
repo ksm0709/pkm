@@ -57,6 +57,31 @@ def _search_notes(vault, query: str) -> list:
     return matches
 
 
+def _append_operation_log(vault, operation: str, note_id: str, title: str) -> None:
+    """Append a timestamped entry to .pkm/log.md. Silently ignores all errors."""
+    try:
+        from datetime import datetime, date as _date
+        today = _date.today().isoformat()
+        now = datetime.now().strftime("%H:%M")
+        log_path = vault.pkm_dir / "log.md"
+        vault.pkm_dir.mkdir(parents=True, exist_ok=True)
+        entry = f"- {now} [{operation}] {note_id} — \"{title}\"\n"
+        date_header = f"## {today}"
+        if log_path.exists():
+            text = log_path.read_text(encoding="utf-8")
+            if date_header in text:
+                text = text.replace(f"{date_header}\n", f"{date_header}\n{entry}", 1)
+            else:
+                if not text.endswith("\n"):
+                    text += "\n"
+                text += f"\n{date_header}\n{entry}"
+        else:
+            text = f"# Operation Log\n\n{date_header}\n{entry}"
+        log_path.write_text(text, encoding="utf-8")
+    except Exception:
+        pass
+
+
 @click.group(invoke_without_command=True)
 @click.pass_context
 def note(ctx: click.Context) -> None:
@@ -83,6 +108,7 @@ def note(ctx: click.Context) -> None:
 @click.option("--session", "session_id", default=None)
 @click.option("--agent", "agent_id", default=None)
 @click.option("--tags", "-t", default="", help="Comma-separated tags")
+@click.option("--no-dedup", is_flag=True, default=False, help="Skip duplicate detection")
 @click.pass_context
 def add(
     ctx: click.Context,
@@ -94,6 +120,7 @@ def add(
     session_id: str | None,
     agent_id: str | None,
     tags: str,
+    no_dedup: bool,
 ) -> None:
     """Create a new atomic note in the vault.
 
@@ -117,6 +144,21 @@ def add(
         )
 
     vault = ctx.obj["vault"]
+
+    if not no_dedup and content:
+        try:
+            from pkm.search_engine import load_index, find_similar
+            _index = load_index(vault)
+            _matches = find_similar(content, _index, threshold=0.85, top_n=1)
+            if _matches:
+                print(
+                    f"[pkm dedup warning] Similar note ({_matches[0].score:.2f}): '{_matches[0].title}'\n"
+                    "Proceeding with add. Use --no-dedup to skip this check.",
+                    file=sys.stderr,
+                )
+        except Exception:
+            pass
+
     today = date.today().isoformat()
     slug = _slugify(effective_title)
     filename = f"{today}-{slug}.md"
@@ -148,6 +190,7 @@ def add(
 
     note_content = render(meta, body)
     note_path.write_text(note_content, encoding="utf-8")
+    _append_operation_log(vault, "add", note_id, effective_title)
     console.print(f"[green]Created[/green] {note_path}")
 
 
@@ -361,6 +404,22 @@ def links(ctx: click.Context, query: str) -> None:
             pass
 
     console.print(table)
+
+
+@note.command(name="log")
+@click.option("--tail", default=20, show_default=True, help="Number of recent entries to show")
+@click.pass_context
+def note_log(ctx: click.Context, tail: int) -> None:
+    """Show recent note operation log from .pkm/log.md."""
+    vault = ctx.obj["vault"]
+    log_path = vault.pkm_dir / "log.md"
+    if not log_path.exists():
+        click.echo("No log file yet. Log entries appear after your first `pkm note add`.")
+        return
+    lines = log_path.read_text(encoding="utf-8").splitlines()
+    non_empty = [line for line in lines if line.strip()]
+    shown = non_empty[-tail:] if tail < len(non_empty) else non_empty
+    click.echo("\n".join(shown))
 
 
 from pkm.commands.maintenance import stale  # noqa: E402

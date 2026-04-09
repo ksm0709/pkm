@@ -106,6 +106,31 @@ def mark(ctx: click.Context, date_str: str) -> None:
     click.echo(f"Marked as consolidated: {note_path}")
 
 
+def _list_candidate_dates(vault) -> list[str]:
+    """Return date strings (YYYY-MM-DD) for daily notes not today and not consolidated."""
+    daily_dir = vault.daily_dir
+    if not daily_dir.exists():
+        return []
+
+    today = date.today().isoformat()
+    dates: list[str] = []
+
+    for md_file in sorted(daily_dir.glob("*.md"), reverse=True):
+        date_str = md_file.stem
+        if date_str == today:
+            continue
+        try:
+            text = md_file.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        fm = _parse_frontmatter(text)
+        if fm.get("consolidated", False):
+            continue
+        dates.append(date_str)
+
+    return dates
+
+
 def _parse_frontmatter(text: str) -> dict:
     """Parse YAML frontmatter from markdown text. Returns empty dict if none."""
     if not text.startswith("---"):

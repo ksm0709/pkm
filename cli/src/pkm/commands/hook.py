@@ -29,6 +29,114 @@ def _safe_hook(fn):
     return wrapper
 
 
+def _load_hook_config(vault) -> dict:
+    """Load .pkm/config.toml. Returns {} on missing or parse error."""
+    try:
+        config_path = vault.pkm_dir / "config.toml"
+        if not config_path.exists():
+            return {}
+        try:
+            import tomllib  # Python 3.11+
+        except ImportError:
+            try:
+                import tomli as tomllib  # type: ignore[no-redef]
+            except ImportError:
+                return {}
+        return tomllib.loads(config_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _load_session_state(vault) -> dict:
+    """Load .pkm/session_state.json. Returns defaults on missing or corrupt."""
+    defaults: dict = {"session_count": 0, "last_consolidation_at": None}
+    try:
+        state_path = vault.pkm_dir / "session_state.json"
+        if not state_path.exists():
+            return defaults.copy()
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return defaults.copy()
+        return {
+            "session_count": int(data.get("session_count", 0)),
+            "last_consolidation_at": data.get("last_consolidation_at"),
+        }
+    except Exception:
+        return defaults.copy()
+
+
+def _save_session_state(vault, state: dict) -> None:
+    """Write .pkm/session_state.json."""
+    try:
+        vault.pkm_dir.mkdir(parents=True, exist_ok=True)
+        state_path = vault.pkm_dir / "session_state.json"
+        state_path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _check_consolidation_trigger(vault, config: dict) -> str | None:
+    """Check if consolidation should be recommended.
+
+    Returns recommendation message string or None.
+    Side effect: increments session_count; resets after trigger.
+    """
+    try:
+        from datetime import datetime, timezone, timedelta
+
+        consolidation_cfg = config.get("consolidation", {})
+        auto_trigger = consolidation_cfg.get("auto_trigger", True)
+        if not auto_trigger:
+            return None
+
+        threshold = int(consolidation_cfg.get("session_threshold", 5))
+        cooldown_hours = int(consolidation_cfg.get("cooldown_hours", 24))
+
+        state = _load_session_state(vault)
+        state["session_count"] = state["session_count"] + 1
+
+        if state["session_count"] < threshold:
+            _save_session_state(vault, state)
+            return None
+
+        # Check cooldown
+        now = datetime.now(timezone.utc)
+        last_str = state.get("last_consolidation_at")
+        if last_str:
+            try:
+                last_dt = datetime.fromisoformat(last_str)
+                if last_dt.tzinfo is None:
+                    last_dt = last_dt.replace(tzinfo=timezone.utc)
+                if (now - last_dt) < timedelta(hours=cooldown_hours):
+                    _save_session_state(vault, state)
+                    return None
+            except ValueError:
+                pass
+
+        # Find candidates
+        from pkm.commands.consolidate import _list_candidate_dates
+        candidate_dates = _list_candidate_dates(vault)
+        if not candidate_dates:
+            state["session_count"] = 0
+            _save_session_state(vault, state)
+            return None
+
+        # Emit trigger
+        state["session_count"] = 0
+        state["last_consolidation_at"] = now.isoformat()
+        _save_session_state(vault, state)
+
+        lines = [f"{len(candidate_dates)} daily note(s) ready for consolidation. Run:"]
+        for d in candidate_dates[:5]:
+            lines.append(f"  pkm consolidate mark {d}")
+        if len(candidate_dates) > 5:
+            lines.append(f"  ... and {len(candidate_dates) - 5} more")
+        lines.append("  /pkm:distill-daily")
+        return "\n".join(lines)
+    except Exception:
+        return None
+
+
 def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None:
     vault = ctx.obj["vault"]
     lines = []
@@ -76,6 +184,16 @@ def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None
     except Exception:
         pass
 
+    try:
+        hook_config = _load_hook_config(vault)
+        trigger_msg = _check_consolidation_trigger(vault, hook_config)
+        if trigger_msg:
+            lines.append("## Consolidation Recommended")
+            lines.append(trigger_msg)
+            lines.append("")
+    except Exception:
+        pass
+
     content = "\n".join(lines).strip()
     if not content:
         content = "PKM memory layer active. Use `pkm note add` to save memories."
@@ -89,7 +207,58 @@ def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None
 def _handle_turn_start(
     ctx, output_format: str, session_id: str | None, **_ignored
 ) -> None:
-    lines = []
+    import json as _json
+    import sys as _sys
+
+    vault = ctx.obj["vault"]
+    lines: list[str] = []
+
+    # --- Dynamic context injection from stdin + daily note ---
+    user_prompt = ""
+    if not _sys.stdin.isatty():
+        try:
+            raw = _sys.stdin.read(65536)  # 64 KB cap — hook payloads are always small
+            payload = _json.loads(raw)
+            user_prompt = str(payload.get("prompt", ""))
+        except Exception:
+            pass
+
+    daily_snippet = ""
+    try:
+        from datetime import date as _date
+        today = _date.today().isoformat()
+        daily_path = vault.daily_dir / f"{today}.md"
+        if daily_path.exists():
+            text = daily_path.read_text(encoding="utf-8")
+            if text.startswith("---"):
+                end = text.find("---", 3)
+                if end != -1:
+                    text = text[end + 3:].strip()
+            daily_snippet = text[:200]
+    except Exception:
+        pass
+
+    query_parts = []
+    if user_prompt:
+        query_parts.append(user_prompt[:150])
+    if daily_snippet:
+        query_parts.append(daily_snippet[:100])
+    query = " ".join(query_parts).strip() or "important decision error finding pattern"
+
+    try:
+        from pkm.search_engine import load_index, search as engine_search
+        index = load_index(vault)
+        results = engine_search(query, index, top_n=3, min_importance=5.0)
+        if results:
+            lines.append("## Relevant Notes")
+            for r in results:
+                mt = r.memory_type or "semantic"
+                lines.append(f"- [{mt}|imp:{r.importance:.0f}] {r.title}")
+            lines.append("")
+    except Exception:
+        pass
+
+    # --- Advisory text (unchanged from original) ---
     if session_id:
         lines.append(f"Session: {session_id}")
     lines.append(
@@ -107,15 +276,9 @@ def _handle_turn_start(
         "For detailed PKM workflows (Zettelkasten, linking, consolidation): invoke the `pkm` skill."
     )
     lines.append("")
-    lines.append(
-        "PKM Role: You are the active manager of this knowledge base. Before concluding your response, check:"
-    )
-    lines.append(
-        "  - Code changes / bug fixes / new features? → `pkm daily add <summary>`"
-    )
-    lines.append(
-        "  - New concepts / decisions / patterns learned? → `pkm note add <content> --type semantic --importance N`"
-    )
+    lines.append("PKM Role: You are the active manager of this knowledge base. Before concluding your response, check:")
+    lines.append("  - Code changes / bug fixes / new features? → `pkm daily add <summary>`")
+    lines.append("  - New concepts / decisions / patterns learned? → `pkm note add <content> --type semantic --importance N`")
     lines.append("  - Important session context to preserve? → `pkm daily add <text>`")
 
     content = "\n".join(lines)

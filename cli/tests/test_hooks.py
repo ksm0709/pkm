@@ -228,3 +228,131 @@ def test_deprecated_agent_setup_hooks_warns(runner, vault_env, tmp_path, monkeyp
         main, ["agent", "setup-hooks", "--tool", "claude-code", "--dry-run"]
     )
     assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# Local mock_model fixture for test_hooks
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def mock_model(monkeypatch):
+    """Replace SentenceTransformer with a deterministic fake model."""
+    import numpy as np
+
+    class FakeModel:
+        def encode(self, texts, **kwargs):
+            texts_list = texts if isinstance(texts, list) else [texts]
+            return np.array([[hash(t) % 100 / 100.0] * 384 for t in texts_list])
+
+    monkeypatch.setattr(
+        "pkm.search_engine._require_transformers", lambda name: FakeModel()
+    )
+
+
+# ---------------------------------------------------------------------------
+# GAP 3: turn-start stdin dynamic injection
+# ---------------------------------------------------------------------------
+
+
+def test_turn_start_with_stdin_prompt_injects_notes(runner, vault_env, tmp_vault, monkeypatch, mock_model):
+    """When stdin has a prompt, relevant notes are searched and injected."""
+    import json as _json
+    from pkm.search_engine import SearchResult, build_index
+
+    build_index(tmp_vault)
+
+    def fake_search(query, index, **kwargs):
+        return [SearchResult(
+            note_id="mvcc-note", title="MVCC Concurrency",
+            score=0.9, backlink_count=1, tags=["database"],
+            rank=1, memory_type="semantic", importance=8.0, path=""
+        )]
+
+    monkeypatch.setattr("pkm.search_engine.search", fake_search)
+
+    payload = _json.dumps({"hook_event_name": "UserPromptSubmit", "prompt": "MVCC database isolation"})
+    result = runner.invoke(
+        main, ["hook", "run", "turn-start", "--format", "plain"],
+        input=payload,
+    )
+    assert result.exit_code == 0
+    assert "Relevant Notes" in result.output or "MVCC" in result.output or "pkm search" in result.output
+
+
+def test_turn_start_no_stdin_shows_advisory(runner, vault_env):
+    """Without stdin, turn-start shows advisory text normally."""
+    result = runner.invoke(main, ["hook", "run", "turn-start", "--format", "plain"])
+    assert result.exit_code == 0
+    assert "pkm search" in result.output
+    assert "PKM Role" in result.output
+
+
+# ---------------------------------------------------------------------------
+# GAP 4: session-start consolidation trigger
+# ---------------------------------------------------------------------------
+
+
+def test_session_start_increments_session_count(runner, vault_env, tmp_vault):
+    """Session-start increments session_count in .pkm/session_state.json."""
+    import json as _json
+
+    runner.invoke(main, ["hook", "run", "session-start"])
+    state_path = tmp_vault.pkm_dir / "session_state.json"
+    assert state_path.exists()
+    state = _json.loads(state_path.read_text())
+    assert state["session_count"] >= 1
+
+
+def test_consolidation_trigger_after_threshold(runner, vault_env, tmp_vault):
+    """After sessions reach threshold with unconsolidated daily notes, consolidation message appears."""
+    import json as _json
+    from datetime import timedelta
+
+    # Create unconsolidated daily notes
+    for i in range(1, 4):
+        d = (date.today() - timedelta(days=i)).isoformat()
+        (tmp_vault.daily_dir / f"{d}.md").write_text(
+            f"---\nid: {d}\ntags: []\n---\n- entry\n", encoding="utf-8"
+        )
+
+    # Enable auto_trigger via config with low threshold
+    config_path = tmp_vault.pkm_dir / "config.toml"
+    config_path.write_text(
+        "[consolidation]\nauto_trigger = true\nsession_threshold = 5\ncooldown_hours = 24\n"
+    )
+
+    # Set session_count to 4 (one below threshold so next invoke hits 5)
+    state_path = tmp_vault.pkm_dir / "session_state.json"
+    state_path.write_text(_json.dumps({"session_count": 4, "last_consolidation_at": None}))
+
+    result = runner.invoke(main, ["hook", "run", "session-start"])
+    assert result.exit_code == 0
+    assert "Consolidation Recommended" in result.output or "consolidat" in result.output.lower()
+
+
+def test_consolidation_cooldown_suppresses_trigger(runner, vault_env, tmp_vault):
+    """If last_consolidation_at is within cooldown window, no trigger message."""
+    import json as _json
+    from datetime import datetime, timezone, timedelta
+
+    config_path = tmp_vault.pkm_dir / "config.toml"
+    config_path.write_text(
+        "[consolidation]\nauto_trigger = true\nsession_threshold = 2\ncooldown_hours = 24\n"
+    )
+
+    recent = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    state_path = tmp_vault.pkm_dir / "session_state.json"
+    state_path.write_text(_json.dumps({"session_count": 5, "last_consolidation_at": recent}))
+
+    result = runner.invoke(main, ["hook", "run", "session-start"])
+    assert result.exit_code == 0
+    assert "Consolidation Recommended" not in result.output
+
+
+def test_corrupt_session_state_recovery(runner, vault_env, tmp_vault):
+    """Corrupt session_state.json is reset to defaults, no crash."""
+    state_path = tmp_vault.pkm_dir / "session_state.json"
+    state_path.write_text("{{invalid json{{", encoding="utf-8")
+    result = runner.invoke(main, ["hook", "run", "session-start"])
+    assert result.exit_code == 0

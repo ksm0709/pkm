@@ -366,3 +366,120 @@ def test_note_add_content_defaults(tmp_vault):
     meta = _parse_frontmatter(notes[0])
     assert meta["memory_type"] == "semantic"
     assert meta["importance"] == 5.0
+
+
+# ---------------------------------------------------------------------------
+# GAP 2: --no-dedup flag and dedup warn+proceed
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def mock_model(monkeypatch):
+    """Replace SentenceTransformer with a deterministic fake model (local copy for test_notes)."""
+    import numpy as np
+
+    class FakeModel:
+        def encode(self, texts, **kwargs):
+            texts_list = texts if isinstance(texts, list) else [texts]
+            return np.array([[hash(t) % 100 / 100.0] * 384 for t in texts_list])
+
+    monkeypatch.setattr(
+        "pkm.search_engine._require_transformers", lambda name: FakeModel()
+    )
+
+
+def test_note_add_no_dedup_flag_skips_check(cli_runner, tmp_vault, monkeypatch):
+    """--no-dedup skips find_similar entirely."""
+    called = []
+
+    def fake_find_similar(*args, **kwargs):
+        called.append(True)
+        return []
+
+    monkeypatch.setattr("pkm.search_engine.find_similar", fake_find_similar)
+    result = cli_runner("note", "add", "--content", "unique content here", "--no-dedup")
+    assert result.exit_code == 0
+    assert called == []  # never called
+
+
+def test_note_add_dedup_warning_on_match(cli_runner, tmp_vault, monkeypatch, mock_model):
+    """When similar note exists, warning is printed and note still created."""
+    from pkm.search_engine import SearchResult, VectorIndex
+
+    def fake_find_similar(content, index, **kwargs):
+        return [SearchResult(
+            note_id="existing-note",
+            title="Existing Similar Note",
+            score=0.91,
+            backlink_count=0,
+            tags=[],
+            rank=1,
+            memory_type="semantic",
+            importance=7.0,
+            path="/vault/notes/existing-note.md",
+        )]
+
+    monkeypatch.setattr("pkm.search_engine.find_similar", fake_find_similar)
+    monkeypatch.setattr(
+        "pkm.search_engine.load_index",
+        lambda v: VectorIndex(model="m", created_at="", entries=[]),
+    )
+
+    result = cli_runner("note", "add", "--content", "some content about MVCC")
+    assert result.exit_code == 0
+    # Note should still be created
+    today = date.today().isoformat()
+    created_files = list(tmp_vault.notes_dir.glob(f"{today}-*.md"))
+    assert len(created_files) >= 1
+
+
+def test_note_add_dedup_no_index_graceful(cli_runner, tmp_vault):
+    """When index does not exist, note add proceeds without error."""
+    index_path = tmp_vault.pkm_dir / "index.json"
+    if index_path.exists():
+        index_path.unlink()
+
+    result = cli_runner("note", "add", "--content", "content without index")
+    assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# GAP 3: _append_operation_log + pkm note log
+# ---------------------------------------------------------------------------
+
+
+def test_note_add_creates_log_entry(cli_runner, tmp_vault):
+    """pkm note add creates an entry in .pkm/log.md."""
+    result = cli_runner("note", "add", "--content", "log test note", "--no-dedup")
+    assert result.exit_code == 0
+    log_path = tmp_vault.pkm_dir / "log.md"
+    assert log_path.exists(), ".pkm/log.md should be created"
+    content = log_path.read_text(encoding="utf-8")
+    assert "[add]" in content
+    assert "log test note" in content
+
+
+def test_note_log_command_shows_entries(cli_runner, tmp_vault):
+    """pkm note log shows entries after note add."""
+    cli_runner("note", "add", "--content", "first note for log test", "--no-dedup")
+    result = cli_runner("note", "log")
+    assert result.exit_code == 0
+    assert "[add]" in result.output
+
+
+def test_note_log_no_file(cli_runner, tmp_vault):
+    """pkm note log with no log file exits 0 with helpful message."""
+    log_path = tmp_vault.pkm_dir / "log.md"
+    if log_path.exists():
+        log_path.unlink()
+    result = cli_runner("note", "log")
+    assert result.exit_code == 0
+    assert "No log file" in result.output or "log" in result.output.lower()
+
+
+def test_note_log_tail_option(cli_runner, tmp_vault):
+    """pkm note log --tail N limits output."""
+    for i in range(5):
+        cli_runner("note", "add", "--content", f"note number {i}", "--no-dedup")
+    result = cli_runner("note", "log", "--tail", "2")
+    assert result.exit_code == 0

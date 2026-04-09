@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import json
+import sys
+import types
 
+import numpy as np
 import pytest
 
+from pkm._memory_types import CURRENT_SCHEMA_VERSION
 from pkm.config import VaultConfig
 from pkm.search_engine import (
     IndexEntry,
@@ -13,11 +17,11 @@ from pkm.search_engine import (
     VectorIndex,
     _extract_created_at,
     build_index,
+    find_similar,
     is_index_stale,
     load_index,
     search,
 )
-from pkm._memory_types import CURRENT_SCHEMA_VERSION
 
 
 @pytest.fixture
@@ -469,3 +473,118 @@ def test_search_time_decay(monkeypatch):
     score_1h = next(r.score for r in results if r.note_id == "1h")
     score_1000h = next(r.score for r in results if r.note_id == "1000h")
     assert score_1h > score_1000h
+
+
+# ---------------------------------------------------------------------------
+# find_similar
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=False)
+def clear_model_cache(monkeypatch):
+    """Clear the module-level model cache before each find_similar test."""
+    import pkm.search_engine as _se
+    monkeypatch.setattr(_se, "_MODEL_CACHE", {})
+
+
+def _make_index(*embeddings_and_titles):
+    """Create a VectorIndex with controlled embeddings for testing."""
+    entries = []
+    for i, (emb, title) in enumerate(embeddings_and_titles):
+        entries.append(IndexEntry(
+            note_id=f"note-{i}",
+            path=f"/vault/notes/note-{i}.md",
+            embedding=emb,
+            backlink_count=0,
+            tags=[],
+            title=title,
+            memory_type="semantic",
+            importance=7.0,
+            created_at=None,
+        ))
+    return VectorIndex(model="all-MiniLM-L6-v2", created_at="2026-04-09", entries=entries)
+
+
+def _fake_st_module(query_embedding):
+    """Create a fake sentence_transformers module that returns a fixed embedding."""
+    fake_mod = types.ModuleType("sentence_transformers")
+
+    class FakeST:
+        def __init__(self, *a, **kw):
+            pass
+        def encode(self, texts, **kw):
+            return np.array([query_embedding for _ in texts])
+
+    fake_mod.SentenceTransformer = FakeST
+    return fake_mod
+
+
+def test_find_similar_happy_path(monkeypatch, clear_model_cache):
+    """Returns matches above threshold sorted by score desc."""
+    emb_a = [1.0, 0.0, 0.0]
+    emb_b = [0.0, 1.0, 0.0]
+    emb_c = [0.99, 0.0, 0.1]  # very similar to emb_a
+
+    index = _make_index((emb_a, "Note A"), (emb_b, "Note B"), (emb_c, "Note C"))
+    query_emb = [1.0, 0.0, 0.0]  # identical to emb_a
+
+    monkeypatch.setitem(sys.modules, "sentence_transformers", _fake_st_module(query_emb))
+
+    results = find_similar("some content", index, threshold=0.85)
+    assert len(results) >= 1
+    titles = [r.title for r in results]
+    assert "Note A" in titles  # cos_sim=1.0 >= 0.85
+    assert "Note B" not in titles  # cos_sim=0.0 < 0.85
+    # scores are descending
+    scores = [r.score for r in results]
+    assert scores == sorted(scores, reverse=True)
+
+
+def test_find_similar_no_entries(monkeypatch, clear_model_cache):
+    """Returns empty list when index has no entries."""
+    monkeypatch.setitem(sys.modules, "sentence_transformers", _fake_st_module([1.0, 0.0]))
+    index = VectorIndex(model="m", created_at="2026-04-09", entries=[])
+    assert find_similar("anything", index) == []
+
+
+def test_find_similar_import_error(monkeypatch, clear_model_cache):
+    """Returns empty list when sentence_transformers is not installed."""
+    import builtins
+    original_import = builtins.__import__
+    monkeypatch.delitem(sys.modules, "sentence_transformers", raising=False)
+
+    def mock_import(name, *args, **kwargs):
+        if name == "sentence_transformers":
+            raise ImportError("mocked: not installed")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", mock_import)
+
+    index = _make_index(([1.0, 0.0], "Any Note"))
+    result = find_similar("some content", index)
+    assert result == []
+
+
+def test_find_similar_no_matches(monkeypatch, clear_model_cache):
+    """Returns empty list when all notes score below threshold."""
+    emb_a = [1.0, 0.0, 0.0]
+    index = _make_index((emb_a, "Note A"))
+    # query is orthogonal -> cos_sim = 0.0
+    query_emb = [0.0, 1.0, 0.0]
+    monkeypatch.setitem(sys.modules, "sentence_transformers", _fake_st_module(query_emb))
+    result = find_similar("unrelated content", index, threshold=0.85)
+    assert result == []
+
+
+def test_find_similar_returns_search_result_objects(monkeypatch, clear_model_cache):
+    """Each result is a SearchResult with score, title, rank populated."""
+    emb_a = [1.0, 0.0, 0.0]
+    index = _make_index((emb_a, "My Note"))
+    monkeypatch.setitem(sys.modules, "sentence_transformers", _fake_st_module([1.0, 0.0, 0.0]))
+    results = find_similar("content", index, threshold=0.5)
+    assert len(results) == 1
+    r = results[0]
+    assert isinstance(r, SearchResult)
+    assert r.title == "My Note"
+    assert 0.0 <= r.score <= 1.0
+    assert r.rank == 1
