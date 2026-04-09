@@ -17,7 +17,9 @@ def _safe_hook(fn):
     def wrapper(*args, **kwargs):
         try:
             return fn(*args, **kwargs)
-        except BaseException as e:
+        except KeyboardInterrupt:
+            sys.exit(130)  # conventional SIGINT exit code
+        except Exception as e:
             import traceback
 
             print(f"[pkm hook error] {e}", file=sys.stderr)
@@ -154,6 +156,8 @@ def _handle_turn_end(
         daily_dir = vault.daily_dir
         daily_dir.mkdir(parents=True, exist_ok=True)
         daily_path = daily_dir / f"{today}.md"
+        if not daily_path.resolve().is_relative_to(daily_dir.resolve()):
+            raise RuntimeError("Resolved daily path escapes daily_dir — aborting write.")
         session_tag = f" [session:{session_id}]" if session_id else ""
         entry = f"- {now.strftime('%H:%M')}{session_tag} {summary}\n"
         if daily_path.exists():
@@ -303,7 +307,11 @@ def _setup_claude_code_hooks(dry_run: bool) -> None:
         return
 
     existing["hooks"] = merged
+    import os
+    import stat
+
     settings_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+    os.chmod(settings_path, stat.S_IRUSR | stat.S_IWUSR)  # 0o600 owner-only
     click.echo(f"Wrote hooks to {settings_path}")
 
 
