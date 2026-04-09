@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.13.0 (2026-04-09)
+
+### Features
+
+- Hook refactor, JSON-first search/note output, agent-friendly UX
+  ([`ea2ea5f`](https://github.com/ksm0709/pkm/commit/ea2ea5f0b62809c70999894c4baf47488a9f333d))
+
+
 ## v2.12.1 (2026-04-06)
 
 ### Bug Fixes
