@@ -16,6 +16,7 @@ from pkm.commands.tag_commands import tags
 from pkm.commands.search import index_cmd, search_cmd
 from pkm.commands.setup import setup_cmd
 from pkm.commands.agent import agent
+from pkm.commands.hook import hook as hook_group
 from pkm.commands.consolidate import consolidate
 from pkm.commands.update import update_cmd
 from pkm.commands.vault import vault
@@ -71,4 +72,5 @@ main.add_command(config)
 main.add_command(setup_cmd)
 main.add_command(update_cmd)
 main.add_command(agent)
+main.add_command(hook_group, name="hook")
 main.add_command(consolidate)

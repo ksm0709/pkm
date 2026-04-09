@@ -159,9 +159,14 @@ def test_note_show_single_match(cli_runner, tmp_vault):
 
 
 def test_note_show_no_match(cli_runner, tmp_vault):
-    """pkm note show with no match exits non-zero."""
+    """pkm note show with no match exits 0 with empty JSON results (agent-safe)."""
+    import json as _json
     result = cli_runner("note", "show", "zzz-nonexistent-zzz-xyz")
-    assert result.exit_code != 0
+    assert result.exit_code == 0
+    json_text = result.output.split("\n* ")[0].strip()
+    data = _json.loads(json_text)
+    assert data["result_count"] == 0
+    assert data["notes"] == []
 
 
 # ---------------------------------------------------------------------------

@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
+import json
+import logging
+import os
 import re
 import shlex
 import subprocess
@@ -32,7 +37,7 @@ def _slugify(title: str) -> str:
 
 
 def _search_notes(vault, query: str) -> list:
-    """Search notes by title (partial match, case-insensitive)."""
+    """Search notes by title (case-insensitive partial match)."""
     if not vault.notes_dir.is_dir():
         return []
     query_lower = query.lower()
@@ -45,23 +50,6 @@ def _search_notes(vault, query: str) -> list:
         except Exception:
             pass
     return matches
-
-
-def _select_note(matches: list, query: str):
-    """Handle zero/single/multi match selection. Returns Note or None."""
-    if not matches:
-        console.print(f"[red]No notes found matching '{query}'[/red]")
-        return None
-    if len(matches) == 1:
-        return matches[0]
-    console.print(f"[yellow]Found {len(matches)} notes matching '{query}':[/yellow]")
-    for i, n in enumerate(matches, 1):
-        console.print(f"  {i}. {n.title}  [dim]({n.path.name})[/dim]")
-    choice = click.prompt("Select note number", type=int)
-    if choice < 1 or choice > len(matches):
-        console.print("[red]Invalid selection[/red]")
-        return None
-    return matches[choice - 1]
 
 
 @click.group(invoke_without_command=True)
@@ -150,12 +138,13 @@ def add(
 @click.argument("query")
 @click.pass_context
 def edit(ctx: click.Context, query: str) -> None:
-    """Open a note in the editor (search by title)."""
+    """Open a note in the editor (search by title, first match)."""
     vault = ctx.obj["vault"]
     matches = _search_notes(vault, query)
-    selected = _select_note(matches, query)
-    if selected is None:
+    if not matches:
+        console.print(f"[red]No notes found matching '{query}'[/red]")
         raise SystemExit(1)
+    selected = matches[0]
     config_data = load_config()
     editor_cmd = get_editor(config_data)
     result = subprocess.run([*shlex.split(editor_cmd), str(selected.path)])
@@ -165,28 +154,142 @@ def edit(ctx: click.Context, query: str) -> None:
 
 @note.command()
 @click.argument("query")
+@click.option(
+    "--format", "output_format",
+    type=click.Choice(["json", "md"]),
+    default="json",
+    show_default=True,
+    help="Output format: json (default, machine-readable) or md (markdown content)",
+)
+@click.option("--top", "-n", default=5, show_default=True, help="Max number of notes to return (json mode)")
 @click.pass_context
-def show(ctx: click.Context, query: str) -> None:
-    """Show note contents in the terminal (search by title)."""
+def show(ctx: click.Context, query: str, output_format: str, top: int) -> None:
+    """Show note contents. Default: JSON array of matching notes.
+
+    Agent usage (JSON, default):
+      pkm note show "pkm"
+
+    Human usage (markdown):
+      pkm note show "pkm" --format md
+    """
     vault = ctx.obj["vault"]
     matches = _search_notes(vault, query)
-    selected = _select_note(matches, query)
-    if selected is None:
-        raise SystemExit(1)
-    console.print(selected.path.read_text(encoding="utf-8"), end="")
 
-    backlink_paths = find_backlinks(vault, selected.id)
-    if backlink_paths:
-        console.print("\n[bold]Backlinks[/bold]")
+    if not matches:
+        if output_format == "json":
+            payload = {"query": query, "result_count": 0, "notes": []}
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            console.print(f"[red]No notes found matching '{query}'[/red]")
+            raise SystemExit(1)
+        return
+
+    if output_format == "md":
+        selected = matches[0]
+        console.print(selected.path.read_text(encoding="utf-8"), end="")
+        return
+
+    limited = matches[:top]
+    items = []
+    for n in limited:
+        backlink_paths = find_backlinks(vault, n.id)
+        backlink_titles = []
         for bp in backlink_paths:
             try:
                 bl_note = parse(bp)
-                if bl_note.description:
-                    console.print(f"  · {bl_note.title} — [dim]{bl_note.description}[/dim]")
-                else:
-                    console.print(f"  · {bl_note.title}")
+                backlink_titles.append(bl_note.title)
             except Exception:
                 pass
+
+        items.append({
+            "title": n.title,
+            "note_id": n.id,
+            "description": n.description,
+            "body": n.body,
+            "frontmatter": n.meta,
+            "backlinks": backlink_titles,
+        })
+
+    payload = {
+        "query": query,
+        "result_count": len(items),
+        "notes": items,
+    }
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    print("")
+    print("* Edit note: pkm note edit <title>")
+    print("* Find related: pkm search <keyword>")
+    print("* View backlink: pkm note show <backlink-title>")
+
+
+@note.command(name="search")
+@click.argument("query")
+@click.option("--top", "-n", default=5, show_default=True, help="Number of results")
+@click.option(
+    "--format", "output_format",
+    type=click.Choice(["json", "table"]),
+    default="json",
+    show_default=True,
+    help="Output format",
+)
+@click.option("--type", "memory_type", type=click.Choice(["episodic", "semantic", "procedural"]), default=None)
+@click.option("--min-importance", type=float, default=None)
+@click.pass_context
+def note_search(ctx: click.Context, query: str, top: int, output_format: str, memory_type: str | None, min_importance: float | None) -> None:
+    """Search notes semantically (default: JSON output for agents)."""
+    from pkm.commands.search import format_search_results
+    from pkm.search_engine import is_index_stale, load_index, search as search_fn
+
+    vault = ctx.obj["vault"]
+
+    stale_warning: str | None = None
+    if is_index_stale(vault):
+        stale_warning = "Index may be out of date. Run 'pkm index' to rebuild."
+
+    min_imp = min_importance if min_importance is not None else 1.0
+
+    if output_format == "json":
+        logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
+        logging.getLogger("transformers").setLevel(logging.ERROR)
+        logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+        os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
+        _buf = io.StringIO()
+        _err_buf = io.StringIO()
+        with contextlib.redirect_stdout(_buf), contextlib.redirect_stderr(_err_buf):
+            vector_index = load_index(vault)
+            results = search_fn(
+                query,
+                vector_index,
+                top_n=top,
+                memory_type_filter=memory_type,
+                min_importance=min_imp,
+            )
+    else:
+        if stale_warning:
+            console.print(f"[yellow]Warning:[/yellow] {stale_warning}")
+            stale_warning = None
+        vector_index = load_index(vault)
+        results = search_fn(
+            query,
+            vector_index,
+            top_n=top,
+            memory_type_filter=memory_type,
+            min_importance=min_imp,
+        )
+
+    if not results and output_format != "json":
+        console.print("[yellow]No results found.[/yellow]")
+        return
+
+    format_search_results(
+        query=query,
+        results=results,
+        output_format=output_format,
+        console=console,
+        vault=vault,
+        stale_warning=stale_warning,
+    )
 
 
 @note.command()
@@ -196,9 +299,10 @@ def links(ctx: click.Context, query: str) -> None:
     """Show backlinks for a note."""
     vault = ctx.obj["vault"]
     matches = _search_notes(vault, query)
-    selected = _select_note(matches, query)
-    if selected is None:
+    if not matches:
+        console.print(f"[red]No notes found matching '{query}'[/red]")
         raise SystemExit(1)
+    selected = matches[0]
 
     backlink_paths = find_backlinks(vault, selected.id)
     if not backlink_paths:

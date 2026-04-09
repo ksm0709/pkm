@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
+import json
+import logging
+import os
+import sys
 from pathlib import Path
 
 import click
@@ -11,6 +17,89 @@ from rich.table import Table
 from pkm.search_engine import build_index, is_index_stale, load_index, search as search_fn
 
 console = Console()
+
+
+def _get_description(result) -> str | None:
+    """Extract description from frontmatter or first 200 chars of body."""
+    try:
+        from pkm.frontmatter import parse as parse_note
+        note = parse_note(Path(result.path))
+        desc = note.meta.get("description")
+        if desc:
+            return str(desc)
+        body = note.body.strip()
+        if body:
+            return body[:200]
+    except Exception:
+        pass
+    return None
+
+
+def format_search_results(
+    query: str,
+    results: list,
+    output_format: str,
+    console: Console,
+    vault=None,
+    stale_warning: str | None = None,
+) -> None:
+    """Shared helper to format and print search results as JSON or table."""
+    if output_format == "json":
+        items = []
+        for r in results:
+            items.append({
+                "rank": r.rank,
+                "title": r.title,
+                "description": _get_description(r),
+                "score": round(r.score, 6),
+                "importance": getattr(r, "importance", None),
+                "memory_type": getattr(r, "memory_type", None),
+                "tags": r.tags if r.tags else [],
+                "note_id": r.note_id,
+            })
+        payload: dict = {
+            "query": query,
+            "result_count": len(results),
+            "results": items,
+        }
+        if stale_warning:
+            payload["warning"] = stale_warning
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        print("")
+        print("* Next: pkm note show <title>  — open a specific note")
+        print("* Search more: pkm search <keyword>  (add --top N to change result count)")
+        print("* Save insight: pkm note add --content '<insight>' --type semantic")
+    else:
+        if stale_warning:
+            console.print(f"[yellow]Warning:[/yellow] {stale_warning}")
+        if not results:
+            console.print("[yellow]No results found.[/yellow]")
+            return
+        table = Table(
+            title=f'Search results for: "{query}"',
+            show_header=True,
+            header_style="bold magenta",
+        )
+        table.add_column("#", style="dim", width=4)
+        table.add_column("Title", style="cyan")
+        table.add_column("Score", style="green", width=8)
+        table.add_column("Type", style="magenta", width=10)
+        table.add_column("Imp", style="yellow", width=4)
+        table.add_column("Tags", style="blue")
+
+        for r in results:
+            mt = getattr(r, "memory_type", None) or ""
+            imp = getattr(r, "importance", None)
+            imp_str = f"{imp:.0f}" if imp is not None else ""
+            table.add_row(
+                str(r.rank),
+                r.title,
+                f"{r.score:.4f}",
+                mt,
+                imp_str,
+                ", ".join(r.tags) if r.tags else "",
+            )
+        console.print(table)
 
 
 @click.command("index")
@@ -29,6 +118,13 @@ def index_cmd(ctx: click.Context) -> None:
 @click.command("search")
 @click.argument("query")
 @click.option("--top", "-n", default=10, show_default=True, help="Number of results to return")
+@click.option(
+    "--format", "output_format",
+    type=click.Choice(["json", "table"]),
+    default="json",
+    show_default=True,
+    help="Output format",
+)
 @click.option("--type", "memory_type", type=click.Choice(["episodic", "semantic", "procedural"]), default=None, help="Filter by memory type")
 @click.option("--min-importance", type=click.FloatRange(1, 10), default=1.0, help="Minimum importance score")
 @click.option("--recency-weight", type=click.FloatRange(0, 1), default=0.0, help="Weight for recency+importance scoring (0=pure semantic)")
@@ -38,12 +134,15 @@ def search_cmd(
     ctx: click.Context,
     query: str,
     top: int,
+    output_format: str,
     memory_type: str | None,
     min_importance: float,
     recency_weight: float,
     session_id: str | None,
 ) -> None:
     """Search vault notes semantically.
+
+    Default output is JSON (machine-readable). Use --format table for human display.
 
     Memory filters:
       pkm search "error" --type procedural --min-importance 5
@@ -52,22 +151,42 @@ def search_cmd(
     """
     vault = ctx.obj["vault"]
 
+    stale_warning: str | None = None
     if is_index_stale(vault):
-        console.print(
-            "[yellow]Warning:[/yellow] Index may be out of date. Run 'pkm index' to rebuild."
+        stale_warning = "Index may be out of date. Run 'pkm index' to rebuild."
+
+    if output_format == "json":
+        logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
+        logging.getLogger("transformers").setLevel(logging.ERROR)
+        logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+        os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
+        _buf = io.StringIO()
+        _err_buf = io.StringIO()
+        with contextlib.redirect_stdout(_buf), contextlib.redirect_stderr(_err_buf):
+            vector_index = load_index(vault)
+            results = search_fn(
+                query,
+                vector_index,
+                top_n=top,
+                memory_type_filter=memory_type,
+                min_importance=min_importance,
+                recency_weight=recency_weight,
+            )
+    else:
+        if stale_warning:
+            console.print(f"[yellow]Warning:[/yellow] {stale_warning}")
+            stale_warning = None
+        vector_index = load_index(vault)
+        results = search_fn(
+            query,
+            vector_index,
+            top_n=top,
+            memory_type_filter=memory_type,
+            min_importance=min_importance,
+            recency_weight=recency_weight,
         )
 
-    vector_index = load_index(vault)
-    results = search_fn(
-        query,
-        vector_index,
-        top_n=top,
-        memory_type_filter=memory_type,
-        min_importance=min_importance,
-        recency_weight=recency_weight,
-    )
-
-    # Apply session filter post-search (frontmatter scan)
     if session_id:
         import yaml
         filtered = []
@@ -86,33 +205,15 @@ def search_cmd(
                 pass
         results = filtered
 
-    if not results:
+    if not results and output_format != "json":
         console.print("[yellow]No results found.[/yellow]")
         return
 
-    table = Table(
-        title=f'Search results for: "{query}"',
-        show_header=True,
-        header_style="bold magenta",
+    format_search_results(
+        query=query,
+        results=results,
+        output_format=output_format,
+        console=console,
+        vault=vault,
+        stale_warning=stale_warning,
     )
-    table.add_column("#", style="dim", width=4)
-    table.add_column("Title", style="cyan")
-    table.add_column("Score", style="green", width=8)
-    table.add_column("Type", style="magenta", width=10)
-    table.add_column("Imp", style="yellow", width=4)
-    table.add_column("Tags", style="blue")
-
-    for r in results:
-        mt = getattr(r, "memory_type", None) or ""
-        imp = getattr(r, "importance", None)
-        imp_str = f"{imp:.0f}" if imp is not None else ""
-        table.add_row(
-            str(r.rank),
-            r.title,
-            f"{r.score:.4f}",
-            mt,
-            imp_str,
-            ", ".join(r.tags) if r.tags else "",
-        )
-
-    console.print(table)

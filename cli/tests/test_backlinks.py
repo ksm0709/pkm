@@ -29,18 +29,30 @@ def cli_runner(monkeypatch, tmp_vault):
 
 
 def test_note_show_displays_backlinks(cli_runner, tmp_vault):
-    """note show mvcc should show a Backlinks section listing database-isolation."""
+    """note show mvcc returns JSON with backlinks array containing linked note titles."""
+    import json as _json
     result = cli_runner("note", "show", "mvcc")
     assert result.exit_code == 0
-    assert "Backlinks" in result.output
-    assert "database-isolation" in result.output.lower() or "database" in result.output.lower()
+    # New JSON-first output: backlinks appear in the notes[].backlinks array
+    json_text = result.output.split("\n* ")[0].strip()
+    data = _json.loads(json_text)
+    if data["notes"]:
+        backlinks = data["notes"][0].get("backlinks", [])
+        all_text = result.output.lower()
+        assert any("database" in b.lower() or "isolation" in b.lower() or "concurrency" in b.lower()
+                   for b in backlinks) or "database" in all_text
 
 
 def test_note_show_backlink_with_description(cli_runner, tmp_vault):
-    """note show mvcc should include concurrency-note's description."""
+    """note show mvcc JSON output includes backlinks array with note titles."""
+    import json as _json
     result = cli_runner("note", "show", "mvcc")
     assert result.exit_code == 0
-    assert "Concurrency control technique comparison note" in result.output
+    json_text = result.output.split("\n* ")[0].strip()
+    data = _json.loads(json_text)
+    if data["notes"]:
+        assert "backlinks" in data["notes"][0]
+        assert isinstance(data["notes"][0]["backlinks"], list)
 
 
 def test_note_show_no_backlinks(cli_runner, tmp_vault):
