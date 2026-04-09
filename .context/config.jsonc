@@ -29,6 +29,12 @@
       "name": "format",
       "command": "ruff format --check /home/taeho/repos/pkm/cli/src/pkm/ /home/taeho/repos/pkm/cli/tests/ 2>&1 | head -5",
       "signal": ".context/.check-format-passed"
+    },
+    {
+      // Integration: verify pkm daily add works end-to-end with the active vault
+      "name": "pkm-agent",
+      "command": "pkm daily add \"[smoke-check] agent integration test $(date +%H:%M)\" 2>&1 && echo OK",
+      "signal": ".context/.check-pkm-agent-passed"
     }
   ]
 }
