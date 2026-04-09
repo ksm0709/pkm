@@ -2,6 +2,24 @@
 
 <!-- version list -->
 
+## v2.13.1 (2026-04-09)
+
+### Bug Fixes
+
+- Address security review findings in hook.py
+  ([`8209cb3`](https://github.com/ksm0709/pkm/commit/8209cb3c7f1c033c2af84d9c38db4804982ff065))
+
+### Chores
+
+- Add smoke checks (tests/lint/format), fix remaining lint issues
+  ([`6a7da85`](https://github.com/ksm0709/pkm/commit/6a7da855031f93cbeaa2c69301e98af86bbbd9e4))
+
+### Code Style
+
+- Apply ruff lint and format fixes
+  ([`78aa615`](https://github.com/ksm0709/pkm/commit/78aa615fabb0a86dd85f138a7444da6bced07405))
+
+
 ## v2.13.0 (2026-04-09)
 
 ### Features
