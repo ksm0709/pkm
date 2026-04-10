@@ -228,7 +228,7 @@ def add(ctx: click.Context, text: str | None, sub_title: str | None) -> None:
             content += entry
 
         note_path.write_text(content, encoding="utf-8")
-        console.print(f"Added: {entry}", end="")
+        console.print(f"Daily note added at [{now}].")
 
 
 @daily.command()
