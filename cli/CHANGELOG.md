@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.16.0 (2026-04-10)
+
+### Features
+
+- Hook setup without --tool installs all agents; vault no auto-create
+  ([`507a2a5`](https://github.com/ksm0709/pkm/commit/507a2a5e2d344e216323133343d8fd2fdbc44d88))
+
+
 ## v2.15.0 (2026-04-10)
 
 ### Bug Fixes
