@@ -490,18 +490,22 @@ def run_hook(
 
 
 @hook.command(name="setup")
-@click.option("--tool", type=click.Choice(["claude-code", "codex"]), required=True)
+@click.option("--tool", type=click.Choice(["claude-code", "codex"]), default=None)
 @click.option("--dry-run", is_flag=True, help="Print config without writing")
 @click.pass_context
-def setup(ctx: click.Context, tool: str, dry_run: bool) -> None:
-    """Print hook install instructions for the specified agent tool.
+def setup(ctx: click.Context, tool: str | None, dry_run: bool) -> None:
+    """Print hook install instructions for agent tools.
 
-    - claude-code: prints plugin install instructions
-    - codex: prints codex/hooks.json install instructions
+    Without --tool, sets up all supported agents (claude-code and codex).
+    Use --tool to set up a specific agent only.
     """
-    if tool == "claude-code":
+    if tool is None or tool == "claude-code":
         _setup_claude_code_hooks(dry_run)
-    elif tool == "codex":
+    if tool is None:
+        click.echo("")
+        click.echo("─" * 60)
+        click.echo("")
+    if tool is None or tool == "codex":
         _setup_codex_hooks(dry_run)
 
 

@@ -277,9 +277,20 @@ def get_vault_context(name: str | None = None) -> tuple[VaultConfig, str]:
             vault_name = get_git_vault_name()
             if vault_name:
                 old_name = _get_git_project_name_legacy()
-                name = vault_name
-                ensure_vault_exists(name, old_name=old_name)
-                source = "Git Project"
+                root = get_vaults_root()
+                vault_path = root / vault_name
+                # Migrate from legacy name if needed (rename only, never auto-create)
+                if not vault_path.exists() and old_name:
+                    old_path = root / old_name
+                    if old_path.exists():
+                        import shutil as _shutil
+                        _shutil.move(str(old_path), str(vault_path))
+                        _update_config_vault_reference(old_name, vault_name)
+                # Only use git-derived vault if it already exists on disk.
+                # New vaults must be created explicitly via `pkm vault setup`.
+                if vault_path.is_dir():
+                    name = vault_name
+                    source = "Git Project"
 
         if name is None:
             name = load_config().get("defaults", {}).get("vault")
