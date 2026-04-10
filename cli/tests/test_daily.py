@@ -361,3 +361,185 @@ def test_daily_no_subnotes_output_unchanged(cli_runner, tmp_vault, monkeypatch):
     assert result.exit_code == 0, result.output
     assert "just main" in result.output
     assert "---" not in result.output
+
+
+# ---------------------------------------------------------------------------
+# daily add --sub
+# ---------------------------------------------------------------------------
+
+
+def test_daily_add_sub_creates_subnote_and_logs_link(cli_runner, tmp_vault):
+    """daily add --sub <title> creates the sub-note and logs a wikilink in the daily note."""
+    today_str = today()
+    note_path = tmp_vault.daily_dir / f"{today_str}.md"
+    note_path.write_text(
+        f"---\nid: {today_str}\naliases: []\ntags:\n  - daily-notes\n---\n\n## TODO\n",
+        encoding="utf-8",
+    )
+
+    result = cli_runner("daily", "add", "--sub", "meeting")
+    assert result.exit_code == 0, result.output
+
+    note_id = f"{today_str}-meeting"
+    subnote = tmp_vault.daily_dir / f"{note_id}.md"
+    assert subnote.exists()
+    assert "meeting" in subnote.read_text(encoding="utf-8")
+
+    daily_content = note_path.read_text(encoding="utf-8")
+    assert f"[[{note_id}]]" in daily_content
+    assert "Sub note added" in daily_content
+    assert re.search(r"\[\d{2}:\d{2}\] Sub note added: \[\[" + re.escape(note_id) + r"\]\]", daily_content)
+
+
+def test_daily_add_sub_link_before_todo(cli_runner, tmp_vault):
+    """daily add --sub inserts the wikilink entry before ## TODO."""
+    today_str = today()
+    note_path = tmp_vault.daily_dir / f"{today_str}.md"
+    note_path.write_text(
+        f"---\nid: {today_str}\n---\n\n## TODO\n",
+        encoding="utf-8",
+    )
+
+    result = cli_runner("daily", "add", "--sub", "standup")
+    assert result.exit_code == 0, result.output
+
+    content = note_path.read_text(encoding="utf-8")
+    link_pos = content.index("Sub note added")
+    todo_pos = content.index("## TODO")
+    assert link_pos < todo_pos
+
+
+def test_daily_add_sub_existing_note_still_logs_link(cli_runner, tmp_vault):
+    """daily add --sub on an already-existing sub-note still logs the link."""
+    today_str = today()
+    note_path = tmp_vault.daily_dir / f"{today_str}.md"
+    note_path.write_text(
+        f"---\nid: {today_str}\n---\n\n## TODO\n",
+        encoding="utf-8",
+    )
+
+    note_id = f"{today_str}-idea"
+    existing = tmp_vault.daily_dir / f"{note_id}.md"
+    existing.write_text("original content\n", encoding="utf-8")
+
+    result = cli_runner("daily", "add", "--sub", "idea")
+    assert result.exit_code == 0, result.output
+
+    assert existing.read_text(encoding="utf-8") == "original content\n"
+    daily_content = note_path.read_text(encoding="utf-8")
+    assert f"[[{note_id}]]" in daily_content
+
+
+def test_daily_add_sub_prompt(cli_runner, tmp_vault):
+    """daily add --sub (no title) shows a prompt and uses the entered title."""
+    today_str = today()
+    note_path = tmp_vault.daily_dir / f"{today_str}.md"
+    note_path.write_text(
+        f"---\nid: {today_str}\n---\n\n## TODO\n",
+        encoding="utf-8",
+    )
+
+    result = cli_runner("daily", "add", "--sub", input="my-session\n")
+    assert result.exit_code == 0, result.output
+
+    note_id = f"{today_str}-my-session"
+    assert (tmp_vault.daily_dir / f"{note_id}.md").exists()
+    assert f"[[{note_id}]]" in note_path.read_text(encoding="utf-8")
+
+
+def test_daily_add_sub_spaces_to_hyphens(cli_runner, tmp_vault):
+    """daily add --sub sanitizes spaces to hyphens in the title."""
+    today_str = today()
+    note_path = tmp_vault.daily_dir / f"{today_str}.md"
+    note_path.write_text(
+        f"---\nid: {today_str}\n---\n\n## TODO\n", encoding="utf-8"
+    )
+
+    result = cli_runner("daily", "add", "--sub", "my idea")
+    assert result.exit_code == 0, result.output
+
+    note_id = f"{today_str}-my-idea"
+    assert (tmp_vault.daily_dir / f"{note_id}.md").exists()
+    assert f"[[{note_id}]]" in note_path.read_text(encoding="utf-8")
+
+
+def test_daily_add_sub_creates_daily_if_missing(cli_runner, tmp_vault):
+    """daily add --sub creates the daily note if it doesn't exist yet."""
+    today_str = today()
+    note_path = tmp_vault.daily_dir / f"{today_str}.md"
+    assert not note_path.exists()
+
+    result = cli_runner("daily", "add", "--sub", "init")
+    assert result.exit_code == 0, result.output
+
+    assert note_path.exists()
+    assert f"[[{today_str}-init]]" in note_path.read_text(encoding="utf-8")
+
+
+def test_daily_add_no_args_errors(cli_runner, tmp_vault):
+    """daily add with no args nor --sub shows a usage error."""
+    result = cli_runner("daily", "add")
+    assert result.exit_code != 0
+
+
+def test_daily_add_text_and_sub_errors(cli_runner, tmp_vault):
+    """daily add TEXT --sub title shows a usage error."""
+    result = cli_runner("daily", "add", "some text", "--sub", "title")
+    assert result.exit_code != 0
+
+
+def test_daily_add_text_still_works(cli_runner, tmp_vault):
+    """daily add TEXT (no --sub) still works as before."""
+    today_str = today()
+    note_path = tmp_vault.daily_dir / f"{today_str}.md"
+    note_path.write_text(
+        f"---\nid: {today_str}\n---\n\n## TODO\n", encoding="utf-8"
+    )
+
+    result = cli_runner("daily", "add", "plain log entry")
+    assert result.exit_code == 0, result.output
+
+    content = note_path.read_text(encoding="utf-8")
+    assert "plain log entry" in content
+    assert re.search(r"\[\d{2}:\d{2}\] plain log entry", content)
+
+
+# ---------------------------------------------------------------------------
+# daily edit --sub — wikilink injection
+# ---------------------------------------------------------------------------
+
+
+def test_daily_edit_sub_logs_link_to_daily(cli_runner, tmp_vault, monkeypatch):
+    """daily edit --sub <title> logs a wikilink entry in the daily note."""
+    monkeypatch.setattr("pkm.commands.daily.load_config", lambda: {})
+    monkeypatch.setattr("pkm.commands.daily.subprocess.run", _fake_run())
+
+    today_str = today()
+    note_path = tmp_vault.daily_dir / f"{today_str}.md"
+    note_path.write_text(
+        f"---\nid: {today_str}\n---\n\n## TODO\n", encoding="utf-8"
+    )
+
+    result = cli_runner("daily", "edit", "--sub", "retro")
+    assert result.exit_code == 0, result.output
+
+    note_id = f"{today_str}-retro"
+    daily_content = note_path.read_text(encoding="utf-8")
+    assert f"[[{note_id}]]" in daily_content
+    assert "Sub note added" in daily_content
+
+
+def test_daily_edit_sub_creates_daily_and_logs_link(cli_runner, tmp_vault, monkeypatch):
+    """daily edit --sub creates the daily note and logs the link when daily was missing."""
+    monkeypatch.setattr("pkm.commands.daily.load_config", lambda: {})
+    monkeypatch.setattr("pkm.commands.daily.subprocess.run", _fake_run())
+
+    today_str = today()
+    note_path = tmp_vault.daily_dir / f"{today_str}.md"
+    assert not note_path.exists()
+
+    result = cli_runner("daily", "edit", "--sub", "init")
+    assert result.exit_code == 0, result.output
+
+    assert note_path.exists()
+    assert f"[[{today_str}-init]]" in note_path.read_text(encoding="utf-8")
