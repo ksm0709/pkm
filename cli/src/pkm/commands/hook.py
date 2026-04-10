@@ -372,11 +372,17 @@ Then you may stop.""".format(transcript_path=transcript_path)
     sys.exit(2)
 
 
-def _handle_migrate(dry_run: bool) -> None:
+def _is_pkm_hook(hook_entry: dict) -> bool:
+    cmd = hook_entry.get("command", "")
+    prompt = hook_entry.get("prompt", "")
+    return "pkm hook run" in cmd or "pkm agent hook" in cmd or "PKM" in prompt
+
+
+def _handle_remove(dry_run: bool) -> None:
     """Remove PKM hooks from ~/.claude/settings.json, keep all other hooks."""
     settings_path = Path.home() / ".claude" / "settings.json"
     if not settings_path.exists():
-        click.echo("~/.claude/settings.json not found — nothing to migrate.")
+        click.echo("~/.claude/settings.json not found — nothing to remove.")
         return
 
     try:
@@ -387,10 +393,6 @@ def _handle_migrate(dry_run: bool) -> None:
 
     hooks = existing.get("hooks", {})
     removed_counts: dict[str, int] = {}
-
-    def _is_pkm_hook(hook_entry: dict) -> bool:
-        cmd = hook_entry.get("command", "")
-        return "pkm hook run" in cmd or "pkm agent hook" in cmd
 
     for event, matchers in list(hooks.items()):
         filtered = []
@@ -407,7 +409,6 @@ def _handle_migrate(dry_run: bool) -> None:
         if removed:
             removed_counts[event] = removed
 
-    # Remove event keys with empty matcher lists
     hooks = {k: v for k, v in hooks.items() if v}
     existing["hooks"] = hooks
 
@@ -509,37 +510,113 @@ def setup(ctx: click.Context, tool: str | None, dry_run: bool) -> None:
         _setup_codex_hooks(dry_run)
 
 
-@hook.command(name="migrate")
+@hook.command(name="remove")
 @click.option("--dry-run", is_flag=True, help="Show what would be removed without writing")
 @click.pass_context
-def migrate(ctx: click.Context, dry_run: bool) -> None:
-    """Remove old PKM hooks from ~/.claude/settings.json.
+def remove(ctx: click.Context, dry_run: bool) -> None:
+    """Remove PKM hooks from ~/.claude/settings.json.
 
     Removes hook entries added by 'pkm hook setup --tool claude-code'.
     Keeps all other hooks (OMC, TypeScript LSP, etc.) intact.
     """
-    _handle_migrate(dry_run)
+    _handle_remove(dry_run)
+
+
+@hook.command(name="migrate", hidden=True)
+@click.option("--dry-run", is_flag=True)
+@click.pass_context
+def migrate(ctx: click.Context, dry_run: bool) -> None:
+    """Deprecated: use 'pkm hook remove' instead."""
+    click.echo("Note: 'pkm hook migrate' is deprecated, use 'pkm hook remove'", err=True)
+    _handle_remove(dry_run)
+
+
+_PKM_HOOKS: dict[str, list[dict]] = {
+    "SessionStart": [
+        {
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "pkm hook run session-start --format system-reminder",
+                    "timeout": 10,
+                }
+            ]
+        }
+    ],
+    "UserPromptSubmit": [
+        {
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "pkm hook run turn-start --format system-reminder",
+                    "timeout": 10,
+                }
+            ]
+        }
+    ],
+    "Stop": [
+        {
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "pkm hook run turn-end-exit2",
+                    "timeout": 30,
+                }
+            ]
+        }
+    ],
+}
 
 
 def _setup_claude_code_hooks(dry_run: bool) -> None:
-    """Print Claude Code plugin install instructions."""
-    this_file = Path(__file__).resolve()
-    repo_root = this_file.parents[4]
-    plugin_hooks = repo_root / "plugin" / "hooks" / "hooks.json"
+    """Merge PKM hooks into ~/.claude/settings.json."""
+    import os
+    import stat
 
-    click.echo("PKM Claude Code Plugin — install instructions:")
+    settings_path = Path.home() / ".claude" / "settings.json"
+
+    click.echo("PKM Claude Code hooks — install to ~/.claude/settings.json")
+
+    try:
+        existing = json.loads(settings_path.read_text(encoding="utf-8")) if settings_path.exists() else {}
+    except Exception as e:
+        click.echo(f"Error reading settings.json: {e}", err=True)
+        return
+
+    hooks = existing.setdefault("hooks", {})
+
+    added: list[str] = []
+    skipped: list[str] = []
+
+    for event, matchers in _PKM_HOOKS.items():
+        event_hooks = hooks.setdefault(event, [])
+        # Check if PKM hook already present for this event
+        all_hook_entries = [h for m in event_hooks for h in m.get("hooks", [])]
+        if any(_is_pkm_hook(h) for h in all_hook_entries):
+            skipped.append(event)
+            continue
+        event_hooks.extend(matchers)
+        added.append(event)
+
+    for event in added:
+        click.echo(f"  Added hook: {event}")
+    for event in skipped:
+        click.echo(f"  Already installed: {event} (skipped)")
+
+    if not added:
+        click.echo("All PKM hooks already present — nothing to do.")
+        return
+
+    if dry_run:
+        click.echo("Dry run — no changes written.")
+        return
+
+    settings_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+    os.chmod(settings_path, stat.S_IRUSR | stat.S_IWUSR)
+    click.echo(f"  Written: {settings_path}")
     click.echo("")
-    click.echo("The PKM plugin uses Claude Code's plugin system for hook isolation.")
-    click.echo("This keeps PKM hooks separate from ~/.claude/settings.json.")
-    click.echo("")
-    click.echo("Install via Claude Code plugin marketplace (recommended):")
-    click.echo("  Run Claude Code and add the plugin from the plugin marketplace.")
-    click.echo("")
-    click.echo("Or install manually:")
-    click.echo(f"  Plugin hooks file: {plugin_hooks}")
-    click.echo("")
-    click.echo("To remove old PKM hooks from ~/.claude/settings.json, run:")
-    click.echo("  pkm hook migrate")
+    click.echo("Done. Restart Claude Code to activate PKM hooks.")
+    click.echo("To remove: pkm hook remove")
 
 
 def _setup_codex_hooks(dry_run: bool) -> None:
