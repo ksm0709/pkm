@@ -28,6 +28,12 @@ pkm note add --content "<decision> — reason: <rationale>" --type semantic --im
 
 # Session progress
 pkm note add --content "<completed work>" --type episodic --importance 5 --session $SESSION_ID
+
+# Create a dedicated sub-note for a specific topic (logs [[wikilink]] in today's daily note)
+pkm daily add --sub "<topic-title>"
+
+# Open a sub-note in editor
+pkm daily edit --sub "<topic-title>"
 ```
 
 ### After Work is Complete

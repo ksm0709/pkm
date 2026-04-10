@@ -265,6 +265,9 @@ def _handle_turn_start(
         "Working memory (daily log): `pkm daily add <text>` to log, `pkm daily` to review today's entries"
     )
     lines.append(
+        "Sub-notes: `pkm daily add --sub <title>` creates a sub-note and logs [[wikilink]] in today's daily; `pkm daily edit --sub <title>` opens it in editor"
+    )
+    lines.append(
         "Long-term memory: `pkm note add <content> --type semantic|episodic --importance 1-10 --tags <tag1,tag2>`"
     )
     lines.append("Search notes: `pkm search <query>` to recall relevant past knowledge")
@@ -278,6 +281,7 @@ def _handle_turn_start(
     lines.append("")
     lines.append("PKM Role: You are the active manager of this knowledge base. Before concluding your response, check:")
     lines.append("  - Code changes / bug fixes / new features? → `pkm daily add <summary>`")
+    lines.append("  - Need a dedicated sub-note for a topic? → `pkm daily add --sub <title>` (creates sub-note + logs [[wikilink]])")
     lines.append("  - New concepts / decisions / patterns learned? → `pkm note add <content> --type semantic --importance N`")
     lines.append("  - Important session context to preserve? → `pkm daily add <text>`")
 
@@ -295,6 +299,7 @@ def _handle_turn_end(
     guide_lines = [
         "Before ending this session, preserve valuable knowledge:",
         '  - Code changes / decisions / patterns? → `pkm daily add "<summary>"`',
+        '  - Created a dedicated sub-note? → `pkm daily add --sub "<title>"` (creates sub-note + logs [[wikilink]])',
         '  - New reusable knowledge? → `pkm note add --content "<insight>" --type semantic --importance N --tags <tags>`',
         '  - Session discoveries worth long-term recall? → `pkm note add --content "<content>" --type episodic --importance N`',
         "",

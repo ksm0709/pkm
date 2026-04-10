@@ -11,6 +11,8 @@ Record the context of an in-progress project in today's daily note to preserve w
 - `pkm search` (explore in-progress project notes)
 - Read (in-progress project notes)
 - `pkm daily add` (add a section to today's daily)
+- `pkm daily add --sub <title>` (create a dedicated sub-note and log [[wikilink]] in today's daily)
+- `pkm daily edit --sub <title>` (create/open sub-note in editor)
 
 ## Principles
 - Record only what matters right now — not the full project documentation
@@ -37,12 +39,16 @@ User: "save working memory"
    - Next steps: "Implement Repository pattern"
    - Blockers: "Waiting for DB schema finalization"
 
-4. `pkm daily add` or Edit today's daily:
-   ## Working Memory
-   - Project: [[project-alpha-api-integration]]
-   - How far: auth complete, data layer in progress
-   - Next: implement Repository pattern
-   - Blockers: waiting for DB schema finalization
+4a. Quick log: `pkm daily add` or Edit today's daily:
+    ## Working Memory
+    - Project: [[project-alpha-api-integration]]
+    - How far: auth complete, data layer in progress
+    - Next: implement Repository pattern
+    - Blockers: waiting for DB schema finalization
+
+4b. Sub-note (for extended context): `pkm daily add --sub project-alpha`
+    → Creates `daily/YYYY-MM-DD-project-alpha.md` with full context
+    → Logs `- [HH:MM] Sub note added: [[YYYY-MM-DD-project-alpha]]` in today's daily
 ```
 
 ## Expected Output

@@ -28,6 +28,12 @@ pkm note add --content "error name: cause and resolution" --type procedural --im
 
 # When making an architecture decision (save immediately)
 pkm note add --content "decision — rationale" --type semantic --importance 7 --session $SESSION_ID
+
+# Create a sub-note for a specific topic (logs [[wikilink]] in today's daily note)
+pkm daily add --sub "<topic-title>"
+
+# Open a sub-note in editor for extended notes
+pkm daily edit --sub "<topic-title>"
 ```
 
 ### Before Claiming Completion
