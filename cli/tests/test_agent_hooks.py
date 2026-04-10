@@ -107,9 +107,7 @@ def test_turn_start_plain(runner, vault_env):
     assert result.exit_code == 0
     assert "pkm daily add" in result.output
     assert "pkm note add" in result.output
-    assert "pkm note show" in result.output
-    assert "pkm" in result.output and "skill" in result.output
-    assert "PKM Role" in result.output
+    assert "pkm search" in result.output
 
 
 def test_turn_start_system_reminder(runner, vault_env):

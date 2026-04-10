@@ -47,6 +47,55 @@ def _load_hook_config(vault) -> dict:
         return {}
 
 
+def _is_debug_mode(vault) -> bool:
+    """Return True if hooks.debug = true in .pkm/config.toml."""
+    try:
+        config = _load_hook_config(vault)
+        return bool(config.get("hooks", {}).get("debug", False))
+    except Exception:
+        return False
+
+
+def _write_hooks_debug(vault, enabled: bool) -> None:
+    """Set hooks.debug in .pkm/config.toml (creates file if missing)."""
+    config_path = vault.pkm_dir / "config.toml"
+    vault.pkm_dir.mkdir(parents=True, exist_ok=True)
+
+    # Read existing content as raw text to preserve other settings
+    lines: list[str] = []
+    if config_path.exists():
+        lines = config_path.read_text(encoding="utf-8").splitlines()
+
+    # Find [hooks] section and debug key
+    in_hooks = False
+    hooks_idx = -1
+    debug_idx = -1
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped == "[hooks]":
+            in_hooks = True
+            hooks_idx = i
+        elif stripped.startswith("[") and stripped != "[hooks]":
+            in_hooks = False
+        elif in_hooks and stripped.startswith("debug"):
+            debug_idx = i
+
+    value_str = "true" if enabled else "false"
+    new_line = f"debug = {value_str}"
+
+    if debug_idx != -1:
+        lines[debug_idx] = new_line
+    elif hooks_idx != -1:
+        lines.insert(hooks_idx + 1, new_line)
+    else:
+        if lines and lines[-1].strip():
+            lines.append("")
+        lines.append("[hooks]")
+        lines.append(new_line)
+
+    config_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def _load_session_state(vault) -> dict:
     """Load .pkm/session_state.json. Returns defaults on missing or corrupt."""
     defaults: dict = {"session_count": 0, "last_consolidation_at": None}
@@ -258,32 +307,14 @@ def _handle_turn_start(
     except Exception:
         pass
 
-    # --- Advisory text (unchanged from original) ---
+    # --- Advisory text ---
     if session_id:
         lines.append(f"Session: {session_id}")
-    lines.append(
-        "Working memory (daily log): `pkm daily add <text>` to log, `pkm daily` to review today's entries"
-    )
-    lines.append(
-        "Sub-notes: `pkm daily add --sub <title>` creates a sub-note and logs [[wikilink]] in today's daily; `pkm daily edit --sub <title>` opens it in editor"
-    )
-    lines.append(
-        "Long-term memory: `pkm note add <content> --type semantic|episodic --importance 1-10 --tags <tag1,tag2>`"
-    )
-    lines.append("Search notes: `pkm search <query>` to recall relevant past knowledge")
-    lines.append(
-        '  - Before starting work, consider searching: `pkm search "<topic of current task>"`'
-    )
-    lines.append("  - Read specific notes: `pkm note show <title>`")
-    lines.append(
-        "For detailed PKM workflows (Zettelkasten, linking, consolidation): invoke the `pkm` skill."
-    )
-    lines.append("")
-    lines.append("PKM Role: You are the active manager of this knowledge base. Before concluding your response, check:")
-    lines.append("  - Code changes / bug fixes / new features? → `pkm daily add <summary>`")
-    lines.append("  - Need a dedicated sub-note for a topic? → `pkm daily add --sub <title>` (creates sub-note + logs [[wikilink]])")
-    lines.append("  - New concepts / decisions / patterns learned? → `pkm note add <content> --type semantic --importance N`")
-    lines.append("  - Important session context to preserve? → `pkm daily add <text>`")
+    lines.append("## PKM")
+    lines.append("`pkm daily add \"<text>\"` — log decisions, findings, code changes")
+    lines.append("`pkm daily add --sub \"<title>\"` — create linked sub-note + log [[wikilink]] in today's daily")
+    lines.append("`pkm search \"<query>\"` — recall relevant notes before starting work")
+    lines.append("`pkm note add --content \"<insight>\" --type semantic --importance 7 --tags tag1,tag2` — atomic note")
 
     content = "\n".join(lines)
     if output_format == "system-reminder":
@@ -297,16 +328,10 @@ def _handle_turn_end(
 ) -> None:
     # Always emit preservation guide
     guide_lines = [
-        "Before ending this session, preserve valuable knowledge:",
-        '  - Code changes / decisions / patterns? → `pkm daily add "<summary>"`',
-        '  - Created a dedicated sub-note? → `pkm daily add --sub "<title>"` (creates sub-note + logs [[wikilink]])',
-        '  - New reusable knowledge? → `pkm note add --content "<insight>" --type semantic --importance N --tags <tags>`',
-        '  - Session discoveries worth long-term recall? → `pkm note add --content "<content>" --type episodic --importance N`',
-        "",
-        "For deeper knowledge workflows (invoke as slash commands):",
-        "  - `/pkm:memory-store` — store facts, decisions, and patterns as atomic notes",
-        "  - `/pkm:distill-daily` — promote daily insights into permanent knowledge notes",
-        "  - `/pkm:zettel-loop` — full knowledge production: distill → connect → tag → structure",
+        "## PKM: Save Session Knowledge",
+        '`pkm daily add "<what happened>"` — decisions, bugs fixed, code changes',
+        '`pkm daily add --sub "<topic>"` — dedicated sub-note + [[wikilink]] in today\'s daily',
+        '`pkm note add --content "<reusable insight>" --type semantic --importance 7 --tags tag1,tag2`',
     ]
     guide = "\n".join(guide_lines)
     if output_format == "system-reminder":
@@ -477,6 +502,10 @@ def run_hook(
         except Exception:
             ctx.obj["vault"] = None
 
+    # Debug mode override: if hooks.debug = true in config, use plain format
+    if ctx.obj.get("vault") is not None and _is_debug_mode(ctx.obj["vault"]):
+        output_format = "plain"
+
     kwargs = dict(
         output_format=output_format, top=top, session_id=session_id, summary=summary
     )
@@ -529,6 +558,31 @@ def migrate(ctx: click.Context, dry_run: bool) -> None:
     """Deprecated: use 'pkm hook remove' instead."""
     click.echo("Note: 'pkm hook migrate' is deprecated, use 'pkm hook remove'", err=True)
     _handle_remove(dry_run)
+
+
+@hook.command(name="debug")
+@click.argument("state", type=click.Choice(["on", "off"]))
+@click.pass_context
+def debug_cmd(ctx: click.Context, state: str) -> None:
+    """Toggle hook debug mode.
+
+    on  — injected messages shown as plain text (visible in terminal)\n
+    off — injected messages wrapped in <system-reminder> (default, hidden from user)
+    """
+    if "vault" not in ctx.obj or ctx.obj["vault"] is None:
+        from pkm.config import get_vault as _get_vault
+        try:
+            ctx.obj["vault"] = _get_vault(None)
+        except Exception:
+            click.echo("Error: no active vault found.", err=True)
+            return
+
+    vault = ctx.obj["vault"]
+    enabled = state == "on"
+    _write_hooks_debug(vault, enabled)
+    status = "ON (messages visible as plain text)" if enabled else "OFF (messages hidden in system-reminder)"
+    click.echo(f"Hook debug mode: {status}")
+    click.echo(f"  Config: {vault.pkm_dir / 'config.toml'}")
 
 
 _PKM_HOOKS: dict[str, list[dict]] = {

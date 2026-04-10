@@ -74,8 +74,7 @@ def test_hook_run_turn_start_includes_search_instruction(runner, vault_env):
     assert result.exit_code == 0
     assert "pkm search" in result.output
     assert "--tags" in result.output
-    assert "pkm" in result.output and "skill" in result.output
-    assert "PKM Role" in result.output
+    assert "pkm daily add" in result.output
 
 
 def test_hook_run_turn_start_no_format_json_mention(runner, vault_env):
@@ -113,12 +112,11 @@ def test_hook_run_turn_end_always_emits(runner, vault_env):
     assert "pkm daily add" in result.output or "preserve" in result.output.lower()
 
 
-def test_hook_run_turn_end_includes_slash_commands(runner, vault_env):
+def test_hook_run_turn_end_includes_save_commands(runner, vault_env):
     result = runner.invoke(main, ["hook", "run", "turn-end"])
     assert result.exit_code == 0
-    assert "/pkm:memory-store" in result.output
-    assert "/pkm:distill-daily" in result.output
-    assert "/pkm:zettel-loop" in result.output
+    assert "pkm daily add" in result.output
+    assert "pkm note add" in result.output
 
 
 def test_hook_run_turn_end_with_summary_writes_daily(runner, vault_env, tmp_vault):
@@ -266,7 +264,7 @@ def test_turn_start_no_stdin_shows_advisory(runner, vault_env):
     result = runner.invoke(main, ["hook", "run", "turn-start", "--format", "plain"])
     assert result.exit_code == 0
     assert "pkm search" in result.output
-    assert "PKM Role" in result.output
+    assert "pkm daily add" in result.output
 
 
 # ---------------------------------------------------------------------------
