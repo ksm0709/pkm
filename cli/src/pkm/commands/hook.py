@@ -330,6 +330,102 @@ def _handle_turn_end(
             daily_path.write_text(f"# {today}\n\n{entry}", encoding="utf-8")
 
 
+def _handle_turn_end_exit2(ctx, **_ignored) -> None:
+    """Exit-2 blocking hook for opencode/omo Stop event.
+
+    Reads stdin JSON. If stop_hook_active guard is set, exits 0 (prevent infinite loop).
+    If no transcript_path, exits 0. Otherwise writes extraction instructions to stderr
+    and exits 2 (signals the main agent to continue working).
+    """
+    payload: dict = {}
+    if not sys.stdin.isatty():
+        try:
+            raw = sys.stdin.read(65536)
+            payload = json.loads(raw)
+        except Exception:
+            pass
+
+    if payload.get("stop_hook_active", False):
+        sys.exit(0)
+
+    transcript_path = payload.get("transcript_path", "")
+    if not transcript_path:
+        sys.exit(0)
+
+    instructions = """\
+KNOWLEDGE EXTRACTION TASK: Before stopping, extract knowledge from this session.
+Use your Read tool to read the session transcript at: {transcript_path}
+Then:
+1. Identify: key decisions, bugs fixed, patterns learned, new concepts discovered
+2. For session entries: run `pkm daily add '<summary>'` via your Bash tool
+3. For reusable knowledge: run `pkm note add '<content>' --type semantic --importance <5-9> --tags <tags>` via your Bash tool
+4. Run: `pkm daily add '<one-sentence session summary>'`
+Be selective — skip trivial facts. Quality over quantity.
+Then you may stop.""".format(transcript_path=transcript_path)
+
+    print(instructions, file=sys.stderr)
+    sys.exit(2)
+
+
+def _handle_migrate(dry_run: bool) -> None:
+    """Remove PKM hooks from ~/.claude/settings.json, keep all other hooks."""
+    settings_path = Path.home() / ".claude" / "settings.json"
+    if not settings_path.exists():
+        click.echo("~/.claude/settings.json not found — nothing to migrate.")
+        return
+
+    try:
+        existing = json.loads(settings_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        click.echo(f"Error reading settings.json: {e}", err=True)
+        return
+
+    hooks = existing.get("hooks", {})
+    removed_counts: dict[str, int] = {}
+
+    def _is_pkm_hook(hook_entry: dict) -> bool:
+        cmd = hook_entry.get("command", "")
+        return "pkm hook run" in cmd or "pkm agent hook" in cmd
+
+    for event, matchers in list(hooks.items()):
+        filtered = []
+        removed = 0
+        for matcher in matchers:
+            matcher_hooks = matcher.get("hooks", [])
+            non_pkm = [h for h in matcher_hooks if not _is_pkm_hook(h)]
+            if len(non_pkm) < len(matcher_hooks):
+                removed += len(matcher_hooks) - len(non_pkm)
+            if non_pkm:
+                matcher = {**matcher, "hooks": non_pkm}
+                filtered.append(matcher)
+        hooks[event] = filtered
+        if removed:
+            removed_counts[event] = removed
+
+    # Remove event keys with empty matcher lists
+    hooks = {k: v for k, v in hooks.items() if v}
+    existing["hooks"] = hooks
+
+    if not removed_counts:
+        click.echo("No PKM hooks found in ~/.claude/settings.json — nothing to remove.")
+        return
+
+    for event, count in removed_counts.items():
+        action = "Would remove" if dry_run else "Removed"
+        click.echo(f"  {action} {count} PKM hook(s) from {event}")
+
+    if dry_run:
+        click.echo("Dry run — no changes written.")
+        return
+
+    import os
+    import stat
+
+    settings_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+    os.chmod(settings_path, stat.S_IRUSR | stat.S_IWUSR)
+    click.echo(f"Updated {settings_path}")
+
+
 @click.group()
 @click.pass_context
 def hook(ctx: click.Context) -> None:
@@ -340,7 +436,7 @@ def hook(ctx: click.Context) -> None:
 @click.argument(
     "hook_name",
     metavar="HOOK_NAME",
-    type=click.Choice(["session-start", "turn-start", "turn-end"]),
+    type=click.Choice(["session-start", "turn-start", "turn-end", "turn-end-exit2"]),
 )
 @click.option(
     "--format",
@@ -365,7 +461,7 @@ def run_hook(
 ) -> None:
     """Run a lifecycle hook handler.
 
-    HOOK_NAME: session-start | turn-start | turn-end
+    HOOK_NAME: session-start | turn-start | turn-end | turn-end-exit2
     """
     kwargs = dict(
         output_format=output_format, top=top, session_id=session_id, summary=summary
@@ -376,6 +472,8 @@ def run_hook(
         _handle_turn_start(ctx, **kwargs)
     elif hook_name == "turn-end":
         _handle_turn_end(ctx, **kwargs)
+    elif hook_name == "turn-end-exit2":
+        _handle_turn_end_exit2(ctx, **kwargs)
 
 
 @hook.command(name="setup")
@@ -383,10 +481,10 @@ def run_hook(
 @click.option("--dry-run", is_flag=True, help="Print config without writing")
 @click.pass_context
 def setup(ctx: click.Context, tool: str, dry_run: bool) -> None:
-    """Write hook configuration for the specified agent tool.
+    """Print hook install instructions for the specified agent tool.
 
-    - claude-code: appends to ~/.claude/settings.json (preserves existing hooks)
-    - codex: prints config for ~/.codex/config.toml
+    - claude-code: prints plugin install instructions
+    - codex: prints codex/hooks.json install instructions
     """
     if tool == "claude-code":
         _setup_claude_code_hooks(dry_run)
@@ -394,107 +492,51 @@ def setup(ctx: click.Context, tool: str, dry_run: bool) -> None:
         _setup_codex_hooks(dry_run)
 
 
-def _merge_claude_hooks(existing_hooks: dict, pkm_hooks: dict) -> dict:
-    """Merge pkm hooks into existing hooks without overwriting.
+@hook.command(name="migrate")
+@click.option("--dry-run", is_flag=True, help="Show what would be removed without writing")
+@click.pass_context
+def migrate(ctx: click.Context, dry_run: bool) -> None:
+    """Remove old PKM hooks from ~/.claude/settings.json.
 
-    Uses exact equality (==) for idempotency check — NOT substring match.
-    Appends new matcher entries; never modifies existing matchers.
+    Removes hook entries added by 'pkm hook setup --tool claude-code'.
+    Keeps all other hooks (OMC, TypeScript LSP, etc.) intact.
     """
-    for event, pkm_matchers in pkm_hooks.items():
-        existing_matchers = list(existing_hooks.get(event, []))
-        pkm_cmd = pkm_matchers[0]["hooks"][0]["command"]
-        already_registered = any(
-            any(pkm_cmd == h.get("command", "") for h in matcher.get("hooks", []))
-            for matcher in existing_matchers
-        )
-        if not already_registered:
-            existing_matchers.extend(pkm_matchers)
-        existing_hooks[event] = existing_matchers
-    return existing_hooks
+    _handle_migrate(dry_run)
 
 
 def _setup_claude_code_hooks(dry_run: bool) -> None:
-    """Append pkm hooks to ~/.claude/settings.json (non-destructive)."""
-    settings_path = Path.home() / ".claude" / "settings.json"
-    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    """Print Claude Code plugin install instructions."""
+    this_file = Path(__file__).resolve()
+    repo_root = this_file.parents[4]
+    plugin_hooks = repo_root / "plugin" / "hooks" / "hooks.json"
 
-    existing: dict = {}
-    if settings_path.exists():
-        try:
-            existing = json.loads(settings_path.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-
-    pkm_hooks = {
-        "SessionStart": [
-            {
-                "hooks": [
-                    {
-                        "type": "command",
-                        "command": "pkm hook run session-start --format system-reminder",
-                    }
-                ]
-            }
-        ],
-        "UserPromptSubmit": [
-            {
-                "hooks": [
-                    {
-                        "type": "command",
-                        "command": "pkm hook run turn-start --format system-reminder",
-                    }
-                ]
-            }
-        ],
-        "Stop": [
-            {
-                "hooks": [
-                    {
-                        "type": "command",
-                        "command": "pkm hook run turn-end --format system-reminder",
-                    }
-                ]
-            }
-        ],
-    }
-
-    existing_hooks = existing.get("hooks", {})
-    merged = _merge_claude_hooks(existing_hooks, pkm_hooks)
-    merged_config = json.dumps({"hooks": merged}, indent=2)
-
-    if dry_run:
-        click.echo(
-            "# Claude Code hooks configuration (appended to ~/.claude/settings.json):"
-        )
-        click.echo(merged_config)
-        return
-
-    existing["hooks"] = merged
-    import os
-    import stat
-
-    settings_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
-    os.chmod(settings_path, stat.S_IRUSR | stat.S_IWUSR)  # 0o600 owner-only
-    click.echo(f"Wrote hooks to {settings_path}")
+    click.echo("PKM Claude Code Plugin — install instructions:")
+    click.echo("")
+    click.echo("The PKM plugin uses Claude Code's plugin system for hook isolation.")
+    click.echo("This keeps PKM hooks separate from ~/.claude/settings.json.")
+    click.echo("")
+    click.echo("Install via Claude Code plugin marketplace (recommended):")
+    click.echo("  Run Claude Code and add the plugin from the plugin marketplace.")
+    click.echo("")
+    click.echo("Or install manually:")
+    click.echo(f"  Plugin hooks file: {plugin_hooks}")
+    click.echo("")
+    click.echo("To remove old PKM hooks from ~/.claude/settings.json, run:")
+    click.echo("  pkm hook migrate")
 
 
 def _setup_codex_hooks(dry_run: bool) -> None:
-    """Print or append Codex CLI hook configuration."""
-    # Use existing tomllib compat pattern
-    try:
-        import tomllib as _tomllib  # noqa: F401
-    except ImportError:
-        pass
+    """Print Codex CLI hook install instructions."""
+    this_file = Path(__file__).resolve()
+    repo_root = this_file.parents[4]
+    codex_hooks = repo_root / "codex" / "hooks.json"
 
-    config_text = (
-        "# Add to ~/.codex/config.toml:\n"
-        "[hooks]\n"
-        'session_start = "pkm hook run session-start --format system-reminder"\n'
-        'user_prompt_submit = "pkm hook run turn-start --format system-reminder"\n'
-        'stop = "pkm hook run turn-end --format system-reminder"\n'
-    )
-    if dry_run:
-        click.echo(config_text)
-        return
-    click.echo("Add the following to ~/.codex/config.toml:")
-    click.echo(config_text)
+    click.echo("PKM Codex hooks — install instructions:")
+    click.echo("")
+    click.echo(f"  Source: {codex_hooks}")
+    click.echo("")
+    click.echo("Install (copy):")
+    click.echo(f"  cp {codex_hooks} ~/.codex/hooks.json")
+    click.echo("")
+    click.echo("Install (symlink — auto-updates when PKM updates):")
+    click.echo(f"  ln -sf {codex_hooks} ~/.codex/hooks.json")

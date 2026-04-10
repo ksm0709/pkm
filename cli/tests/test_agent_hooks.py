@@ -266,71 +266,42 @@ def test_safe_hook_logs_to_stderr(runner):
 
 
 def test_setup_hooks_claude_code_dry_run(runner, vault_env, tmp_path, monkeypatch):
-    """setup-hooks --tool claude-code --dry-run prints JSON config with new pkm hook run commands."""
+    """setup-hooks --tool claude-code prints plugin install instructions (no longer writes settings.json)."""
     monkeypatch.setenv("HOME", str(tmp_path))
     result = runner.invoke(
         main, ["agent", "setup-hooks", "--tool", "claude-code", "--dry-run"]
     )
     assert result.exit_code == 0
     output = result.output
-    assert "SessionStart" in output
-    assert "UserPromptSubmit" in output
-    assert "Stop" in output
-    assert "pkm hook run" in output  # new command format
+    # New behavior: prints plugin install instructions, not JSON config
+    assert "PKM Claude Code Plugin" in output
+    assert "plugin" in output.lower()
+    assert "pkm hook migrate" in output
 
 
 def test_setup_hooks_codex_dry_run(runner, vault_env):
-    """setup-hooks --tool codex --dry-run prints toml config with new commands."""
+    """setup-hooks --tool codex prints codex/hooks.json install instructions."""
     result = runner.invoke(
         main, ["agent", "setup-hooks", "--tool", "codex", "--dry-run"]
     )
     assert result.exit_code == 0
-    assert "session_start" in result.output
-    assert "pkm hook run session-start" in result.output  # new command format
+    # New behavior: prints copy/symlink instructions for codex/hooks.json
+    assert "hooks.json" in result.output
+    assert "codex" in result.output.lower()
 
 
-def test_setup_hooks_opencode_dry_run(runner, vault_env):
-    """setup-hooks --tool opencode now redirects to codex (opencode removed)."""
-    result = runner.invoke(main, ["agent", "setup-hooks", "--tool", "opencode"])
-    assert result.exit_code == 0
-    # opencode support removed — deprecation message shown
-    assert "opencode" in result.output.lower() or "codex" in result.output.lower()
-
-
-def test_setup_hooks_claude_code_writes_file(runner, vault_env, tmp_path, monkeypatch):
-    """setup-hooks --tool claude-code writes to ~/.claude/settings.json."""
+def test_setup_hooks_claude_code_no_file_write(runner, vault_env, tmp_path, monkeypatch):
+    """setup-hooks --tool claude-code no longer writes to settings.json — prints instructions only."""
     fake_home = tmp_path / "home"
     fake_home.mkdir()
     monkeypatch.setenv("HOME", str(fake_home))
-    # Patch Path.home() used inside the command
     monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
 
     result = runner.invoke(main, ["agent", "setup-hooks", "--tool", "claude-code"])
     assert result.exit_code == 0
 
+    # Must NOT create settings.json
     settings_path = fake_home / ".claude" / "settings.json"
-    assert settings_path.exists()
-    config = json.loads(settings_path.read_text(encoding="utf-8"))
-    assert "hooks" in config
-    assert "SessionStart" in config["hooks"]
-
-
-def test_setup_hooks_claude_code_merges_existing(
-    runner, vault_env, tmp_path, monkeypatch
-):
-    """setup-hooks merges into existing settings.json without overwriting other keys."""
-    fake_home = tmp_path / "home"
-    (fake_home / ".claude").mkdir(parents=True)
-    settings_path = fake_home / ".claude" / "settings.json"
-    settings_path.write_text(
-        json.dumps({"theme": "dark", "other": "value"}), encoding="utf-8"
-    )
-    monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
-
-    result = runner.invoke(main, ["agent", "setup-hooks", "--tool", "claude-code"])
-    assert result.exit_code == 0
-
-    config = json.loads(settings_path.read_text(encoding="utf-8"))
-    assert config["theme"] == "dark"
-    assert config["other"] == "value"
-    assert "SessionStart" in config["hooks"]
+    assert not settings_path.exists()
+    # Must print plugin install instructions
+    assert "PKM Claude Code Plugin" in result.output

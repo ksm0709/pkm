@@ -147,65 +147,46 @@ def test_hook_run_turn_end_system_reminder(runner, vault_env):
 
 
 def test_hook_setup_dry_run_claude_code(runner, vault_env, tmp_path, monkeypatch):
-    """dry-run with fresh HOME shows only pkm hook run commands."""
+    """setup --tool claude-code prints plugin install instructions, not JSON config."""
     monkeypatch.setenv("HOME", str(tmp_path))
     result = runner.invoke(
         main, ["hook", "setup", "--tool", "claude-code", "--dry-run"]
     )
     assert result.exit_code == 0
-    assert "pkm hook run session-start" in result.output
-    assert "pkm hook run turn-start" in result.output
-    assert "pkm hook run turn-end" in result.output
+    assert "PKM Claude Code Plugin" in result.output
+    assert "plugin" in result.output.lower()
+    assert "pkm hook migrate" in result.output
     assert "pkm agent hook" not in result.output
 
 
-def test_hook_setup_appends_to_existing_settings(
+def test_hook_setup_claude_code_does_not_write_settings(
     runner, vault_env, tmp_path, monkeypatch
 ):
-    """pkm hook setup must NOT overwrite existing hooks (omc coexistence)."""
+    """pkm hook setup --tool claude-code no longer writes to settings.json.
+
+    Hook isolation is now achieved via plugin/hooks/hooks.json managed by CC plugin system.
+    """
     settings = tmp_path / ".claude" / "settings.json"
     settings.parent.mkdir(parents=True)
-    existing_hook_cmd = "omc-existing-hook --arg"
-    settings.write_text(
-        json.dumps(
-            {
-                "hooks": {
-                    "UserPromptSubmit": [
-                        {"hooks": [{"type": "command", "command": existing_hook_cmd}]}
-                    ]
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
     monkeypatch.setenv("HOME", str(tmp_path))
 
     result = runner.invoke(main, ["hook", "setup", "--tool", "claude-code"])
     assert result.exit_code == 0
-
-    merged = json.loads(settings.read_text(encoding="utf-8"))
-    matchers = merged["hooks"]["UserPromptSubmit"]
-    commands = [h["command"] for m in matchers for h in m.get("hooks", [])]
-    assert existing_hook_cmd in commands, "Existing hook must be preserved"
-    assert any("pkm hook run turn-start" in cmd for cmd in commands), (
-        "pkm hook must be added"
-    )
+    assert not settings.exists(), "setup must not write to settings.json"
+    assert "PKM Claude Code Plugin" in result.output
 
 
 def test_hook_setup_idempotent(runner, vault_env, tmp_path, monkeypatch):
-    """Running hook setup twice must not duplicate hooks."""
-    settings = tmp_path / ".claude" / "settings.json"
-    settings.parent.mkdir(parents=True)
+    """Running hook setup twice always prints instructions (no file side effects)."""
     monkeypatch.setenv("HOME", str(tmp_path))
 
-    runner.invoke(main, ["hook", "setup", "--tool", "claude-code"])
-    runner.invoke(main, ["hook", "setup", "--tool", "claude-code"])
+    result1 = runner.invoke(main, ["hook", "setup", "--tool", "claude-code"])
+    result2 = runner.invoke(main, ["hook", "setup", "--tool", "claude-code"])
 
-    merged = json.loads(settings.read_text(encoding="utf-8"))
-    for event, matchers in merged["hooks"].items():
-        cmds = [h["command"] for m in matchers for h in m.get("hooks", [])]
-        pkm_cmds = [c for c in cmds if "pkm hook run" in c]
-        assert len(pkm_cmds) <= 1, f"Duplicate pkm hook for {event}: {pkm_cmds}"
+    assert result1.exit_code == 0
+    assert result2.exit_code == 0
+    settings = tmp_path / ".claude" / "settings.json"
+    assert not settings.exists()
 
 
 # ---------------------------------------------------------------------------

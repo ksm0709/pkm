@@ -1,40 +1,141 @@
 {
-  // Context Plugin Configuration
-  // See: https://github.com/ksm0709/context
-  "knowledge": {
-    "dir": ".context/memory",
-    "sources": ["AGENTS.md"]
-  },
-  "omx": {
-    // Inject turn-end after native turn-complete via tmux send-keys
-    "turnEnd": {
-      "strategy": "turn-complete-sendkeys"
-    }
-  },
+  "checks": [
+    { "name": "tests", "signal": ".context/.check-tests-passed" },
+    { "name": "lint", "signal": ".context/.check-lint-passed" },
+    { "name": "typecheck", "signal": ".context/.check-typecheck-passed" },
+    { "name": "format", "signal": ".context/.check-format-passed" },
+    { "name": "build", "signal": ".context/.check-build-passed" },
+    { "name": "security-audit", "signal": ".context/.check-security-audit-passed" },
+    { "name": "secrets-scan", "signal": ".context/.check-secrets-scan-passed" },
+    { "name": "git-clean", "signal": ".context/.check-git-clean-passed" },
+    { "name": "code-review", "signal": ".context/.check-code-review-passed" },
+    { "name": "scope-review", "signal": ".context/.check-scope-review-passed" },
+    { "name": "memory-update", "signal": ".context/.check-memory-update-passed" },
+    { "name": "test-coverage", "signal": ".context/.check-test-coverage-passed" }
+  ],
   "smokeChecks": [
+
+    // === TESTING ===
     {
-      // Fast non-ML tests (~0.5s). ML/search tests (test_hooks, test_agent_hooks,
-      // test_search_*) are excluded because they load sentence-transformers (~70s).
-      // Run the full suite manually: cd cli && .venv/bin/python -m pytest tests/
       "name": "tests",
-      "command": "cd /home/taeho/repos/pkm/cli && .venv/bin/python -m pytest tests/test_daily.py tests/test_notes.py tests/test_config_commands.py tests/test_vault_commands.py tests/test_vault_naming.py tests/test_wikilinks.py tests/test_backlinks.py tests/test_tag_commands.py tests/test_maintenance.py tests/test_consolidate.py tests/test_links.py -q --tb=short 2>&1 | tail -5",
+      "enabled": false,
+      // skip if no test script defined in package.json
+      "triggerCommand": "node -e \"require('./package.json').scripts?.test || process.exit(1)\"",
+      "command": "npm test",
+      // "command": "go test ./...",       // Go
+      // "command": "pytest",              // Python
+      // "command": "cargo test",          // Rust
       "signal": ".context/.check-tests-passed"
     },
+
+    // === CODE QUALITY ===
     {
       "name": "lint",
-      "command": "ruff check /home/taeho/repos/pkm/cli/src/pkm/ /home/taeho/repos/pkm/cli/tests/ 2>&1",
+      "enabled": false,
+      // skip if no ESLint config found
+      "triggerCommand": "ls .eslintrc* eslint.config* 2>/dev/null | head -1 | grep -q .",
+      "command": "npm run lint",
+      // "command": "golangci-lint run",   // Go
+      // "command": "ruff check .",        // Python
       "signal": ".context/.check-lint-passed"
     },
     {
+      "name": "typecheck",
+      "enabled": false,
+      // skip if no tsconfig.json
+      "triggerCommand": "test -f tsconfig.json",
+      "command": "npx tsc --noEmit",
+      "signal": ".context/.check-typecheck-passed"
+    },
+    {
       "name": "format",
-      "command": "ruff format --check /home/taeho/repos/pkm/cli/src/pkm/ /home/taeho/repos/pkm/cli/tests/ 2>&1 | head -5",
+      "enabled": false,
+      // skip if no Prettier config found
+      "triggerCommand": "ls .prettierrc* prettier.config* 2>/dev/null | head -1 | grep -q .",
+      "command": "npx prettier --check .",
+      // "command": "gofmt -l . | grep . && exit 1 || exit 0",  // Go
       "signal": ".context/.check-format-passed"
     },
     {
-      // Integration: verify pkm daily add works end-to-end with the active vault
-      "name": "pkm-agent",
-      "command": "pkm daily add \"[smoke-check] agent integration test $(date +%H:%M)\" 2>&1 && echo OK",
-      "signal": ".context/.check-pkm-agent-passed"
+      "name": "build",
+      "enabled": false,
+      // skip if no build script defined in package.json
+      "triggerCommand": "node -e \"require('./package.json').scripts?.build || process.exit(1)\"",
+      "command": "npm run build",
+      "signal": ".context/.check-build-passed"
+    },
+
+    // === SECURITY ===
+    {
+      "name": "security-audit",
+      "enabled": false,
+      // skip if no package-lock.json (non-npm projects)
+      "triggerCommand": "test -f package-lock.json",
+      "command": "npm audit --audit-level=high",
+      "signal": ".context/.check-security-audit-passed"
+    },
+    {
+      "name": "secrets-scan",
+      "enabled": false,
+      // skip if no commits yet
+      "triggerCommand": "git log -1 --oneline",
+      "command": "git diff HEAD~1 --name-only | xargs grep -l -E '(password|secret|api_key|token)\\s*=' 2>/dev/null && exit 1 || exit 0",
+      "signal": ".context/.check-secrets-scan-passed"
+    },
+
+    // === GIT ===
+    {
+      "name": "git-clean",
+      "enabled": false,
+      // skip if not inside a git repo
+      "triggerCommand": "git rev-parse --is-inside-work-tree",
+      "command": "git diff --exit-code && git diff --cached --exit-code",
+      "signal": ".context/.check-git-clean-passed"
+    },
+
+    // === AI AGENT CHECKS (type: agent) ===
+    // PASS/FAIL output instruction is auto-injected by run_smoke_check.
+    // "cli" selects the agent binary (default: "claude"). e.g. "codex", "gemini".
+    {
+      "name": "code-review",
+      "enabled": false,
+      "type": "agent",
+      // "cli": "claude",  // default; change to "codex", "gemini", etc.
+      // skip if no commits to diff
+      "triggerCommand": "git log -1 --oneline",
+      "prompt": "Review the recent git diff (run: git diff HEAD~1)\nfor code quality issues, potential bugs, unclear naming,\nmissing error handling, and SOLID principle violations.\nBe specific about any issues found.",
+      "signal": ".context/.check-code-review-passed",
+      "timeout": 120000
+    },
+    {
+      "name": "scope-review",
+      "enabled": false,
+      "type": "agent",
+      // skip if no commits to diff
+      "triggerCommand": "git log -1 --oneline",
+      "prompt": "Review the recent git diff (run: git diff HEAD~1)\nand compare it against the task description in AGENTS.md\nor CLAUDE.md. Check if changes stay within the intended\nscope without unrelated modifications.",
+      "signal": ".context/.check-scope-review-passed",
+      "timeout": 120000
+    },
+    {
+      "name": "memory-update",
+      "enabled": false,
+      "type": "agent",
+      // skip if no commits to diff
+      "triggerCommand": "git log -1 --oneline",
+      "prompt": "Review recent changes (run: git diff HEAD~1) and check\nif any important architectural decisions, patterns, or\ncontext should be documented in AGENTS.md or CLAUDE.md.\nIf the docs are up to date, that is fine. Otherwise\ndescribe what is missing.",
+      "signal": ".context/.check-memory-update-passed",
+      "timeout": 120000
+    },
+    {
+      "name": "test-coverage",
+      "enabled": false,
+      "type": "agent",
+      // skip if no commits to diff
+      "triggerCommand": "git log -1 --oneline",
+      "prompt": "Review the recent git diff (run: git diff HEAD~1).\nFor each new function or method added, check if there\nis a corresponding test. Verify that edge cases are\ncovered. Report any significant gaps in coverage.",
+      "signal": ".context/.check-test-coverage-passed",
+      "timeout": 120000
     }
   ]
 }

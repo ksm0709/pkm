@@ -1,0 +1,44 @@
+{
+  "description": "PKM knowledge hooks — context injection and knowledge extraction",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pkm hook run session-start --format system-reminder",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "You are a PKM context injector. The hook input JSON is: $ARGUMENTS\n\nExtract the 'prompt' field from the JSON to get the user's message.\n\nClassify the task type:\n- CODING: debugging, fixing bugs, writing/refactoring code, running tests\n- RESEARCH: learning, explaining concepts, summarizing, writing docs\n- KNOWLEDGE_WORK: planning, architecture, decision making, design\n- CHIT_CHAT: greetings, off-topic, very short questions\n\nIf CHIT_CHAT: return {\"ok\": true} with no additionalContext.\nIf CODING: return {\"ok\": true, \"additionalContext\": \"PKM: For code-related notes run `pkm search \\\"<topic>\\\"`. Use `pkm daily add` to log findings.\"}\nIf RESEARCH or KNOWLEDGE_WORK: return {\"ok\": true, \"additionalContext\": \"PKM active. Use `pkm search \\\"<topic>\\\"` to recall notes. Save insights with `pkm note add` or `pkm daily add`.\"}\n\nAlways return {\"ok\": true}. Never return {\"ok\": false}.",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pkm hook run turn-end-exit2",
+            "timeout": 30
+          },
+          {
+            "type": "agent",
+            "prompt": "You are a PKM knowledge extractor. A Claude Code session just ended. The hook input JSON is: $ARGUMENTS\n\n1. Parse the JSON to extract the 'transcript_path' field\n2. Read the transcript file at that path using the Read tool\n3. Identify knowledge worth preserving (be selective — only non-obvious, reusable knowledge):\n   - Key decisions made (with rationale)\n   - Bugs found and fixed (symptoms, cause, solution)\n   - Patterns or techniques learned\n   - Novel concepts understood for the first time\n4. For session-specific items: run Bash tool with: pkm daily add '<one-line summary>'\n5. For reusable knowledge: run Bash tool with: pkm note add '<content>' --type semantic --importance <5-9> --tags <tag1,tag2>\n6. Also run: pkm daily add '<one-sentence session summary>'\n7. Return {\"ok\": true} when done. If transcript_path is missing/unreadable or nothing is worth saving, return {\"ok\": true} immediately.\n\nIMPORTANT: Skip trivial facts, already-known information, and tool outputs. Quality over quantity.",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
+}

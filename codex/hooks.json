@@ -1,0 +1,38 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pkm hook run session-start --format system-reminder",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pkm hook run turn-start --format system-reminder",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /path/to/pkm/codex/hooks/stop.sh",
+            "timeout": 120,
+            "statusMessage": "Extracting session knowledge..."
+          }
+        ]
+      }
+    ]
+  }
+}
