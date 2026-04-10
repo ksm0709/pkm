@@ -468,6 +468,14 @@ def run_hook(
 
     HOOK_NAME: session-start | turn-start | turn-end | turn-end-exit2
     """
+    # Vault-free group: lazy-load vault for run subcommands that need it.
+    if "vault" not in ctx.obj or ctx.obj["vault"] is None:
+        from pkm.config import get_vault as _get_vault
+        try:
+            ctx.obj["vault"] = _get_vault(None)
+        except Exception:
+            ctx.obj["vault"] = None
+
     kwargs = dict(
         output_format=output_format, top=top, session_id=session_id, summary=summary
     )

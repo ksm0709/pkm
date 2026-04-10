@@ -21,7 +21,7 @@ from pkm.commands.update import update_cmd
 from pkm.commands.vault import vault
 from pkm.config import get_vault
 
-VAULT_FREE_COMMANDS = {"vault", "config", "setup", "update"}
+VAULT_FREE_COMMANDS = {"vault", "config", "setup", "update", "hook"}
 
 _console = Console()
 
