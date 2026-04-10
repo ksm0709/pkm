@@ -253,4 +253,3 @@ def test_turn_end_exit2_with_transcript_exits_2(runner, vault_env):
     # CliRunner merges stderr into output — check combined output for instructions
     assert "KNOWLEDGE EXTRACTION" in result.output
     assert "pkm daily add" in result.output
-    assert "/tmp/session.jsonl" in result.output

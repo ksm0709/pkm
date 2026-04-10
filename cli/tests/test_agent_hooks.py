@@ -102,11 +102,9 @@ def test_session_start_search_failure_does_not_crash(runner, vault_env, monkeypa
 
 
 def test_turn_start_plain(runner, vault_env):
-    """turn-start --format plain outputs memory command reminders."""
+    """turn-start --format plain outputs a search hint."""
     result = runner.invoke(main, ["agent", "hook", "turn-start", "--format", "plain"])
     assert result.exit_code == 0
-    assert "pkm daily add" in result.output
-    assert "pkm note add" in result.output
     assert "pkm search" in result.output
 
 

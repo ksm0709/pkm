@@ -243,9 +243,16 @@ def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None
     except Exception:
         pass
 
+    # PKM command reference — single source of truth, injected once at session start
+    lines.extend([
+        "## PKM",
+        '`pkm daily add "<text>"` — log decisions, findings, code changes',
+        '`pkm daily add --sub "<title>"` — create linked sub-note + log [[wikilink]] in today\'s daily',
+        '`pkm search "<query>"` — recall related notes',
+        '`pkm note add --content "<insight>" --type semantic --importance 7 --tags tag1,tag2` — atomic note',
+    ])
+
     content = "\n".join(lines).strip()
-    if not content:
-        content = "PKM memory layer active. Use `pkm note add` to save memories."
 
     if output_format == "system-reminder":
         click.echo(f"<system-reminder>\n{content}\n</system-reminder>")
@@ -307,14 +314,9 @@ def _handle_turn_start(
     except Exception:
         pass
 
-    # --- Advisory text ---
     if session_id:
         lines.append(f"Session: {session_id}")
-    lines.append("## PKM")
-    lines.append("`pkm daily add \"<text>\"` — log decisions, findings, code changes")
-    lines.append("`pkm daily add --sub \"<title>\"` — create linked sub-note + log [[wikilink]] in today's daily")
-    lines.append("`pkm search \"<query>\"` — recall relevant notes before starting work")
-    lines.append("`pkm note add --content \"<insight>\" --type semantic --importance 7 --tags tag1,tag2` — atomic note")
+    lines.append('`pkm search "<query>"` — recall related notes if needed')
 
     content = "\n".join(lines)
     if output_format == "system-reminder":
@@ -327,13 +329,7 @@ def _handle_turn_end(
     ctx, session_id: str | None, summary: str | None, output_format: str, **_ignored
 ) -> None:
     # Always emit preservation guide
-    guide_lines = [
-        "## PKM: Save Session Knowledge",
-        '`pkm daily add "<what happened>"` — decisions, bugs fixed, code changes',
-        '`pkm daily add --sub "<topic>"` — dedicated sub-note + [[wikilink]] in today\'s daily',
-        '`pkm note add --content "<reusable insight>" --type semantic --importance 7 --tags tag1,tag2`',
-    ]
-    guide = "\n".join(guide_lines)
+    guide = 'Log important findings: `pkm daily add "<summary>"` or `pkm note add --content "<insight>" --type semantic --importance 7 --tags tag1,tag2`'
     if output_format == "system-reminder":
         click.echo(f"<system-reminder>\n{guide}\n</system-reminder>")
     else:
@@ -383,15 +379,10 @@ def _handle_turn_end_exit2(ctx, **_ignored) -> None:
         sys.exit(0)
 
     instructions = """\
-KNOWLEDGE EXTRACTION TASK: Before stopping, extract knowledge from this session.
-Use your Read tool to read the session transcript at: {transcript_path}
-Then:
-1. Identify: key decisions, bugs fixed, patterns learned, new concepts discovered
-2. For session entries: run `pkm daily add '<summary>'` via your Bash tool
-3. For reusable knowledge: run `pkm note add '<content>' --type semantic --importance <5-9> --tags <tags>` via your Bash tool
-4. Run: `pkm daily add '<one-sentence session summary>'`
-Be selective — skip trivial facts. Quality over quantity.
-Then you may stop.""".format(transcript_path=transcript_path)
+KNOWLEDGE EXTRACTION: Save key learnings from this session.
+1. Run `pkm daily add '<one-sentence summary>'`
+2. For reusable insights: `pkm note add --content '<insight>' --type semantic --importance <5-9> --tags <tags>`
+Be selective — skip trivial facts. Then you may stop."""
 
     print(instructions, file=sys.stderr)
     sys.exit(2)
