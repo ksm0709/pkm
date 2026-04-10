@@ -611,6 +611,7 @@ def _setup_claude_code_hooks(dry_run: bool) -> None:
         click.echo("Dry run — no changes written.")
         return
 
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
     settings_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
     os.chmod(settings_path, stat.S_IRUSR | stat.S_IWUSR)
     click.echo(f"  Written: {settings_path}")

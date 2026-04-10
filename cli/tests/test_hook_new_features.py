@@ -185,21 +185,20 @@ def test_migrate_no_pkm_hooks(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_setup_claude_code_prints_instructions_no_file_write(tmp_path, monkeypatch):
-    """setup --tool claude-code prints instructions without writing settings.json."""
-    claude_dir = tmp_path / ".claude"
-    claude_dir.mkdir()
-    settings_path = claude_dir / "settings.json"
-
+def test_setup_claude_code_writes_settings_json(tmp_path, monkeypatch):
+    """setup --tool claude-code merges PKM hooks into ~/.claude/settings.json."""
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
 
     result = CliRunner().invoke(main, ["hook", "setup", "--tool", "claude-code"])
-    assert result.exit_code == 0
-    # Should print instructions
-    assert "PKM Claude Code Plugin" in result.output
-    assert "plugin" in result.output.lower()
-    # Must NOT write settings.json
-    assert not settings_path.exists()
+    assert result.exit_code == 0, result.output
+
+    settings_path = tmp_path / ".claude" / "settings.json"
+    assert settings_path.exists()
+    import json as _json
+    data = _json.loads(settings_path.read_text())
+    assert "SessionStart" in data["hooks"]
+    assert "pkm hook run session-start" in str(data["hooks"]["SessionStart"])
+    assert "pkm hook remove" in result.output
 
 
 def test_setup_codex_prints_install_instructions(tmp_path, monkeypatch):

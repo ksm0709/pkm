@@ -147,46 +147,46 @@ def test_hook_run_turn_end_system_reminder(runner, vault_env):
 
 
 def test_hook_setup_dry_run_claude_code(runner, vault_env, tmp_path, monkeypatch):
-    """setup --tool claude-code prints plugin install instructions, not JSON config."""
+    """setup --tool claude-code --dry-run shows what would be added without writing."""
     monkeypatch.setenv("HOME", str(tmp_path))
     result = runner.invoke(
         main, ["hook", "setup", "--tool", "claude-code", "--dry-run"]
     )
     assert result.exit_code == 0
-    assert "PKM Claude Code Plugin" in result.output
-    assert "plugin" in result.output.lower()
-    assert "pkm hook migrate" in result.output
+    assert "SessionStart" in result.output
+    assert "Dry run" in result.output
     assert "pkm agent hook" not in result.output
+    # dry-run must not write settings.json
+    assert not (tmp_path / ".claude" / "settings.json").exists()
 
 
-def test_hook_setup_claude_code_does_not_write_settings(
+def test_hook_setup_claude_code_writes_settings(
     runner, vault_env, tmp_path, monkeypatch
 ):
-    """pkm hook setup --tool claude-code no longer writes to settings.json.
-
-    Hook isolation is now achieved via plugin/hooks/hooks.json managed by CC plugin system.
-    """
-    settings = tmp_path / ".claude" / "settings.json"
-    settings.parent.mkdir(parents=True)
+    """pkm hook setup --tool claude-code merges PKM hooks into ~/.claude/settings.json."""
     monkeypatch.setenv("HOME", str(tmp_path))
 
     result = runner.invoke(main, ["hook", "setup", "--tool", "claude-code"])
-    assert result.exit_code == 0
-    assert not settings.exists(), "setup must not write to settings.json"
-    assert "PKM Claude Code Plugin" in result.output
+    assert result.exit_code == 0, result.output
+
+    settings = tmp_path / ".claude" / "settings.json"
+    assert settings.exists(), "setup must write settings.json"
+    data = json.loads(settings.read_text())
+    assert "SessionStart" in data["hooks"]
+    assert "pkm hook remove" in result.output
 
 
 def test_hook_setup_idempotent(runner, vault_env, tmp_path, monkeypatch):
-    """Running hook setup twice always prints instructions (no file side effects)."""
+    """Running hook setup twice skips already-installed hooks."""
     monkeypatch.setenv("HOME", str(tmp_path))
 
     result1 = runner.invoke(main, ["hook", "setup", "--tool", "claude-code"])
     result2 = runner.invoke(main, ["hook", "setup", "--tool", "claude-code"])
 
-    assert result1.exit_code == 0
-    assert result2.exit_code == 0
-    settings = tmp_path / ".claude" / "settings.json"
-    assert not settings.exists()
+    assert result1.exit_code == 0, result1.output
+    assert result2.exit_code == 0, result2.output
+    assert "Added hook" in result1.output
+    assert "Already installed" in result2.output or "nothing to do" in result2.output.lower()
 
 
 # ---------------------------------------------------------------------------

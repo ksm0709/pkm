@@ -266,17 +266,16 @@ def test_safe_hook_logs_to_stderr(runner):
 
 
 def test_setup_hooks_claude_code_dry_run(runner, vault_env, tmp_path, monkeypatch):
-    """setup-hooks --tool claude-code prints plugin install instructions (no longer writes settings.json)."""
+    """setup-hooks --tool claude-code --dry-run shows what would be added without writing."""
     monkeypatch.setenv("HOME", str(tmp_path))
     result = runner.invoke(
         main, ["agent", "setup-hooks", "--tool", "claude-code", "--dry-run"]
     )
     assert result.exit_code == 0
     output = result.output
-    # New behavior: prints plugin install instructions, not JSON config
-    assert "PKM Claude Code Plugin" in output
-    assert "plugin" in output.lower()
-    assert "pkm hook migrate" in output
+    assert "SessionStart" in output
+    assert "Dry run" in output
+    assert not (tmp_path / ".claude" / "settings.json").exists()
 
 
 def test_setup_hooks_codex_dry_run(runner, vault_env):
@@ -285,23 +284,23 @@ def test_setup_hooks_codex_dry_run(runner, vault_env):
         main, ["agent", "setup-hooks", "--tool", "codex", "--dry-run"]
     )
     assert result.exit_code == 0
-    # New behavior: prints copy/symlink instructions for codex/hooks.json
     assert "hooks.json" in result.output
     assert "codex" in result.output.lower()
 
 
-def test_setup_hooks_claude_code_no_file_write(runner, vault_env, tmp_path, monkeypatch):
-    """setup-hooks --tool claude-code no longer writes to settings.json — prints instructions only."""
+def test_setup_hooks_claude_code_writes_settings(runner, vault_env, tmp_path, monkeypatch):
+    """setup-hooks --tool claude-code merges PKM hooks into ~/.claude/settings.json."""
     fake_home = tmp_path / "home"
     fake_home.mkdir()
     monkeypatch.setenv("HOME", str(fake_home))
     monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
 
     result = runner.invoke(main, ["agent", "setup-hooks", "--tool", "claude-code"])
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
 
-    # Must NOT create settings.json
     settings_path = fake_home / ".claude" / "settings.json"
-    assert not settings_path.exists()
-    # Must print plugin install instructions
-    assert "PKM Claude Code Plugin" in result.output
+    assert settings_path.exists()
+    import json as _json
+    data = _json.loads(settings_path.read_text())
+    assert "SessionStart" in data["hooks"]
+    assert "pkm hook remove" in result.output
