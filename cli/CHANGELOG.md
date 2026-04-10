@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v2.17.0 (2026-04-10)
+
+### Bug Fixes
+
+- Create .claude dir and update tests for settings.json write behavior
+  ([`acbd097`](https://github.com/ksm0709/pkm/commit/acbd0971aae20613427e178ec49d2c92aff16b8a))
+
+### Features
+
+- Hook setup writes to settings.json; migrate renamed to remove
+  ([`00bff98`](https://github.com/ksm0709/pkm/commit/00bff9824ab4eb9dcf5cc4bb730185f6312174af))
+
+
 ## v2.16.0 (2026-04-10)
 
 ### Features
