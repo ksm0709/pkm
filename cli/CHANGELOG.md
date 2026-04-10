@@ -2,6 +2,27 @@
 
 <!-- version list -->
 
+## v2.15.0 (2026-04-10)
+
+### Bug Fixes
+
+- Add hook to VAULT_FREE_COMMANDS and lazy-load vault in run_hook
+  ([`66a081e`](https://github.com/ksm0709/pkm/commit/66a081eacc3c0da1a603559673a1793d4bf30d8a))
+
+### Documentation
+
+- Update hook injection guide and skill docs for daily add --sub
+  ([`0a93466`](https://github.com/ksm0709/pkm/commit/0a93466bd87e334ae6f4939eec9145dc516e0439))
+
+### Features
+
+- Add daily add --sub and wikilink injection to daily edit --sub
+  ([`f6b74a2`](https://github.com/ksm0709/pkm/commit/f6b74a23161f092f7faa61a208de99df98c5c9c3))
+
+- Add intelligent hook plugin system with hook isolation and Phase 2 intelligence
+  ([`0c7e67e`](https://github.com/ksm0709/pkm/commit/0c7e67e99120168332549878f50dfe896fa60219))
+
+
 ## v2.14.0 (2026-04-09)
 
 ### Chores
