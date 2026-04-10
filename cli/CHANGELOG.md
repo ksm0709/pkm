@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.18.0 (2026-04-10)
+
+### Features
+
+- Clean turn-start/end injections and add hook debug mode
+  ([`1fdefe2`](https://github.com/ksm0709/pkm/commit/1fdefe2d8abeccc9a38ab0f944825e2eaea5fbb8))
+
+
 ## v2.17.0 (2026-04-10)
 
 ### Bug Fixes
