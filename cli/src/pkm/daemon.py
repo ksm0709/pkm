@@ -12,8 +12,18 @@ from pathlib import Path
 
 from pkm.search_engine import VectorIndex, IndexEntry, search, _require_transformers
 
+import logging
+
 SOCKET_PATH = Path.home() / ".config" / "pkm" / "daemon.sock"
+LOG_PATH = Path.home() / ".config" / "pkm" / "daemon.log"
 IDLE_TIMEOUT = 3600
+
+logging.basicConfig(
+    filename=str(LOG_PATH),
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
+logger = logging.getLogger("pkm.daemon")
 
 
 class DaemonState:
@@ -48,6 +58,7 @@ class SearchRequestHandler(socketserver.StreamRequestHandler):
 
             req = json.loads(data)
             action = req.get("action", "search")
+            logger.info(f"Received action: {action}")
 
             if action == "search":
                 query = req.get("query", "")
@@ -87,6 +98,7 @@ class SearchRequestHandler(socketserver.StreamRequestHandler):
                 self.wfile.write(b'{"status": "ok"}\n')
 
         except Exception:
+            logger.exception("Error handling request")
             self.wfile.write(b"[]\n")
         finally:
             DaemonState.last_activity = time.time()
@@ -109,6 +121,7 @@ def idle_checker(server):
     while True:
         time.sleep(60)
         if time.time() - DaemonState.last_activity > IDLE_TIMEOUT:
+            logger.info("Idle timeout reached. Shutting down daemon.")
             server.shutdown()
             break
 
@@ -119,14 +132,17 @@ def main():
     try:
         server = TimeoutUnixServer(str(SOCKET_PATH), SearchRequestHandler)
     except RuntimeError:
+        logger.warning("Another daemon is already running. Exiting.")
         return
 
     checker = threading.Thread(target=idle_checker, args=(server,), daemon=True)
     checker.start()
 
+    logger.info("Daemon started. Listening on %s", SOCKET_PATH)
     try:
         server.serve_forever()
     finally:
+        logger.info("Daemon shutting down.")
         if SOCKET_PATH.exists():
             try:
                 SOCKET_PATH.unlink()
