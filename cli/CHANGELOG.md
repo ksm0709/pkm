@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.20.0 (2026-04-11)
+
+### Features
+
+- Implement persistent python ML daemon for fast semantic search hooks
+  ([`38f24a7`](https://github.com/ksm0709/pkm/commit/38f24a74cafa2a8e82d20618ce36e004c5042acc))
+
+
 ## v2.19.0 (2026-04-11)
 
 ### Features
