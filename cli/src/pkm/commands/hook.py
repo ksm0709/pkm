@@ -391,7 +391,7 @@ Be selective — skip trivial facts. Then you may stop."""
 def _is_pkm_hook(hook_entry: dict) -> bool:
     cmd = hook_entry.get("command", "")
     prompt = hook_entry.get("prompt", "")
-    return "pkm hook run" in cmd or "pkm agent hook" in cmd or "PKM" in prompt
+    return "pkm hook run" in cmd or "pkm agent hook" in cmd or "PKM" in prompt or "codex/hooks/stop.sh" in cmd
 
 
 def _handle_remove(dry_run: bool) -> None:
@@ -666,17 +666,65 @@ def _setup_claude_code_hooks(dry_run: bool) -> None:
 
 
 def _setup_codex_hooks(dry_run: bool) -> None:
-    """Print Codex CLI hook install instructions."""
+    """Merge PKM hooks into ~/.codex/hooks.json."""
     this_file = Path(__file__).resolve()
     repo_root = this_file.parents[4]
-    codex_hooks = repo_root / "codex" / "hooks.json"
+    codex_hooks_src = repo_root / "codex" / "hooks.json"
+    codex_hooks_dst = Path.home() / ".codex" / "hooks.json"
 
-    click.echo("PKM Codex hooks — install instructions:")
+    click.echo("PKM Codex hooks — install to ~/.codex/hooks.json")
+
+    try:
+        pkm_hooks_data = json.loads(codex_hooks_src.read_text(encoding="utf-8"))
+    except Exception as e:
+        click.echo(f"Error reading PKM codex hooks: {e}", err=True)
+        return
+
+    # Replace stop.sh placeholder path with actual repo path
+    stop_sh = str(repo_root / "codex" / "hooks" / "stop.sh")
+    pkm_hooks = pkm_hooks_data.get("hooks", {})
+    for event_list in pkm_hooks.values():
+        for matcher in event_list:
+            for hook in matcher.get("hooks", []):
+                cmd = hook.get("command", "")
+                if "/path/to/pkm/codex/hooks/stop.sh" in cmd:
+                    hook["command"] = f"bash {stop_sh}"
+
+    try:
+        existing = json.loads(codex_hooks_dst.read_text(encoding="utf-8")) if codex_hooks_dst.exists() else {}
+    except Exception as e:
+        click.echo(f"Error reading ~/.codex/hooks.json: {e}", err=True)
+        return
+
+    hooks = existing.setdefault("hooks", {})
+
+    added: list[str] = []
+    skipped: list[str] = []
+
+    for event, matchers in pkm_hooks.items():
+        event_hooks = hooks.setdefault(event, [])
+        all_hook_entries = [h for m in event_hooks for h in m.get("hooks", [])]
+        if any(_is_pkm_hook(h) for h in all_hook_entries):
+            skipped.append(event)
+            continue
+        event_hooks.extend(matchers)
+        added.append(event)
+
+    for event in added:
+        click.echo(f"  Added hook: {event}")
+    for event in skipped:
+        click.echo(f"  Already installed: {event} (skipped)")
+
+    if not added:
+        click.echo("All PKM hooks already present — nothing to do.")
+        return
+
+    if dry_run:
+        click.echo("Dry run — no changes written.")
+        return
+
+    codex_hooks_dst.parent.mkdir(parents=True, exist_ok=True)
+    codex_hooks_dst.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+    click.echo(f"  Written: {codex_hooks_dst}")
     click.echo("")
-    click.echo(f"  Source: {codex_hooks}")
-    click.echo("")
-    click.echo("Install (copy):")
-    click.echo(f"  cp {codex_hooks} ~/.codex/hooks.json")
-    click.echo("")
-    click.echo("Install (symlink — auto-updates when PKM updates):")
-    click.echo(f"  ln -sf {codex_hooks} ~/.codex/hooks.json")
+    click.echo("Done. Restart Codex to activate PKM hooks.")
