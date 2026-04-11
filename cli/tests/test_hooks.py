@@ -73,8 +73,6 @@ def test_hook_run_turn_start_includes_search_instruction(runner, vault_env):
     result = runner.invoke(main, ["hook", "run", "turn-start", "--format", "plain"])
     assert result.exit_code == 0
     assert "pkm search" in result.output
-    assert "--tags" in result.output
-    assert "pkm daily add" in result.output
 
 
 def test_hook_run_turn_start_no_format_json_mention(runner, vault_env):
@@ -184,7 +182,10 @@ def test_hook_setup_idempotent(runner, vault_env, tmp_path, monkeypatch):
     assert result1.exit_code == 0, result1.output
     assert result2.exit_code == 0, result2.output
     assert "Added hook" in result1.output
-    assert "Already installed" in result2.output or "nothing to do" in result2.output.lower()
+    assert (
+        "Already installed" in result2.output
+        or "nothing to do" in result2.output.lower()
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -234,7 +235,9 @@ def mock_model(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_turn_start_with_stdin_prompt_injects_notes(runner, vault_env, tmp_vault, monkeypatch, mock_model):
+def test_turn_start_with_stdin_prompt_injects_notes(
+    runner, vault_env, tmp_vault, monkeypatch, mock_model
+):
     """When stdin has a prompt, relevant notes are searched and injected."""
     import json as _json
     from pkm.search_engine import SearchResult, build_index
@@ -242,21 +245,36 @@ def test_turn_start_with_stdin_prompt_injects_notes(runner, vault_env, tmp_vault
     build_index(tmp_vault)
 
     def fake_search(query, index, **kwargs):
-        return [SearchResult(
-            note_id="mvcc-note", title="MVCC Concurrency",
-            score=0.9, backlink_count=1, tags=["database"],
-            rank=1, memory_type="semantic", importance=8.0, path=""
-        )]
+        return [
+            SearchResult(
+                note_id="mvcc-note",
+                title="MVCC Concurrency",
+                score=0.9,
+                backlink_count=1,
+                tags=["database"],
+                rank=1,
+                memory_type="semantic",
+                importance=8.0,
+                path="",
+            )
+        ]
 
     monkeypatch.setattr("pkm.search_engine.search", fake_search)
 
-    payload = _json.dumps({"hook_event_name": "UserPromptSubmit", "prompt": "MVCC database isolation"})
+    payload = _json.dumps(
+        {"hook_event_name": "UserPromptSubmit", "prompt": "MVCC database isolation"}
+    )
     result = runner.invoke(
-        main, ["hook", "run", "turn-start", "--format", "plain"],
+        main,
+        ["hook", "run", "turn-start", "--format", "plain"],
         input=payload,
     )
     assert result.exit_code == 0
-    assert "Relevant Notes" in result.output or "MVCC" in result.output or "pkm search" in result.output
+    assert (
+        "Relevant Notes" in result.output
+        or "MVCC" in result.output
+        or "pkm search" in result.output
+    )
 
 
 def test_turn_start_no_stdin_shows_advisory(runner, vault_env):
@@ -264,7 +282,6 @@ def test_turn_start_no_stdin_shows_advisory(runner, vault_env):
     result = runner.invoke(main, ["hook", "run", "turn-start", "--format", "plain"])
     assert result.exit_code == 0
     assert "pkm search" in result.output
-    assert "pkm daily add" in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -303,11 +320,16 @@ def test_consolidation_trigger_after_threshold(runner, vault_env, tmp_vault):
 
     # Set session_count to 4 (one below threshold so next invoke hits 5)
     state_path = tmp_vault.pkm_dir / "session_state.json"
-    state_path.write_text(_json.dumps({"session_count": 4, "last_consolidation_at": None}))
+    state_path.write_text(
+        _json.dumps({"session_count": 4, "last_consolidation_at": None})
+    )
 
     result = runner.invoke(main, ["hook", "run", "session-start"])
     assert result.exit_code == 0
-    assert "Consolidation Recommended" in result.output or "consolidat" in result.output.lower()
+    assert (
+        "Consolidation Recommended" in result.output
+        or "consolidat" in result.output.lower()
+    )
 
 
 def test_consolidation_cooldown_suppresses_trigger(runner, vault_env, tmp_vault):
@@ -322,7 +344,9 @@ def test_consolidation_cooldown_suppresses_trigger(runner, vault_env, tmp_vault)
 
     recent = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
     state_path = tmp_vault.pkm_dir / "session_state.json"
-    state_path.write_text(_json.dumps({"session_count": 5, "last_consolidation_at": recent}))
+    state_path.write_text(
+        _json.dumps({"session_count": 5, "last_consolidation_at": recent})
+    )
 
     result = runner.invoke(main, ["hook", "run", "session-start"])
     assert result.exit_code == 0

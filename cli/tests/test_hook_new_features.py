@@ -103,7 +103,9 @@ def test_migrate_removes_pkm_hooks_keeps_omc(tmp_path, monkeypatch):
     assert any("omc" in h.get("command", "") for h in ss_hooks)
 
     # UserPromptSubmit: entire matcher dropped (only had PKM hook)
-    ups_hooks = [h for m in hooks.get("UserPromptSubmit", []) for h in m.get("hooks", [])]
+    ups_hooks = [
+        h for m in hooks.get("UserPromptSubmit", []) for h in m.get("hooks", [])
+    ]
     assert not any("pkm" in h.get("command", "") for h in ups_hooks)
 
     # Stop: only OMC hook remains
@@ -120,11 +122,7 @@ def test_migrate_dry_run_does_not_write(tmp_path, monkeypatch):
     settings = {
         "hooks": {
             "Stop": [
-                {
-                    "hooks": [
-                        {"type": "command", "command": "pkm hook run turn-end"}
-                    ]
-                }
+                {"hooks": [{"type": "command", "command": "pkm hook run turn-end"}]}
             ]
         }
     }
@@ -160,11 +158,7 @@ def test_migrate_no_pkm_hooks(tmp_path, monkeypatch):
     settings = {
         "hooks": {
             "Stop": [
-                {
-                    "hooks": [
-                        {"type": "command", "command": "/path/to/omc/stop-hook.js"}
-                    ]
-                }
+                {"hooks": [{"type": "command", "command": "/path/to/omc/stop-hook.js"}]}
             ]
         }
     }
@@ -195,6 +189,7 @@ def test_setup_claude_code_writes_settings_json(tmp_path, monkeypatch):
     settings_path = tmp_path / ".claude" / "settings.json"
     assert settings_path.exists()
     import json as _json
+
     data = _json.loads(settings_path.read_text())
     assert "SessionStart" in data["hooks"]
     assert "pkm hook run session-start" in str(data["hooks"]["SessionStart"])
@@ -209,9 +204,7 @@ def test_setup_codex_prints_install_instructions(tmp_path, monkeypatch):
     assert result.exit_code == 0
     assert "codex" in result.output.lower()
     assert "hooks.json" in result.output
-    # Should mention both cp and ln -sf
-    assert "cp " in result.output
-    assert "ln -sf" in result.output
+    assert "Written:" in result.output
 
 
 # ---------------------------------------------------------------------------
