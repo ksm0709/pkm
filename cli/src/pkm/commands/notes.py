@@ -152,10 +152,15 @@ def add(
 
     if not no_dedup and content:
         try:
-            from pkm.search_engine import load_index, find_similar
+            from pkm.search_engine import load_index, find_similar, search_via_daemon
 
-            _index = load_index(vault)
-            _matches = find_similar(content, _index, threshold=0.85, top_n=1)
+            _matches = search_via_daemon(content, vault, top_n=1)
+            if _matches is not None:
+                _matches = [m for m in _matches if m.score >= 0.85]
+            else:
+                _index = load_index(vault)
+                _matches = find_similar(content, _index, threshold=0.85, top_n=1)
+
             if _matches:
                 console.print(
                     f"[pkm dedup warning] Similar note ({_matches[0].score:.2f}): '{_matches[0].title}'\n"
@@ -198,6 +203,13 @@ def add(
     note_path.write_text(note_content, encoding="utf-8")
     _append_operation_log(vault, "add", note_id, effective_title)
     console.print(f"[green]Created[/green] {note_path}")
+
+    try:
+        from pkm.search_engine import update_index_via_daemon
+
+        update_index_via_daemon(vault)
+    except Exception:
+        pass
 
 
 @note.command()

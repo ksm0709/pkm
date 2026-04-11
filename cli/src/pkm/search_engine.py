@@ -371,6 +371,51 @@ def search_via_daemon(
         return None
 
 
+def update_index_via_daemon(vault: VaultConfig) -> bool:
+    """Attempt to update index via the background ML daemon. Returns True if successful."""
+    import socket
+    import subprocess
+    import sys
+
+    sock_path = Path.home() / ".config" / "pkm" / "daemon.sock"
+
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.settimeout(0.2)
+            sock.connect(str(sock_path))
+            sock.settimeout(10.0)
+
+            req = {
+                "action": "update_index",
+                "vault_path": str(vault.path),
+            }
+            sock.sendall(json.dumps(req).encode("utf-8") + b"\n")
+
+            f = sock.makefile("r", encoding="utf-8")
+            resp_line = f.readline()
+            if not resp_line:
+                return False
+
+            data = json.loads(resp_line)
+            return data.get("status") == "ok"
+
+    except (FileNotFoundError, ConnectionRefusedError, socket.timeout):
+        daemon_dir = Path.home() / ".config" / "pkm"
+        daemon_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            subprocess.Popen(
+                [sys.executable, "-m", "pkm.daemon"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except Exception:
+            pass
+        return False
+    except Exception:
+        return False
+
+
 def is_index_stale(vault: VaultConfig) -> bool:
     """Return True if any .md file is newer than the index, or schema version mismatch."""
     index_path = vault.pkm_dir / "index.json"

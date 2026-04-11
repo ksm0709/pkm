@@ -47,26 +47,44 @@ class SearchRequestHandler(socketserver.StreamRequestHandler):
                 return
 
             req = json.loads(data)
-            query = req.get("query", "")
-            index_path = req.get("index_path")
-            index_mtime = req.get("index_mtime", 0.0)
-            top_n = req.get("top_n", 10)
-            min_importance = req.get("min_importance", 1.0)
+            action = req.get("action", "search")
 
-            if not query or not index_path:
-                self.wfile.write(b"[]\n")
-                return
+            if action == "search":
+                query = req.get("query", "")
+                index_path = req.get("index_path")
+                index_mtime = req.get("index_mtime", 0.0)
+                top_n = req.get("top_n", 10)
+                min_importance = req.get("min_importance", 1.0)
 
-            _require_transformers("all-MiniLM-L6-v2")
+                if not query or not index_path:
+                    self.wfile.write(b"[]\n")
+                    return
 
-            index = get_cached_index(index_path, index_mtime)
+                _require_transformers("all-MiniLM-L6-v2")
 
-            results = search(
-                query=query, index=index, top_n=top_n, min_importance=min_importance
-            )
+                index = get_cached_index(index_path, index_mtime)
 
-            res_data = json.dumps([asdict(r) for r in results]) + "\n"
-            self.wfile.write(res_data.encode("utf-8"))
+                results = search(
+                    query=query, index=index, top_n=top_n, min_importance=min_importance
+                )
+
+                res_data = json.dumps([asdict(r) for r in results]) + "\n"
+                self.wfile.write(res_data.encode("utf-8"))
+            elif action == "update_index":
+                vault_path = req.get("vault_path")
+                if not vault_path:
+                    self.wfile.write(b'{"error": "missing vault_path"}\n')
+                    return
+
+                from pkm.config import VaultConfig
+                from pkm.search_engine import build_index
+
+                vault = VaultConfig(name=Path(vault_path).name, path=Path(vault_path))
+                build_index(vault)
+
+                get_cached_index.cache_clear()
+
+                self.wfile.write(b'{"status": "ok"}\n')
 
         except Exception:
             self.wfile.write(b"[]\n")
