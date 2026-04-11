@@ -2,6 +2,44 @@
 
 <!-- version list -->
 
+## v2.21.0 (2026-04-11)
+
+### Chores
+
+- Automated quality gate commit from stop hook
+  ([`8ee5b08`](https://github.com/ksm0709/pkm/commit/8ee5b08e7da5855512bacae7025f185e7dc527b3))
+
+- Setup OpenCode Stop hook for quality gate enforcement
+  ([`e638f0b`](https://github.com/ksm0709/pkm/commit/e638f0b16b631769ae053bffe9b816f83c15f6cc))
+
+- **hooks**: Clarify stop hook background wait guidance
+  ([`2255c48`](https://github.com/ksm0709/pkm/commit/2255c48e28e50c918f05935940bb0d7609c0f4b3))
+
+### Documentation
+
+- Enhance stop hook to instruct the agent to check for remaining tasks and wait 30s before
+  committing
+  ([`89673a3`](https://github.com/ksm0709/pkm/commit/89673a3f8197c79056c54dcbab0d2105a7d65064))
+
+### Features
+
+- Add robust logging to daemon server
+  ([`a9da1a9`](https://github.com/ksm0709/pkm/commit/a9da1a950a6af544c1a8183adba2b705c85ae714))
+
+### Refactoring
+
+- Offload note indexing and dedup to daemon server
+  ([`f3bfcb7`](https://github.com/ksm0709/pkm/commit/f3bfcb72f5a11304cdba3b7cd3b88824291f2559))
+
+- Simplify Stop hook to run only static analysis (lint, test) and omit agentic reviews
+  ([`e1c342a`](https://github.com/ksm0709/pkm/commit/e1c342ac14274672e907b83df4ba32f823a7288e))
+
+### Testing
+
+- **vault**: Align unset command tests with project-based config
+  ([`d032d09`](https://github.com/ksm0709/pkm/commit/d032d0994798227129713272f99e8909e3c05a5e))
+
+
 ## v2.20.0 (2026-04-11)
 
 ### Features
