@@ -131,7 +131,6 @@ def test_daily_add_no_todo_section(cli_runner, tmp_vault):
 # ---------------------------------------------------------------------------
 
 
-
 class _FakeProc:
     """Fake subprocess.CompletedProcess for subprocess.run mocks."""
 
@@ -388,7 +387,10 @@ def test_daily_add_sub_creates_subnote_and_logs_link(cli_runner, tmp_vault):
     daily_content = note_path.read_text(encoding="utf-8")
     assert f"[[{note_id}]]" in daily_content
     assert "Sub note added" in daily_content
-    assert re.search(r"\[\d{2}:\d{2}\] Sub note added: \[\[" + re.escape(note_id) + r"\]\]", daily_content)
+    assert re.search(
+        r"\[\d{2}:\d{2}\] Sub note added: \[\[" + re.escape(note_id) + r"\]\]",
+        daily_content,
+    )
 
 
 def test_daily_add_sub_link_before_todo(cli_runner, tmp_vault):
@@ -451,9 +453,7 @@ def test_daily_add_sub_spaces_to_hyphens(cli_runner, tmp_vault):
     """daily add --sub sanitizes spaces to hyphens in the title."""
     today_str = today()
     note_path = tmp_vault.daily_dir / f"{today_str}.md"
-    note_path.write_text(
-        f"---\nid: {today_str}\n---\n\n## TODO\n", encoding="utf-8"
-    )
+    note_path.write_text(f"---\nid: {today_str}\n---\n\n## TODO\n", encoding="utf-8")
 
     result = cli_runner("daily", "add", "--sub", "my idea")
     assert result.exit_code == 0, result.output
@@ -492,9 +492,7 @@ def test_daily_add_text_still_works(cli_runner, tmp_vault):
     """daily add TEXT (no --sub) still works as before."""
     today_str = today()
     note_path = tmp_vault.daily_dir / f"{today_str}.md"
-    note_path.write_text(
-        f"---\nid: {today_str}\n---\n\n## TODO\n", encoding="utf-8"
-    )
+    note_path.write_text(f"---\nid: {today_str}\n---\n\n## TODO\n", encoding="utf-8")
 
     result = cli_runner("daily", "add", "plain log entry")
     assert result.exit_code == 0, result.output
@@ -516,9 +514,7 @@ def test_daily_edit_sub_logs_link_to_daily(cli_runner, tmp_vault, monkeypatch):
 
     today_str = today()
     note_path = tmp_vault.daily_dir / f"{today_str}.md"
-    note_path.write_text(
-        f"---\nid: {today_str}\n---\n\n## TODO\n", encoding="utf-8"
-    )
+    note_path.write_text(f"---\nid: {today_str}\n---\n\n## TODO\n", encoding="utf-8")
 
     result = cli_runner("daily", "edit", "--sub", "retro")
     assert result.exit_code == 0, result.output

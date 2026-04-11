@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -26,9 +25,7 @@ def vault_env(tmp_vault: VaultConfig, monkeypatch):
     return tmp_vault
 
 
-# ---------------------------------------------------------------------------
 # session-start
-# ---------------------------------------------------------------------------
 
 
 def test_session_start_plain(runner, vault_env):
@@ -41,7 +38,6 @@ def test_session_start_plain(runner, vault_env):
     # No system-reminder tags in plain mode
     assert "<system-reminder>" not in output
     assert "</system-reminder>" not in output
-    # Some content present
     assert len(output.strip()) > 0
 
 
@@ -58,7 +54,6 @@ def test_session_start_system_reminder(runner, vault_env):
 
 def test_session_start_includes_daily_notes(runner, vault_env, tmp_vault: VaultConfig):
     """session-start includes recent daily notes when they exist."""
-    # Create a daily note for yesterday
     yesterday = (date.today() - timedelta(days=1)).isoformat()
     daily_path = tmp_vault.daily_dir / f"{yesterday}.md"
     daily_path.write_text(
@@ -76,7 +71,6 @@ def test_session_start_includes_daily_notes(runner, vault_env, tmp_vault: VaultC
 
 def test_session_start_no_daily_notes(runner, vault_env, tmp_vault: VaultConfig):
     """session-start works gracefully when no recent daily notes exist."""
-    # Remove all daily notes from the last 3 days
     for i in range(1, 4):
         d = (date.today() - timedelta(days=i)).isoformat()
         p = tmp_vault.daily_dir / f"{d}.md"
@@ -96,9 +90,7 @@ def test_session_start_search_failure_does_not_crash(runner, vault_env, monkeypa
     assert result.exit_code == 0  # Must not crash
 
 
-# ---------------------------------------------------------------------------
 # turn-start
-# ---------------------------------------------------------------------------
 
 
 def test_turn_start_plain(runner, vault_env):
@@ -135,9 +127,7 @@ def test_turn_start_without_session(runner, vault_env):
     assert "Session:" not in result.output
 
 
-# ---------------------------------------------------------------------------
 # turn-end
-# ---------------------------------------------------------------------------
 
 
 def test_turn_end_no_summary_emits_guide(runner, vault_env):
@@ -163,7 +153,7 @@ def test_turn_end_appends_to_existing_daily_note(
 
     content = daily_path.read_text(encoding="utf-8")
     assert "finished task X" in content
-    assert "existing entry" in content  # original preserved
+    assert "existing entry" in content
 
 
 def test_turn_end_creates_daily_note_if_missing(
@@ -212,15 +202,12 @@ def test_turn_end_timestamp_format(runner, vault_env, tmp_vault: VaultConfig):
     assert result.exit_code == 0
     today = date.today().isoformat()
     content = (tmp_vault.daily_dir / f"{today}.md").read_text(encoding="utf-8")
-    # Should contain HH:MM pattern
     import re
 
     assert re.search(r"\d{2}:\d{2}", content)
 
 
-# ---------------------------------------------------------------------------
 # _safe_hook
-# ---------------------------------------------------------------------------
 
 
 def test_safe_hook_catches_exception(runner, vault_env, monkeypatch):
@@ -235,7 +222,6 @@ def test_safe_hook_catches_exception(runner, vault_env, monkeypatch):
 
     test_runner = CliRunner()
     result = test_runner.invoke(buggy_cmd)
-    # Should exit 0 despite exception
     assert result.exit_code == 0
 
 
@@ -256,9 +242,7 @@ def test_safe_hook_logs_to_stderr(runner):
     assert "test error message" in result.output
 
 
-# ---------------------------------------------------------------------------
 # setup-hooks --dry-run
-# ---------------------------------------------------------------------------
 
 
 def test_setup_hooks_claude_code_dry_run(runner, vault_env, tmp_path, monkeypatch):
@@ -284,7 +268,9 @@ def test_setup_hooks_codex_dry_run(runner, vault_env):
     assert "codex" in result.output.lower()
 
 
-def test_setup_hooks_claude_code_writes_settings(runner, vault_env, tmp_path, monkeypatch):
+def test_setup_hooks_claude_code_writes_settings(
+    runner, vault_env, tmp_path, monkeypatch
+):
     """setup-hooks --tool claude-code merges PKM hooks into ~/.claude/settings.json."""
     fake_home = tmp_path / "home"
     fake_home.mkdir()
@@ -297,6 +283,7 @@ def test_setup_hooks_claude_code_writes_settings(runner, vault_env, tmp_path, mo
     settings_path = fake_home / ".claude" / "settings.json"
     assert settings_path.exists()
     import json as _json
+
     data = _json.loads(settings_path.read_text())
     assert "SessionStart" in data["hooks"]
     assert "pkm hook remove" in result.output

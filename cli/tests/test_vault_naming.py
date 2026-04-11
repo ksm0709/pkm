@@ -107,11 +107,6 @@ def test_discover_vaults_includes_at_prefix(tmp_path, monkeypatch):
     assert vaults["@taeho--pkm"].path == at_vault
 
 
-# ---------------------------------------------------------------------------
-# suggest_vault_name
-# ---------------------------------------------------------------------------
-
-
 def test_suggest_vault_name_returns_vault_suggestion(tmp_path, monkeypatch):
     """suggest_vault_name returns a VaultSuggestion dataclass."""
     monkeypatch.setattr("pkm.config._find_git_root", lambda cwd=None: None)
@@ -181,11 +176,6 @@ def test_suggest_vault_name_outside_home(tmp_path, monkeypatch):
     assert result.name == "myapp"  # basename fallback, no crash
 
 
-# ---------------------------------------------------------------------------
-# get_vault_context — no auto-create
-# ---------------------------------------------------------------------------
-
-
 def test_get_vault_context_does_not_auto_create_git_vault(tmp_path, monkeypatch):
     """get_vault_context must NOT create vault dirs for git project fallback.
 
@@ -203,7 +193,9 @@ def test_get_vault_context_does_not_auto_create_git_vault(tmp_path, monkeypatch)
     monkeypatch.setattr("pkm.config.get_local_config_vault", lambda: None)
     monkeypatch.delenv("PKM_DEFAULT_VAULT", raising=False)
     monkeypatch.setattr("pkm.config.load_config", lambda: {})
-    monkeypatch.setattr("pkm.config.get_git_vault_name", lambda cwd=None: "@taeho--myrepo")
+    monkeypatch.setattr(
+        "pkm.config.get_git_vault_name", lambda cwd=None: "@taeho--myrepo"
+    )
     monkeypatch.setattr("pkm.config._get_git_project_name_legacy", lambda: None)
 
     with pytest.raises(click.ClickException):
@@ -226,7 +218,9 @@ def test_get_vault_context_uses_existing_git_vault(tmp_path, monkeypatch):
     monkeypatch.setattr("pkm.config.get_local_config_vault", lambda: None)
     monkeypatch.delenv("PKM_DEFAULT_VAULT", raising=False)
     monkeypatch.setattr("pkm.config.load_config", lambda: {})
-    monkeypatch.setattr("pkm.config.get_git_vault_name", lambda cwd=None: "@taeho--myrepo")
+    monkeypatch.setattr(
+        "pkm.config.get_git_vault_name", lambda cwd=None: "@taeho--myrepo"
+    )
     monkeypatch.setattr("pkm.config._get_git_project_name_legacy", lambda: None)
 
     vc, source = get_vault_context()
@@ -235,7 +229,9 @@ def test_get_vault_context_uses_existing_git_vault(tmp_path, monkeypatch):
     assert source == "Git Project"
 
 
-def test_get_vault_context_migrates_legacy_vault_without_creating(tmp_path, monkeypatch):
+def test_get_vault_context_migrates_legacy_vault_without_creating(
+    tmp_path, monkeypatch
+):
     """get_vault_context migrates old vault name to new name without creating fresh dirs."""
     from pkm.config import get_vault_context
 
@@ -249,7 +245,9 @@ def test_get_vault_context_migrates_legacy_vault_without_creating(tmp_path, monk
     monkeypatch.delenv("PKM_DEFAULT_VAULT", raising=False)
     monkeypatch.setattr("pkm.config.load_config", lambda: {})
     monkeypatch.setattr("pkm.config.save_config", lambda d: None)
-    monkeypatch.setattr("pkm.config.get_git_vault_name", lambda cwd=None: "@taeho--myrepo")
+    monkeypatch.setattr(
+        "pkm.config.get_git_vault_name", lambda cwd=None: "@taeho--myrepo"
+    )
     monkeypatch.setattr("pkm.config._get_git_project_name_legacy", lambda: "myrepo")
 
     vc, source = get_vault_context()

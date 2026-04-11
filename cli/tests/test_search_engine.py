@@ -484,6 +484,7 @@ def test_search_time_decay(monkeypatch):
 def clear_model_cache(monkeypatch):
     """Clear the module-level model cache before each find_similar test."""
     import pkm.search_engine as _se
+
     monkeypatch.setattr(_se, "_MODEL_CACHE", {})
 
 
@@ -491,18 +492,22 @@ def _make_index(*embeddings_and_titles):
     """Create a VectorIndex with controlled embeddings for testing."""
     entries = []
     for i, (emb, title) in enumerate(embeddings_and_titles):
-        entries.append(IndexEntry(
-            note_id=f"note-{i}",
-            path=f"/vault/notes/note-{i}.md",
-            embedding=emb,
-            backlink_count=0,
-            tags=[],
-            title=title,
-            memory_type="semantic",
-            importance=7.0,
-            created_at=None,
-        ))
-    return VectorIndex(model="all-MiniLM-L6-v2", created_at="2026-04-09", entries=entries)
+        entries.append(
+            IndexEntry(
+                note_id=f"note-{i}",
+                path=f"/vault/notes/note-{i}.md",
+                embedding=emb,
+                backlink_count=0,
+                tags=[],
+                title=title,
+                memory_type="semantic",
+                importance=7.0,
+                created_at=None,
+            )
+        )
+    return VectorIndex(
+        model="all-MiniLM-L6-v2", created_at="2026-04-09", entries=entries
+    )
 
 
 def _fake_st_module(query_embedding):
@@ -512,6 +517,7 @@ def _fake_st_module(query_embedding):
     class FakeST:
         def __init__(self, *a, **kw):
             pass
+
         def encode(self, texts, **kw):
             return np.array([query_embedding for _ in texts])
 
@@ -528,7 +534,9 @@ def test_find_similar_happy_path(monkeypatch, clear_model_cache):
     index = _make_index((emb_a, "Note A"), (emb_b, "Note B"), (emb_c, "Note C"))
     query_emb = [1.0, 0.0, 0.0]  # identical to emb_a
 
-    monkeypatch.setitem(sys.modules, "sentence_transformers", _fake_st_module(query_emb))
+    monkeypatch.setitem(
+        sys.modules, "sentence_transformers", _fake_st_module(query_emb)
+    )
 
     results = find_similar("some content", index, threshold=0.85)
     assert len(results) >= 1
@@ -542,7 +550,9 @@ def test_find_similar_happy_path(monkeypatch, clear_model_cache):
 
 def test_find_similar_no_entries(monkeypatch, clear_model_cache):
     """Returns empty list when index has no entries."""
-    monkeypatch.setitem(sys.modules, "sentence_transformers", _fake_st_module([1.0, 0.0]))
+    monkeypatch.setitem(
+        sys.modules, "sentence_transformers", _fake_st_module([1.0, 0.0])
+    )
     index = VectorIndex(model="m", created_at="2026-04-09", entries=[])
     assert find_similar("anything", index) == []
 
@@ -550,6 +560,7 @@ def test_find_similar_no_entries(monkeypatch, clear_model_cache):
 def test_find_similar_import_error(monkeypatch, clear_model_cache):
     """Returns empty list when sentence_transformers is not installed."""
     import builtins
+
     original_import = builtins.__import__
     monkeypatch.delitem(sys.modules, "sentence_transformers", raising=False)
 
@@ -571,7 +582,9 @@ def test_find_similar_no_matches(monkeypatch, clear_model_cache):
     index = _make_index((emb_a, "Note A"))
     # query is orthogonal -> cos_sim = 0.0
     query_emb = [0.0, 1.0, 0.0]
-    monkeypatch.setitem(sys.modules, "sentence_transformers", _fake_st_module(query_emb))
+    monkeypatch.setitem(
+        sys.modules, "sentence_transformers", _fake_st_module(query_emb)
+    )
     result = find_similar("unrelated content", index, threshold=0.85)
     assert result == []
 
@@ -580,7 +593,9 @@ def test_find_similar_returns_search_result_objects(monkeypatch, clear_model_cac
     """Each result is a SearchResult with score, title, rank populated."""
     emb_a = [1.0, 0.0, 0.0]
     index = _make_index((emb_a, "My Note"))
-    monkeypatch.setitem(sys.modules, "sentence_transformers", _fake_st_module([1.0, 0.0, 0.0]))
+    monkeypatch.setitem(
+        sys.modules, "sentence_transformers", _fake_st_module([1.0, 0.0, 0.0])
+    )
     results = find_similar("content", index, threshold=0.5)
     assert len(results) == 1
     r = results[0]

@@ -223,6 +223,21 @@ def _get_git_project_name_legacy() -> str | None:
     return git_root.name if git_root else None
 
 
+def _migrate_git_vault(vault_name: str) -> None:
+    """Migrate legacy git vault name if needed."""
+    old_name = _get_git_project_name_legacy()
+    root = get_vaults_root()
+    vault_path = root / vault_name
+    # Migrate from legacy name if needed (rename only, never auto-create)
+    if not vault_path.exists() and old_name:
+        old_path = root / old_name
+        if old_path.exists():
+            import shutil as _shutil
+
+            _shutil.move(str(old_path), str(vault_path))
+            _update_config_vault_reference(old_name, vault_name)
+
+
 def ensure_vault_exists(name: str, old_name: str | None = None) -> None:
     """Create vault directory structure if it doesn't exist.
 
@@ -259,47 +274,22 @@ def _update_config_vault_reference(old_name: str, new_name: str) -> None:
 
 def get_vault_context(name: str | None = None) -> tuple[VaultConfig, str]:
     """Get a vault by name following precedence rules, returning the vault and the resolution source."""
-    source = "CLI Arg"
-
+    source = ""
     if name is not None:
-        pass
+        source = "CLI Arg"
+    elif (name := get_local_config_vault()) is not None:
+        source = "Local Config"
+    elif (name := os.environ.get("PKM_DEFAULT_VAULT")) is not None:
+        source = "Env Var"
+    elif vault_name := get_git_vault_name():
+        _migrate_git_vault(vault_name)
+        if (get_vaults_root() / vault_name).is_dir():
+            name = vault_name
+            source = "Git Project"
+    elif (name := load_config().get("defaults", {}).get("vault")) is not None:
+        source = "Global Config"
     else:
-        name = get_local_config_vault()
-        if name is not None:
-            source = "Local Config"
-
-        if name is None:
-            name = os.environ.get("PKM_DEFAULT_VAULT")
-            if name is not None:
-                source = "Env Var"
-
-        if name is None:
-            vault_name = get_git_vault_name()
-            if vault_name:
-                old_name = _get_git_project_name_legacy()
-                root = get_vaults_root()
-                vault_path = root / vault_name
-                # Migrate from legacy name if needed (rename only, never auto-create)
-                if not vault_path.exists() and old_name:
-                    old_path = root / old_name
-                    if old_path.exists():
-                        import shutil as _shutil
-                        _shutil.move(str(old_path), str(vault_path))
-                        _update_config_vault_reference(old_name, vault_name)
-                # Only use git-derived vault if it already exists on disk.
-                # New vaults must be created explicitly via `pkm vault setup`.
-                if vault_path.is_dir():
-                    name = vault_name
-                    source = "Git Project"
-
-        if name is None:
-            name = load_config().get("defaults", {}).get("vault")
-            if name is not None:
-                source = "Global Config"
-
-    vaults = discover_vaults()
-
-    if name is None:
+        vaults = discover_vaults()
         if vaults:
             name = next(iter(vaults))
             source = "First Discovered"
@@ -309,6 +299,7 @@ def get_vault_context(name: str | None = None) -> tuple[VaultConfig, str]:
                 "A vault needs a daily/ or notes/ subdirectory."
             )
 
+    vaults = discover_vaults()
     if name not in vaults:
         raise click.ClickException(
             f"Unknown vault: {name}. Available: {', '.join(vaults) if vaults else 'None'}"

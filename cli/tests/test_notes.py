@@ -402,22 +402,26 @@ def test_note_add_no_dedup_flag_skips_check(cli_runner, tmp_vault, monkeypatch):
     assert called == []  # never called
 
 
-def test_note_add_dedup_warning_on_match(cli_runner, tmp_vault, monkeypatch, mock_model):
+def test_note_add_dedup_warning_on_match(
+    cli_runner, tmp_vault, monkeypatch, mock_model
+):
     """When similar note exists, warning is printed and note still created."""
     from pkm.search_engine import SearchResult, VectorIndex
 
     def fake_find_similar(content, index, **kwargs):
-        return [SearchResult(
-            note_id="existing-note",
-            title="Existing Similar Note",
-            score=0.91,
-            backlink_count=0,
-            tags=[],
-            rank=1,
-            memory_type="semantic",
-            importance=7.0,
-            path="/vault/notes/existing-note.md",
-        )]
+        return [
+            SearchResult(
+                note_id="existing-note",
+                title="Existing Similar Note",
+                score=0.91,
+                backlink_count=0,
+                tags=[],
+                rank=1,
+                memory_type="semantic",
+                importance=7.0,
+                path="/vault/notes/existing-note.md",
+            )
+        ]
 
     monkeypatch.setattr("pkm.search_engine.find_similar", fake_find_similar)
     monkeypatch.setattr(

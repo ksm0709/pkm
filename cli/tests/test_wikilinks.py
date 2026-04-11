@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 
-
 from pkm.config import VaultConfig
 from pkm.wikilinks import (
     count_backlinks,
@@ -11,11 +10,6 @@ from pkm.wikilinks import (
     find_orphans,
     resolve_link,
 )
-
-
-# ---------------------------------------------------------------------------
-# extract_links
-# ---------------------------------------------------------------------------
 
 
 def test_extract_simple_link():
@@ -43,11 +37,6 @@ def test_extract_strips_md_extension():
     assert extract_links("See [[note.md]] for details.") == ["note"]
 
 
-# ---------------------------------------------------------------------------
-# resolve_link
-# ---------------------------------------------------------------------------
-
-
 def test_resolve_link_notes(tmp_vault: VaultConfig):
     result = resolve_link(tmp_vault, "2026-04-01-mvcc")
     assert result is not None
@@ -71,11 +60,6 @@ def test_resolve_link_not_found(tmp_vault: VaultConfig):
     assert result is None
 
 
-# ---------------------------------------------------------------------------
-# count_backlinks
-# ---------------------------------------------------------------------------
-
-
 def test_count_backlinks(tmp_vault: VaultConfig):
     counts = count_backlinks(tmp_vault)
     # 2026-04-01-mvcc is linked from database-isolation.md
@@ -85,11 +69,6 @@ def test_count_backlinks(tmp_vault: VaultConfig):
     # orphan notes have zero backlinks
     assert counts["isolated-note"] == 0
     assert counts["untagged-note"] == 0
-
-
-# ---------------------------------------------------------------------------
-# find_orphans
-# ---------------------------------------------------------------------------
 
 
 def test_find_orphans(tmp_vault: VaultConfig):

@@ -27,6 +27,8 @@ from pkm.frontmatter import (
     render,
 )
 from pkm.wikilinks import find_backlinks
+from pkm.commands.maintenance import stale
+from pkm.commands.links import orphans
 
 console = Console()
 
@@ -61,11 +63,12 @@ def _append_operation_log(vault, operation: str, note_id: str, title: str) -> No
     """Append a timestamped entry to .pkm/log.md. Silently ignores all errors."""
     try:
         from datetime import datetime, date as _date
+
         today = _date.today().isoformat()
         now = datetime.now().strftime("%H:%M")
         log_path = vault.pkm_dir / "log.md"
         vault.pkm_dir.mkdir(parents=True, exist_ok=True)
-        entry = f"- {now} [{operation}] {note_id} — \"{title}\"\n"
+        entry = f'- {now} [{operation}] {note_id} — "{title}"\n'
         date_header = f"## {today}"
         if log_path.exists():
             text = log_path.read_text(encoding="utf-8")
@@ -108,7 +111,9 @@ def note(ctx: click.Context) -> None:
 @click.option("--session", "session_id", default=None)
 @click.option("--agent", "agent_id", default=None)
 @click.option("--tags", "-t", default="", help="Comma-separated tags")
-@click.option("--no-dedup", is_flag=True, default=False, help="Skip duplicate detection")
+@click.option(
+    "--no-dedup", is_flag=True, default=False, help="Skip duplicate detection"
+)
 @click.pass_context
 def add(
     ctx: click.Context,
@@ -148,10 +153,11 @@ def add(
     if not no_dedup and content:
         try:
             from pkm.search_engine import load_index, find_similar
+
             _index = load_index(vault)
             _matches = find_similar(content, _index, threshold=0.85, top_n=1)
             if _matches:
-                print(
+                console.print(
                     f"[pkm dedup warning] Similar note ({_matches[0].score:.2f}): '{_matches[0].title}'\n"
                     "Proceeding with add. Use --no-dedup to skip this check.",
                     file=sys.stderr,
@@ -245,7 +251,7 @@ def show(ctx: click.Context, query: str, output_format: str, top: int) -> None:
     if not matches:
         if output_format == "json":
             payload = {"query": query, "result_count": 0, "notes": []}
-            print(json.dumps(payload, ensure_ascii=False, indent=2))
+            click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         else:
             console.print(f"[red]No notes found matching '{query}'[/red]")
             raise SystemExit(1)
@@ -284,11 +290,11 @@ def show(ctx: click.Context, query: str, output_format: str, top: int) -> None:
         "result_count": len(items),
         "notes": items,
     }
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
-    print("")
-    print("* Edit note: pkm note edit <title>")
-    print("* Find related: pkm search <keyword>")
-    print("* View backlink: pkm note show <backlink-title>")
+    click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+    click.echo("")
+    click.echo("* Edit note: pkm note edit <title>")
+    click.echo("* Find related: pkm search <keyword>")
+    click.echo("* View backlink: pkm note show <backlink-title>")
 
 
 @note.command(name="search")
@@ -407,23 +413,24 @@ def links(ctx: click.Context, query: str) -> None:
 
 
 @note.command(name="log")
-@click.option("--tail", default=20, show_default=True, help="Number of recent entries to show")
+@click.option(
+    "--tail", default=20, show_default=True, help="Number of recent entries to show"
+)
 @click.pass_context
 def note_log(ctx: click.Context, tail: int) -> None:
     """Show recent note operation log from .pkm/log.md."""
     vault = ctx.obj["vault"]
     log_path = vault.pkm_dir / "log.md"
     if not log_path.exists():
-        click.echo("No log file yet. Log entries appear after your first `pkm note add`.")
+        click.echo(
+            "No log file yet. Log entries appear after your first `pkm note add`."
+        )
         return
     lines = log_path.read_text(encoding="utf-8").splitlines()
     non_empty = [line for line in lines if line.strip()]
     shown = non_empty[-tail:] if tail < len(non_empty) else non_empty
     click.echo("\n".join(shown))
 
-
-from pkm.commands.maintenance import stale  # noqa: E402
-from pkm.commands.links import orphans  # noqa: E402
 
 note.add_command(stale)
 note.add_command(orphans)
