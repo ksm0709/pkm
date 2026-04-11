@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# Redirect all output to stderr so the LLM sees the messages when exiting with code 2
+exec 1>&2
+
+echo "[Quality Gate] Running project Stop hook..."
+
+# Check if there are any tracked or untracked changes
+if git diff HEAD --quiet && [ -z "$(git ls-files --others --exclude-standard)" ]; then
+    echo "No code changes detected. Stop hook passed."
+    exit 0
+fi
+
+echo "Code changes detected. Enforcing lint, format, and test..."
+
+echo "-> Formatting code (ruff)..."
+cd cli && uv run ruff format . || { echo "Formatting failed."; exit 2; }
+cd ..
+
+echo "-> Linting code (ruff)..."
+cd cli && uv run ruff check --fix . || { echo "Linting failed! Please fix the lint errors."; exit 2; }
+cd ..
+
+echo "-> Running tests (pytest)..."
+cd cli && uv run pytest tests/ || { echo "Tests failed! Please fix the tests before stopping."; exit 2; }
+cd ..
+
+echo ""
+echo "======================================================================"
+echo "🛑 ACTION REQUIRED BY MAIN AGENT 🛑"
+echo "Code changes are present. You must now invoke sub-agents to validate"
+echo "your work before you can complete this turn."
+echo ""
+echo "Please invoke the following skills via tools or instructions:"
+echo "  1. /review-work     (to ensure code quality and correctness)"
+echo "  2. /remove-ai-slops (to validate scope and clean up AI-generated slop)"
+echo ""
+echo "If both checks pass, please commit and push the changes yourself."
+echo "Once the working directory is clean, this hook will pass."
+echo "======================================================================"
+exit 2
