@@ -164,6 +164,7 @@ def _check_consolidation_trigger(vault, config: dict) -> str | None:
 
         # Find candidates
         from pkm.commands.consolidate import _list_candidate_dates
+
         candidate_dates = _list_candidate_dates(vault)
         if not candidate_dates:
             state["session_count"] = 0
@@ -244,13 +245,15 @@ def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None
         pass
 
     # PKM command reference — single source of truth, injected once at session start
-    lines.extend([
-        "## PKM",
-        '`pkm daily add "<text>"` — log decisions, findings, code changes',
-        '`pkm daily add --sub "<title>"` — create linked sub-note + log [[wikilink]] in today\'s daily',
-        '`pkm search "<query>"` — recall related notes',
-        '`pkm note add --content "<insight>" --type semantic --importance 7 --tags tag1,tag2` — atomic note',
-    ])
+    lines.extend(
+        [
+            "## PKM",
+            '`pkm daily add "<text>"` — log decisions, findings, code changes',
+            '`pkm daily add --sub "<title>"` — create linked sub-note + log [[wikilink]] in today\'s daily',
+            '`pkm search "<query>"` — recall related notes',
+            '`pkm note add --content "<insight>" --type semantic --importance 7 --tags tag1,tag2` — atomic note',
+        ]
+    )
 
     content = "\n".join(lines).strip()
 
@@ -282,6 +285,7 @@ def _handle_turn_start(
     daily_snippet = ""
     try:
         from datetime import date as _date
+
         today = _date.today().isoformat()
         daily_path = vault.daily_dir / f"{today}.md"
         if daily_path.exists():
@@ -289,7 +293,7 @@ def _handle_turn_start(
             if text.startswith("---"):
                 end = text.find("---", 3)
                 if end != -1:
-                    text = text[end + 3:].strip()
+                    text = text[end + 3 :].strip()
             daily_snippet = text[:200]
     except Exception:
         pass
@@ -303,6 +307,7 @@ def _handle_turn_start(
 
     try:
         from pkm.search_engine import load_index, search as engine_search
+
         index = load_index(vault)
         results = engine_search(query, index, top_n=3, min_importance=5.0)
         if results:
@@ -346,7 +351,9 @@ def _handle_turn_end(
         daily_dir.mkdir(parents=True, exist_ok=True)
         daily_path = daily_dir / f"{today}.md"
         if not daily_path.resolve().is_relative_to(daily_dir.resolve()):
-            raise RuntimeError("Resolved daily path escapes daily_dir — aborting write.")
+            raise RuntimeError(
+                "Resolved daily path escapes daily_dir — aborting write."
+            )
         session_tag = f" [session:{session_id}]" if session_id else ""
         entry = f"- {now.strftime('%H:%M')}{session_tag} {summary}\n"
         if daily_path.exists():
@@ -374,8 +381,10 @@ def _handle_turn_end_exit2(ctx, **_ignored) -> None:
     if payload.get("stop_hook_active", False):
         sys.exit(0)
 
+    hook_source = payload.get("hook_source", "")
+
     transcript_path = payload.get("transcript_path", "")
-    if not transcript_path:
+    if not transcript_path and hook_source != "opencode-plugin":
         sys.exit(0)
 
     instructions = """\
@@ -384,14 +393,31 @@ KNOWLEDGE EXTRACTION: Save key learnings from this session.
 2. For reusable insights: `pkm note add --content '<insight>' --type semantic --importance <5-9> --tags <tags>`
 Be selective — skip trivial facts. Then you may stop."""
 
-    print(instructions, file=sys.stderr)
-    sys.exit(2)
+    if hook_source == "opencode-plugin":
+        print(
+            json.dumps(
+                {
+                    "decision": "block",
+                    "inject_prompt": instructions,
+                    "stop_hook_active": True,
+                }
+            )
+        )
+        sys.exit(0)
+    else:
+        print(instructions, file=sys.stderr)
+        sys.exit(2)
 
 
 def _is_pkm_hook(hook_entry: dict) -> bool:
     cmd = hook_entry.get("command", "")
     prompt = hook_entry.get("prompt", "")
-    return "pkm hook run" in cmd or "pkm agent hook" in cmd or "PKM" in prompt or "codex/hooks/stop.sh" in cmd
+    return (
+        "pkm hook run" in cmd
+        or "pkm agent hook" in cmd
+        or "PKM" in prompt
+        or "codex/hooks/stop.sh" in cmd
+    )
 
 
 def _handle_remove(dry_run: bool) -> None:
@@ -488,6 +514,7 @@ def run_hook(
     # Vault-free group: lazy-load vault for run subcommands that need it.
     if "vault" not in ctx.obj or ctx.obj["vault"] is None:
         from pkm.config import get_vault as _get_vault
+
         try:
             ctx.obj["vault"] = _get_vault(None)
         except Exception:
@@ -531,7 +558,9 @@ def setup(ctx: click.Context, tool: str | None, dry_run: bool) -> None:
 
 
 @hook.command(name="remove")
-@click.option("--dry-run", is_flag=True, help="Show what would be removed without writing")
+@click.option(
+    "--dry-run", is_flag=True, help="Show what would be removed without writing"
+)
 @click.pass_context
 def remove(ctx: click.Context, dry_run: bool) -> None:
     """Remove PKM hooks from ~/.claude/settings.json.
@@ -547,7 +576,9 @@ def remove(ctx: click.Context, dry_run: bool) -> None:
 @click.pass_context
 def migrate(ctx: click.Context, dry_run: bool) -> None:
     """Deprecated: use 'pkm hook remove' instead."""
-    click.echo("Note: 'pkm hook migrate' is deprecated, use 'pkm hook remove'", err=True)
+    click.echo(
+        "Note: 'pkm hook migrate' is deprecated, use 'pkm hook remove'", err=True
+    )
     _handle_remove(dry_run)
 
 
@@ -562,6 +593,7 @@ def debug_cmd(ctx: click.Context, state: str) -> None:
     """
     if "vault" not in ctx.obj or ctx.obj["vault"] is None:
         from pkm.config import get_vault as _get_vault
+
         try:
             ctx.obj["vault"] = _get_vault(None)
         except Exception:
@@ -571,7 +603,11 @@ def debug_cmd(ctx: click.Context, state: str) -> None:
     vault = ctx.obj["vault"]
     enabled = state == "on"
     _write_hooks_debug(vault, enabled)
-    status = "ON (messages visible as plain text)" if enabled else "OFF (messages hidden in system-reminder)"
+    status = (
+        "ON (messages visible as plain text)"
+        if enabled
+        else "OFF (messages hidden in system-reminder)"
+    )
     click.echo(f"Hook debug mode: {status}")
     click.echo(f"  Config: {vault.pkm_dir / 'config.toml'}")
 
@@ -623,7 +659,11 @@ def _setup_claude_code_hooks(dry_run: bool) -> None:
     click.echo("PKM Claude Code hooks — install to ~/.claude/settings.json")
 
     try:
-        existing = json.loads(settings_path.read_text(encoding="utf-8")) if settings_path.exists() else {}
+        existing = (
+            json.loads(settings_path.read_text(encoding="utf-8"))
+            if settings_path.exists()
+            else {}
+        )
     except Exception as e:
         click.echo(f"Error reading settings.json: {e}", err=True)
         return
@@ -691,7 +731,11 @@ def _setup_codex_hooks(dry_run: bool) -> None:
                     hook["command"] = f"bash {stop_sh}"
 
     try:
-        existing = json.loads(codex_hooks_dst.read_text(encoding="utf-8")) if codex_hooks_dst.exists() else {}
+        existing = (
+            json.loads(codex_hooks_dst.read_text(encoding="utf-8"))
+            if codex_hooks_dst.exists()
+            else {}
+        )
     except Exception as e:
         click.echo(f"Error reading ~/.codex/hooks.json: {e}", err=True)
         return
