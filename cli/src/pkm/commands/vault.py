@@ -244,6 +244,98 @@ def setup() -> None:
     )
 
 
+@vault.command()
+@click.option(
+    "--remove",
+    is_flag=True,
+    default=False,
+    help="Remove the vault instead of migrating to root vault.",
+)
+def unset(remove: bool) -> None:
+    """Unset the current directory's vault and optionally migrate contents."""
+    from pkm.config import get_parent_vault, get_vault_context
+
+    cwd = Path.cwd()
+    pkm_file = cwd / ".pkm"
+
+    if not pkm_file.exists():
+        raise click.ClickException("No .pkm file found in the current directory.")
+
+    try:
+        vc, _ = get_vault_context()
+    except click.ClickException as e:
+        raise click.ClickException(f"Failed to resolve current vault: {e}")
+
+    if remove:
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        trash_parent = Path.home() / ".local" / "share" / "pkm" / "trash"
+        trash_path = trash_parent / f"{vc.name}-{timestamp}"
+        trash_parent.mkdir(parents=True, exist_ok=True)
+
+        if vc.path.exists():
+            shutil.move(str(vc.path), str(trash_path))
+            console.print(f"[yellow]Moved vault to trash:[/yellow] {trash_path}")
+
+        pkm_file.unlink()
+        console.print(
+            f"[green]✔[/green] Removed vault [bold]{vc.name}[/bold] and deleted .pkm"
+        )
+        return
+
+    parent_vc = get_parent_vault(cwd)
+    if not parent_vc:
+        raise click.ClickException(
+            "No root vault (.pkm in parent directories) found to migrate to. "
+            "Use --remove to just remove the vault without migration."
+        )
+
+    console.print(
+        f"Migrating vault [bold]{vc.name}[/bold] to root vault [bold]{parent_vc.name}[/bold]..."
+    )
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    subdirs = ["daily", "notes", "tags", "tasks", "data", ".pkm/artifacts"]
+
+    for subdir in subdirs:
+        src_dir = vc.path / subdir
+        if not src_dir.exists():
+            continue
+
+        dst_dir = parent_vc.path / subdir
+        dst_dir.mkdir(parents=True, exist_ok=True)
+
+        for root, _, files in os.walk(src_dir):
+            rel_root = Path(root).relative_to(src_dir)
+            target_dir = dst_dir / rel_root
+            target_dir.mkdir(parents=True, exist_ok=True)
+
+            for file in files:
+                src_file = Path(root) / file
+                dst_file = target_dir / file
+
+                if dst_file.exists():
+                    dst_file = (
+                        target_dir
+                        / f"{src_file.stem}_migrated_{timestamp}{src_file.suffix}"
+                    )
+
+                shutil.move(str(src_file), str(dst_file))
+
+    trash_ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    trash_parent = Path.home() / ".local" / "share" / "pkm" / "trash"
+    trash_path = trash_parent / f"{vc.name}-{trash_ts}"
+    trash_parent.mkdir(parents=True, exist_ok=True)
+
+    if vc.path.exists():
+        shutil.move(str(vc.path), str(trash_path))
+
+    pkm_file.unlink()
+    console.print("[green]✔[/green] Migrated vault contents and deleted .pkm")
+    console.print(
+        f"[yellow]Moved original vault directory to trash:[/yellow] {trash_path}"
+    )
+
+
 def _count_md(directory: Path) -> int:
     if not directory.exists():
         return 0

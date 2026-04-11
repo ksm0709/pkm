@@ -129,6 +129,48 @@ def get_local_config_vault() -> str | None:
     return None
 
 
+def get_parent_vault(current_dir: Path | None = None) -> VaultConfig | None:
+    """Check for .pkm file in parent directories and return the VaultConfig."""
+    current = current_dir or Path.cwd()
+    if current.parent == current:
+        return None
+
+    current = current.parent
+    while True:
+        pkm_file = current / ".pkm"
+        name = None
+        if pkm_file.exists():
+            try:
+                with open(pkm_file, "rb") as f:
+                    data = tomllib.load(f)
+                    if "defaults" in data and "vault" in data["defaults"]:
+                        name = data["defaults"]["vault"]
+                    elif "vault" in data:
+                        name = data["vault"]
+            except Exception:
+                pass
+
+            if name is None:
+                try:
+                    content = pkm_file.read_text(encoding="utf-8").strip()
+                    for line in content.splitlines():
+                        line = line.strip()
+                        if line.startswith("vault=") or line.startswith("vault ="):
+                            name = line.split("=", 1)[1].strip().strip("\"'")
+                except Exception:
+                    pass
+
+        if name:
+            vaults = discover_vaults()
+            if name in vaults:
+                return vaults[name]
+
+        if current.parent == current:
+            break
+        current = current.parent
+    return None
+
+
 def _find_git_root(cwd: Path | None = None) -> Path | None:
     """Find the git root directory from cwd, or None."""
     current = cwd or Path.cwd()

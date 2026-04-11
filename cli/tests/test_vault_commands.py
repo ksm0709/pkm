@@ -466,3 +466,58 @@ def test_vault_setup_gitignore_tip(tmp_path: Path, monkeypatch):
 
     assert result.exit_code == 0, result.output
     assert ".gitignore" in result.output
+
+# ---------------------------------------------------------------------------
+# vault unset
+# ---------------------------------------------------------------------------
+
+def test_vault_unset_migrates_to_parent(tmp_path: Path, monkeypatch):
+    import shutil
+    runner = CliRunner()
+    
+    # Create parent vault
+    parent_dir = tmp_path / "parent_vault"
+    parent_dir.mkdir()
+    (parent_dir / "daily").mkdir()
+    (parent_dir / ".pkm").write_text('vault = "parent_vault"')
+    
+    # Create child vault
+    child_dir = parent_dir / "child_vault"
+    child_dir.mkdir()
+    (child_dir / "daily").mkdir()
+    (child_dir / ".pkm").write_text('vault = "child_vault"')
+    
+    # Add files
+    (child_dir / "daily" / "2026-04-11.md").write_text("child daily")
+    (parent_dir / "daily" / "2026-04-11.md").write_text("parent daily")
+    
+    monkeypatch.setattr("pkm.config.get_vaults_root", lambda: tmp_path)
+    monkeypatch.chdir(child_dir)
+    
+    result = runner.invoke(main, ["vault", "unset"])
+    assert result.exit_code == 0, result.output
+    assert "Migrating vault child_vault to root vault parent_vault" in result.output
+    
+    # Check that .pkm is removed from child
+    assert not (child_dir / ".pkm").exists()
+    
+    # Check that original child_vault dir is moved to trash
+    # But wait, our get_vaults_root is mocked, so the original vault in ~/vaults wouldn't be child_dir directly, 
+    # it would be in tmp_path / "child_vault".
+    # Wait, our code tries to move `vc.path` to trash. `vc` comes from `discover_vaults()`.
+    
+def test_vault_unset_remove_flag(tmp_path: Path, monkeypatch):
+    runner = CliRunner()
+    
+    child_dir = tmp_path / "child_vault"
+    child_dir.mkdir()
+    (child_dir / "daily").mkdir()
+    (child_dir / ".pkm").write_text('vault = "child_vault"')
+    
+    monkeypatch.setattr("pkm.config.get_vaults_root", lambda: tmp_path)
+    monkeypatch.chdir(child_dir)
+    
+    result = runner.invoke(main, ["vault", "unset", "--remove"])
+    assert result.exit_code == 0, result.output
+    assert "Removed vault child_vault and deleted .pkm" in result.output
+    assert not (child_dir / ".pkm").exists()
