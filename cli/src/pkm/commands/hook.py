@@ -10,6 +10,9 @@ from pathlib import Path
 import click
 
 
+from typing import Any
+
+
 def _safe_hook(fn):
     """Decorator: catch all exceptions, log to stderr, always exit 0."""
 
@@ -29,7 +32,7 @@ def _safe_hook(fn):
     return wrapper
 
 
-def _load_hook_config(vault) -> dict:
+def _load_hook_config(vault) -> dict[str, Any]:
     """Load .pkm/config.toml. Returns {} on missing or parse error."""
     try:
         config_path = vault.pkm_dir / "config.toml"
@@ -96,9 +99,9 @@ def _write_hooks_debug(vault, enabled: bool) -> None:
     config_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _load_session_state(vault) -> dict:
+def _load_session_state(vault) -> dict[str, Any]:
     """Load .pkm/session_state.json. Returns defaults on missing or corrupt."""
-    defaults: dict = {"session_count": 0, "last_consolidation_at": None}
+    defaults: dict[str, Any] = {"session_count": 0, "last_consolidation_at": None}
     try:
         state_path = vault.pkm_dir / "session_state.json"
         if not state_path.exists():
@@ -114,7 +117,7 @@ def _load_session_state(vault) -> dict:
         return defaults.copy()
 
 
-def _save_session_state(vault, state: dict) -> None:
+def _save_session_state(vault, state: dict[str, Any]) -> None:
     """Write .pkm/session_state.json."""
     try:
         vault.pkm_dir.mkdir(parents=True, exist_ok=True)
@@ -124,7 +127,7 @@ def _save_session_state(vault, state: dict) -> None:
         pass
 
 
-def _check_consolidation_trigger(vault, config: dict) -> str | None:
+def _check_consolidation_trigger(vault, config: dict[str, Any]) -> str | None:
     """Check if consolidation should be recommended.
 
     Returns recommendation message string or None.
@@ -306,10 +309,17 @@ def _handle_turn_start(
     query = " ".join(query_parts).strip() or "important decision error finding pattern"
 
     try:
-        from pkm.search_engine import load_index, search as engine_search
+        from pkm.search_engine import (
+            load_index,
+            search as engine_search,
+            search_via_daemon,
+        )
 
-        index = load_index(vault)
-        results = engine_search(query, index, top_n=3, min_importance=5.0)
+        results = search_via_daemon(query, vault, top_n=3, min_importance=5.0)
+        if results is None:
+            index = load_index(vault)
+            results = engine_search(query, index, top_n=3, min_importance=5.0)
+
         if results:
             lines.append("## Relevant Notes")
             for r in results:
@@ -370,7 +380,7 @@ def _handle_turn_end_exit2(ctx, **_ignored) -> None:
     If no transcript_path, exits 0. Otherwise writes extraction instructions to stderr
     and exits 2 (signals the main agent to continue working).
     """
-    payload: dict = {}
+    payload: dict[str, Any] = {}
     if not sys.stdin.isatty():
         try:
             raw = sys.stdin.read(65536)
@@ -409,7 +419,7 @@ Be selective — skip trivial facts. Then you may stop."""
         sys.exit(2)
 
 
-def _is_pkm_hook(hook_entry: dict) -> bool:
+def _is_pkm_hook(hook_entry: dict[str, Any]) -> bool:
     cmd = hook_entry.get("command", "")
     prompt = hook_entry.get("prompt", "")
     return (
@@ -524,17 +534,16 @@ def run_hook(
     if ctx.obj.get("vault") is not None and _is_debug_mode(ctx.obj["vault"]):
         output_format = "plain"
 
-    kwargs = dict(
-        output_format=output_format, top=top, session_id=session_id, summary=summary
-    )
     if hook_name == "session-start":
-        _handle_session_start(ctx, **kwargs)
+        _handle_session_start(ctx, output_format=output_format, top=top)
     elif hook_name == "turn-start":
-        _handle_turn_start(ctx, **kwargs)
+        _handle_turn_start(ctx, output_format=output_format, session_id=session_id)
     elif hook_name == "turn-end":
-        _handle_turn_end(ctx, **kwargs)
+        _handle_turn_end(
+            ctx, session_id=session_id, summary=summary, output_format=output_format
+        )
     elif hook_name == "turn-end-exit2":
-        _handle_turn_end_exit2(ctx, **kwargs)
+        _handle_turn_end_exit2(ctx)
 
 
 @hook.command(name="setup")
@@ -612,7 +621,7 @@ def debug_cmd(ctx: click.Context, state: str) -> None:
     click.echo(f"  Config: {vault.pkm_dir / 'config.toml'}")
 
 
-_PKM_HOOKS: dict[str, list[dict]] = {
+_PKM_HOOKS: dict[str, list[dict[str, Any]]] = {
     "SessionStart": [
         {
             "hooks": [

@@ -16,18 +16,24 @@ from pkm.wikilinks import count_backlinks
 from pkm._memory_types import CURRENT_SCHEMA_VERSION, IMPORTANCE_DEFAULT
 
 
-_MODEL_CACHE: dict[str, object] = {}
+from typing import Any
+
+_MODEL_CACHE: dict[str, Any] = {}
 
 
 def _require_transformers(model_name: str):
     """Lazily import and return a SentenceTransformer, raising a friendly error if missing."""
+    if model_name in _MODEL_CACHE:
+        return _MODEL_CACHE[model_name]
     try:
         from sentence_transformers import SentenceTransformer  # noqa: PLC0415
     except ImportError:
         raise click.ClickException(
             "sentence-transformers is not installed. Run: pkm setup"
         )
-    return SentenceTransformer(model_name)
+    model = SentenceTransformer(model_name)
+    _MODEL_CACHE[model_name] = model
+    return model
 
 
 @dataclass
@@ -65,7 +71,9 @@ class SearchResult:
     path: str = ""
 
 
-def _extract_created_at(note_path: Path, frontmatter_data: dict) -> str | None:
+def _extract_created_at(
+    note_path: Path, frontmatter_data: dict[str, Any]
+) -> str | None:
     """Extract created_at from frontmatter, falling back to filename date pattern."""
     if ca := frontmatter_data.get("created_at"):
         return str(ca)
@@ -257,6 +265,7 @@ def find_similar(
     """
     try:
         import numpy as np
+
         try:
             from sentence_transformers import SentenceTransformer  # noqa: PLC0415
         except ImportError:
@@ -299,6 +308,67 @@ def find_similar(
         return results
     except Exception:
         return []
+
+
+def search_via_daemon(
+    query: str,
+    vault: VaultConfig,
+    top_n: int = 10,
+    min_importance: float = 1.0,
+) -> list[SearchResult] | None:
+    """Attempt to search via the background ML daemon. Returns None if daemon is unavailable."""
+    import socket
+    import subprocess
+    import sys
+
+    index_path = vault.pkm_dir / "index.json"
+    if not index_path.exists():
+        return None
+
+    index_mtime = index_path.stat().st_mtime
+    sock_path = Path.home() / ".config" / "pkm" / "daemon.sock"
+
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.settimeout(0.2)
+            sock.connect(str(sock_path))
+            sock.settimeout(1.5)
+
+            req = {
+                "query": query,
+                "index_path": str(index_path),
+                "index_mtime": index_mtime,
+                "top_n": top_n,
+                "min_importance": min_importance,
+            }
+            sock.sendall(json.dumps(req).encode("utf-8") + b"\n")
+
+            f = sock.makefile("r", encoding="utf-8")
+            resp_line = f.readline()
+            if not resp_line:
+                return None
+
+            data = json.loads(resp_line)
+            if "error" in data:
+                return None
+
+            return [SearchResult(**res) for res in data]
+
+    except (FileNotFoundError, ConnectionRefusedError, socket.timeout):
+        daemon_dir = Path.home() / ".config" / "pkm"
+        daemon_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            subprocess.Popen(
+                [sys.executable, "-m", "pkm.daemon"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except Exception:
+            pass
+        return None
+    except Exception:
+        return None
 
 
 def is_index_stale(vault: VaultConfig) -> bool:

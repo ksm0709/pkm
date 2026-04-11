@@ -24,7 +24,21 @@ def vault_env(tmp_vault: VaultConfig, monkeypatch):
 
 
 @pytest.fixture
-def indexed_vault(vault_env, tmp_vault, runner):
+def mock_model(monkeypatch):
+    class FakeModel:
+        def encode(self, texts, **kwargs):
+            import numpy as np
+
+            texts_list = texts if isinstance(texts, list) else [texts]
+            return np.array([[hash(t) % 100 / 100.0] * 384 for t in texts_list])
+
+    monkeypatch.setattr(
+        "pkm.search_engine._require_transformers", lambda name: FakeModel()
+    )
+
+
+@pytest.fixture
+def indexed_vault(vault_env, tmp_vault, runner, mock_model):
     """Build search index for the tmp vault before tests."""
     runner.invoke(main, ["index"])
     return tmp_vault
