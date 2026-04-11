@@ -2,6 +2,30 @@
 
 <!-- version list -->
 
+## v2.19.0 (2026-04-11)
+
+### Features
+
+- **daily**: Simplify add output to single timestamp line
+  ([`b4ca4aa`](https://github.com/ksm0709/pkm/commit/b4ca4aa13698180f7253bd9e00794b3cab952bf7))
+
+- **hooks**: Auto-install Codex hooks by merging into ~/.codex/hooks.json
+  ([`1fc16a3`](https://github.com/ksm0709/pkm/commit/1fc16a316fe93e164b501ee9b908f6d3840e79d7))
+
+- **hooks**: Output JSON format for opencode omo plugin
+  ([`f01c1fc`](https://github.com/ksm0709/pkm/commit/f01c1fc4e97fd587f028adaa267fb2da55397239))
+
+### Refactoring
+
+- **hooks**: Reduce duplication in hook messages
+  ([`8224251`](https://github.com/ksm0709/pkm/commit/8224251c98b6e60b92129f890361f0da22ef0ed1))
+
+### Testing
+
+- **hooks**: Fix failing hook tests after output format changes
+  ([`e43c021`](https://github.com/ksm0709/pkm/commit/e43c02181ede70e42586b0b7ef667121c7b743e3))
+
+
 ## v2.18.0 (2026-04-10)
 
 ### Features
