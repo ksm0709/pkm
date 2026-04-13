@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.22.0 (2026-04-13)
+
+### Features
+
+- **cli**: Add pkm daemon command group for daemon management
+  ([`4861184`](https://github.com/ksm0709/pkm/commit/486118460e9ee5ef6e708c6d6a6854e53df74506))
+
+
 ## v2.21.0 (2026-04-11)
 
 ### Chores
