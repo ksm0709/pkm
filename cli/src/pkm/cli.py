@@ -19,9 +19,10 @@ from pkm.commands.hook import hook as hook_group
 from pkm.commands.consolidate import consolidate
 from pkm.commands.update import update_cmd
 from pkm.commands.vault import vault
+from pkm.commands.daemon import daemon_group
 from pkm.config import get_vault
 
-VAULT_FREE_COMMANDS = {"vault", "config", "setup", "update", "hook"}
+VAULT_FREE_COMMANDS = {"vault", "config", "setup", "update", "hook", "daemon"}
 
 _console = Console()
 
@@ -73,3 +74,4 @@ main.add_command(update_cmd)
 main.add_command(agent)
 main.add_command(hook_group, name="hook")
 main.add_command(consolidate)
+main.add_command(daemon_group, name="daemon")
