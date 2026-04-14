@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.23.0 (2026-04-14)
+
+### Features
+
+- Add data management, streamline hooks, auto-consolidate on daemon shutdown
+  ([`7a63b11`](https://github.com/ksm0709/pkm/commit/7a63b1144a07f34662c07d191d230e5d8c958952))
+
+
 ## v2.22.0 (2026-04-13)
 
 ### Features
