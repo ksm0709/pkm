@@ -248,6 +248,8 @@ def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None
             '`pkm daily add --sub "<title>"` — create linked sub-note + log [[wikilink]] in today\'s daily',
             '`pkm search "<query>"` — recall related notes',
             '`pkm note add --content "<insight>" --type semantic --importance 7 --tags tag1,tag2` — atomic note',
+            "  - importance: 1-3 trivial, 4-6 moderate, 7-8 important (arch decisions, bug root causes), 9-10 critical (security, irreversible)",
+            "  - Bias 7+ for anything the next agent would need. Default 5 if unsure.",
             "`pkm data add <fname> <path-or-url>` — copy local file or download URL into vault data/",
             "`pkm data rm <fname>` — remove a data file from vault",
             "For detailed workflows and usage: `/pkm` skill",
