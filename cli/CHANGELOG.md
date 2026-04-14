@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.24.0 (2026-04-14)
+
+### Features
+
+- Add importance scoring guidelines to session start hook and memory-store skill
+  ([`d0c1979`](https://github.com/ksm0709/pkm/commit/d0c1979f8fd243d99516d82245753fc870f89a4a))
+
+
 ## v2.23.0 (2026-04-14)
 
 ### Features
