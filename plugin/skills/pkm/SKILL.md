@@ -131,6 +131,13 @@ pkm tags search "python*"          # Glob pattern search
 pkm tags search "python+ml"        # AND: notes with both tags
 pkm tags search "python,rust"      # OR: notes with either tag
 
+# Data files
+pkm data                           # List data files in vault
+pkm data add <fname> <path>        # Copy local file into vault data/
+pkm data add <fname> <url>         # Download URL into vault data/
+pkm data add <fname> <src> --force # Overwrite existing file
+pkm data rm <fname>                # Remove a data file from vault
+
 # Vault management
 pkm vault list                     # List vaults (git vaults show @owner--repo)
 pkm vault where                    # Show active vault name and path (2 lines)

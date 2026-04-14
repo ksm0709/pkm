@@ -32,6 +32,23 @@ def _safe_hook(fn):
     return wrapper
 
 
+def _get_note_desc(result) -> str:
+    """Extract a short description from a search result's note file."""
+    try:
+        from pkm.frontmatter import parse as parse_note
+
+        note = parse_note(Path(result.path))
+        desc = note.meta.get("description")
+        if desc:
+            return str(desc)[:60]
+        body = note.body.strip()
+        if body:
+            return body[:60]
+    except Exception:
+        pass
+    return ""
+
+
 def _load_hook_config(vault) -> dict[str, Any]:
     """Load .pkm/config.toml. Returns {} on missing or parse error."""
     try:
@@ -194,9 +211,54 @@ def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None
     vault = ctx.obj["vault"]
     lines = []
 
+    # 1. Zettel-pending signal (daemon auto-consolidated dailies)
+    try:
+        zettel_signal = vault.pkm_dir / "zettel-pending"
+        if zettel_signal.exists():
+            import json as _json
+
+            sig = _json.loads(zettel_signal.read_text(encoding="utf-8"))
+            marked = sig.get("marked", 0)
+            lines.append("## Zettel Loop Ready")
+            lines.append(
+                f"Daemon auto-consolidated {marked} daily note(s) on shutdown. "
+                "Run `/pkm:zettel-loop` to distill into permanent knowledge."
+            )
+            lines.append("")
+            zettel_signal.unlink()
+    except Exception:
+        pass
+
+    # 2. Consolidation trigger (conditional)
+    try:
+        hook_config = _load_hook_config(vault)
+        trigger_msg = _check_consolidation_trigger(vault, hook_config)
+        if trigger_msg:
+            lines.append("## Consolidation Recommended")
+            lines.append(trigger_msg)
+            lines.append("")
+    except Exception:
+        pass
+
+    # 2. PKM command reference — single source of truth
+    lines.extend(
+        [
+            "## PKM",
+            '`pkm daily add "<text>"` — log decisions, findings, code changes',
+            '`pkm daily add --sub "<title>"` — create linked sub-note + log [[wikilink]] in today\'s daily',
+            '`pkm search "<query>"` — recall related notes',
+            '`pkm note add --content "<insight>" --type semantic --importance 7 --tags tag1,tag2` — atomic note',
+            "`pkm data add <fname> <path-or-url>` — copy local file or download URL into vault data/",
+            "`pkm data rm <fname>` — remove a data file from vault",
+            "For detailed workflows and usage: `/pkm` skill",
+        ]
+    )
+
+    # 3. Recent work context from daily notes
     from datetime import date, timedelta
 
     daily_dir = vault.daily_dir
+    daily_lines: list[str] = []
     for i in range(1, 4):
         d = (date.today() - timedelta(days=i)).isoformat()
         daily_path = daily_dir / f"{d}.md"
@@ -208,55 +270,14 @@ def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None
                     text = text[end + 3 :].strip()
             preview = text[:300].strip()
             if preview:
-                if not lines:
-                    lines.append("## Recent Daily Notes")
-                lines.append(f"### {d}\n{preview}")
-                if len([ln for ln in lines if ln.startswith("###")]) >= 2:
+                daily_lines.append(f"### {d}\n{preview}")
+                if len(daily_lines) >= 2:
                     break
 
-    if lines:
+    if daily_lines:
         lines.append("")
-
-    try:
-        from pkm.search_engine import load_index, search as engine_search
-
-        index = load_index(vault)
-        results = engine_search(
-            "important decision error finding pattern",
-            index,
-            top_n=top,
-            recency_weight=0.4,
-            min_importance=6.0,
-        )
-        if results:
-            lines.append("## Recent Memories")
-            for r in results:
-                mt = r.memory_type or "semantic"
-                lines.append(f"- [{mt}|imp:{r.importance:.0f}] {r.title}")
-            lines.append("")
-    except Exception:
-        pass
-
-    try:
-        hook_config = _load_hook_config(vault)
-        trigger_msg = _check_consolidation_trigger(vault, hook_config)
-        if trigger_msg:
-            lines.append("## Consolidation Recommended")
-            lines.append(trigger_msg)
-            lines.append("")
-    except Exception:
-        pass
-
-    # PKM command reference — single source of truth, injected once at session start
-    lines.extend(
-        [
-            "## PKM",
-            '`pkm daily add "<text>"` — log decisions, findings, code changes',
-            '`pkm daily add --sub "<title>"` — create linked sub-note + log [[wikilink]] in today\'s daily',
-            '`pkm search "<query>"` — recall related notes',
-            '`pkm note add --content "<insight>" --type semantic --importance 7 --tags tag1,tag2` — atomic note',
-        ]
-    )
+        lines.append("## Recent Work Context")
+        lines.extend(daily_lines)
 
     content = "\n".join(lines).strip()
 
@@ -324,14 +345,17 @@ def _handle_turn_start(
             lines.append("## Relevant Notes")
             for r in results:
                 mt = r.memory_type or "semantic"
-                lines.append(f"- [{mt}|imp:{r.importance:.0f}] {r.title}")
+                desc = _get_note_desc(r)
+                suffix = f" — {desc}" if desc else ""
+                lines.append(f"- [{mt}|imp:{r.importance:.0f}] {r.title}{suffix}")
             lines.append("")
     except Exception:
         pass
 
     if session_id:
         lines.append(f"Session: {session_id}")
-    lines.append('`pkm search "<query>"` — recall related notes if needed')
+    lines.append('`pkm search "<query>"` — recall related notes if needed'
+                 '\nFor full command reference see the `/pkm` skill or session-start context.')
 
     content = "\n".join(lines)
     if output_format == "system-reminder":
@@ -343,8 +367,8 @@ def _handle_turn_start(
 def _handle_turn_end(
     ctx, session_id: str | None, summary: str | None, output_format: str, **_ignored
 ) -> None:
-    # Always emit preservation guide
-    guide = 'Log important findings: `pkm daily add "<summary>"` or `pkm note add --content "<insight>" --type semantic --importance 7 --tags tag1,tag2`'
+    # Always emit preservation guide (meta-instruction only; command details in session-start)
+    guide = "Save key learnings from this session with pkm before stopping. See /pkm skill for commands."
     if output_format == "system-reminder":
         click.echo(f"<system-reminder>\n{guide}\n</system-reminder>")
     else:
@@ -391,17 +415,18 @@ def _handle_turn_end_exit2(ctx, **_ignored) -> None:
     if payload.get("stop_hook_active", False):
         sys.exit(0)
 
+    instructions = """\
+KNOWLEDGE EXTRACTION: Save key learnings from this session using pkm commands.
+Be selective — skip trivial facts. See /pkm skill for available commands. Then you may stop."""
+
     hook_source = payload.get("hook_source", "")
 
     transcript_path = payload.get("transcript_path", "")
     if not transcript_path and hook_source != "opencode-plugin":
+        # No stdin payload (e.g. called from sidecar daemon) — emit instructions
+        # to stdout so the caller can inject them, then exit 0.
+        click.echo(f"[pkm hook run turn-end-exit2]: {instructions}")
         sys.exit(0)
-
-    instructions = """\
-KNOWLEDGE EXTRACTION: Save key learnings from this session.
-1. Run `pkm daily add '<one-sentence summary>'`
-2. For reusable insights: `pkm note add --content '<insight>' --type semantic --importance <5-9> --tags <tags>`
-Be selective — skip trivial facts. Then you may stop."""
 
     if hook_source == "opencode-plugin":
         print(

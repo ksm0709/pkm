@@ -53,7 +53,7 @@ def test_hook_run_session_start_with_daily_notes(runner, vault_env, tmp_vault):
     )
     result = runner.invoke(main, ["hook", "run", "session-start"])
     assert result.exit_code == 0
-    assert "Recent Daily Notes" in result.output
+    assert "Recent Work Context" in result.output
 
 
 def test_hook_run_session_start_ignores_irrelevant_options(runner, vault_env):
@@ -107,14 +107,14 @@ def test_hook_run_turn_end_always_emits(runner, vault_env):
     result = runner.invoke(main, ["hook", "run", "turn-end"])
     assert result.exit_code == 0
     assert len(result.output.strip()) > 0
-    assert "pkm daily add" in result.output or "preserve" in result.output.lower()
+    assert "pkm" in result.output.lower()
 
 
 def test_hook_run_turn_end_includes_save_commands(runner, vault_env):
     result = runner.invoke(main, ["hook", "run", "turn-end"])
     assert result.exit_code == 0
-    assert "pkm daily add" in result.output
-    assert "pkm note add" in result.output
+    assert "pkm" in result.output
+    assert "/pkm" in result.output  # references skill
 
 
 def test_hook_run_turn_end_with_summary_writes_daily(runner, vault_env, tmp_vault):

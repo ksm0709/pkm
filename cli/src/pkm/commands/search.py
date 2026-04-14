@@ -91,6 +91,7 @@ def format_search_results(
         )
         table.add_column("#", style="dim", width=4)
         table.add_column("Title", style="cyan")
+        table.add_column("Description", style="dim", max_width=40, no_wrap=True)
         table.add_column("Score", style="green", width=8)
         table.add_column("Type", style="magenta", width=10)
         table.add_column("Imp", style="yellow", width=4)
@@ -100,9 +101,13 @@ def format_search_results(
             mt = getattr(r, "memory_type", None) or ""
             imp = getattr(r, "importance", None)
             imp_str = f"{imp:.0f}" if imp is not None else ""
+            desc = _get_description(r) or ""
+            if len(desc) > 40:
+                desc = desc[:37] + "..."
             table.add_row(
                 str(r.rank),
                 r.title,
+                desc,
                 f"{r.score:.4f}",
                 mt,
                 imp_str,

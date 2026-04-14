@@ -65,7 +65,7 @@ def test_session_start_includes_daily_notes(runner, vault_env, tmp_vault: VaultC
         main, ["agent", "hook", "session-start", "--format", "plain"]
     )
     assert result.exit_code == 0
-    assert "Recent Daily Notes" in result.output
+    assert "Recent Work Context" in result.output
     assert yesterday in result.output
 
 

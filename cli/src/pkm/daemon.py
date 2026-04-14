@@ -126,6 +126,50 @@ def idle_checker(server):
             break
 
 
+def _on_shutdown() -> None:
+    """Auto-consolidate eligible daily notes across all vaults on daemon exit."""
+    try:
+        from pkm.config import discover_vaults
+        from pkm.commands.consolidate import (
+            _list_candidate_dates,
+            _parse_frontmatter,
+            _set_frontmatter_field,
+        )
+
+        vaults = discover_vaults()
+        for vault in vaults.values():
+            candidates = _list_candidate_dates(vault)
+            if not candidates:
+                continue
+
+            marked = 0
+            for date_str in candidates:
+                note_path = vault.daily_dir / f"{date_str}.md"
+                if not note_path.exists():
+                    continue
+                try:
+                    text = note_path.read_text(encoding="utf-8")
+                    fm = _parse_frontmatter(text)
+                    if fm.get("consolidated", False):
+                        continue
+                    new_text = _set_frontmatter_field(text, "consolidated", True)
+                    note_path.write_text(new_text, encoding="utf-8")
+                    marked += 1
+                except Exception:
+                    logger.exception("Failed to consolidate %s", note_path)
+
+            if marked > 0:
+                signal_path = vault.pkm_dir / "zettel-pending"
+                vault.pkm_dir.mkdir(parents=True, exist_ok=True)
+                signal_path.write_text(
+                    json.dumps({"marked": marked, "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}),
+                    encoding="utf-8",
+                )
+                logger.info("Auto-consolidated %d dailies in vault '%s'. Zettel-pending signal written.", marked, vault.name)
+    except Exception:
+        logger.exception("Error during shutdown auto-consolidation")
+
+
 def main():
     SOCKET_PATH.parent.mkdir(parents=True, exist_ok=True)
 
@@ -143,6 +187,7 @@ def main():
         server.serve_forever()
     finally:
         logger.info("Daemon shutting down.")
+        _on_shutdown()
         if SOCKET_PATH.exists():
             try:
                 SOCKET_PATH.unlink()
