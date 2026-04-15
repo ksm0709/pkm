@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.25.0 (2026-04-15)
+
+### Features
+
+- Optimize pkm search by wiring daemon as primary search path
+  ([`ad60e03`](https://github.com/ksm0709/pkm/commit/ad60e0335068e11eccf80788d309bb24b6adf0ab))
+
+
 ## v2.24.0 (2026-04-14)
 
 ### Features
