@@ -53,6 +53,36 @@ def _sanitize_title(raw: str) -> str:
     return title
 
 
+def add_daily_entry(vault, text: str) -> str:
+    """Append a timestamped log entry to today's daily note. Click-free canonical implementation.
+
+    Called by both the CLI ``daily add`` command and the MCP ``daily_add`` tool.
+    Future changes to daily entry logic should target this function.
+
+    Returns the formatted entry string.
+    """
+    today = datetime.now().strftime("%Y-%m-%d")
+    now = datetime.now().strftime("%H:%M")
+    note_path = vault.daily_dir / f"{today}.md"
+
+    vault.daily_dir.mkdir(parents=True, exist_ok=True)
+    if not note_path.exists():
+        note_path.write_text(DAILY_TEMPLATE.format(date=today), encoding="utf-8")
+
+    content = note_path.read_text(encoding="utf-8")
+    entry = f"- [{now}] {text}\n"
+
+    if "## TODO" in content:
+        content = content.replace("## TODO", f"{entry}## TODO", 1)
+    else:
+        if not content.endswith("\n"):
+            content += "\n"
+        content += entry
+
+    note_path.write_text(content, encoding="utf-8")
+    return entry
+
+
 def _add_subnote_link(daily_path: Path, now: str, note_id: str) -> None:
     """Insert a Sub note wikilink entry before ## TODO in the daily note."""
     content = daily_path.read_text(encoding="utf-8")
@@ -217,17 +247,8 @@ def add(ctx: click.Context, text: str | None, sub_title: str | None) -> None:
         entry = f"- [{now}] Sub note added: [[{note_id}]]\n"
         console.print(f"Linked: {entry}", end="")
     else:
-        content = note_path.read_text(encoding="utf-8")
-        entry = f"- [{now}] {text}\n"
-
-        if "## TODO" in content:
-            content = content.replace("## TODO", f"{entry}## TODO", 1)
-        else:
-            if not content.endswith("\n"):
-                content += "\n"
-            content += entry
-
-        note_path.write_text(content, encoding="utf-8")
+        add_daily_entry(vault, text)
+        now = datetime.now().strftime("%H:%M")
         console.print(f"Daily note added at [{now}].")
 
 

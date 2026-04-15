@@ -33,6 +33,104 @@ from pkm.commands.links import orphans
 console = Console()
 
 
+def create_note(
+    vault,
+    title: str | None = None,
+    content: str | None = None,
+    memory_type: str | None = None,
+    importance: int | None = None,
+    session_id: str | None = None,
+    agent_id: str | None = None,
+    tags: list[str] | None = None,
+    no_dedup: bool = False,
+    meta: dict | None = None,
+    source: str | None = None,
+) -> Path:
+    """Create an atomic note in the vault. Click-free canonical implementation.
+
+    Called by both the CLI ``note add`` command and the MCP ``note_add`` tool.
+    Future changes to note creation logic should target this function.
+
+    Returns the path to the created note file.
+    Raises ``ValueError`` for bad input, ``FileExistsError`` if the note already exists.
+    """
+    if content and not title:
+        effective_title = content[:50]
+    elif title:
+        effective_title = title
+    else:
+        raise ValueError(
+            "Provide a title, or use content for agent usage"
+        )
+
+    similar_notes: list = []
+    if not no_dedup and content:
+        try:
+            from pkm.search_engine import load_index, find_similar, search_via_daemon
+
+            _matches = search_via_daemon(content, vault, top_n=1)
+            if _matches is not None:
+                _matches = [m for m in _matches if m.score >= 0.85]
+            else:
+                _index = load_index(vault)
+                _matches = find_similar(content, _index, threshold=0.85, top_n=1)
+
+            if _matches:
+                similar_notes = _matches
+        except Exception:
+            pass
+
+    today = date.today().isoformat()
+    slug = _slugify(effective_title)
+    filename = f"{today}-{slug}.md"
+    note_path: Path = vault.notes_dir / filename
+    note_id = note_path.stem
+
+    if note_path.exists():
+        raise FileExistsError(f"Note already exists: {note_path}")
+
+    tag_list = tags or []
+    body = content or ""
+    extra = dict(meta) if meta else {}
+
+    is_memory = bool(content or memory_type or importance is not None or session_id)
+    if is_memory:
+        from datetime import datetime, timezone
+
+        fm = generate_memory_frontmatter(
+            note_id=note_id,
+            memory_type=memory_type or "semantic",
+            importance=float(importance) if importance is not None else 5.0,
+            created_at=datetime.now(timezone.utc).isoformat(),
+            session_id=session_id,
+            agent_id=agent_id,
+            source_type="agent",
+            tags=tag_list,
+            **extra,
+        )
+    else:
+        fm = generate_frontmatter(
+            note_id,
+            tags=tag_list,
+            aliases=[],
+            source=source or today,
+            **extra,
+        )
+
+    note_content = render(fm, body)
+    note_path.write_text(note_content, encoding="utf-8")
+    _append_operation_log(vault, "add", note_id, effective_title)
+
+    try:
+        from pkm.search_engine import update_index_via_daemon
+
+        update_index_via_daemon(vault)
+    except Exception:
+        pass
+
+    return note_path
+
+
 def _slugify(title: str) -> str:
     """Convert title to filename slug."""
     lowered = title.lower().replace(" ", "-")
@@ -114,6 +212,12 @@ def note(ctx: click.Context) -> None:
 @click.option(
     "--no-dedup", is_flag=True, default=False, help="Skip duplicate detection"
 )
+@click.option(
+    "--meta",
+    "meta_pairs",
+    multiple=True,
+    help="key=value metadata pairs for frontmatter",
+)
 @click.pass_context
 def add(
     ctx: click.Context,
@@ -126,6 +230,7 @@ def add(
     agent_id: str | None,
     tags: str,
     no_dedup: bool,
+    meta_pairs: tuple[str, ...],
 ) -> None:
     """Create a new atomic note in the vault.
 
@@ -135,81 +240,36 @@ def add(
     Agent usage (--content generates title automatically):
       pkm note add --content "learned X" --type semantic --importance 7
       echo "multi-line" | pkm note add --stdin --type episodic --importance 5
+
+    Custom metadata:
+      pkm note add --content "fact" --meta source=neo --meta event_type=goal
     """
     if use_stdin:
         content = sys.stdin.read().strip()
 
-    if content and not title:
-        effective_title = content[:50]
-    elif title:
-        effective_title = title
-    else:
-        raise click.UsageError(
-            "Provide a title, or use --content / --stdin for agent usage"
-        )
-
     vault = ctx.obj["vault"]
-
-    if not no_dedup and content:
-        try:
-            from pkm.search_engine import load_index, find_similar, search_via_daemon
-
-            _matches = search_via_daemon(content, vault, top_n=1)
-            if _matches is not None:
-                _matches = [m for m in _matches if m.score >= 0.85]
-            else:
-                _index = load_index(vault)
-                _matches = find_similar(content, _index, threshold=0.85, top_n=1)
-
-            if _matches:
-                console.print(
-                    f"[pkm dedup warning] Similar note ({_matches[0].score:.2f}): '{_matches[0].title}'\n"
-                    "Proceeding with add. Use --no-dedup to skip this check.",
-                    file=sys.stderr,
-                )
-        except Exception:
-            pass
-
-    today = date.today().isoformat()
-    slug = _slugify(effective_title)
-    filename = f"{today}-{slug}.md"
-    note_path: Path = vault.notes_dir / filename
-    note_id = note_path.stem
-
-    if note_path.exists():
-        raise click.ClickException(f"Note already exists: {note_path}")
-
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
-    body = content or ""
-
-    is_memory = bool(content or memory_type or importance is not None or session_id)
-    if is_memory:
-        from datetime import datetime, timezone
-
-        meta = generate_memory_frontmatter(
-            note_id=note_id,
-            memory_type=memory_type or "semantic",
-            importance=float(importance) if importance is not None else 5.0,
-            created_at=datetime.now(timezone.utc).isoformat(),
-            session_id=session_id,
-            agent_id=agent_id,
-            source_type="agent",
-            tags=tag_list,
-        )
-    else:
-        meta = generate_frontmatter(note_id, tags=tag_list, aliases=[], source=today)
-
-    note_content = render(meta, body)
-    note_path.write_text(note_content, encoding="utf-8")
-    _append_operation_log(vault, "add", note_id, effective_title)
-    console.print(f"[green]Created[/green] {note_path}")
+    meta = {k: v for k, _, v in (p.partition("=") for p in meta_pairs) if k} if meta_pairs else None
 
     try:
-        from pkm.search_engine import update_index_via_daemon
+        note_path = create_note(
+            vault=vault,
+            title=title,
+            content=content,
+            memory_type=memory_type,
+            importance=importance,
+            session_id=session_id,
+            agent_id=agent_id,
+            tags=tag_list,
+            no_dedup=no_dedup,
+            meta=meta,
+        )
+    except ValueError as e:
+        raise click.UsageError(str(e))
+    except FileExistsError as e:
+        raise click.ClickException(str(e))
 
-        update_index_via_daemon(vault)
-    except Exception:
-        pass
+    console.print(f"[green]Created[/green] {note_path}")
 
 
 @note.command()
