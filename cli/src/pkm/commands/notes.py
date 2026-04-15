@@ -242,7 +242,7 @@ def add(
       echo "multi-line" | pkm note add --stdin --type episodic --importance 5
 
     Custom metadata:
-      pkm note add --content "fact" --meta source=neo --meta event_type=goal
+      pkm note add --content "fact" --meta source=agent1 --meta event_type=goal
     """
     if use_stdin:
         content = sys.stdin.read().strip()

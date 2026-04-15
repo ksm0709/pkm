@@ -2,7 +2,7 @@
 
 Runs as a foreground stdio server. An MCP client spawns this process via config:
     command = "pkm"
-    args = ["mcp", "--vault", "neo"]
+    args = ["mcp", "--vault", "my-vault"]
 """
 
 from __future__ import annotations
