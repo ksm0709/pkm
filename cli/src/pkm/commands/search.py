@@ -18,6 +18,7 @@ from pkm.search_engine import (
     is_index_stale,
     load_index,
     search as search_fn,
+    search_via_daemon,
 )
 
 console = Console()
@@ -188,17 +189,30 @@ def search_cmd(
     if is_index_stale(vault):
         stale_warning = "Index may be out of date. Run 'pkm index' to rebuild."
 
-    if output_format == "json":
-        logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
-        logging.getLogger("transformers").setLevel(logging.ERROR)
-        logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
-        os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+    # Try daemon first (model already loaded in memory → fast path)
+    results = search_via_daemon(
+        query,
+        vault,
+        top_n=top,
+        min_importance=min_importance,
+        memory_type_filter=memory_type,
+        recency_weight=recency_weight,
+    )
 
-        _buf = io.StringIO()
-        _err_buf = io.StringIO()
-        with contextlib.redirect_stdout(_buf), contextlib.redirect_stderr(_err_buf):
+    if results is None:
+        # Daemon unavailable — fall back to in-process search
+        if output_format == "json":
+            logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
+            logging.getLogger("transformers").setLevel(logging.ERROR)
+            logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+            os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+        elif stale_warning:
+            console.print(f"[yellow]Warning:[/yellow] {stale_warning}")
+            stale_warning = None
+
+        def _run_search():
             vector_index = load_index(vault)
-            results = search_fn(
+            return search_fn(
                 query,
                 vector_index,
                 top_n=top,
@@ -206,19 +220,15 @@ def search_cmd(
                 min_importance=min_importance,
                 recency_weight=recency_weight,
             )
-    else:
-        if stale_warning:
-            console.print(f"[yellow]Warning:[/yellow] {stale_warning}")
-            stale_warning = None
-        vector_index = load_index(vault)
-        results = search_fn(
-            query,
-            vector_index,
-            top_n=top,
-            memory_type_filter=memory_type,
-            min_importance=min_importance,
-            recency_weight=recency_weight,
-        )
+
+        if output_format == "json":
+            with (
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                results = _run_search()
+        else:
+            results = _run_search()
 
     if session_id:
         import yaml

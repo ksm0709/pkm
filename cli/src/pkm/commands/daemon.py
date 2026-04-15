@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import os
 import signal
 import socket
 import subprocess
 import sys
-from pathlib import Path
 
 import click
 from rich.console import Console
@@ -71,7 +69,9 @@ def daemon_status() -> None:
         console.print(f"[green]running[/green]  ({pid_str})")
         console.print(f"Socket: [dim]{SOCKET_PATH}[/dim]")
     elif pid:
-        console.print(f"[yellow]stale[/yellow]  (PID {pid} exists but socket unresponsive)")
+        console.print(
+            f"[yellow]stale[/yellow]  (PID {pid} exists but socket unresponsive)"
+        )
     else:
         console.print("[red]stopped[/red]")
         console.print("Run [bold cyan]pkm daemon start[/bold cyan] to launch it.")
@@ -126,7 +126,9 @@ def daemon_restart(ctx: click.Context) -> None:
 
 
 @daemon_group.command("logs")
-@click.option("--lines", "-n", default=50, show_default=True, help="Number of lines to show")
+@click.option(
+    "--lines", "-n", default=50, show_default=True, help="Number of lines to show"
+)
 @click.option("--follow", "-f", is_flag=True, help="Follow log output (like tail -f)")
 def daemon_logs(lines: int, follow: bool) -> None:
     """Show daemon log output."""

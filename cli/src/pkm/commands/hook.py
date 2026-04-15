@@ -356,8 +356,10 @@ def _handle_turn_start(
 
     if session_id:
         lines.append(f"Session: {session_id}")
-    lines.append('`pkm search "<query>"` — recall related notes if needed'
-                 '\nFor full command reference see the `/pkm` skill or session-start context.')
+    lines.append(
+        '`pkm search "<query>"` — recall related notes if needed'
+        "\nFor full command reference see the `/pkm` skill or session-start context."
+    )
 
     content = "\n".join(lines)
     if output_format == "system-reminder":

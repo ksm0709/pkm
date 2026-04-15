@@ -95,9 +95,7 @@ class TestDataAdd:
         assert result.exit_code != 0
         assert "not found" in result.output
 
-    def test_add_source_is_directory(
-        self, cli_runner, tmp_path: Path
-    ):
+    def test_add_source_is_directory(self, cli_runner, tmp_path: Path):
         """Should fail if source is a directory, not a file."""
         src_dir = tmp_path / "somedir"
         src_dir.mkdir()

@@ -41,7 +41,7 @@ def vault_with_dailies(clean_vault: VaultConfig) -> VaultConfig:
     for i in range(1, 4):
         d = (date.today() - timedelta(days=i)).isoformat()
         (clean_vault.daily_dir / f"{d}.md").write_text(
-            f"---\nid: {d}\ntags:\n  - daily-notes\n---\n- [{9+i}:00] Work item {i}\n",
+            f"---\nid: {d}\ntags:\n  - daily-notes\n---\n- [{9 + i}:00] Work item {i}\n",
             encoding="utf-8",
         )
     return clean_vault
@@ -61,7 +61,9 @@ class TestOnShutdown:
 
         for i in range(1, 4):
             d = (date.today() - timedelta(days=i)).isoformat()
-            text = (vault_with_dailies.daily_dir / f"{d}.md").read_text(encoding="utf-8")
+            text = (vault_with_dailies.daily_dir / f"{d}.md").read_text(
+                encoding="utf-8"
+            )
             fm = _parse_frontmatter(text)
             assert fm.get("consolidated") is True, f"{d} should be consolidated"
 
@@ -99,7 +101,9 @@ class TestOnShutdown:
 
         from pkm.commands.consolidate import _parse_frontmatter
 
-        today_text = (vault_with_dailies.daily_dir / f"{today}.md").read_text(encoding="utf-8")
+        today_text = (vault_with_dailies.daily_dir / f"{today}.md").read_text(
+            encoding="utf-8"
+        )
         assert _parse_frontmatter(today_text).get("consolidated") is not True
 
     def test_skips_already_consolidated(self, vault_with_dailies):

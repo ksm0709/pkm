@@ -315,6 +315,8 @@ def search_via_daemon(
     vault: VaultConfig,
     top_n: int = 10,
     min_importance: float = 1.0,
+    memory_type_filter: str | None = None,
+    recency_weight: float = 0.0,
 ) -> list[SearchResult] | None:
     """Attempt to search via the background ML daemon. Returns None if daemon is unavailable."""
     import socket
@@ -340,6 +342,8 @@ def search_via_daemon(
                 "index_mtime": index_mtime,
                 "top_n": top_n,
                 "min_importance": min_importance,
+                "memory_type_filter": memory_type_filter,
+                "recency_weight": recency_weight,
             }
             sock.sendall(json.dumps(req).encode("utf-8") + b"\n")
 

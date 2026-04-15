@@ -66,6 +66,8 @@ class SearchRequestHandler(socketserver.StreamRequestHandler):
                 index_mtime = req.get("index_mtime", 0.0)
                 top_n = req.get("top_n", 10)
                 min_importance = req.get("min_importance", 1.0)
+                memory_type_filter = req.get("memory_type_filter")
+                recency_weight = req.get("recency_weight", 0.0)
 
                 if not query or not index_path:
                     self.wfile.write(b"[]\n")
@@ -76,7 +78,12 @@ class SearchRequestHandler(socketserver.StreamRequestHandler):
                 index = get_cached_index(index_path, index_mtime)
 
                 results = search(
-                    query=query, index=index, top_n=top_n, min_importance=min_importance
+                    query=query,
+                    index=index,
+                    top_n=top_n,
+                    min_importance=min_importance,
+                    memory_type_filter=memory_type_filter,
+                    recency_weight=recency_weight,
                 )
 
                 res_data = json.dumps([asdict(r) for r in results]) + "\n"
@@ -99,7 +106,7 @@ class SearchRequestHandler(socketserver.StreamRequestHandler):
 
         except Exception:
             logger.exception("Error handling request")
-            self.wfile.write(b"[]\n")
+            self.wfile.write(b'{"error": "internal"}\n')
         finally:
             DaemonState.last_activity = time.time()
 
@@ -162,12 +169,32 @@ def _on_shutdown() -> None:
                 signal_path = vault.pkm_dir / "zettel-pending"
                 vault.pkm_dir.mkdir(parents=True, exist_ok=True)
                 signal_path.write_text(
-                    json.dumps({"marked": marked, "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}),
+                    json.dumps(
+                        {
+                            "marked": marked,
+                            "timestamp": time.strftime(
+                                "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
+                            ),
+                        }
+                    ),
                     encoding="utf-8",
                 )
-                logger.info("Auto-consolidated %d dailies in vault '%s'. Zettel-pending signal written.", marked, vault.name)
+                logger.info(
+                    "Auto-consolidated %d dailies in vault '%s'. Zettel-pending signal written.",
+                    marked,
+                    vault.name,
+                )
     except Exception:
         logger.exception("Error during shutdown auto-consolidation")
+
+
+def _preload_model():
+    """Pre-load the sentence-transformers model so first search is fast."""
+    try:
+        _require_transformers("all-MiniLM-L6-v2")
+        logger.info("Model pre-loaded successfully.")
+    except Exception:
+        logger.exception("Failed to pre-load model")
 
 
 def main():
@@ -181,6 +208,9 @@ def main():
 
     checker = threading.Thread(target=idle_checker, args=(server,), daemon=True)
     checker.start()
+
+    # Pre-load model in background thread so daemon is ready for first request
+    threading.Thread(target=_preload_model, daemon=True).start()
 
     logger.info("Daemon started. Listening on %s", SOCKET_PATH)
     try:
