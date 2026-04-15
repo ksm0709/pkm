@@ -9,10 +9,10 @@ import click
 @click.option("--vault", "-v", "vault_name", default=None, help="Vault name")
 @click.pass_context
 def mcp_cmd(ctx: click.Context, vault_name: str | None) -> None:
-    """Start MCP server for zeroclaw agents (stdio transport).
+    """Start MCP server (stdio transport).
 
-    Runs a foreground JSON-RPC 2.0 server on stdin/stdout. zeroclaw spawns
-    this process automatically via config.toml registration.
+    Runs a foreground JSON-RPC 2.0 server on stdin/stdout. An MCP client
+    spawns this process automatically via its server configuration.
 
     Tools exposed: note_add, daily_add, search, index.
     """

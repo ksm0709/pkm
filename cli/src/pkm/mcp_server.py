@@ -1,9 +1,6 @@
-"""MCP server exposing PKM vault tools for zeroclaw agents.
+"""MCP server exposing PKM vault tools for AI agents.
 
-Runs as a foreground stdio server. zeroclaw spawns this process via config.toml:
-    [[mcp.servers]]
-    name = "pkm"
-    transport = "stdio"
+Runs as a foreground stdio server. An MCP client spawns this process via config:
     command = "pkm"
     args = ["mcp", "--vault", "neo"]
 """
