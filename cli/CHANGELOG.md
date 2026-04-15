@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.26.0 (2026-04-15)
+
+### Features
+
+- Add MCP server for zeroclaw agent integration
+  ([`5899fa3`](https://github.com/ksm0709/pkm/commit/5899fa3462521abd8366a3165eb70d6e220344d0))
+
+
 ## v2.25.0 (2026-04-15)
 
 ### Features
