@@ -26,12 +26,19 @@ Store facts, decisions, error fixes, and patterns discovered by agents as atomic
 
 ## Importance Scale
 
-| Score | Meaning |
-|-------|---------|
-| 1-3 | Trivial, low value |
-| 4-6 | Moderate, useful context |
-| 7-8 | Important, should resurface |
-| 9-10 | Critical, always relevant |
+| Score | Meaning | Examples |
+|-------|---------|---------|
+| 1-3 | Trivial / transient | Formatting preference, minor observation |
+| 4-6 | Moderate | Task progress, useful but forgettable fact |
+| 7-8 | Important — should resurface | Architecture decision, non-obvious constraint, bug root cause |
+| 9-10 | Critical — always relevant | Security constraint, irreversible decision, hard-won lesson |
+
+**Decision guide by memory type:**
+- `episodic` → typically 5-6 (session events, progress tracking)
+- `semantic` → typically 7-8 (stable knowledge, API behavior, architecture)
+- `procedural` → typically 6-8 (fix recipes, debugging runbooks)
+
+**Rule of thumb:** Bias toward 7+ for anything you'd need to explain to the next agent. Default 5 if unsure.
 
 ## Edge Cases
 - If a similar memory already exists, do not store a new one — augment the existing note instead

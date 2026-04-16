@@ -9,9 +9,9 @@ Fully clarify new PKM workflow requirements through a Socratic interview, ensure
 
 ## Tools
 - AskUserQuestion (Socratic interview — one question at a time)
-- Read (`skill/workflows/` — reference existing workflows as concrete examples)
-- Write (`skill/workflows/<name>.md`, `skill/commands/pkm/<name>.md`)
-- Edit (`skill/SKILL.md`)
+- Read (`plugin/skills/pkm/workflows/` — reference existing workflows as concrete examples)
+- Write (`plugin/skills/pkm/workflows/<name>.md`, `plugin/skills/pkm/commands/<name>.md`)
+- Edit (`plugin/skills/pkm/SKILL.md`)
 - Bash (`cp ~/.claude/commands/pkm/` immediate deployment)
 
 ## Principles
@@ -198,7 +198,7 @@ Confirm via AskUserQuestion:
 
 After confirmation, create the files:
 
-**`skill/workflows/<name>.md`** (follow `_template.md` structure):
+**`plugin/skills/pkm/workflows/<name>.md`** (follow `_template.md` structure):
 ```markdown
 # <Workflow Name>
 
@@ -225,12 +225,12 @@ After confirmation, create the files:
 <output description>
 ```
 
-**`skill/commands/pkm/<name>.md`**:
+**`plugin/skills/pkm/commands/<name>.md`**:
 ```markdown
 Read `~/.claude/skills/pkm/workflows/<name>.md` and execute the workflow described there.
 ```
 
-**`skill/SKILL.md`** — add a row to the workflow table:
+**`plugin/skills/pkm/SKILL.md`** — add a row to the workflow table:
 ```
 | <Display Name> | <trigger keywords> | workflows/<name>.md |
 ```
@@ -238,8 +238,8 @@ Read `~/.claude/skills/pkm/workflows/<name>.md` and execute the workflow describ
 **Immediate deployment:**
 ```bash
 mkdir -p ~/.claude/commands/pkm ~/.agents/commands/pkm
-cp skill/commands/pkm/<name>.md ~/.claude/commands/pkm/<name>.md
-cp skill/commands/pkm/<name>.md ~/.agents/commands/pkm/<name>.md
+cp plugin/skills/pkm/commands/<name>.md ~/.claude/commands/pkm/<name>.md
+cp plugin/skills/pkm/commands/<name>.md ~/.agents/commands/pkm/<name>.md
 ```
 
 ### Phase 3: Complete
@@ -250,8 +250,8 @@ cp skill/commands/pkm/<name>.md ~/.agents/commands/pkm/<name>.md
 Final Ambiguity: {score}%
 
 Files created:
-  skill/workflows/<name>.md
-  skill/commands/pkm/<name>.md
+  plugin/skills/pkm/workflows/<name>.md
+  plugin/skills/pkm/commands/<name>.md
 
 SKILL.md updated
 
@@ -259,7 +259,7 @@ Ready to use immediately (no Claude Code restart required):
   /pkm:<name>
 
 To commit to the repository:
-  git add skill/ && git commit -m "feat: add <name> workflow"
+  git add plugin/skills/pkm/ && git commit -m "feat: add <name> workflow"
 ```
 
 ## Edge Cases
@@ -269,8 +269,8 @@ To commit to the repository:
 - Ambiguity stagnates within ±5% for 3 consecutive rounds → reframe: "Let's redefine the concept itself"
 
 ## Expected Output
-- `skill/workflows/<name>.md` (completed workflow specification)
-- `skill/commands/pkm/<name>.md` (slash command wrapper)
-- `skill/SKILL.md` (table updated)
+- `plugin/skills/pkm/workflows/<name>.md` (completed workflow specification)
+- `plugin/skills/pkm/commands/<name>.md` (slash command wrapper)
+- `plugin/skills/pkm/SKILL.md` (table updated)
 - `~/.claude/commands/pkm/<name>.md` (immediately deployed)
 - `~/.agents/commands/pkm/<name>.md` (immediately deployed)

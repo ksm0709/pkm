@@ -319,7 +319,7 @@ pkm/
 │   │   └── ...
 │   └── tests/
 ├── docs/         # usage and policy docs
-├── skill/        # PKM skill files for agent workflows
+├── plugin/       # Claude Code plugin (hooks, skills)
 └── README.md
 ```
 
