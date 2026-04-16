@@ -34,7 +34,6 @@ def _extra_installed(import_check: str) -> bool:
 # Map of optional extras → the import that proves they are installed.
 _EXTRAS_PROBE: dict[str, str] = {
     "search": "sentence_transformers",
-    "mcp": "mcp",
 }
 
 

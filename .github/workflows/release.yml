@@ -32,7 +32,6 @@ jobs:
           uv run pytest tests/ -v
 
       - name: Python Semantic Release
-        working-directory: cli
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GIT_AUTHOR_NAME: github-actions[bot]
@@ -41,6 +40,6 @@ jobs:
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: |
           pip install python-semantic-release
-          semantic-release version
-          semantic-release publish
+          semantic-release -c .semantic-release.toml version
+          semantic-release -c .semantic-release.toml publish
 
