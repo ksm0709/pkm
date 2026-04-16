@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.27.0 (2026-04-16)
+
+### Features
+
+- Default all CLI output to JSON, add turn-start context injection
+  ([`1404fa0`](https://github.com/ksm0709/pkm/commit/1404fa084286ce5dd4c4dafaf7dabd4ddb986b8d))
+
+
 ## v2.26.1 (2026-04-16)
 
 ### Bug Fixes
