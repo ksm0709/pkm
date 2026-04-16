@@ -20,14 +20,33 @@ def _normalize_tag(version: str) -> str:
     return version if version.startswith("v") else f"v{version}"
 
 
-def _search_installed() -> bool:
+def _extra_installed(import_check: str) -> bool:
+    """Check whether a Python package is importable."""
     return (
         subprocess.run(
-            [sys.executable, "-c", "import sentence_transformers"],
+            [sys.executable, "-c", f"import {import_check}"],
             capture_output=True,
         ).returncode
         == 0
     )
+
+
+# Map of optional extras → the import that proves they are installed.
+_EXTRAS_PROBE: dict[str, str] = {
+    "search": "sentence_transformers",
+    "mcp": "mcp",
+}
+
+
+def _installed_extras() -> list[str]:
+    """Return the list of optional extras currently installed."""
+    return [name for name, probe in _EXTRAS_PROBE.items() if _extra_installed(probe)]
+
+
+def _extras_suffix() -> str:
+    """Build the pip extras suffix, e.g. '[search,mcp]' or ''."""
+    extras = _installed_extras()
+    return f"[{','.join(extras)}]" if extras else ""
 
 
 @click.command("update")
@@ -85,7 +104,10 @@ def update_cmd(version: str | None) -> None:
                 )
 
         console.print("[cyan]Reinstalling...[/cyan]")
-        install_target = str(cli_dir) + ("[search]" if _search_installed() else "")
+        suffix = _extras_suffix()
+        if suffix:
+            console.print(f"[dim]Extras detected: {suffix}[/dim]")
+        install_target = str(cli_dir) + suffix
         result = subprocess.run(
             [
                 "uv",
@@ -111,9 +133,10 @@ def update_cmd(version: str | None) -> None:
         console.print("[cyan]Downloading latest from GitHub...[/cyan]")
         try:
             with cli_source() as (dl_cli_dir, is_local):
-                install_target = str(dl_cli_dir) + (
-                    "[search]" if _search_installed() else ""
-                )
+                suffix = _extras_suffix()
+                if suffix:
+                    console.print(f"[dim]Extras detected: {suffix}[/dim]")
+                install_target = str(dl_cli_dir) + suffix
                 console.print("[cyan]Reinstalling...[/cyan]")
                 result = subprocess.run(
                     [
