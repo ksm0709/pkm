@@ -45,7 +45,8 @@ def test_hook_run_session_start_system_reminder(runner, vault_env):
     assert result.output.strip().endswith("</system-reminder>")
 
 
-def test_hook_run_session_start_with_daily_notes(runner, vault_env, tmp_vault):
+def test_hook_run_session_start_no_recent_work_context(runner, vault_env, tmp_vault):
+    """session-start no longer includes Recent Work Context (moved to turn-start)."""
     yesterday = (date.today() - timedelta(days=1)).isoformat()
     (tmp_vault.daily_dir / f"{yesterday}.md").write_text(
         f"---\nid: {yesterday}\ntags: []\n---\nImportant context here.\n",
@@ -53,7 +54,8 @@ def test_hook_run_session_start_with_daily_notes(runner, vault_env, tmp_vault):
     )
     result = runner.invoke(main, ["hook", "run", "session-start"])
     assert result.exit_code == 0
-    assert "Recent Work Context" in result.output
+    assert "Recent Work Context" not in result.output
+    assert "PKM" in result.output  # still has usage guide
 
 
 def test_hook_run_session_start_ignores_irrelevant_options(runner, vault_env):
@@ -359,3 +361,132 @@ def test_corrupt_session_state_recovery(runner, vault_env, tmp_vault):
     state_path.write_text("{{invalid json{{", encoding="utf-8")
     result = runner.invoke(main, ["hook", "run", "session-start"])
     assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# _tail_daily_entries — recent context continuity
+# ---------------------------------------------------------------------------
+
+
+def test_tail_daily_entries_today_only(tmp_vault):
+    """When today has enough entries, only today's entries are returned."""
+    from pkm.commands.hook import _tail_daily_entries
+
+    today = date.today().isoformat()
+    (tmp_vault.daily_dir / f"{today}.md").write_text(
+        "---\nid: today\ntags: []\n---\n"
+        "- [08:00] entry one\n"
+        "- [09:00] entry two\n"
+        "- [10:00] entry three\n"
+        "- [11:00] entry four\n"
+        "- [12:00] entry five\n"
+        "- [13:00] entry six\n",
+        encoding="utf-8",
+    )
+
+    result = _tail_daily_entries(tmp_vault, total=5)
+    # Should have date header + 5 entries (last 5)
+    assert result[0] == f"### {today}"
+    assert len(result) == 6  # 1 header + 5 entries
+    assert "entry two" in result[1]
+    assert "entry six" in result[-1]
+
+
+def test_tail_daily_entries_backfill_from_yesterday(tmp_vault):
+    """When today has fewer entries than total, backfill from yesterday."""
+    from pkm.commands.hook import _tail_daily_entries
+
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+
+    (tmp_vault.daily_dir / f"{today.isoformat()}.md").write_text(
+        "---\nid: today\ntags: []\n---\n"
+        "- [10:00] today entry one\n"
+        "- [11:00] today entry two\n",
+        encoding="utf-8",
+    )
+    (tmp_vault.daily_dir / f"{yesterday.isoformat()}.md").write_text(
+        "---\nid: yesterday\ntags: []\n---\n"
+        "- [08:00] yesterday entry one\n"
+        "- [09:00] yesterday entry two\n"
+        "- [20:00] yesterday entry three\n"
+        "- [21:00] yesterday entry four\n"
+        "- [22:00] yesterday entry five\n",
+        encoding="utf-8",
+    )
+
+    result = _tail_daily_entries(tmp_vault, total=5)
+    # 2 from today + 3 backfill from yesterday = 5 entries + 2 headers
+    assert f"### {yesterday.isoformat()}" in result
+    assert f"### {today.isoformat()}" in result
+    assert sum(1 for l in result if l.startswith("- [")) == 5
+    # Yesterday entries should be the last 3
+    assert "yesterday entry three" in result[1]
+    assert "yesterday entry five" in result[3]
+    # Today entries follow
+    assert "today entry one" in result[5]
+    assert "today entry two" in result[6]
+
+
+def test_tail_daily_entries_empty_daily(tmp_vault):
+    """When no daily notes exist, returns empty list."""
+    from pkm.commands.hook import _tail_daily_entries
+
+    result = _tail_daily_entries(tmp_vault, total=5)
+    assert result == []
+
+
+def test_tail_daily_entries_skips_non_entries(tmp_vault):
+    """Lines like ## TODO or plain text are not treated as entries."""
+    from pkm.commands.hook import _tail_daily_entries
+
+    today = date.today().isoformat()
+    (tmp_vault.daily_dir / f"{today}.md").write_text(
+        "---\nid: today\ntags: []\n---\n"
+        "- [08:00] real entry\n"
+        "## TODO\n"
+        "- plain bullet without timestamp\n"
+        "some plain text\n",
+        encoding="utf-8",
+    )
+
+    result = _tail_daily_entries(tmp_vault, total=5)
+    assert len(result) == 2  # 1 header + 1 entry
+    assert "real entry" in result[1]
+
+
+def test_turn_start_includes_recent_context(runner, vault_env, tmp_vault):
+    """turn-start hook output includes Recent Context section from daily entries."""
+    today = date.today().isoformat()
+    (tmp_vault.daily_dir / f"{today}.md").write_text(
+        "---\nid: today\ntags: []\n---\n"
+        "- [09:00] context entry alpha\n"
+        "- [10:00] context entry beta\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(main, ["hook", "run", "turn-start", "--format", "plain"])
+    assert result.exit_code == 0
+    assert "## Recent Context" in result.output
+    assert "context entry alpha" in result.output
+    assert "context entry beta" in result.output
+
+
+def test_turn_start_config_daily_tail_n(runner, vault_env, tmp_vault):
+    """hooks.daily_tail_n in config.toml controls how many daily entries are shown."""
+    today = date.today().isoformat()
+    (tmp_vault.daily_dir / f"{today}.md").write_text(
+        "---\nid: today\ntags: []\n---\n"
+        + "".join(f"- [{h:02d}:00] entry {h}\n" for h in range(10)),
+        encoding="utf-8",
+    )
+    # Set daily_tail_n = 2 via config
+    tmp_vault.pkm_dir.mkdir(parents=True, exist_ok=True)
+    (tmp_vault.pkm_dir / "config.toml").write_text(
+        "[hooks]\ndaily_tail_n = 2\n", encoding="utf-8"
+    )
+    result = runner.invoke(main, ["hook", "run", "turn-start", "--format", "plain"])
+    assert result.exit_code == 0
+    # Only last 2 entries (08, 09) should appear
+    assert "entry 9" in result.output
+    assert "entry 8" in result.output
+    assert "entry 0" not in result.output

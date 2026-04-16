@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import click
 from rich.console import Console
 from rich.table import Table
@@ -86,7 +88,15 @@ def get_config(key: str) -> None:
 
 
 @config.command(name="list")
-def list_config() -> None:
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="json",
+    show_default=True,
+    help="Output format",
+)
+def list_config(output_format: str) -> None:
     """List all configuration settings."""
     data = load_config()
 
@@ -97,14 +107,17 @@ def list_config() -> None:
     if "editor" in defaults:
         rows.append(("editor", defaults["editor"]))
 
-    if not rows:
-        console.print("No configuration set.")
-        return
+    if output_format == "json":
+        print(json.dumps({k: v for k, v in rows}, ensure_ascii=False, indent=2))
+    else:
+        if not rows:
+            console.print("No configuration set.")
+            return
 
-    table = Table(show_header=True, header_style="bold")
-    table.add_column("Key")
-    table.add_column("Value")
-    for k, v in rows:
-        table.add_row(k, v)
+        table = Table(show_header=True, header_style="bold")
+        table.add_column("Key")
+        table.add_column("Value")
+        for k, v in rows:
+            table.add_row(k, v)
 
-    console.print(table)
+        console.print(table)

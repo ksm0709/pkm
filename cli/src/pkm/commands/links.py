@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -15,28 +16,41 @@ console = Console()
 
 
 @click.command()
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="json",
+    show_default=True,
+    help="Output format",
+)
 @click.pass_context
-def orphans(ctx: click.Context) -> None:
+def orphans(ctx: click.Context, output_format: str) -> None:
     """List orphan notes — notes with no inbound or outbound links."""
     vault = ctx.obj["vault"]
     orphan_paths = find_orphans(vault)
 
-    if not orphan_paths:
-        console.print("[green]No orphan notes found.[/green]")
-        return
+    if output_format == "json":
+        items = []
+        for path in orphan_paths:
+            items.append({"filename": path.name, "tags": _extract_tags(path)})
+        print(json.dumps({"orphans": items, "count": len(items)}, ensure_ascii=False, indent=2))
+    else:
+        if not orphan_paths:
+            console.print("[green]No orphan notes found.[/green]")
+            return
 
-    table = Table(title="Orphan Notes", show_header=True, header_style="bold magenta")
-    table.add_column("Filename", style="cyan")
-    table.add_column("Tags", style="yellow")
+        table = Table(title="Orphan Notes", show_header=True, header_style="bold magenta")
+        table.add_column("Filename", style="cyan")
+        table.add_column("Tags", style="yellow")
 
-    for path in orphan_paths:
-        filename = path.name
-        # Extract tags from frontmatter if present
-        tags = _extract_tags(path)
-        table.add_row(filename, ", ".join(tags) if tags else "")
+        for path in orphan_paths:
+            filename = path.name
+            tags = _extract_tags(path)
+            table.add_row(filename, ", ".join(tags) if tags else "")
 
-    console.print(table)
-    console.print(f"\n[bold]{len(orphan_paths)}[/bold] orphan note(s) found.")
+        console.print(table)
+        console.print(f"\n[bold]{len(orphan_paths)}[/bold] orphan note(s) found.")
 
 
 def _extract_tags(path: Path) -> list[str]:

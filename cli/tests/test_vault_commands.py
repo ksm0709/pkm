@@ -56,6 +56,8 @@ def test_vault_list_shows_counts(tmp_path: Path, monkeypatch):
 
 
 def test_vault_list_marks_default(tmp_path: Path, monkeypatch):
+    import json as _json
+
     vaults = _make_vaults(tmp_path)
     _patch_vaults(monkeypatch, vaults)
     monkeypatch.setenv("PKM_DEFAULT_VAULT", "beta")
@@ -63,17 +65,23 @@ def test_vault_list_marks_default(tmp_path: Path, monkeypatch):
     runner = CliRunner()
     result = runner.invoke(main, ["vault", "list"])
     assert result.exit_code == 0
-    assert "★" in result.output
+    data = _json.loads(result.output)
+    assert data["active"] == "beta"
+    active_vaults = [v for v in data["vaults"] if v["active"]]
+    assert len(active_vaults) >= 1
 
 
 def test_vault_list_empty(monkeypatch):
+    import json as _json
+
     monkeypatch.setattr("pkm.config.discover_vaults", lambda root=None: {})
     monkeypatch.setattr("pkm.commands.vault.discover_vaults", lambda root=None: {})
 
     runner = CliRunner()
     result = runner.invoke(main, ["vault", "list"])
     assert result.exit_code == 0
-    assert "pkm vault add" in result.output
+    data = _json.loads(result.output)
+    assert data["vaults"] == []
 
 
 # ---------------------------------------------------------------------------

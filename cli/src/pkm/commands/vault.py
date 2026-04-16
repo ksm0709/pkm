@@ -7,6 +7,8 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
+import json
+
 import click
 from rich.console import Console
 from rich.table import Table
@@ -52,15 +54,26 @@ def vault() -> None:
 
 
 @vault.command(name="list")
-def list_vaults() -> None:
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="json",
+    show_default=True,
+    help="Output format",
+)
+def list_vaults(output_format: str) -> None:
     """List all discovered vaults."""
     from pkm.config import get_vault_context
 
     vaults = discover_vaults()
     if not vaults:
-        console.print(
-            "No vaults found. Use [bold]pkm vault add <name>[/bold] to create one."
-        )
+        if output_format == "json":
+            print(json.dumps({"vaults": [], "active": None}, indent=2))
+        else:
+            console.print(
+                "No vaults found. Use [bold]pkm vault add <name>[/bold] to create one."
+            )
         return
 
     try:
@@ -70,32 +83,53 @@ def list_vaults() -> None:
         active_name = None
         active_source = ""
 
-    table = Table(show_header=True, header_style="bold")
-    table.add_column("Name")
-    table.add_column("Type")
-    table.add_column("Path")
-    table.add_column("Notes", justify="right")
-    table.add_column("Dailies", justify="right")
-    table.add_column("Active", justify="left")
-
-    for name, vc in vaults.items():
-        notes_count = _count_md(vc.notes_dir)
-        dailies_count = _count_md(vc.daily_dir)
-        if name == active_name:
-            active_mark = f"[bold green]★[/bold green] [dim]via {active_source}[/dim]"
-        else:
-            active_mark = ""
-        vault_type = "[cyan]git[/cyan]" if name.startswith("@") else "local"
-        table.add_row(
-            name,
-            vault_type,
-            str(vc.path),
-            str(notes_count),
-            str(dailies_count),
-            active_mark,
+    if output_format == "json":
+        items = []
+        for name, vc in vaults.items():
+            items.append(
+                {
+                    "name": name,
+                    "type": "git" if name.startswith("@") else "local",
+                    "path": str(vc.path),
+                    "notes": _count_md(vc.notes_dir),
+                    "dailies": _count_md(vc.daily_dir),
+                    "active": name == active_name,
+                }
+            )
+        print(
+            json.dumps(
+                {"vaults": items, "active": active_name, "active_source": active_source},
+                ensure_ascii=False,
+                indent=2,
+            )
         )
+    else:
+        table = Table(show_header=True, header_style="bold")
+        table.add_column("Name")
+        table.add_column("Type")
+        table.add_column("Path")
+        table.add_column("Notes", justify="right")
+        table.add_column("Dailies", justify="right")
+        table.add_column("Active", justify="left")
 
-    console.print(table)
+        for name, vc in vaults.items():
+            notes_count = _count_md(vc.notes_dir)
+            dailies_count = _count_md(vc.daily_dir)
+            if name == active_name:
+                active_mark = f"[bold green]★[/bold green] [dim]via {active_source}[/dim]"
+            else:
+                active_mark = ""
+            vault_type = "[cyan]git[/cyan]" if name.startswith("@") else "local"
+            table.add_row(
+                name,
+                vault_type,
+                str(vc.path),
+                str(notes_count),
+                str(dailies_count),
+                active_mark,
+            )
+
+        console.print(table)
 
 
 def init_vault_dirs(vault_path: Path, name: str) -> None:

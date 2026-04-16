@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import fnmatch
+import json
 import re
 from collections import Counter
 from pathlib import Path
@@ -51,8 +52,16 @@ def _collect_notes_with_tag(vault: VaultConfig, tag: str) -> list:
 
 
 @click.group(invoke_without_command=True)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="json",
+    show_default=True,
+    help="Output format",
+)
 @click.pass_context
-def tags(ctx: click.Context) -> None:
+def tags(ctx: click.Context, output_format: str) -> None:
     """Show all tags used across notes and dailies, sorted by count."""
     if ctx.invoked_subcommand is not None:
         return
@@ -73,14 +82,18 @@ def tags(ctx: click.Context) -> None:
             except Exception:
                 pass
 
-    table = Table(title="Tags", show_header=True, header_style="bold cyan")
-    table.add_column("Tag", style="green")
-    table.add_column("Count", justify="right")
+    if output_format == "json":
+        items = [{"tag": tag, "count": count} for tag, count in tag_counter.most_common()]
+        print(json.dumps({"tags": items, "count": len(items)}, ensure_ascii=False, indent=2))
+    else:
+        table = Table(title="Tags", show_header=True, header_style="bold cyan")
+        table.add_column("Tag", style="green")
+        table.add_column("Count", justify="right")
 
-    for tag, count in tag_counter.most_common():
-        table.add_row(tag, str(count))
+        for tag, count in tag_counter.most_common():
+            table.add_row(tag, str(count))
 
-    console.print(table)
+        console.print(table)
 
 
 @tags.command()
@@ -105,55 +118,87 @@ def edit(ctx: click.Context, tag: str) -> None:
 
 @tags.command()
 @click.argument("tag")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="json",
+    show_default=True,
+    help="Output format",
+)
 @click.pass_context
-def show(ctx: click.Context, tag: str) -> None:
+def show(ctx: click.Context, tag: str, output_format: str) -> None:
     """Show a tag note and all notes with that tag."""
     vault = ctx.obj["vault"]
 
     tag_path = ensure_tag_note(vault, tag)
     tag_note = parse(tag_path)
-
-    # Show tag note info
-    header = f"Tag: {tag}"
-    if tag_note.description:
-        header += f" — {tag_note.description}"
-
-    body = tag_note.body.strip()
-    if body:
-        console.print(Panel(body, title=header, border_style="green"))
-    else:
-        console.print(
-            Panel(
-                "[dim]No description yet. Edit with: pkm tags edit " + tag + "[/dim]",
-                title=header,
-                border_style="green",
-            )
-        )
-
-    # Show notes with this tag
     notes = _collect_notes_with_tag(vault, tag)
 
-    if not notes:
-        console.print(f"\n[dim]No notes found with tag '{tag}'[/dim]")
-        return
+    if output_format == "json":
+        items = [
+            {"title": n.title, "description": n.description or "", "path": n.path.name}
+            for n in notes
+        ]
+        print(
+            json.dumps(
+                {
+                    "tag": tag,
+                    "description": tag_note.description or "",
+                    "body": tag_note.body.strip(),
+                    "notes": items,
+                    "count": len(items),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    else:
+        header = f"Tag: {tag}"
+        if tag_note.description:
+            header += f" — {tag_note.description}"
 
-    table = Table(
-        title=f"Notes tagged '{tag}'", show_header=True, header_style="bold cyan"
-    )
-    table.add_column("Title", style="cyan")
-    table.add_column("Description", style="dim")
-    table.add_column("Path", style="dim")
+        body = tag_note.body.strip()
+        if body:
+            console.print(Panel(body, title=header, border_style="green"))
+        else:
+            console.print(
+                Panel(
+                    "[dim]No description yet. Edit with: pkm tags edit " + tag + "[/dim]",
+                    title=header,
+                    border_style="green",
+                )
+            )
 
-    for n in notes:
-        table.add_row(n.title, n.description or "", n.path.name)
+        if not notes:
+            console.print(f"\n[dim]No notes found with tag '{tag}'[/dim]")
+            return
 
-    console.print(table)
+        table = Table(
+            title=f"Notes tagged '{tag}'", show_header=True, header_style="bold cyan"
+        )
+        table.add_column("Title", style="cyan")
+        table.add_column("Description", style="dim")
+        table.add_column("Path", style="dim")
+
+        for n in notes:
+            table.add_row(n.title, n.description or "", n.path.name)
+
+        console.print(table)
 
 
 @tags.command()
 @click.argument("pattern")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="json",
+    show_default=True,
+    help="Output format",
+)
 @click.pass_context
-def search(ctx: click.Context, pattern: str) -> None:
+def search(ctx: click.Context, pattern: str, output_format: str) -> None:
     """Search notes by tag pattern. Supports glob (*), AND (+), and OR (,)."""
     vault = ctx.obj["vault"]
 
@@ -174,39 +219,48 @@ def search(ctx: click.Context, pattern: str) -> None:
     # Single + is AND operator (but ++ in tag names like c++ is preserved)
     and_parts = re.split(r"(?<!\+)\+(?!\+)", pattern)
     if len(and_parts) > 1:
-        # AND: note must have ALL tags
         required_tags = [t.strip() for t in and_parts if t.strip()]
         matched = [n for n in all_notes if all(t in n.tags for t in required_tags)]
         mode = f"AND({', '.join(required_tags)})"
     elif "," in pattern:
-        # OR: note must have at least ONE tag
         or_tags = [t.strip() for t in pattern.split(",") if t.strip()]
         matched = [n for n in all_notes if any(t in n.tags for t in or_tags)]
         mode = f"OR({', '.join(or_tags)})"
     elif "*" in pattern or "?" in pattern:
-        # Glob: match tag names
         matched = [
             n for n in all_notes if any(fnmatch.fnmatch(t, pattern) for t in n.tags)
         ]
         mode = f"glob({pattern})"
     else:
-        # Exact match
         matched = [n for n in all_notes if pattern in n.tags]
         mode = f"exact({pattern})"
 
-    if not matched:
-        console.print(f"[dim]No notes found matching {mode}[/dim]")
-        return
+    if output_format == "json":
+        items = [
+            {"title": n.title, "tags": n.tags, "path": n.path.name}
+            for n in matched
+        ]
+        print(
+            json.dumps(
+                {"pattern": pattern, "mode": mode, "results": items, "count": len(items)},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    else:
+        if not matched:
+            console.print(f"[dim]No notes found matching {mode}[/dim]")
+            return
 
-    table = Table(
-        title=f"Tag Search: {mode}", show_header=True, header_style="bold cyan"
-    )
-    table.add_column("Title", style="cyan")
-    table.add_column("Tags", style="green")
-    table.add_column("Path", style="dim")
+        table = Table(
+            title=f"Tag Search: {mode}", show_header=True, header_style="bold cyan"
+        )
+        table.add_column("Title", style="cyan")
+        table.add_column("Tags", style="green")
+        table.add_column("Path", style="dim")
 
-    for n in matched:
-        table.add_row(n.title, ", ".join(n.tags), n.path.name)
+        for n in matched:
+            table.add_row(n.title, ", ".join(n.tags), n.path.name)
 
-    console.print(table)
-    console.print(f"\n[dim]{len(matched)} note(s) found[/dim]")
+        console.print(table)
+        console.print(f"\n[dim]{len(matched)} note(s) found[/dim]")

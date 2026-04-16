@@ -256,37 +256,63 @@ def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None
         ]
     )
 
-    # 3. Recent work context from daily notes
-    from datetime import date, timedelta
-
-    daily_dir = vault.daily_dir
-    daily_lines: list[str] = []
-    for i in range(1, 4):
-        d = (date.today() - timedelta(days=i)).isoformat()
-        daily_path = daily_dir / f"{d}.md"
-        if daily_path.exists():
-            text = daily_path.read_text(encoding="utf-8")
-            if text.startswith("---"):
-                end = text.find("---", 3)
-                if end != -1:
-                    text = text[end + 3 :].strip()
-            preview = text[:300].strip()
-            if preview:
-                daily_lines.append(f"### {d}\n{preview}")
-                if len(daily_lines) >= 2:
-                    break
-
-    if daily_lines:
-        lines.append("")
-        lines.append("## Recent Work Context")
-        lines.extend(daily_lines)
-
     content = "\n".join(lines).strip()
 
     if output_format == "system-reminder":
         click.echo(f"<system-reminder>\n{content}\n</system-reminder>")
     else:
         click.echo(content)
+
+
+def _parse_daily_entries(path: Path) -> list[str]:
+    """Extract timestamped entries (lines starting with '- [') from a daily note."""
+    if not path.exists():
+        return []
+    try:
+        text = path.read_text(encoding="utf-8")
+    except Exception:
+        return []
+    if text.startswith("---"):
+        end = text.find("---", 3)
+        if end != -1:
+            text = text[end + 3 :]
+    return [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip().startswith("- [")
+    ]
+
+
+def _tail_daily_entries(vault, total: int = 10) -> list[str]:
+    """Return the last *total* daily-note entries from today + yesterday.
+
+    If today has fewer entries than *total*, backfill from yesterday.
+    Returns formatted lines with date headers when mixing days.
+    """
+    from datetime import date, timedelta
+
+    daily_dir = vault.daily_dir
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+
+    today_entries = _parse_daily_entries(daily_dir / f"{today.isoformat()}.md")
+    today_label = today.isoformat()
+
+    if len(today_entries) >= total:
+        return [f"### {today_label}"] + today_entries[-total:]
+
+    remaining = total - len(today_entries)
+    yesterday_entries = _parse_daily_entries(daily_dir / f"{yesterday.isoformat()}.md")
+    backfill = yesterday_entries[-remaining:] if remaining > 0 else []
+
+    result: list[str] = []
+    if backfill:
+        result.append(f"### {yesterday.isoformat()}")
+        result.extend(backfill)
+    if today_entries:
+        result.append(f"### {today_label}")
+        result.extend(today_entries)
+    return result
 
 
 def _handle_turn_start(
@@ -297,6 +323,22 @@ def _handle_turn_start(
 
     vault = ctx.obj["vault"]
     lines: list[str] = []
+
+    # --- Load hook config for tunable values ---
+    hook_config = _load_hook_config(vault)
+    hooks_cfg = hook_config.get("hooks", {})
+    daily_tail_n = int(hooks_cfg.get("daily_tail_n", 10))
+    search_top_n = int(hooks_cfg.get("search_top_n", 3))
+
+    # --- Recent daily entries for context continuity ---
+    try:
+        tail = _tail_daily_entries(vault, total=daily_tail_n)
+        if tail:
+            lines.append("## Recent Context")
+            lines.extend(tail)
+            lines.append("")
+    except Exception:
+        pass
 
     # --- Dynamic context injection from stdin + daily note ---
     user_prompt = ""
@@ -338,10 +380,10 @@ def _handle_turn_start(
             search_via_daemon,
         )
 
-        results = search_via_daemon(query, vault, top_n=3, min_importance=5.0)
+        results = search_via_daemon(query, vault, top_n=search_top_n, min_importance=5.0)
         if results is None:
             index = load_index(vault)
-            results = engine_search(query, index, top_n=3, min_importance=5.0)
+            results = engine_search(query, index, top_n=search_top_n, min_importance=5.0)
 
         if results:
             lines.append("## Relevant Notes")

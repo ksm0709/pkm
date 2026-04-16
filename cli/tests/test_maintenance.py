@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import time
 
@@ -23,8 +24,10 @@ def test_tags_command(tmp_vault: VaultConfig, monkeypatch):
     runner = CliRunner()
     result = runner.invoke(main, ["--vault", tmp_vault.name, "tags"])
     assert result.exit_code == 0
-    assert "database" in result.output
-    assert "daily-notes" in result.output
+    data = json.loads(result.output)
+    tag_names = [t["tag"] for t in data["tags"]]
+    assert "database" in tag_names
+    assert "daily-notes" in tag_names
 
 
 def test_stats_command(tmp_vault: VaultConfig, monkeypatch):
@@ -32,10 +35,11 @@ def test_stats_command(tmp_vault: VaultConfig, monkeypatch):
     runner = CliRunner()
     result = runner.invoke(main, ["--vault", tmp_vault.name, "stats"])
     assert result.exit_code == 0
-    assert "Notes" in result.output
-    assert "Dailies" in result.output
-    assert "Orphans" in result.output
-    assert "not indexed" in result.output
+    data = json.loads(result.output)
+    assert "notes" in data
+    assert "dailies" in data
+    assert "orphans" in data
+    assert data["index"] == "not indexed"
 
 
 def test_stale_with_old_note(tmp_vault: VaultConfig, monkeypatch):
@@ -50,7 +54,9 @@ def test_stale_with_old_note(tmp_vault: VaultConfig, monkeypatch):
         main, ["--vault", tmp_vault.name, "note", "stale", "--days", "30"]
     )
     assert result.exit_code == 0
-    assert "isolated-note" in result.output
+    data = json.loads(result.output)
+    note_names = [n["note"] for n in data["stale_notes"]]
+    assert "isolated-note.md" in note_names
 
 
 def test_stale_no_results(tmp_vault: VaultConfig, monkeypatch):
@@ -61,4 +67,5 @@ def test_stale_no_results(tmp_vault: VaultConfig, monkeypatch):
         main, ["--vault", tmp_vault.name, "note", "stale", "--days", "9999"]
     )
     assert result.exit_code == 0
-    assert "0 stale note(s)" in result.output
+    data = json.loads(result.output)
+    assert data["count"] == 0

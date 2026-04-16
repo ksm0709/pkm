@@ -454,34 +454,56 @@ def note_search(
 
 @note.command()
 @click.argument("query")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="json",
+    show_default=True,
+    help="Output format",
+)
 @click.pass_context
-def links(ctx: click.Context, query: str) -> None:
+def links(ctx: click.Context, query: str, output_format: str) -> None:
     """Show backlinks for a note."""
     vault = ctx.obj["vault"]
     matches = _search_notes(vault, query)
     if not matches:
-        console.print(f"[red]No notes found matching '{query}'[/red]")
+        if output_format == "json":
+            print(json.dumps({"error": f"No notes found matching '{query}'"}, ensure_ascii=False, indent=2))
+        else:
+            console.print(f"[red]No notes found matching '{query}'[/red]")
         raise SystemExit(1)
     selected = matches[0]
 
     backlink_paths = find_backlinks(vault, selected.id)
-    if not backlink_paths:
-        console.print(f"[dim]No backlinks found for '{selected.title}'[/dim]")
-        return
 
-    table = Table(title=f"Backlinks for '{selected.title}'")
-    table.add_column("Title", style="cyan")
-    table.add_column("Description", style="dim")
-    table.add_column("Path", style="dim")
+    if output_format == "json":
+        items = []
+        for bp in backlink_paths:
+            try:
+                bl_note = parse(bp)
+                items.append({"title": bl_note.title, "description": bl_note.description or "", "path": bp.name})
+            except Exception:
+                pass
+        print(json.dumps({"note": selected.title, "backlinks": items, "count": len(items)}, ensure_ascii=False, indent=2))
+    else:
+        if not backlink_paths:
+            console.print(f"[dim]No backlinks found for '{selected.title}'[/dim]")
+            return
 
-    for bp in backlink_paths:
-        try:
-            bl_note = parse(bp)
-            table.add_row(bl_note.title, bl_note.description or "", bp.name)
-        except Exception:
-            pass
+        table = Table(title=f"Backlinks for '{selected.title}'")
+        table.add_column("Title", style="cyan")
+        table.add_column("Description", style="dim")
+        table.add_column("Path", style="dim")
 
-    console.print(table)
+        for bp in backlink_paths:
+            try:
+                bl_note = parse(bp)
+                table.add_row(bl_note.title, bl_note.description or "", bp.name)
+            except Exception:
+                pass
+
+        console.print(table)
 
 
 @note.command(name="log")

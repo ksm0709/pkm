@@ -211,6 +211,15 @@ def test_config_list_empty(monkeypatch):
     runner = CliRunner()
     result = runner.invoke(main, ["config", "list"])
     assert result.exit_code == 0
+    assert result.output.strip() == "{}"
+
+
+def test_config_list_empty_table(monkeypatch):
+    monkeypatch.setattr("pkm.commands.config.load_config", lambda: {})
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["config", "list", "--format", "table"])
+    assert result.exit_code == 0
     assert "No configuration" in result.output
 
 

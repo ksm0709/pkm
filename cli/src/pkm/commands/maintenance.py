@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from datetime import datetime
 from pathlib import Path
@@ -18,8 +19,16 @@ console = Console()
 
 
 @click.command()
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="json",
+    show_default=True,
+    help="Output format",
+)
 @click.pass_context
-def stats(ctx: click.Context) -> None:
+def stats(ctx: click.Context, output_format: str) -> None:
     """Show vault statistics."""
     vault = ctx.obj["vault"]
 
@@ -76,25 +85,50 @@ def stats(ctx: click.Context) -> None:
     else:
         index_status = "not indexed"
 
-    table = Table(show_header=False, box=None)
-    table.add_column("Metric", style="bold")
-    table.add_column("Value", justify="right")
+    if output_format == "json":
+        print(
+            json.dumps(
+                {
+                    "notes": note_count,
+                    "dailies": daily_count,
+                    "tasks": task_count,
+                    "orphans": orphan_count,
+                    "unique_tags": len(tag_set),
+                    "avg_links_per_note": round(avg_links, 1),
+                    "index": index_status,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    else:
+        table = Table(show_header=False, box=None)
+        table.add_column("Metric", style="bold")
+        table.add_column("Value", justify="right")
 
-    table.add_row("Notes", str(note_count))
-    table.add_row("Dailies", str(daily_count))
-    table.add_row("Tasks", str(task_count))
-    table.add_row("Orphans", str(orphan_count))
-    table.add_row("Unique tags", str(len(tag_set)))
-    table.add_row("Avg links/note", f"{avg_links:.1f}")
-    table.add_row("Index", index_status)
+        table.add_row("Notes", str(note_count))
+        table.add_row("Dailies", str(daily_count))
+        table.add_row("Tasks", str(task_count))
+        table.add_row("Orphans", str(orphan_count))
+        table.add_row("Unique tags", str(len(tag_set)))
+        table.add_row("Avg links/note", f"{avg_links:.1f}")
+        table.add_row("Index", index_status)
 
-    console.print(Panel(table, title="Vault Stats", border_style="cyan"))
+        console.print(Panel(table, title="Vault Stats", border_style="cyan"))
 
 
 @click.command()
 @click.option("--days", "-d", default=30, help="Days threshold")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="json",
+    show_default=True,
+    help="Output format",
+)
 @click.pass_context
-def stale(ctx: click.Context, days: int) -> None:
+def stale(ctx: click.Context, days: int, output_format: str) -> None:
     """Show notes not modified in the last N days."""
     vault = ctx.obj["vault"]
 
@@ -111,17 +145,35 @@ def stale(ctx: click.Context, days: int) -> None:
 
     stale_notes.sort(key=lambda x: x[1])
 
-    table = Table(
-        title=f"Stale Notes (> {days} days)", show_header=True, header_style="bold cyan"
-    )
-    table.add_column("Note", style="green")
-    table.add_column("Last Modified")
-    table.add_column("Days Ago", justify="right")
+    if output_format == "json":
+        items = []
+        for md_file, mtime in stale_notes:
+            items.append(
+                {
+                    "note": md_file.name,
+                    "last_modified": datetime.fromtimestamp(mtime).strftime("%Y-%m-%d"),
+                    "days_ago": int((now - mtime) / 86400),
+                }
+            )
+        print(
+            json.dumps(
+                {"threshold_days": days, "stale_notes": items, "count": len(items)},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    else:
+        table = Table(
+            title=f"Stale Notes (> {days} days)", show_header=True, header_style="bold cyan"
+        )
+        table.add_column("Note", style="green")
+        table.add_column("Last Modified")
+        table.add_column("Days Ago", justify="right")
 
-    for md_file, mtime in stale_notes:
-        last_modified = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
-        days_ago = int((now - mtime) / 86400)
-        table.add_row(md_file.name, last_modified, str(days_ago))
+        for md_file, mtime in stale_notes:
+            last_modified = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
+            days_ago = int((now - mtime) / 86400)
+            table.add_row(md_file.name, last_modified, str(days_ago))
 
-    console.print(table)
-    console.print(f"\n[dim]{len(stale_notes)} stale note(s) found[/dim]")
+        console.print(table)
+        console.print(f"\n[dim]{len(stale_notes)} stale note(s) found[/dim]")

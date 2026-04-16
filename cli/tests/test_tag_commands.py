@@ -103,7 +103,11 @@ def test_tags_search_or(cli_runner, tmp_vault):
 
 
 def test_tags_search_no_results(cli_runner, tmp_vault):
-    """pkm tags search with unmatched pattern shows no results message."""
+    """pkm tags search with unmatched pattern returns empty results."""
+    import json
+
     result = cli_runner("tags", "search", "nonexistent-tag-xyz")
     assert result.exit_code == 0
-    assert "No notes found" in result.output or "no notes" in result.output.lower()
+    data = json.loads(result.output)
+    assert data["count"] == 0
+    assert data["results"] == []
