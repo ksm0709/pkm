@@ -2,6 +2,17 @@
 
 <!-- version list -->
 
+## v2.28.4 (2026-04-16)
+
+### Bug Fixes
+
+- Add pwd fallback for non-git project stop hook path
+  ([`cf8a1ef`](https://github.com/ksm0709/pkm/commit/cf8a1efddc7fee0139e5409539524f1da8faa71f))
+
+- Use absolute path for Stop hook, fix skill sync path
+  ([`48c7867`](https://github.com/ksm0709/pkm/commit/48c7867454e934bb6d9eb8fb6d0bcc081971f127))
+
+
 ## v2.28.3 (2026-04-16)
 
 ### Bug Fixes
