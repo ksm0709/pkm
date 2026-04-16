@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.28.5 (2026-04-16)
+
+### Bug Fixes
+
+- Clean up stop hook output, suppress logs on success
+  ([`08359ff`](https://github.com/ksm0709/pkm/commit/08359ffa8a47f34c5743add6632ace1eb9d6392f))
+
+
 ## v2.28.4 (2026-04-16)
 
 ### Bug Fixes
