@@ -28,10 +28,22 @@ def _sync_dir(src: Path, dst: Path) -> None:
     shutil.copytree(str(src), str(dst), dirs_exist_ok=True)
 
 
+def _find_skill_src() -> Path | None:
+    """Locate the plugin/skills/pkm/ directory from the repo root."""
+    from pkm._install_source import find_local_cli_dir
+
+    cli_dir = find_local_cli_dir()
+    if cli_dir is not None:
+        candidate = cli_dir.parent / "plugin" / "skills" / "pkm"
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
 def install_skill_files() -> bool:
     """Install/sync skill and command files to ~/.claude and ~/.agents. Returns True if found."""
-    skill_src = Path(__file__).parent.parent / "skill"
-    if not skill_src.is_dir():
+    skill_src = _find_skill_src()
+    if skill_src is None:
         return False
 
     for dest, label in [
