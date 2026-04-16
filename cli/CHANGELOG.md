@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.28.0 (2026-04-16)
+
+### Features
+
+- Auto-merge daily notes on vault unset, remove stale cli/.pkm
+  ([`1301b67`](https://github.com/ksm0709/pkm/commit/1301b6710b97852243fe77fc11563e6dc3e9c1b0))
+
+
 ## v2.27.0 (2026-04-16)
 
 ### Features
