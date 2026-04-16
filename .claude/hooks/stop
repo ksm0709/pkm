@@ -3,36 +3,18 @@
 # Redirect all output to stderr so the LLM sees the messages when exiting with code 2
 exec 1>&2
 
-echo "[Quality Gate] Running project Stop hook..."
-
 # Check if there are any tracked or untracked changes
 if git diff HEAD --quiet && [ -z "$(git ls-files --others --exclude-standard)" ]; then
-    echo "No code changes detected. Stop hook passed."
     exit 0
 fi
 
-echo "Code changes detected. Enforcing lint, format, and test..."
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+cd "$ROOT/cli" || exit 2
 
-echo "-> Formatting code (ruff)..."
-cd cli && uv run ruff format . || { echo "Formatting failed."; exit 2; }
-cd ..
+# Run quality gates — only show output on failure
+FMT_OUT=$(uv run ruff format . 2>&1) || { echo "Formatting failed."; echo "$FMT_OUT"; exit 2; }
+LINT_OUT=$(uv run ruff check --fix . 2>&1) || { echo "Linting failed."; echo "$LINT_OUT"; exit 2; }
+TEST_OUT=$(uv run pytest tests/ -q 2>&1) || { echo "Tests failed."; echo "$TEST_OUT"; exit 2; }
 
-echo "-> Linting code (ruff)..."
-cd cli && uv run ruff check --fix . || { echo "Linting failed! Please fix the lint errors."; exit 2; }
-cd ..
-
-echo "-> Running tests (pytest)..."
-cd cli && uv run pytest tests/ || { echo "Tests failed! Please fix the tests before stopping."; exit 2; }
-cd ..
-
-echo ""
-echo "======================================================================"
-echo "🛑 ACTION REQUIRED BY MAIN AGENT 🛑"
-echo "Code changes are present. All quality gates (lint, format, test) PASSED!"
-echo ""
-echo "Please check if there is no remaining task or user request anymore."
-echo "Wait for user request for 30sec (e.g. by running \`sleep 30\` in background bash or using background bash task)."
-echo "If everything is clean and no new requests are made, then commit and push the changes yourself."
-echo "Once the working directory is clean, this hook will pass and you can end the session."
-echo "======================================================================"
+echo "Code changes are present. All quality gates (lint, format, test) PASSED! If no new request has been submitted, commit and push the changes by yourself."
 exit 2
