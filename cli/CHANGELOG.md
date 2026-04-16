@@ -2,6 +2,22 @@
 
 <!-- version list -->
 
+## v2.26.1 (2026-04-16)
+
+### Bug Fixes
+
+- Preserve all installed extras during pkm update
+  ([`958b602`](https://github.com/ksm0709/pkm/commit/958b60265a9a4ea4d7e57a1318b4a5e5b83be946))
+
+### Refactoring
+
+- Generalize agent-specific names in examples
+  ([`6272bea`](https://github.com/ksm0709/pkm/commit/6272bea12ab14012bb738ff2716fd1db4abe159b))
+
+- Remove zeroclaw references from MCP server docstrings
+  ([`bea5557`](https://github.com/ksm0709/pkm/commit/bea5557901f9652a40e639a732b26bc70aa24f9c))
+
+
 ## v2.26.0 (2026-04-15)
 
 ### Features
