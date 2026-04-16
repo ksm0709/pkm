@@ -16,13 +16,7 @@ def mcp_cmd(ctx: click.Context, vault_name: str | None) -> None:
 
     Tools exposed: note_add, daily_add, search, index.
     """
-    try:
-        from pkm.mcp_server import run_server
-    except ImportError:
-        raise click.ClickException(
-            "MCP support requires the 'mcp' extra. Install with:\n"
-            "  pip install pkm[mcp]"
-        )
+    from pkm.mcp_server import run_server
 
     from pkm.config import get_vault
 
