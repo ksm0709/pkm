@@ -34,13 +34,19 @@ def orphans(ctx: click.Context, output_format: str) -> None:
         items = []
         for path in orphan_paths:
             items.append({"filename": path.name, "tags": _extract_tags(path)})
-        print(json.dumps({"orphans": items, "count": len(items)}, ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                {"orphans": items, "count": len(items)}, ensure_ascii=False, indent=2
+            )
+        )
     else:
         if not orphan_paths:
             console.print("[green]No orphan notes found.[/green]")
             return
 
-        table = Table(title="Orphan Notes", show_header=True, header_style="bold magenta")
+        table = Table(
+            title="Orphan Notes", show_header=True, header_style="bold magenta"
+        )
         table.add_column("Filename", style="cyan")
         table.add_column("Tags", style="yellow")
 

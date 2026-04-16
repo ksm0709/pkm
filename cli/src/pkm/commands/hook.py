@@ -277,9 +277,7 @@ def _parse_daily_entries(path: Path) -> list[str]:
         if end != -1:
             text = text[end + 3 :]
     return [
-        line.strip()
-        for line in text.splitlines()
-        if line.strip().startswith("- [")
+        line.strip() for line in text.splitlines() if line.strip().startswith("- [")
     ]
 
 
@@ -380,10 +378,14 @@ def _handle_turn_start(
             search_via_daemon,
         )
 
-        results = search_via_daemon(query, vault, top_n=search_top_n, min_importance=5.0)
+        results = search_via_daemon(
+            query, vault, top_n=search_top_n, min_importance=5.0
+        )
         if results is None:
             index = load_index(vault)
-            results = engine_search(query, index, top_n=search_top_n, min_importance=5.0)
+            results = engine_search(
+                query, index, top_n=search_top_n, min_importance=5.0
+            )
 
         if results:
             lines.append("## Relevant Notes")

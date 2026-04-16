@@ -516,6 +516,122 @@ def test_vault_unset_migrates_to_parent(tmp_path: Path, monkeypatch):
     assert not (child_project / ".pkm").exists()
 
 
+def test_vault_unset_merges_daily_notes(tmp_path: Path, monkeypatch):
+    """When both vaults have the same daily note, entries are merged by time."""
+    runner = CliRunner()
+
+    parent_storage = tmp_path / "parent_vault"
+    parent_storage.mkdir()
+    (parent_storage / "daily").mkdir()
+    (parent_storage / "notes").mkdir()
+    (parent_storage / ".pkm").mkdir()
+
+    child_storage = tmp_path / "child_vault"
+    child_storage.mkdir()
+    (child_storage / "daily").mkdir()
+    (child_storage / "notes").mkdir()
+    (child_storage / ".pkm").mkdir()
+
+    parent_project = tmp_path / "parent_project"
+    parent_project.mkdir()
+    (parent_project / ".pkm").write_text('vault = "parent_vault"')
+
+    child_project = parent_project / "child_project"
+    child_project.mkdir()
+    (child_project / ".pkm").write_text('vault = "child_vault"')
+
+    # Parent has entries at 09:00
+    (parent_storage / "daily" / "2026-04-16.md").write_text(
+        "---\nid: 2026-04-16\ntags:\n  - daily-notes\n---\n"
+        "- [09:00] parent entry alpha\n"
+        "## TODO\n",
+        encoding="utf-8",
+    )
+    # Child has entries at 08:00 and 10:00
+    (child_storage / "daily" / "2026-04-16.md").write_text(
+        "---\nid: 2026-04-16\ntags:\n  - daily-notes\n  - child-tag\n---\n"
+        "- [08:00] child entry early\n"
+        "- [10:00] child entry late\n"
+        "## TODO\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr("pkm.config.get_vaults_root", lambda: tmp_path)
+    monkeypatch.setattr("pkm.config.get_local_config_vault", lambda: "child_vault")
+    monkeypatch.chdir(child_project)
+
+    result = runner.invoke(main, ["vault", "unset"])
+    assert result.exit_code == 0, result.output
+
+    # Verify merged daily note
+    merged = (parent_storage / "daily" / "2026-04-16.md").read_text(encoding="utf-8")
+
+    # No _migrated file should exist
+    migrated_files = list((parent_storage / "daily").glob("*migrated*"))
+    assert migrated_files == [], f"Should not create migrated files: {migrated_files}"
+
+    # All 3 entries present, sorted by time
+    assert "child entry early" in merged
+    assert "parent entry alpha" in merged
+    assert "child entry late" in merged
+    lines = [ln.strip() for ln in merged.splitlines() if ln.strip().startswith("- [")]
+    assert lines[0].startswith("- [08:00]")
+    assert lines[1].startswith("- [09:00]")
+    assert lines[2].startswith("- [10:00]")
+
+    # Tags merged
+    assert "daily-notes" in merged
+    assert "child-tag" in merged
+
+
+def test_vault_unset_merges_deduplicates_entries(tmp_path: Path, monkeypatch):
+    """Duplicate entries across vaults are deduplicated during merge."""
+    runner = CliRunner()
+
+    parent_storage = tmp_path / "parent_vault"
+    parent_storage.mkdir()
+    (parent_storage / "daily").mkdir()
+    (parent_storage / "notes").mkdir()
+    (parent_storage / ".pkm").mkdir()
+
+    child_storage = tmp_path / "child_vault"
+    child_storage.mkdir()
+    (child_storage / "daily").mkdir()
+    (child_storage / "notes").mkdir()
+    (child_storage / ".pkm").mkdir()
+
+    parent_project = tmp_path / "parent_project"
+    parent_project.mkdir()
+    (parent_project / ".pkm").write_text('vault = "parent_vault"')
+
+    child_project = parent_project / "child_project"
+    child_project.mkdir()
+    (child_project / ".pkm").write_text('vault = "child_vault"')
+
+    same_entry = "- [09:00] same entry in both"
+    (parent_storage / "daily" / "2026-04-16.md").write_text(
+        f"---\nid: 2026-04-16\ntags: []\n---\n{same_entry}\n",
+        encoding="utf-8",
+    )
+    (child_storage / "daily" / "2026-04-16.md").write_text(
+        f"---\nid: 2026-04-16\ntags: []\n---\n{same_entry}\n- [10:00] unique child\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr("pkm.config.get_vaults_root", lambda: tmp_path)
+    monkeypatch.setattr("pkm.config.get_local_config_vault", lambda: "child_vault")
+    monkeypatch.chdir(child_project)
+
+    result = runner.invoke(main, ["vault", "unset"])
+    assert result.exit_code == 0, result.output
+
+    merged = (parent_storage / "daily" / "2026-04-16.md").read_text(encoding="utf-8")
+    entries = [ln.strip() for ln in merged.splitlines() if ln.strip().startswith("- [")]
+    # Same entry appears only once
+    assert entries.count(same_entry) == 1
+    assert len(entries) == 2  # same_entry + unique child
+
+
 def test_vault_unset_remove_flag(tmp_path: Path, monkeypatch):
     runner = CliRunner()
 

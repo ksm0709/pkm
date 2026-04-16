@@ -7,7 +7,6 @@ Runs as a foreground stdio server. An MCP client spawns this process via config:
 
 from __future__ import annotations
 
-from pathlib import Path
 
 import click
 from mcp.server.fastmcp import FastMCP
@@ -124,7 +123,10 @@ def search(
             min_importance=min_importance,
         )
         if results is None:
-            return {"error": "Daemon unavailable. Start with: pkm daemon start", "code": -32000}
+            return {
+                "error": "Daemon unavailable. Start with: pkm daemon start",
+                "code": -32000,
+            }
         return {
             "results": [
                 {

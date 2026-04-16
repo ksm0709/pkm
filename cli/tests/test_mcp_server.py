@@ -87,7 +87,6 @@ class TestDailyAdd:
         assert "Testing MCP daily add" in result["entry"]
 
         # Verify the daily note exists and contains the entry
-        daily_files = list(tmp_vault.daily_dir.glob("*.md"))
         # Find today's file
         from datetime import datetime
 
@@ -114,7 +113,9 @@ class TestSearch:
         mock_result.path = "/fake/path"
         mock_result.rank = 1
 
-        with patch("pkm.search_engine.search_via_daemon", return_value=[mock_result]) as mock_daemon:
+        with patch(
+            "pkm.search_engine.search_via_daemon", return_value=[mock_result]
+        ) as mock_daemon:
             result = mcp_mod.search(query="test query")
             mock_daemon.assert_called_once()
             assert result["count"] == 1
@@ -140,9 +141,11 @@ class TestSearch:
 
         with (
             patch("pkm.mcp_server.get_vault", return_value=other_vault) as mock_get,
-            patch("pkm.search_engine.search_via_daemon", return_value=[]) as mock_search,
+            patch(
+                "pkm.search_engine.search_via_daemon", return_value=[]
+            ) as mock_search,
         ):
-            result = mcp_mod.search(query="test", vault="other")
+            mcp_mod.search(query="test", vault="other")
             mock_get.assert_called_once_with("other")
             # search_via_daemon should be called with the other vault
             call_args = mock_search.call_args
@@ -158,7 +161,9 @@ class TestIndex:
         mock_index = MagicMock()
         mock_index.entries = [MagicMock(), MagicMock()]
 
-        with patch("pkm.search_engine.build_index", return_value=mock_index) as mock_build:
+        with patch(
+            "pkm.search_engine.build_index", return_value=mock_index
+        ) as mock_build:
             result = mcp_mod.index()
             mock_build.assert_called_once_with(tmp_vault)
             assert result["status"] == "indexed"
@@ -186,9 +191,12 @@ class TestMcpCliIntegration:
         from pkm.cli import main
 
         # Simulate missing mcp by patching the import in the command
-        import pkm.commands.mcp as mcp_cmd_mod
 
-        original_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+        original_import = (
+            __builtins__.__import__
+            if hasattr(__builtins__, "__import__")
+            else __import__
+        )
 
         def mock_import(name, *args, **kwargs):
             if name == "pkm.mcp_server":
@@ -200,7 +208,11 @@ class TestMcpCliIntegration:
         runner = CliRunner()
         result = runner.invoke(main, ["mcp"])
         assert result.exit_code != 0
-        assert "mcp" in result.output.lower() or "mcp" in (result.exception or "").__class__.__name__.lower() or True
+        assert (
+            "mcp" in result.output.lower()
+            or "mcp" in (result.exception or "").__class__.__name__.lower()
+            or True
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -246,16 +258,19 @@ class TestMcpE2EProtocol:
 
     def test_initialize_handshake(self, mcp_process) -> None:
         """initialize request returns protocolVersion and serverInfo."""
-        resp = self._send_and_recv(mcp_process, {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": {"name": "test", "version": "0.1"},
+        resp = self._send_and_recv(
+            mcp_process,
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "test", "version": "0.1"},
+                },
             },
-        })
+        )
         assert resp.get("id") == 1
         result = resp.get("result", {})
         assert "protocolVersion" in result
@@ -264,28 +279,39 @@ class TestMcpE2EProtocol:
     def test_tools_list(self, mcp_process) -> None:
         """After initialize, tools/list returns 4 tools."""
         # Initialize first
-        self._send_and_recv(mcp_process, {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": {"name": "test", "version": "0.1"},
+        self._send_and_recv(
+            mcp_process,
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "test", "version": "0.1"},
+                },
             },
-        })
+        )
         # Send initialized notification
-        notif = json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}}) + "\n"
+        notif = (
+            json.dumps(
+                {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}}
+            )
+            + "\n"
+        )
         mcp_process.stdin.write(notif.encode())
         mcp_process.stdin.flush()
 
         # List tools
-        resp = self._send_and_recv(mcp_process, {
-            "jsonrpc": "2.0",
-            "id": 2,
-            "method": "tools/list",
-            "params": {},
-        })
+        resp = self._send_and_recv(
+            mcp_process,
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/list",
+                "params": {},
+            },
+        )
         result = resp.get("result", {})
         tools = result.get("tools", [])
         tool_names = {t["name"] for t in tools}

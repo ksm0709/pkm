@@ -52,7 +52,9 @@ def test_session_start_system_reminder(runner, vault_env):
     assert "</system-reminder>" in result.output
 
 
-def test_session_start_no_recent_work_context(runner, vault_env, tmp_vault: VaultConfig):
+def test_session_start_no_recent_work_context(
+    runner, vault_env, tmp_vault: VaultConfig
+):
     """session-start no longer includes Recent Work Context (moved to turn-start)."""
     yesterday = (date.today() - timedelta(days=1)).isoformat()
     daily_path = tmp_vault.daily_dir / f"{yesterday}.md"

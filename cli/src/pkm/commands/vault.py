@@ -13,6 +13,7 @@ import click
 from rich.console import Console
 from rich.table import Table
 
+from pkm.commands._trash import make_trash_path
 from pkm.config import (
     VaultConfig,
     discover_vaults,
@@ -98,7 +99,11 @@ def list_vaults(output_format: str) -> None:
             )
         print(
             json.dumps(
-                {"vaults": items, "active": active_name, "active_source": active_source},
+                {
+                    "vaults": items,
+                    "active": active_name,
+                    "active_source": active_source,
+                },
                 ensure_ascii=False,
                 indent=2,
             )
@@ -116,7 +121,9 @@ def list_vaults(output_format: str) -> None:
             notes_count = _count_md(vc.notes_dir)
             dailies_count = _count_md(vc.daily_dir)
             if name == active_name:
-                active_mark = f"[bold green]★[/bold green] [dim]via {active_source}[/dim]"
+                active_mark = (
+                    f"[bold green]★[/bold green] [dim]via {active_source}[/dim]"
+                )
             else:
                 active_mark = ""
             vault_type = "[cyan]git[/cyan]" if name.startswith("@") else "local"
@@ -203,11 +210,7 @@ def remove(name: str, yes: bool) -> None:
     if not yes:
         click.confirm(f"Move vault '{name}' to trash?", abort=True)
 
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    trash_parent = Path.home() / ".local" / "share" / "pkm" / "trash"
-    trash_path = trash_parent / f"{name}-{timestamp}"
-    trash_parent.mkdir(parents=True, exist_ok=True)
-
+    trash_path = make_trash_path(name)
     shutil.move(str(vault_path), str(trash_path))
     console.print(f"[yellow]Moved to trash:[/yellow] {trash_path}")
 
@@ -301,11 +304,7 @@ def unset(remove: bool) -> None:
         raise click.ClickException(f"Failed to resolve current vault: {e}")
 
     if remove:
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        trash_parent = Path.home() / ".local" / "share" / "pkm" / "trash"
-        trash_path = trash_parent / f"{vc.name}-{timestamp}"
-        trash_parent.mkdir(parents=True, exist_ok=True)
-
+        trash_path = make_trash_path(vc.name)
         if vc.path.exists():
             shutil.move(str(vc.path), str(trash_path))
             console.print(f"[yellow]Moved vault to trash:[/yellow] {trash_path}")
@@ -347,19 +346,20 @@ def unset(remove: bool) -> None:
                 src_file = Path(root) / file
                 dst_file = target_dir / file
 
-                if dst_file.exists():
+                if dst_file.exists() and subdir == "daily" and file.endswith(".md"):
+                    # Merge daily notes: union tags, deduplicate + time-sort entries
+                    _merge_daily_notes(dst_file, src_file)
+                    src_file.unlink()
+                elif dst_file.exists():
                     dst_file = (
                         target_dir
                         / f"{src_file.stem}_migrated_{timestamp}{src_file.suffix}"
                     )
+                    shutil.move(str(src_file), str(dst_file))
+                else:
+                    shutil.move(str(src_file), str(dst_file))
 
-                shutil.move(str(src_file), str(dst_file))
-
-    trash_ts = datetime.now().strftime("%Y%m%d-%H%M%S")
-    trash_parent = Path.home() / ".local" / "share" / "pkm" / "trash"
-    trash_path = trash_parent / f"{vc.name}-{trash_ts}"
-    trash_parent.mkdir(parents=True, exist_ok=True)
-
+    trash_path = make_trash_path(vc.name)
     if vc.path.exists():
         shutil.move(str(vc.path), str(trash_path))
 
@@ -368,6 +368,65 @@ def unset(remove: bool) -> None:
     console.print(
         f"[yellow]Moved original vault directory to trash:[/yellow] {trash_path}"
     )
+
+
+def _merge_daily_notes(dst_file: Path, src_file: Path) -> None:
+    """Merge two daily note files: union tags, deduplicate + time-sort entries."""
+    from pkm.frontmatter import parse as parse_note, render
+
+    dst_note = parse_note(dst_file)
+    src_note = parse_note(src_file)
+
+    # Merge tags (union, deduplicated, preserve order)
+    seen: set[str] = set()
+    merged_tags: list[str] = []
+    for tag in dst_note.tags + src_note.tags:
+        if tag and tag not in seen:
+            seen.add(tag)
+            merged_tags.append(tag)
+
+    # Merge frontmatter: dst takes precedence, add missing keys from src
+    merged_meta = dict(src_note.meta)
+    merged_meta.update(dst_note.meta)
+    merged_meta["tags"] = merged_tags
+
+    # Parse body lines into entries and non-entries
+    def _parse_body(body: str) -> tuple[list[str], list[str]]:
+        entries: list[str] = []
+        other: list[str] = []
+        for line in body.strip().splitlines():
+            stripped = line.strip()
+            if stripped.startswith("- ["):
+                entries.append(stripped)
+            elif stripped:
+                other.append(stripped)
+        return entries, other
+
+    dst_entries, dst_other = _parse_body(dst_note.body)
+    src_entries, src_other = _parse_body(src_note.body)
+
+    # Deduplicate entries
+    all_entries = list(dict.fromkeys(dst_entries + src_entries))
+
+    # Sort by timestamp (extract [HH:MM] prefix)
+    import re
+
+    def _sort_key(entry: str) -> str:
+        m = re.match(r"- \[(\d{2}:\d{2})\]", entry)
+        return m.group(1) if m else "99:99"
+
+    all_entries.sort(key=_sort_key)
+
+    # Merge non-entry lines (deduplicated)
+    all_other = list(dict.fromkeys(dst_other + src_other))
+
+    # Reconstruct body
+    body_parts = all_entries
+    if all_other:
+        body_parts = body_parts + [""] + all_other
+
+    merged_body = "\n".join(body_parts) + "\n"
+    dst_file.write_text(render(merged_meta, merged_body), encoding="utf-8")
 
 
 def _count_md(directory: Path) -> int:

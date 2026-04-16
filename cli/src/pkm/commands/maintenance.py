@@ -164,7 +164,9 @@ def stale(ctx: click.Context, days: int, output_format: str) -> None:
         )
     else:
         table = Table(
-            title=f"Stale Notes (> {days} days)", show_header=True, header_style="bold cyan"
+            title=f"Stale Notes (> {days} days)",
+            show_header=True,
+            header_style="bold cyan",
         )
         table.add_column("Note", style="green")
         table.add_column("Last Modified")

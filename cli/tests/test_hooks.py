@@ -419,7 +419,7 @@ def test_tail_daily_entries_backfill_from_yesterday(tmp_vault):
     # 2 from today + 3 backfill from yesterday = 5 entries + 2 headers
     assert f"### {yesterday.isoformat()}" in result
     assert f"### {today.isoformat()}" in result
-    assert sum(1 for l in result if l.startswith("- [")) == 5
+    assert sum(1 for line in result if line.startswith("- [")) == 5
     # Yesterday entries should be the last 3
     assert "yesterday entry three" in result[1]
     assert "yesterday entry five" in result[3]

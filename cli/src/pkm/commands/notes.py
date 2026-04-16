@@ -59,11 +59,8 @@ def create_note(
     elif title:
         effective_title = title
     else:
-        raise ValueError(
-            "Provide a title, or use content for agent usage"
-        )
+        raise ValueError("Provide a title, or use content for agent usage")
 
-    similar_notes: list = []
     if not no_dedup and content:
         try:
             from pkm.search_engine import load_index, find_similar, search_via_daemon
@@ -76,7 +73,7 @@ def create_note(
                 _matches = find_similar(content, _index, threshold=0.85, top_n=1)
 
             if _matches:
-                similar_notes = _matches
+                pass  # similar notes found but dedup not yet implemented
         except Exception:
             pass
 
@@ -249,7 +246,11 @@ def add(
 
     vault = ctx.obj["vault"]
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
-    meta = {k: v for k, _, v in (p.partition("=") for p in meta_pairs) if k} if meta_pairs else None
+    meta = (
+        {k: v for k, _, v in (p.partition("=") for p in meta_pairs) if k}
+        if meta_pairs
+        else None
+    )
 
     try:
         note_path = create_note(
@@ -469,7 +470,13 @@ def links(ctx: click.Context, query: str, output_format: str) -> None:
     matches = _search_notes(vault, query)
     if not matches:
         if output_format == "json":
-            print(json.dumps({"error": f"No notes found matching '{query}'"}, ensure_ascii=False, indent=2))
+            print(
+                json.dumps(
+                    {"error": f"No notes found matching '{query}'"},
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
         else:
             console.print(f"[red]No notes found matching '{query}'[/red]")
         raise SystemExit(1)
@@ -482,10 +489,22 @@ def links(ctx: click.Context, query: str, output_format: str) -> None:
         for bp in backlink_paths:
             try:
                 bl_note = parse(bp)
-                items.append({"title": bl_note.title, "description": bl_note.description or "", "path": bp.name})
+                items.append(
+                    {
+                        "title": bl_note.title,
+                        "description": bl_note.description or "",
+                        "path": bp.name,
+                    }
+                )
             except Exception:
                 pass
-        print(json.dumps({"note": selected.title, "backlinks": items, "count": len(items)}, ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                {"note": selected.title, "backlinks": items, "count": len(items)},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
     else:
         if not backlink_paths:
             console.print(f"[dim]No backlinks found for '{selected.title}'[/dim]")

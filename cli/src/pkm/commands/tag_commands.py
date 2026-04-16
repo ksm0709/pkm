@@ -83,8 +83,14 @@ def tags(ctx: click.Context, output_format: str) -> None:
                 pass
 
     if output_format == "json":
-        items = [{"tag": tag, "count": count} for tag, count in tag_counter.most_common()]
-        print(json.dumps({"tags": items, "count": len(items)}, ensure_ascii=False, indent=2))
+        items = [
+            {"tag": tag, "count": count} for tag, count in tag_counter.most_common()
+        ]
+        print(
+            json.dumps(
+                {"tags": items, "count": len(items)}, ensure_ascii=False, indent=2
+            )
+        )
     else:
         table = Table(title="Tags", show_header=True, header_style="bold cyan")
         table.add_column("Tag", style="green")
@@ -164,7 +170,9 @@ def show(ctx: click.Context, tag: str, output_format: str) -> None:
         else:
             console.print(
                 Panel(
-                    "[dim]No description yet. Edit with: pkm tags edit " + tag + "[/dim]",
+                    "[dim]No description yet. Edit with: pkm tags edit "
+                    + tag
+                    + "[/dim]",
                     title=header,
                     border_style="green",
                 )
@@ -237,12 +245,16 @@ def search(ctx: click.Context, pattern: str, output_format: str) -> None:
 
     if output_format == "json":
         items = [
-            {"title": n.title, "tags": n.tags, "path": n.path.name}
-            for n in matched
+            {"title": n.title, "tags": n.tags, "path": n.path.name} for n in matched
         ]
         print(
             json.dumps(
-                {"pattern": pattern, "mode": mode, "results": items, "count": len(items)},
+                {
+                    "pattern": pattern,
+                    "mode": mode,
+                    "results": items,
+                    "count": len(items),
+                },
                 ensure_ascii=False,
                 indent=2,
             )

@@ -39,6 +39,9 @@ Thumbs.db
 .logs/
 state/
 
+# Vault references (local per-machine)
+cli/.pkm
+
 # Claude / agent context (local-only)
 AGENTS.md
 CLAUDE.md
