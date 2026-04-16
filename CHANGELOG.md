@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.28.3 (2026-04-16)
+
+### Bug Fixes
+
+- Update skill source path after skill/ → plugin/skills/pkm/ move
+  ([`93fb400`](https://github.com/ksm0709/pkm/commit/93fb40036f404001ca60efe853c53fbfd4c47cb4))
+
+
 ## v2.28.2 (2026-04-16)
 
 ### Bug Fixes
