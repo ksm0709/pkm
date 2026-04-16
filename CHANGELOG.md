@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.28.2 (2026-04-16)
+
+### Bug Fixes
+
+- Move semantic-release config to repo root, remove stale mcp extra probe
+  ([`8d56d0c`](https://github.com/ksm0709/pkm/commit/8d56d0c3f06a514654a07c1baaec2c94cefccde5))
+
+
 ## v2.28.0 (2026-04-16)
 
 ### Features
