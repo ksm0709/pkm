@@ -114,66 +114,87 @@ def ask_cmd(
 
     sock_path = Path.home() / ".config" / "pkm" / "daemon.sock"
 
-    if not sock_path.exists():
-        console.print(
-            "[red]Error:[/red] Daemon is not running. Start it with 'pkm daemon start'."
-        )
+    console.print(f"[dim]Asking daemon using model '{final_model}'...[/dim]")
+    
+    import time
+    import subprocess
+    
+    sock = None
+    for attempt in range(50):
+        try:
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            sock.settimeout(timeout)
+            sock.connect(str(sock_path))
+            break
+        except (FileNotFoundError, ConnectionRefusedError):
+            if sock:
+                sock.close()
+                sock = None
+            if attempt == 0:
+                daemon_dir = Path.home() / ".config" / "pkm"
+                daemon_dir.mkdir(parents=True, exist_ok=True)
+                try:
+                    subprocess.Popen(
+                        [sys.executable, "-m", "pkm.daemon"],
+                        stdin=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        start_new_session=True,
+                    )
+                except Exception as e:
+                    console.print(f"[red]Failed to start daemon: {e}[/red]")
+                    sys.exit(1)
+            time.sleep(0.1)
+            
+    if not sock:
+        console.print("[red]Error:[/red] Daemon failed to start or connection refused.")
         sys.exit(1)
 
-    with console.status(f"[cyan]Asking daemon using model '{final_model}'...[/cyan]"):
-        try:
-            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
-                sock.settimeout(timeout)
-                sock.connect(str(sock_path))
+    try:
+        with sock:
+            req = {
+                "action": "ask",
+                "query": query_str,
+                "vault_name": vault.name,
+                "model": final_model,
+                "env_keys": env_keys,
+            }
+            sock.sendall(json.dumps(req).encode("utf-8") + b"\n")
 
-                req = {
-                    "action": "ask",
-                    "query": query_str,
-                    "vault_name": vault.name,
-                    "model": final_model,
-                    "env_keys": env_keys,
-                }
-                sock.sendall(json.dumps(req).encode("utf-8") + b"\n")
+            f = sock.makefile("r", encoding="utf-8")
+            resp_line = f.readline()
 
-                f = sock.makefile("r", encoding="utf-8")
-                resp_line = f.readline()
+            if not resp_line:
+                console.print("[red]Error:[/red] No response from daemon.")
+                sys.exit(1)
 
-                if not resp_line:
-                    console.print("[red]Error:[/red] No response from daemon.")
-                    sys.exit(1)
+            data = json.loads(resp_line)
 
-                data = json.loads(resp_line)
-
-                if data.get("type") == "error" or "error" in data:
-                    error_msg = data.get("message") or data.get("error", "Unknown error")
-                    if error_msg == "BudgetExhausted" or "BudgetExhausted" in error_msg:
-                        console.print(
-                            "[red]Error:[/red] Token budget exhausted. Please try again later."
-                        )
-                    else:
-                        console.print(f"[red]Error:[/red] {error_msg}")
-                    sys.exit(1)
-
-                if "data" in data and "response" in data["data"]:
-                    console.print(data["data"]["response"])
-                elif "response" in data:
-                    console.print(data["response"])
-                else:
+            if data.get("type") == "error" or "error" in data:
+                error_msg = data.get("message") or data.get("error", "Unknown error")
+                if error_msg == "BudgetExhausted" or "BudgetExhausted" in error_msg:
                     console.print(
-                        f"[red]Error:[/red] Invalid response format from daemon: {data}"
+                        "[red]Error:[/red] Token budget exhausted. Please try again later."
                     )
-                    sys.exit(1)
+                else:
+                    console.print(f"[red]Error:[/red] {error_msg}")
+                sys.exit(1)
 
-        except socket.timeout:
-            console.print(
-                f"[red]Error:[/red] Request timed out after {timeout} seconds."
-            )
-            sys.exit(1)
-        except ConnectionRefusedError:
-            console.print(
-                "[red]Error:[/red] Connection refused. Is the daemon running?"
-            )
-            sys.exit(1)
-        except Exception as e:
-            console.print(f"[red]Error:[/red] An unexpected error occurred: {e}")
-            sys.exit(1)
+            if "data" in data and "response" in data["data"]:
+                console.print(data["data"]["response"])
+            elif "response" in data:
+                console.print(data["response"])
+            else:
+                console.print(
+                    f"[red]Error:[/red] Invalid response format from daemon: {data}"
+                )
+                sys.exit(1)
+
+    except socket.timeout:
+        console.print(
+            f"[red]Error:[/red] Request timed out after {timeout} seconds."
+        )
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]Error:[/red] An unexpected error occurred: {e}")
+        sys.exit(1)

@@ -190,32 +190,37 @@ async def pkm_ask(
     target_vault = _get_vault(vault)
     sock_path = Path.home() / ".config" / "pkm" / "daemon.sock"
 
-    if not sock_path.exists():
-        return {"error": "Daemon is not running. Start it with 'pkm daemon start'."}
-
-    config_model = load_config().get("defaults", {}).get("model")
-    final_model = model or config_model or "auto"
-
-    if final_model != "auto":
-        try:
-            import litellm
-
-            validation = litellm.validate_environment(final_model)
-            if not validation.get("keys_in_environment", True):
-                missing = validation.get("missing_keys", [])
-                if missing:
-                    return {
-                        "error": f"API keys for model '{final_model}' are missing from your environment: {', '.join(missing)}. Export them and restart the daemon."
-                    }
-        except Exception:
-            pass
-
     env_keys = {k: v for k, v in os.environ.items() if k.endswith("_API_KEY")}
 
+    reader = None
     writer = None
-    try:
-        reader, writer = await asyncio.open_unix_connection(str(sock_path))
+    for attempt in range(50):
+        try:
+            reader, writer = await asyncio.open_unix_connection(str(sock_path))
+            break
+        except (FileNotFoundError, ConnectionRefusedError):
+            if attempt == 0:
+                import subprocess
+                import sys
 
+                daemon_dir = Path.home() / ".config" / "pkm"
+                daemon_dir.mkdir(parents=True, exist_ok=True)
+                try:
+                    subprocess.Popen(
+                        [sys.executable, "-m", "pkm.daemon"],
+                        stdin=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        start_new_session=True,
+                    )
+                except Exception:
+                    pass
+            await asyncio.sleep(0.1)
+
+    if not writer:
+        return {"error": "Daemon failed to start. Run 'pkm daemon start' manually."}
+
+    try:
         req = {
             "action": "ask",
             "query": query,
@@ -248,8 +253,6 @@ async def pkm_ask(
 
     except asyncio.TimeoutError:
         return {"error": f"Request timed out after {timeout} seconds."}
-    except ConnectionRefusedError:
-        return {"error": "Connection refused. Is the daemon running?"}
     except Exception as e:
         return {"error": f"An unexpected error occurred: {e}"}
     finally:
