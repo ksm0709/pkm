@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v2.37.1 (2026-04-18)
+
+### Bug Fixes
+
+- **ask**: Prefix anthropic models for accurate litellm validation
+  ([`b33b709`](https://github.com/ksm0709/pkm/commit/b33b709d97ccc331827da32d7565f6129aefe494))
+
+### Chores
+
+- **deps**: Add litellm to search extra and update setup/skill docs
+  ([`581d720`](https://github.com/ksm0709/pkm/commit/581d720d0cb41fb75af279fff79966d2b9119f6a))
+
+
 ## v2.37.0 (2026-04-18)
 
 ### Chores
