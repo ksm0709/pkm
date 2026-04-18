@@ -411,6 +411,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                 "id": task_id,
                 "task_type": "ask",
                 "query": req.get("query"),
+                "model": req.get("model", "gpt-4o-mini"),
             }
 
             try:

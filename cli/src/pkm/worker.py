@@ -61,7 +61,7 @@ class IPCClient:
 ipc = IPCClient()
 
 
-def handle_ask(task_id: str, query: str, vault_dir: str):
+def handle_ask(task_id: str, query: str, vault_dir: str, model: Optional[str] = None):
     messages = [
         {
             "role": "system",
@@ -71,7 +71,7 @@ def handle_ask(task_id: str, query: str, vault_dir: str):
     ]
 
     try:
-        response = ipc.call_llm(messages)
+        response = ipc.call_llm(messages, model=model)
         ipc.send_message(
             {
                 "type": "result",
@@ -137,7 +137,9 @@ def main():
                 task_type = msg.get("task_type")
 
                 if task_type == "ask":
-                    handle_ask(task_id, msg.get("query", ""), vault_dir)
+                    handle_ask(
+                        task_id, msg.get("query", ""), vault_dir, msg.get("model")
+                    )
                 elif task_type == "zettelkasten_maintenance":
                     handle_zettelkasten_maintenance(
                         task_id, msg.get("file_path", ""), vault_dir

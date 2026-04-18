@@ -19,21 +19,36 @@ console = Console()
     "--timeout", type=int, default=120, help="Timeout in seconds to wait for the result"
 )
 @click.option("--model", type=str, help="LLM model to use (overrides config)")
-@click.option("--list-models", is_flag=True, help="List available model providers via litellm")
+@click.option(
+    "--list-models", is_flag=True, help="List available model providers via litellm"
+)
 @click.pass_context
-def ask_cmd(ctx: click.Context, query: tuple[str, ...], timeout: int, model: str | None, list_models: bool) -> None:
+def ask_cmd(
+    ctx: click.Context,
+    query: tuple[str, ...],
+    timeout: int,
+    model: str | None,
+    list_models: bool,
+) -> None:
     """Ask a natural language question about your vault."""
     if list_models:
         try:
             import litellm
+
             console.print("[bold cyan]Available LiteLLM Providers:[/bold cyan]")
             providers = sorted(list(litellm.models_by_provider.keys()))
             console.print(", ".join(providers))
-            console.print("\n[dim]Note: Most providers require specific API keys (e.g. OPENAI_API_KEY, ANTHROPIC_API_KEY).[/dim]")
-            console.print("[dim]For a full list of models per provider, visit: https://docs.litellm.ai/docs/providers[/dim]")
+            console.print(
+                "\n[dim]Note: Most providers require specific API keys (e.g. OPENAI_API_KEY, ANTHROPIC_API_KEY).[/dim]"
+            )
+            console.print(
+                "[dim]For a full list of models per provider, visit: https://docs.litellm.ai/docs/providers[/dim]"
+            )
             sys.exit(0)
         except ImportError:
-            console.print("[red]Error:[/red] litellm is not installed. Please install it (e.g. `uv pip install litellm`) to list models.")
+            console.print(
+                "[red]Error:[/red] litellm is not installed. Please install it (e.g. `uv pip install litellm`) to list models."
+            )
             sys.exit(1)
 
     if not query:
@@ -44,17 +59,23 @@ def ask_cmd(ctx: click.Context, query: tuple[str, ...], timeout: int, model: str
     query_str = " ".join(query)
 
     from pkm.config import load_config
+
     config_model = load_config().get("defaults", {}).get("model")
     final_model = model or config_model or "gpt-4o-mini"
-    
+
     try:
         import litellm
+
         validation = litellm.validate_environment(final_model)
-        if not validation.get('keys_in_environment', True):
-            missing = validation.get('missing_keys', [])
+        if not validation.get("keys_in_environment", True):
+            missing = validation.get("missing_keys", [])
             if missing:
-                console.print(f"[red]Error:[/red] API keys for model '{final_model}' are missing from your environment: {', '.join(missing)}")
-                console.print(f"[yellow]Hint: Export them and restart the daemon (e.g. `export {missing[0]}=\"...\" && pkm daemon restart`)[/yellow]")
+                console.print(
+                    f"[red]Error:[/red] API keys for model '{final_model}' are missing from your environment: {', '.join(missing)}"
+                )
+                console.print(
+                    f'[yellow]Hint: Export them and restart the daemon (e.g. `export {missing[0]}="..." && pkm daemon restart`)[/yellow]'
+                )
                 sys.exit(1)
     except Exception:
         pass

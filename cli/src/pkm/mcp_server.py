@@ -197,11 +197,14 @@ async def pkm_ask(
 
     try:
         import litellm
+
         validation = litellm.validate_environment(final_model)
-        if not validation.get('keys_in_environment', True):
-            missing = validation.get('missing_keys', [])
+        if not validation.get("keys_in_environment", True):
+            missing = validation.get("missing_keys", [])
             if missing:
-                return {"error": f"API keys for model '{final_model}' are missing from your environment: {', '.join(missing)}. Export them and restart the daemon."}
+                return {
+                    "error": f"API keys for model '{final_model}' are missing from your environment: {', '.join(missing)}. Export them and restart the daemon."
+                }
     except Exception:
         pass
 

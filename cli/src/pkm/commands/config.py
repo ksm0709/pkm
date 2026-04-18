@@ -29,6 +29,10 @@ CONFIG_SCHEMA = {
         "internal_key": "graph-depth",
         "description": "Default graph traversal depth for search and show commands",
     },
+    "model": {
+        "internal_key": "model",
+        "description": "LLM model used by pkm ask (default: gpt-4o-mini)",
+    },
 }
 
 VALID_KEYS = set(CONFIG_SCHEMA.keys())

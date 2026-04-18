@@ -32,13 +32,25 @@ pkm daemon start
 
 ### Changing the Model or Provider
 
-Currently, the model string is defined in `cli/src/pkm/daemon.py` and must be modified in the source code to change it.
+You can change the LLM model globally via configuration or per-command using the `--model` flag.
 
-1. Open `cli/src/pkm/daemon.py`.
-2. Locate the model fallback string (e.g., `model = msg.get("model", "gpt-4o-mini")`).
-3. Change it to your desired LiteLLM model string (e.g., `"claude-3-5-sonnet-20241022"` for Anthropic or `"ollama/llama3"` for local usage).
-4. Export the necessary API key (e.g., `export ANTHROPIC_API_KEY="..."`).
-5. Restart the daemon: `pkm daemon restart`.
+**Method 1: Global Configuration**
+```bash
+pkm config set model "claude-3-5-sonnet-20241022"
+export ANTHROPIC_API_KEY="..."
+pkm daemon restart
+```
+
+**Method 2: Per-Command Flag**
+```bash
+pkm ask "what was that idea?" --model "gemini/gemini-1.5-pro"
+```
+
+To list all available models and providers from LiteLLM, run:
+```bash
+pkm ask --list-models
+```
+*Note: Depending on the provider chosen, you must export the appropriate API keys in the environment where the daemon is running.*
 
 ## Usage
 
@@ -58,6 +70,8 @@ pkm daemon start
 ## Options
 
 - `--timeout <seconds>`: Set the timeout to wait for the LLM response (default: 120 seconds).
+- `--model <model_name>`: LLM model to use (overrides global config).
+- `--list-models`: List available model providers via litellm.
 
 ```bash
 pkm ask "summarize my notes on project Y" --timeout 300
