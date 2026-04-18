@@ -89,6 +89,9 @@ def build_index(
     vault: VaultConfig, model_name: str = "all-MiniLM-L6-v2"
 ) -> VectorIndex:
     """Build a vector index for all notes and daily notes in the vault."""
+    import sqlite3
+    import numpy as np
+    import os
     from pkm.graph import build_ast_and_graph
 
     build_ast_and_graph(vault)
@@ -102,26 +105,85 @@ def build_index(
             md_files.extend(sorted(d.glob("*.md")))
 
     notes = [parse(f) for f in md_files]
-    texts = [n.body.strip() or n.title for n in notes]
 
-    embeddings = model.encode(texts, show_progress_bar=False)
+    vault.pkm_dir.mkdir(parents=True, exist_ok=True)
+    db_path = vault.pkm_dir / "vector.db"
+
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS vector_cache (note_id TEXT PRIMARY KEY, mtime REAL, model TEXT, embedding BLOB)"
+        )
+    except sqlite3.DatabaseError:
+        if db_path.exists():
+            os.remove(db_path)
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS vector_cache (note_id TEXT PRIMARY KEY, mtime REAL, model TEXT, embedding BLOB)"
+        )
+
+    cursor = conn.cursor()
+    cursor.execute("SELECT note_id, mtime, model, embedding FROM vector_cache")
+    cache = {row[0]: {"mtime": row[1], "model": row[2], "embedding": row[3]} for row in cursor.fetchall()}
 
     entries: list[IndexEntry] = []
-    for note, emb in zip(notes, embeddings):
+    to_encode_texts = []
+    to_encode_notes = []
+
+    for note in notes:
         note_id = str(note.id)
-        entries.append(
-            IndexEntry(
-                note_id=note_id,
-                path=str(note.path),
-                embedding=emb.tolist(),
-                backlink_count=backlink_counts.get(note_id, 0),
-                tags=[str(t) for t in note.tags],
-                title=str(note.title),
-                memory_type=note.meta.get("memory_type"),
-                importance=float(note.meta.get("importance", IMPORTANCE_DEFAULT)),
-                created_at=_extract_created_at(note.path, note.meta),
+        current_mtime = note.path.stat().st_mtime
+
+        cached = cache.get(note_id)
+        if cached and cached["mtime"] >= current_mtime and cached["model"] == model_name:
+            emb = np.frombuffer(cached["embedding"], dtype='<f4')
+            entries.append(
+                IndexEntry(
+                    note_id=note_id,
+                    path=str(note.path),
+                    embedding=emb.tolist(),
+                    backlink_count=backlink_counts.get(note_id, 0),
+                    tags=[str(t) for t in note.tags],
+                    title=str(note.title),
+                    memory_type=note.meta.get("memory_type"),
+                    importance=float(note.meta.get("importance", IMPORTANCE_DEFAULT)),
+                    created_at=_extract_created_at(note.path, note.meta),
+                )
             )
-        )
+        else:
+            to_encode_texts.append(note.body.strip() or note.title)
+            to_encode_notes.append(note)
+
+    if to_encode_texts:
+        embeddings = model.encode(to_encode_texts, show_progress_bar=False)
+
+        conn.execute("BEGIN TRANSACTION")
+        for note, emb in zip(to_encode_notes, embeddings):
+            note_id = str(note.id)
+            current_mtime = note.path.stat().st_mtime
+            blob = np.array(emb, dtype='<f4').tobytes()
+
+            conn.execute(
+                "INSERT OR REPLACE INTO vector_cache (note_id, mtime, model, embedding) VALUES (?, ?, ?, ?)",
+                (note_id, current_mtime, model_name, blob)
+            )
+
+            entries.append(
+                IndexEntry(
+                    note_id=note_id,
+                    path=str(note.path),
+                    embedding=emb.tolist(),
+                    backlink_count=backlink_counts.get(note_id, 0),
+                    tags=[str(t) for t in note.tags],
+                    title=str(note.title),
+                    memory_type=note.meta.get("memory_type"),
+                    importance=float(note.meta.get("importance", IMPORTANCE_DEFAULT)),
+                    created_at=_extract_created_at(note.path, note.meta),
+                )
+            )
+        conn.commit()
+
+    conn.close()
 
     index = VectorIndex(
         model=model_name,
@@ -131,6 +193,21 @@ def build_index(
     )
 
     vault.pkm_dir.mkdir(parents=True, exist_ok=True)
+    
+    import sqlite3
+    db_path = vault.pkm_dir / "vector.db"
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.execute("CREATE TEMPORARY TABLE active_notes (note_id TEXT)")
+            conn.executemany(
+                "INSERT INTO active_notes (note_id) VALUES (?)",
+                [(e.note_id,) for e in entries]
+            )
+            conn.execute("DELETE FROM vector_cache WHERE note_id NOT IN (SELECT note_id FROM active_notes)")
+            conn.execute("DROP TABLE active_notes")
+    except sqlite3.Error:
+        pass
+
     index_path = vault.pkm_dir / "index.json"
 
     import datetime
