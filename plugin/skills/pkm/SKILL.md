@@ -1,6 +1,6 @@
 ---
 name: pkm
-description: "Personal Knowledge Management for Obsidian vaults — Zettelkasten workflow with daily notes, atomic notes, wikilinks, and a Python CLI tool (pkm). Use this skill whenever the user mentions: daily notes, note management, knowledge extraction, Zettelkasten, note search, backlinks, wikilinks, PKM, note writing, tag search, tag explore, backlink traverse, or wants to create/update/search notes in their Obsidian vaults. Also trigger when the user says /pkm. Workflow triggers: zettel-loop, refine-loop, knowledge production, knowledge cleanup, note cleanup, weekly review, 1:1 prep, health check, find links, task sync, working memory, untagged cleanup, start today, monthly synthesis, tag explore, backlink traverse."
+description: "Personal Knowledge Management for Obsidian vaults — Zettelkasten workflow with daily notes, atomic notes, wikilinks, and a Python CLI tool (pkm). Use this skill whenever the user mentions: daily notes, note management, knowledge extraction, Zettelkasten, note search, backlinks, wikilinks, PKM, note writing, tag search, tag explore, backlink traverse, or wants to create/update/search notes in their Obsidian vaults. Also trigger when the user says /pkm. Workflow triggers: zettel-loop, refine-loop."
 ---
 
 # PKM — Personal Knowledge Management
@@ -196,10 +196,6 @@ $ pkm daily add "오늘의 작업 내용"
 
 Tags are managed as physical .md files in the `tags/` directory. Tag notes are created lazily on access, and adding a description turns them into index cards. Backlinks are automatically shown in `note show`, and can also be queried directly with `note links`.
 
-For detailed workflows, see:
-- Tag exploration/search/index usage → `workflows/tag-explore.md`
-- Backlink-based knowledge traversal/orphan cleanup → `workflows/backlink-traverse.md`
-
 ## Workflows
 
 PKM workflows are defined as independent documents in the `workflows/` folder. Find the workflow matching the user's request, read that document, and execute it.
@@ -208,19 +204,6 @@ PKM workflows are defined as independent documents in the `workflows/` folder. F
 |----------|----------------|------|
 | Zettel Loop | zettel-loop, knowledge production, promote knowledge | workflows/zettel-loop.md |
 | Refine Loop | refine-loop, knowledge cleanup, vault refinement | workflows/refine-loop.md |
-| Extract Note | knowledge promotion, daily cleanup | workflows/extract-note-from-daily.md |
-| Weekly Review | weekly review | workflows/weekly-review.md |
-| 1:1 Prep | 1:1 prep | workflows/1on1-prep.md |
-| Health Check | health check | workflows/health-check.md |
-| Auto Linking | find connections | workflows/auto-linking.md |
-| Task Sync | task sync | workflows/task-sync.md |
-| Add Context | working memory, context capture | workflows/add-context-to-daily.md |
-| Auto Tagging | untagged cleanup, notes without tags | workflows/auto-tagging.md |
-| Init Daily | start today, daily start | workflows/init-daily.md |
-| Monthly Synthesis | monthly synthesis | workflows/monthly-synthesis.md |
-| Tag Explore | tag explore | workflows/tag-explore.md |
-| Backlink Traverse | backlink traverse | workflows/backlink-traverse.md |
-| Add Workflow | add-workflow, add workflow, new workflow | workflows/add-workflow.md |
 
 When a user request matches one of the triggers above, read the corresponding `workflows/*.md` and execute it. If multiple workflows could match, ask the user which one they want.
 
