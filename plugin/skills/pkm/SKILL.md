@@ -147,7 +147,7 @@ pkm vault open <name>              # Switch active vault
 # Maintenance
 pkm stats                          # Vault statistics
 pkm search <query>                 # Semantic search (requires pkm index first)
-pkm ask <query>                    # Ask a natural language question (requires daemon)
+pkm ask <query>                    # Ask a natural language question (requires daemon, uses air-gapped worker & token limits)
 pkm index                          # Build/rebuild search index
 ```
 

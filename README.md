@@ -68,7 +68,7 @@ We have extracted detailed documentation for each CLI command into the `docs/cli
 - [Daily Notes (`pkm daily`)](docs/cli/pkm-daily.md): Daily note workflows that stay lightweight.
 - [Atomic Notes (`pkm note`)](docs/cli/pkm-note.md): Atomic note management built for actual use.
 - [Semantic Search (`pkm search`)](docs/cli/pkm-search.md): Search your vault by meaning, not just exact wording.
-- [Ask (`pkm ask`)](docs/cli/pkm-ask.md): Ask a natural language question about your vault.
+- [Ask (`pkm ask`)](docs/cli/pkm-ask.md): Ask a natural language question about your vault (powered by an air-gapped LLM worker).
 - [Index (`pkm index`)](docs/cli/pkm-index.md): Build the semantic search index.
 - [Multi-Vault Management (`pkm vault`)](docs/cli/pkm-vault.md): Manage multiple vaults natively.
 - [Tags (`pkm tags`)](docs/cli/pkm-tags.md): Tag navigation and vault maintenance.
@@ -77,7 +77,7 @@ We have extracted detailed documentation for each CLI command into the `docs/cli
 - [Data (`pkm data`)](docs/cli/pkm-data.md): Manage data files in the vault.
 - [Stats (`pkm stats`)](docs/cli/pkm-stats.md): View vault statistics.
 - [Consolidate (`pkm consolidate`)](docs/cli/pkm-consolidate.md): Nightly knowledge distillation.
-- [Daemon (`pkm daemon`)](docs/cli/pkm-daemon.md): Background ML daemon for fast semantic search.
+- [Daemon (`pkm daemon`)](docs/cli/pkm-daemon.md): Background ML daemon (Host Daemon + Sandbox Worker) for fast semantic search and LLM tasks.
 - [Setup (`pkm setup`)](docs/cli/pkm-setup.md): Interactive setup wizard.
 - [Update (`pkm update`)](docs/cli/pkm-update.md): Update the CLI.
 - [MCP Server (`pkm mcp`)](docs/cli/pkm-mcp.md): Start the MCP server for AI agent interactions.
@@ -86,7 +86,7 @@ For a full guide on the memory layer for AI agents, see: [`docs/agent-memory-pol
 
 ### MCP Server Integration
 
-PKM includes a built-in MCP (Model Context Protocol) server to expose your vault to AI coding assistants (like Claude Desktop, Cursor, or Cline).
+PKM includes a built-in MCP (Model Context Protocol) server to expose your vault to AI coding assistants (like Claude Desktop, Cursor, or Cline). It includes tools like `pkm_ask` for safe, parameterized natural language queries against your vault.
 
 For full details and registration instructions, see: **[MCP Server Registration How-To](docs/mcp-server.md)**
 
