@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.38.3 (2026-04-18)
+
+### Bug Fixes
+
+- **ask**: Inherit API keys from client environment to daemon worker
+  ([`0e96ad6`](https://github.com/ksm0709/pkm/commit/0e96ad6a99e88f677b28b7e098437711d7557586))
+
+
 ## v2.38.2 (2026-04-18)
 
 ### Bug Fixes
