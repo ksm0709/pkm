@@ -44,16 +44,18 @@ def _build_docstring() -> str:
     max_key_len = max(len(k) for k in VALID_KEYS)
     for k, v in sorted(CONFIG_SCHEMA.items()):
         lines.append(f"  {k:<{max_key_len}}   {v['description']}")
-    
-    lines.extend([
-        "",
-        "\b",
-        "Examples:",
-        "  pkm config set default-vault bear",
-        "  pkm config set editor vim",
-        "  pkm config get default-vault",
-        "  pkm config list",
-    ])
+
+    lines.extend(
+        [
+            "",
+            "\b",
+            "Examples:",
+            "  pkm config set default-vault bear",
+            "  pkm config set editor vim",
+            "  pkm config get default-vault",
+            "  pkm config list",
+        ]
+    )
     return "\n".join(lines)
 
 
@@ -123,14 +125,20 @@ def list_config(output_format: str) -> None:
 
     rows: list[tuple[str, str, str]] = []
     defaults = data.get("defaults", {})
-    
+
     for key, schema in sorted(CONFIG_SCHEMA.items()):
         internal_key = schema["internal_key"]
         val = defaults.get(internal_key, "not set")
         rows.append((key, str(val), schema["description"]))
 
     if output_format == "json":
-        print(json.dumps({r[0]: r[1] for r in rows if r[1] != "not set"}, ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                {r[0]: r[1] for r in rows if r[1] != "not set"},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
     else:
         table = Table(show_header=True, header_style="bold")
         table.add_column("Key")
