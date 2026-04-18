@@ -3,7 +3,6 @@
 import asyncio
 import json
 import os
-import socket
 import time
 from dataclasses import asdict, dataclass
 from functools import lru_cache
@@ -86,10 +85,12 @@ class TokenBudget:
         if now - self.window_start > self.window_seconds:
             self.window_start = now
             self.used_tokens = 0
-        
+
         if self.used_tokens + tokens > self.max_tokens:
-            raise BudgetExhausted(f"Token budget exhausted. Used {self.used_tokens}/{self.max_tokens} in current window.")
-        
+            raise BudgetExhausted(
+                f"Token budget exhausted. Used {self.used_tokens}/{self.max_tokens} in current window."
+            )
+
         self.used_tokens += tokens
 
 
@@ -134,16 +135,18 @@ class LLMWorkerProxy:
 
     async def start(self, vault_dir: str):
         import sys
+
         worker_script = Path(__file__).parent / "worker.py"
-        
+
         self.process = await asyncio.create_subprocess_exec(
-            sys.executable, str(worker_script),
+            sys.executable,
+            str(worker_script),
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env={**os.environ, "PKM_VAULT_DIR": vault_dir}
+            env={**os.environ, "PKM_VAULT_DIR": vault_dir},
         )
-        
+
         asyncio.create_task(self._log_stderr())
         asyncio.create_task(self._handle_worker_stdout())
 
@@ -159,7 +162,7 @@ class LLMWorkerProxy:
     async def _handle_worker_stdout(self):
         if not self.process or not self.process.stdout:
             return
-        
+
         try:
             import litellm
         except ImportError:
@@ -170,78 +173,76 @@ class LLMWorkerProxy:
             line = await self.process.stdout.readline()
             if not line:
                 break
-            
+
             try:
                 msg = json.loads(line.decode().strip())
                 if msg.get("type") == "llm_request":
                     req_id = msg.get("id")
                     messages = msg.get("messages", [])
                     model = msg.get("model", "gpt-4o-mini")
-                    
+
                     try:
                         self.budget.check_and_consume(0)
-                        
+
                         loop = asyncio.get_running_loop()
                         response = await loop.run_in_executor(
-                            None, 
-                            lambda: litellm.completion(model=model, messages=messages)
+                            None,
+                            lambda: litellm.completion(model=model, messages=messages),
                         )
-                        
+
                         content = response.choices[0].message.content
                         usage = response.usage
-                        
+
                         if usage:
                             self.budget.check_and_consume(usage.total_tokens)
-                            
+
                         resp_msg = {
                             "type": "llm_response",
                             "id": req_id,
-                            "content": content
+                            "content": content,
                         }
                         if self.process and self.process.stdin:
-                            self.process.stdin.write((json.dumps(resp_msg) + "\n").encode())
+                            self.process.stdin.write(
+                                (json.dumps(resp_msg) + "\n").encode()
+                            )
                             await self.process.stdin.drain()
-                        
+
                     except BudgetExhausted as e:
-                        err_msg = {
-                            "type": "llm_error",
-                            "id": req_id,
-                            "message": str(e)
-                        }
+                        err_msg = {"type": "llm_error", "id": req_id, "message": str(e)}
                         if self.process and self.process.stdin:
-                            self.process.stdin.write((json.dumps(err_msg) + "\n").encode())
+                            self.process.stdin.write(
+                                (json.dumps(err_msg) + "\n").encode()
+                            )
                             await self.process.stdin.drain()
                     except Exception as e:
                         logger.exception("LiteLLM call failed")
-                        err_msg = {
-                            "type": "llm_error",
-                            "id": req_id,
-                            "message": str(e)
-                        }
+                        err_msg = {"type": "llm_error", "id": req_id, "message": str(e)}
                         if self.process and self.process.stdin:
-                            self.process.stdin.write((json.dumps(err_msg) + "\n").encode())
+                            self.process.stdin.write(
+                                (json.dumps(err_msg) + "\n").encode()
+                            )
                             await self.process.stdin.drain()
-                        
+
                 elif msg.get("type") in ("result", "error"):
                     task_id = msg.get("id")
                     if task_id in self.pending_tasks:
                         future = self.pending_tasks.pop(task_id)
                         if not future.done():
                             future.set_result(msg)
-            except Exception as e:
+            except Exception:
                 logger.exception("Error handling worker message")
 
     async def send_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         if not self.process or not self.process.stdin:
             raise RuntimeError("Worker not running")
-            
+
         task_id = str(task.get("id", ""))
         future = asyncio.Future()
         self.pending_tasks[task_id] = future
-        
+
         self.process.stdin.write((json.dumps(task) + "\n").encode())
         await self.process.stdin.drain()
-        
+
         return await future
 
 
@@ -267,7 +268,6 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
             min_importance = req.get("min_importance", 1.0)
             memory_type_filter = req.get("memory_type_filter")
             recency_weight = req.get("recency_weight", 0.0)
-            include_graph_context = req.get("include_graph_context", False)
 
             if not query:
                 writer.write(b"[]\n")
@@ -305,7 +305,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                     min_importance=min_importance,
                     memory_type_filter=memory_type_filter,
                     recency_weight=recency_weight,
-                )
+                ),
             )
 
             response_obj = {
@@ -404,15 +404,15 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
             if not worker_proxy:
                 writer.write(b'{"error": "LLM worker not initialized"}\n')
                 return
-                
+
             task_id = f"ask_{time.time()}"
             task = {
                 "type": "task",
                 "id": task_id,
                 "task_type": "ask",
-                "query": req.get("query")
+                "query": req.get("query"),
             }
-            
+
             try:
                 result = await worker_proxy.send_task(task)
                 writer.write((json.dumps(result) + "\n").encode())
@@ -423,7 +423,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
             if not task_queue:
                 writer.write(b'{"error": "Task queue not initialized"}\n')
                 return
-                
+
             task = req.get("task")
             if task:
                 task_queue.push(task)
@@ -457,7 +457,7 @@ async def process_background_tasks():
             if task:
                 try:
                     worker_proxy.budget.check_and_consume(0)
-                    
+
                     task = task_queue.pop()
                     if task:
                         logger.info(f"Processing background task: {task.get('id')}")
@@ -466,9 +466,9 @@ async def process_background_tasks():
                     logger.info("Budget exhausted, pausing background tasks")
                     await asyncio.sleep(60)
                     continue
-                except Exception as e:
+                except Exception:
                     logger.exception("Error processing background task")
-                    
+
         await asyncio.sleep(5)
 
 
@@ -566,9 +566,9 @@ def _reload_vault_caches(vault):
 
 async def async_main():
     global worker_proxy, task_queue
-    
+
     SOCKET_PATH.parent.mkdir(parents=True, exist_ok=True)
-    
+
     if SOCKET_PATH.exists():
         try:
             reader, writer = await asyncio.open_unix_connection(str(SOCKET_PATH))
@@ -583,18 +583,19 @@ async def async_main():
 
     queue_path = Path.home() / ".config" / "pkm" / "task_queue.json"
     task_queue = TaskQueue(queue_path)
-    
+
     budget = TokenBudget(max_tokens=100000, window_seconds=3600)
     worker_proxy = LLMWorkerProxy(budget)
-    
+
     from pkm.config import discover_vaults
+
     vaults = discover_vaults()
     vault_dir = str(next(iter(vaults.values())).pkm_dir.parent) if vaults else "."
-    
+
     await worker_proxy.start(vault_dir)
 
     server = await asyncio.start_unix_server(handle_client, str(SOCKET_PATH))
-    
+
     checker_task = asyncio.create_task(idle_checker(server))
     bg_task = asyncio.create_task(process_background_tasks())
 
