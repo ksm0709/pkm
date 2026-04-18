@@ -2,6 +2,24 @@
 
 <!-- version list -->
 
+## v2.33.1 (2026-04-18)
+
+### Bug Fixes
+
+- **mcp**: Remove ctx from pkm_ask tool and update docs
+  ([`b051cfd`](https://github.com/ksm0709/pkm/commit/b051cfd1bb49ad002991b142972e926d5bddec2d))
+
+### Chores
+
+- Remove .skip-hook
+  ([`87b83f7`](https://github.com/ksm0709/pkm/commit/87b83f7f3a5285c256ba3c88a85c1861eca2d640))
+
+### Documentation
+
+- **pkm**: Document split architecture daemon and ask command
+  ([`23169a4`](https://github.com/ksm0709/pkm/commit/23169a463383bc0133889a0aac7897f9133342aa))
+
+
 ## v2.33.0 (2026-04-18)
 
 ### Bug Fixes
