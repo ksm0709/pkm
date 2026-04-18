@@ -88,6 +88,10 @@ def build_index(
     vault: VaultConfig, model_name: str = "all-MiniLM-L6-v2"
 ) -> VectorIndex:
     """Build a vector index for all notes and daily notes in the vault."""
+    from pkm.graph import build_ast_and_graph
+
+    build_ast_and_graph(vault)
+
     model = _require_transformers(model_name)
     backlink_counts = count_backlinks(vault)
 
