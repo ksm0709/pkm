@@ -16,6 +16,7 @@ import logging
 
 SOCKET_PATH = Path.home() / ".config" / "pkm" / "daemon.sock"
 LOG_PATH = Path.home() / ".config" / "pkm" / "daemon.log"
+LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 IDLE_TIMEOUT = 3600
 
 logging.basicConfig(
