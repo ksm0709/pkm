@@ -89,14 +89,14 @@ def build_index(
     vault: VaultConfig, model_name: str = "all-MiniLM-L6-v2"
 ) -> VectorIndex:
     """Build a vector index for all notes and daily notes in the vault."""
+    model = _require_transformers(model_name)
+
     import sqlite3
     import numpy as np
     import os
     from pkm.graph import build_ast_and_graph
 
     build_ast_and_graph(vault)
-
-    model = _require_transformers(model_name)
     backlink_counts = count_backlinks(vault)
 
     md_files: list[Path] = []
@@ -277,10 +277,10 @@ def search(
     min_importance: float = 1.0,
 ) -> list[SearchResult]:
     """Search the index for notes semantically similar to the query."""
+    model = _require_transformers(model_name)
+    
     import numpy as np
     from datetime import datetime, timezone
-
-    model = _require_transformers(model_name)
     query_emb = model.encode([query], show_progress_bar=False)[0]
 
     now = datetime.now(timezone.utc)

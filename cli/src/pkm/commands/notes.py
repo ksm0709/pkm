@@ -664,7 +664,6 @@ def split_note(
         if metadata and metadata.plain_text_offsets:
             try:
                 from pkm.search_engine import _require_transformers
-                import numpy as np
 
                 blocks = [
                     info["text"]
@@ -673,6 +672,8 @@ def split_note(
                 ]
                 if len(blocks) > 1:
                     model = _require_transformers("all-MiniLM-L6-v2")
+                    import numpy as np
+
                     embeddings = model.encode(blocks, show_progress_bar=False)
 
                     current_part = blocks[0]
