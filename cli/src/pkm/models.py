@@ -14,51 +14,11 @@ class ModelInfo:
 
 
 BEST_MODELS: List[ModelInfo] = [
-    ModelInfo(
-        "gemini/gemini-3.1-flash-lite-preview",
-        "Google",
-        "1M+",
-        "$0.25",
-        "$1.50",
-        95,
-        "Huge context, great for large vaults.",
-    ),
-    ModelInfo(
-        "gpt-5.4-mini",
-        "OpenAI",
-        "400K",
-        "$0.75",
-        "$4.50",
-        90,
-        "Current OpenAI default. Stable JSON and tool calling.",
-    ),
-    ModelInfo(
-        "gpt-4o-mini",
-        "OpenAI",
-        "128K",
-        "$0.15",
-        "$0.60",
-        85,
-        "Reliable fallback for OpenAI. Fast and cheapest OpenAI.",
-    ),
-    ModelInfo(
-        "claude-4.5-haiku-20251022",
-        "Anthropic",
-        "200K",
-        "$1.00",
-        "$5.00",
-        80,
-        "Premium Lite tier. Highest quality logic but more expensive.",
-    ),
-    ModelInfo(
-        "claude-3-5-haiku-20241022",
-        "Anthropic",
-        "200K",
-        "$0.80",
-        "$4.00",
-        75,
-        "Fast legacy Anthropic model.",
-    ),
+    ModelInfo("gemini/gemini-3.1-flash-lite-preview", "Google", "1M+", "$0.25", "$1.50", 95, "Huge context, great for large vaults."),
+    ModelInfo("gpt-5.4-mini", "OpenAI", "400K", "$0.75", "$4.50", 90, "Current OpenAI default. Stable JSON and tool calling."),
+    ModelInfo("gpt-4o-mini", "OpenAI", "128K", "$0.15", "$0.60", 85, "Reliable fallback for OpenAI. Fast and cheapest OpenAI."),
+    ModelInfo("anthropic/claude-4.5-haiku-20251022", "Anthropic", "200K", "$1.00", "$5.00", 80, "Premium Lite tier. Highest quality logic but more expensive."),
+    ModelInfo("anthropic/claude-3-5-haiku-20241022", "Anthropic", "200K", "$0.80", "$4.00", 75, "Fast legacy Anthropic model."),
 ]
 
 
