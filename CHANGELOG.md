@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v2.38.1 (2026-04-18)
+
+### Bug Fixes
+
+- **ask**: Correctly parse IPC response from daemon
+  ([`eb9f52f`](https://github.com/ksm0709/pkm/commit/eb9f52f07972b443df2198cfd40df82b8de573ce))
+
+### Documentation
+
+- Update pkm ask documentation for RAG
+  ([`870b0fe`](https://github.com/ksm0709/pkm/commit/870b0fe137e4384ebdcb2f3ee745e1adaff75ec5))
+
+
 ## v2.38.0 (2026-04-18)
 
 ### Code Style
