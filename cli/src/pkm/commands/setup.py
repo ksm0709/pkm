@@ -135,7 +135,7 @@ def setup_cmd() -> None:
     else:
         # Full interactive setup
         install_search = click.confirm(
-            "Install search features? (sentence-transformers ~500MB, enables 'pkm search')",
+            "Install search and AI features? (sentence-transformers & litellm, enables 'pkm search' and 'pkm ask')",
             default=True,
         )
         install_dev = click.confirm(
