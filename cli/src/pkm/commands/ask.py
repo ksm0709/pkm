@@ -139,9 +139,9 @@ def ask_cmd(
 
                 data = json.loads(resp_line)
 
-                if "error" in data:
-                    error_msg = data["error"]
-                    if error_msg == "BudgetExhausted":
+                if data.get("type") == "error" or "error" in data:
+                    error_msg = data.get("message") or data.get("error", "Unknown error")
+                    if error_msg == "BudgetExhausted" or "BudgetExhausted" in error_msg:
                         console.print(
                             "[red]Error:[/red] Token budget exhausted. Please try again later."
                         )
@@ -149,11 +149,13 @@ def ask_cmd(
                         console.print(f"[red]Error:[/red] {error_msg}")
                     sys.exit(1)
 
-                if "result" in data:
-                    console.print(data["result"])
+                if "data" in data and "response" in data["data"]:
+                    console.print(data["data"]["response"])
+                elif "response" in data:
+                    console.print(data["response"])
                 else:
                     console.print(
-                        "[red]Error:[/red] Invalid response format from daemon."
+                        f"[red]Error:[/red] Invalid response format from daemon: {data}"
                     )
                     sys.exit(1)
 

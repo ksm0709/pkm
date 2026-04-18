@@ -229,14 +229,16 @@ async def pkm_ask(
 
         resp = json.loads(data.decode("utf-8"))
 
-        if "error" in resp:
-            error_msg = resp["error"]
-            if error_msg == "BudgetExhausted":
+        if resp.get("type") == "error" or "error" in resp:
+            error_msg = resp.get("message") or resp.get("error", "Unknown error")
+            if error_msg == "BudgetExhausted" or "BudgetExhausted" in error_msg:
                 return {"error": "Token budget exhausted. Please try again later."}
             return {"error": error_msg}
 
-        if "result" in resp:
-            return {"result": resp["result"]}
+        if "data" in resp and "response" in resp["data"]:
+            return {"result": resp["data"]["response"]}
+        elif "response" in resp:
+            return {"result": resp["response"]}
         else:
             return {"error": "Invalid response format from daemon."}
 
