@@ -10,6 +10,7 @@ The MCP server runs a JSON-RPC 2.0 server over `stdio` and exposes the following
 - **`daily_add`**: Append a timestamped log entry or TODO to today's daily note.
 - **`search`**: Perform semantic search across your notes to retrieve context.
 - **`index`**: Rebuild the semantic search index so the assistant can query recent changes.
+- **`pkm_ask`**: Ask a natural language question about your vault (requires `pkm daemon start` to be running).
 
 ## Registration How-To
 

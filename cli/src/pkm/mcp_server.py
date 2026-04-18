@@ -169,7 +169,6 @@ def index() -> dict[str, Any]:
 @mcp.tool()
 async def pkm_ask(
     query: str,
-    ctx: Any,
     vault: str | None = None,
     timeout: int = 120,
 ) -> dict[str, Any]:
@@ -190,8 +189,6 @@ async def pkm_ask(
     if not sock_path.exists():
         return {"error": "Daemon is not running. Start it with 'pkm daemon start'."}
 
-    ctx.info(f"Connecting to daemon to ask: {query}")
-
     writer = None
     try:
         reader, writer = await asyncio.open_unix_connection(str(sock_path))
@@ -203,8 +200,6 @@ async def pkm_ask(
         }
         writer.write(json.dumps(req).encode("utf-8") + b"\n")
         await writer.drain()
-
-        ctx.info("Waiting for daemon response...")
 
         data = await asyncio.wait_for(reader.readline(), timeout=timeout)
 
@@ -220,7 +215,6 @@ async def pkm_ask(
             return {"error": error_msg}
 
         if "result" in resp:
-            ctx.info("Received response from daemon.")
             return {"result": resp["result"]}
         else:
             return {"error": "Invalid response format from daemon."}
