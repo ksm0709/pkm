@@ -296,7 +296,11 @@ def search(
             continue
 
         emb = np.array(entry.embedding, dtype=float)
+        if emb.ndim > 1:
+            emb = emb.flatten()
         q = np.array(query_emb, dtype=float)
+        if q.ndim > 1:
+            q = q.flatten()
         norm_e = np.linalg.norm(emb)
         norm_q = np.linalg.norm(q)
         if norm_e == 0 or norm_q == 0:
