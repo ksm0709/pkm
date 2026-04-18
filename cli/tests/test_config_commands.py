@@ -220,7 +220,9 @@ def test_config_list_empty_table(monkeypatch):
     runner = CliRunner()
     result = runner.invoke(main, ["config", "list", "--format", "table"])
     assert result.exit_code == 0
-    assert "No configuration" in result.output
+    assert "not set" in result.output
+    assert "Key" in result.output
+    assert "Value" in result.output
 
 
 # ---------------------------------------------------------------------------

@@ -12,30 +12,54 @@ from pkm.config import load_config, save_config, discover_vaults
 
 console = Console()
 
-VALID_KEYS = {"default-vault", "editor"}
-
-CONFIG_HELP = {
-    "default-vault": "Default vault name used when --vault is not specified",
-    "editor": "Editor command used by pkm daily edit (e.g. 'vim', 'code --wait')",
+CONFIG_SCHEMA = {
+    "default-vault": {
+        "internal_key": "vault",
+        "description": "Default vault name used when --vault is not specified",
+    },
+    "editor": {
+        "internal_key": "editor",
+        "description": "Editor command used by pkm daily edit (e.g. 'vim', 'code --wait')",
+    },
+    "auto": {
+        "internal_key": "auto",
+        "description": "Auto-link and split commands execute changes automatically (true/false)",
+    },
+    "graph-depth": {
+        "internal_key": "graph-depth",
+        "description": "Default graph traversal depth for search and show commands",
+    },
 }
 
+VALID_KEYS = set(CONFIG_SCHEMA.keys())
 
-@click.group()
+
+def _build_docstring() -> str:
+    lines = [
+        "Manage PKM configuration.",
+        "",
+        "\b",
+        "Available keys:",
+    ]
+    max_key_len = max(len(k) for k in VALID_KEYS)
+    for k, v in sorted(CONFIG_SCHEMA.items()):
+        lines.append(f"  {k:<{max_key_len}}   {v['description']}")
+    
+    lines.extend([
+        "",
+        "\b",
+        "Examples:",
+        "  pkm config set default-vault bear",
+        "  pkm config set editor vim",
+        "  pkm config get default-vault",
+        "  pkm config list",
+    ])
+    return "\n".join(lines)
+
+
+@click.group(help=_build_docstring())
 def config() -> None:
-    """Manage PKM configuration.
-
-    \b
-    Available keys:
-      default-vault   Default vault name used when --vault is not specified
-      editor          Editor command used by pkm daily edit (e.g. 'vim', 'code --wait')
-
-    \b
-    Examples:
-      pkm config set default-vault bear
-      pkm config set editor vim
-      pkm config get default-vault
-      pkm config list
-    """
+    pass
 
 
 @config.command(name="set")
@@ -52,17 +76,18 @@ def set_config(key: str, value: str) -> None:
     defaults = dict(data.get("defaults", {}))
     data = dict(data)
 
+    schema = CONFIG_SCHEMA[key]
+    internal_key = schema["internal_key"]
+
     if key == "default-vault":
         vaults = discover_vaults()
         if value not in vaults:
             console.print(
                 f"[yellow]Warning: vault '{value}' not found in discovered vaults.[/yellow]"
             )
-        defaults["vault"] = value
-        console.print(f"[green]✓ Set default-vault = {value}[/green]")
-    elif key == "editor":
-        defaults["editor"] = value
-        console.print(f"[green]✓ Set editor = {value}[/green]")
+
+    defaults[internal_key] = value
+    console.print(f"[green]✓ Set {key} = {value}[/green]")
 
     data["defaults"] = defaults
     save_config(data)
@@ -78,13 +103,9 @@ def get_config(key: str) -> None:
         )
 
     defaults = load_config().get("defaults", {})
-
-    if key == "default-vault":
-        value = defaults.get("vault")
-        console.print(value if value is not None else "not set")
-    elif key == "editor":
-        value = defaults.get("editor")
-        console.print(value if value is not None else "not set")
+    internal_key = CONFIG_SCHEMA[key]["internal_key"]
+    value = defaults.get(internal_key)
+    console.print(value if value is not None else "not set")
 
 
 @config.command(name="list")
@@ -100,24 +121,22 @@ def list_config(output_format: str) -> None:
     """List all configuration settings."""
     data = load_config()
 
-    rows: list[tuple[str, str]] = []
+    rows: list[tuple[str, str, str]] = []
     defaults = data.get("defaults", {})
-    if "vault" in defaults:
-        rows.append(("default-vault", defaults["vault"]))
-    if "editor" in defaults:
-        rows.append(("editor", defaults["editor"]))
+    
+    for key, schema in sorted(CONFIG_SCHEMA.items()):
+        internal_key = schema["internal_key"]
+        val = defaults.get(internal_key, "not set")
+        rows.append((key, str(val), schema["description"]))
 
     if output_format == "json":
-        print(json.dumps({k: v for k, v in rows}, ensure_ascii=False, indent=2))
+        print(json.dumps({r[0]: r[1] for r in rows if r[1] != "not set"}, ensure_ascii=False, indent=2))
     else:
-        if not rows:
-            console.print("No configuration set.")
-            return
-
         table = Table(show_header=True, header_style="bold")
         table.add_column("Key")
         table.add_column("Value")
-        for k, v in rows:
-            table.add_row(k, v)
+        table.add_column("Description")
+        for k, v, d in rows:
+            table.add_row(k, v, d)
 
         console.print(table)
