@@ -405,12 +405,53 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                 writer.write(b'{"error": "LLM worker not initialized"}\n')
                 return
 
+            query = req.get("query")
+            vault_name = req.get("vault_name")
+
+            from pkm.config import discover_vaults
+
+            vaults = discover_vaults()
+            if vault_name and vault_name in vaults:
+                vault = vaults[vault_name]
+            else:
+                vault = next(iter(vaults.values())) if vaults else None
+
+            context_str = ""
+            if vault and query:
+                index_path = vault.pkm_dir / "index.json"
+                if index_path.exists():
+                    index_mtime = index_path.stat().st_mtime
+                    _require_transformers("all-MiniLM-L6-v2")
+                    index = get_cached_index(str(index_path), index_mtime)
+
+                    loop = asyncio.get_running_loop()
+                    results = await loop.run_in_executor(
+                        None,
+                        lambda: search(
+                            query=query,
+                            index=index,
+                            top_n=5,
+                        ),
+                    )
+
+                    context_parts = []
+                    for res in results:
+                        try:
+                            content = Path(res.path).read_text(encoding="utf-8")
+                            context_parts.append(
+                                f"--- Note: {res.title} ---\nTags: {', '.join(res.tags)}\n{content}\n"
+                            )
+                        except Exception:
+                            pass
+                    context_str = "\n".join(context_parts)
+
             task_id = f"ask_{time.time()}"
             task = {
                 "type": "task",
                 "id": task_id,
                 "task_type": "ask",
-                "query": req.get("query"),
+                "query": query,
+                "context": context_str,
                 "model": req.get("model", "gemini/gemini-3.1-flash-preview"),
             }
 

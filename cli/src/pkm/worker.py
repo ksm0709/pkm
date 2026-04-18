@@ -37,6 +37,9 @@ class IPCClient:
         self.request_counter += 1
         req_id = f"llm_req_{self.request_counter}"
 
+        if os.environ.get("PKM_TEST_MOCK_LLM") == "1":
+            return f"Mocked response for: {messages[-1]['content']}"
+
         models_to_try = [model] if model and model != "auto" else []
         if not models_to_try:
             try:
@@ -81,13 +84,24 @@ class IPCClient:
 ipc = IPCClient()
 
 
-def handle_ask(task_id: str, query: str, vault_dir: str, model: Optional[str] = None):
+def handle_ask(
+    task_id: str, query: str, context: str, vault_dir: str, model: Optional[str] = None
+):
+    system_prompt = (
+        "You are a helpful PKM assistant. You have access to the user's vault.\n"
+        "Answer the user's query based on the provided context from their notes.\n"
+        "Provide an informative and compact summary report.\n"
+        "If the context does not contain the answer, say so, but still try to be helpful."
+    )
+
+    user_content = f"Context:\n{context}\n\nQuery: {query}" if context else query
+
     messages = [
         {
             "role": "system",
-            "content": "You are a helpful PKM assistant. You have access to the user's vault.",
+            "content": system_prompt,
         },
-        {"role": "user", "content": query},
+        {"role": "user", "content": user_content},
     ]
 
     try:
@@ -158,7 +172,11 @@ def main():
 
                 if task_type == "ask":
                     handle_ask(
-                        task_id, msg.get("query", ""), vault_dir, msg.get("model")
+                        task_id,
+                        msg.get("query", ""),
+                        msg.get("context", ""),
+                        vault_dir,
+                        msg.get("model"),
                     )
                 elif task_type == "zettelkasten_maintenance":
                     handle_zettelkasten_maintenance(
