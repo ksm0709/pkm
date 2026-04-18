@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.34.0 (2026-04-18)
+
+### Features
+
+- **ask**: Validate litellm API keys before calling daemon
+  ([`2db3974`](https://github.com/ksm0709/pkm/commit/2db3974f1500def008e4edd50ed39bf2a05d50af))
+
+
 ## v2.33.1 (2026-04-18)
 
 ### Bug Fixes
