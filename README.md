@@ -68,6 +68,7 @@ We have extracted detailed documentation for each CLI command into the `docs/cli
 - [Daily Notes (`pkm daily`)](docs/cli/pkm-daily.md): Daily note workflows that stay lightweight.
 - [Atomic Notes (`pkm note`)](docs/cli/pkm-note.md): Atomic note management built for actual use.
 - [Semantic Search (`pkm search`)](docs/cli/pkm-search.md): Search your vault by meaning, not just exact wording.
+- [Ask (`pkm ask`)](docs/cli/pkm-ask.md): Ask a natural language question about your vault.
 - [Index (`pkm index`)](docs/cli/pkm-index.md): Build the semantic search index.
 - [Multi-Vault Management (`pkm vault`)](docs/cli/pkm-vault.md): Manage multiple vaults natively.
 - [Tags (`pkm tags`)](docs/cli/pkm-tags.md): Tag navigation and vault maintenance.

@@ -1,14 +1,14 @@
-"""Background daemon for fast semantic search."""
+"""Background daemon for fast semantic search and LLM task orchestration."""
 
+import asyncio
 import json
 import os
 import socket
-import socketserver
-import threading
 import time
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from functools import lru_cache
 from pathlib import Path
+from typing import Dict, Any, Optional
 
 from pkm.search_engine import VectorIndex, IndexEntry, search, _require_transformers
 
@@ -70,54 +70,235 @@ def get_cached_index(index_path: str, index_mtime: float) -> VectorIndex:
     )
 
 
-class SearchRequestHandler(socketserver.StreamRequestHandler):
-    def handle(self):
-        DaemonState.last_activity = time.time()
+class BudgetExhausted(Exception):
+    pass
+
+
+@dataclass
+class TokenBudget:
+    max_tokens: int
+    window_seconds: int
+    used_tokens: int = 0
+    window_start: float = time.time()
+
+    def check_and_consume(self, tokens: int):
+        now = time.time()
+        if now - self.window_start > self.window_seconds:
+            self.window_start = now
+            self.used_tokens = 0
+        
+        if self.used_tokens + tokens > self.max_tokens:
+            raise BudgetExhausted(f"Token budget exhausted. Used {self.used_tokens}/{self.max_tokens} in current window.")
+        
+        self.used_tokens += tokens
+
+
+class TaskQueue:
+    def __init__(self, db_path: Path):
+        self.db_path = db_path
+        self.queue = []
+        self._load()
+
+    def _load(self):
+        if self.db_path.exists():
+            try:
+                self.queue = json.loads(self.db_path.read_text())
+            except Exception:
+                self.queue = []
+
+    def _save(self):
+        self.db_path.write_text(json.dumps(self.queue))
+
+    def push(self, task: Dict[str, Any]):
+        self.queue.append(task)
+        self._save()
+
+    def pop(self) -> Optional[Dict[str, Any]]:
+        if self.queue:
+            task = self.queue.pop(0)
+            self._save()
+            return task
+        return None
+
+    def peek(self) -> Optional[Dict[str, Any]]:
+        if self.queue:
+            return self.queue[0]
+        return None
+
+
+class LLMWorkerProxy:
+    def __init__(self, budget: TokenBudget):
+        self.budget = budget
+        self.process: Optional[asyncio.subprocess.Process] = None
+        self.pending_tasks: Dict[str, asyncio.Future[Any]] = {}
+
+    async def start(self, vault_dir: str):
+        import sys
+        worker_script = Path(__file__).parent / "worker.py"
+        
+        self.process = await asyncio.create_subprocess_exec(
+            sys.executable, str(worker_script),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env={**os.environ, "PKM_VAULT_DIR": vault_dir}
+        )
+        
+        asyncio.create_task(self._log_stderr())
+        asyncio.create_task(self._handle_worker_stdout())
+
+    async def _log_stderr(self):
+        if not self.process or not self.process.stderr:
+            return
+        while True:
+            line = await self.process.stderr.readline()
+            if not line:
+                break
+            logger.info(f"[Worker STDERR] {line.decode().strip()}")
+
+    async def _handle_worker_stdout(self):
+        if not self.process or not self.process.stdout:
+            return
+        
         try:
-            data = self.rfile.readline().decode("utf-8").strip()
-            if not data:
+            import litellm
+        except ImportError:
+            logger.error("litellm not installed")
+            return
+
+        while True:
+            line = await self.process.stdout.readline()
+            if not line:
+                break
+            
+            try:
+                msg = json.loads(line.decode().strip())
+                if msg.get("type") == "llm_request":
+                    req_id = msg.get("id")
+                    messages = msg.get("messages", [])
+                    model = msg.get("model", "gpt-4o-mini")
+                    
+                    try:
+                        self.budget.check_and_consume(0)
+                        
+                        loop = asyncio.get_running_loop()
+                        response = await loop.run_in_executor(
+                            None, 
+                            lambda: litellm.completion(model=model, messages=messages)
+                        )
+                        
+                        content = response.choices[0].message.content
+                        usage = response.usage
+                        
+                        if usage:
+                            self.budget.check_and_consume(usage.total_tokens)
+                            
+                        resp_msg = {
+                            "type": "llm_response",
+                            "id": req_id,
+                            "content": content
+                        }
+                        if self.process and self.process.stdin:
+                            self.process.stdin.write((json.dumps(resp_msg) + "\n").encode())
+                            await self.process.stdin.drain()
+                        
+                    except BudgetExhausted as e:
+                        err_msg = {
+                            "type": "llm_error",
+                            "id": req_id,
+                            "message": str(e)
+                        }
+                        if self.process and self.process.stdin:
+                            self.process.stdin.write((json.dumps(err_msg) + "\n").encode())
+                            await self.process.stdin.drain()
+                    except Exception as e:
+                        logger.exception("LiteLLM call failed")
+                        err_msg = {
+                            "type": "llm_error",
+                            "id": req_id,
+                            "message": str(e)
+                        }
+                        if self.process and self.process.stdin:
+                            self.process.stdin.write((json.dumps(err_msg) + "\n").encode())
+                            await self.process.stdin.drain()
+                        
+                elif msg.get("type") in ("result", "error"):
+                    task_id = msg.get("id")
+                    if task_id in self.pending_tasks:
+                        future = self.pending_tasks.pop(task_id)
+                        if not future.done():
+                            future.set_result(msg)
+            except Exception as e:
+                logger.exception("Error handling worker message")
+
+    async def send_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        if not self.process or not self.process.stdin:
+            raise RuntimeError("Worker not running")
+            
+        task_id = str(task.get("id", ""))
+        future = asyncio.Future()
+        self.pending_tasks[task_id] = future
+        
+        self.process.stdin.write((json.dumps(task) + "\n").encode())
+        await self.process.stdin.drain()
+        
+        return await future
+
+
+worker_proxy: Optional[LLMWorkerProxy] = None
+task_queue: Optional[TaskQueue] = None
+
+
+async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+    DaemonState.last_activity = time.time()
+    try:
+        data = await reader.readline()
+        if not data:
+            return
+
+        req = json.loads(data.decode("utf-8").strip())
+        action = req.get("action", "search")
+        logger.info(f"Received action: {action}")
+
+        if action == "search":
+            query = req.get("query", "")
+            vault_name = req.get("vault_name")
+            top_n = req.get("top_n", 10)
+            min_importance = req.get("min_importance", 1.0)
+            memory_type_filter = req.get("memory_type_filter")
+            recency_weight = req.get("recency_weight", 0.0)
+            include_graph_context = req.get("include_graph_context", False)
+
+            if not query:
+                writer.write(b"[]\n")
                 return
 
-            req = json.loads(data)
-            action = req.get("action", "search")
-            logger.info(f"Received action: {action}")
+            from pkm.config import discover_vaults
 
-            if action == "search":
-                query = req.get("query", "")
-                vault_name = req.get("vault_name")
-                top_n = req.get("top_n", 10)
-                min_importance = req.get("min_importance", 1.0)
-                memory_type_filter = req.get("memory_type_filter")
-                recency_weight = req.get("recency_weight", 0.0)
-                include_graph_context = req.get("include_graph_context", False)
+            vaults = discover_vaults()
+            if vault_name and vault_name in vaults:
+                vault = vaults[vault_name]
+            else:
+                vault = next(iter(vaults.values())) if vaults else None
 
-                if not query:
-                    self.wfile.write(b"[]\n")
-                    return
+            if not vault:
+                writer.write(b"[]\n")
+                return
 
-                from pkm.config import discover_vaults
+            index_path = vault.pkm_dir / "index.json"
+            if not index_path.exists():
+                writer.write(b"[]\n")
+                return
+            index_mtime = index_path.stat().st_mtime
 
-                vaults = discover_vaults()
-                if vault_name and vault_name in vaults:
-                    vault = vaults[vault_name]
-                else:
-                    vault = next(iter(vaults.values())) if vaults else None
+            _require_transformers("all-MiniLM-L6-v2")
 
-                if not vault:
-                    self.wfile.write(b"[]\n")
-                    return
+            index = get_cached_index(str(index_path), index_mtime)
 
-                index_path = vault.pkm_dir / "index.json"
-                if not index_path.exists():
-                    self.wfile.write(b"[]\n")
-                    return
-                index_mtime = index_path.stat().st_mtime
-
-                _require_transformers("all-MiniLM-L6-v2")
-
-                index = get_cached_index(str(index_path), index_mtime)
-
-                results = search(
+            loop = asyncio.get_running_loop()
+            results = await loop.run_in_executor(
+                None,
+                lambda: search(
                     query=query,
                     index=index,
                     top_n=top_n,
@@ -125,131 +306,170 @@ class SearchRequestHandler(socketserver.StreamRequestHandler):
                     memory_type_filter=memory_type_filter,
                     recency_weight=recency_weight,
                 )
+            )
 
-                response_obj = {
-                    "results": [asdict(r) for r in results],
-                    "graph_ready": DaemonState.graph_ready,
-                }
+            response_obj = {
+                "results": [asdict(r) for r in results],
+                "graph_ready": DaemonState.graph_ready,
+            }
 
-                if include_graph_context and DaemonState.graph_ready:
-                    pass
+            res_data = json.dumps(response_obj) + "\n"
+            writer.write(res_data.encode("utf-8"))
 
-                res_data = json.dumps(response_obj) + "\n"
-                self.wfile.write(res_data.encode("utf-8"))
+        elif action == "get_graph_context":
+            note_id = req.get("note_id")
+            depth = req.get("depth", 1)
+            vault_name = req.get("vault_name")
 
-            elif action == "get_graph_context":
-                note_id = req.get("note_id")
-                depth = req.get("depth", 1)
-                vault_name = req.get("vault_name")
+            if not note_id:
+                writer.write(b'{"error": "missing note_id"}\n')
+                return
 
-                if not note_id:
-                    self.wfile.write(b'{"error": "missing note_id"}\n')
-                    return
+            if not DaemonState.graph_ready:
+                writer.write(b'{"error": "graph not ready"}\n')
+                return
 
-                if not DaemonState.graph_ready:
-                    self.wfile.write(b'{"error": "graph not ready"}\n')
-                    return
+            from pkm.config import discover_vaults
 
-                from pkm.config import discover_vaults
+            vaults = discover_vaults()
+            if vault_name and vault_name in vaults:
+                vault = vaults[vault_name]
+            else:
+                vault = next(iter(vaults.values())) if vaults else None
 
-                vaults = discover_vaults()
-                if vault_name and vault_name in vaults:
-                    vault = vaults[vault_name]
-                else:
-                    vault = next(iter(vaults.values())) if vaults else None
+            if not vault:
+                writer.write(b'{"error": "vault not found"}\n')
+                return
 
-                if not vault:
-                    self.wfile.write(b'{"error": "vault not found"}\n')
-                    return
+            graph_path = vault.pkm_dir / "graph.json"
+            if not graph_path.exists():
+                writer.write(b'{"error": "graph not found"}\n')
+                return
+            graph_mtime = graph_path.stat().st_mtime
 
-                graph_path = vault.pkm_dir / "graph.json"
-                if not graph_path.exists():
-                    self.wfile.write(b'{"error": "graph not found"}\n')
-                    return
-                graph_mtime = graph_path.stat().st_mtime
+            graph = get_cached_graph(str(graph_path), graph_mtime)
+            if not graph or note_id not in graph:
+                writer.write(b'{"error": "note not found in graph"}\n')
+                return
 
-                graph = get_cached_graph(str(graph_path), graph_mtime)
-                if not graph or note_id not in graph:
-                    self.wfile.write(b'{"error": "note not found in graph"}\n')
-                    return
+            import networkx as nx
 
-                import networkx as nx
+            subgraph = nx.ego_graph(graph, note_id, radius=depth)
+            context = nx.node_link_data(subgraph)
 
-                subgraph = nx.ego_graph(graph, note_id, radius=depth)
-                context = nx.node_link_data(subgraph)
+            res_data = json.dumps(context) + "\n"
+            writer.write(res_data.encode("utf-8"))
 
-                res_data = json.dumps(context) + "\n"
-                self.wfile.write(res_data.encode("utf-8"))
+        elif action in ("update_index", "RELOAD_INDEX"):
+            vault_name = req.get("vault_name")
 
-            elif action in ("update_index", "RELOAD_INDEX"):
-                vault_name = req.get("vault_name")
+            from pkm.config import discover_vaults
 
-                from pkm.config import discover_vaults
+            vaults = discover_vaults()
+            if vault_name and vault_name in vaults:
+                vault = vaults[vault_name]
+            else:
+                vault = next(iter(vaults.values())) if vaults else None
 
-                vaults = discover_vaults()
-                if vault_name and vault_name in vaults:
-                    vault = vaults[vault_name]
-                else:
-                    vault = next(iter(vaults.values())) if vaults else None
+            if not vault:
+                writer.write(b'{"error": "vault not found"}\n')
+                return
 
-                if not vault:
-                    self.wfile.write(b'{"error": "vault not found"}\n')
-                    return
+            if action == "update_index":
 
-                if action == "update_index":
+                def _bg_update(v):
+                    from pkm.search_engine import build_index
 
-                    def _bg_update(v):
-                        from pkm.search_engine import build_index
+                    try:
+                        build_index(v)
+                    except Exception:
+                        logger.exception("Failed to build index in background")
+                    finally:
+                        get_cached_index.cache_clear()
+                        get_cached_graph.cache_clear()
+                        _reload_vault_caches(v)
 
-                        try:
-                            build_index(v)
-                        except Exception:
-                            logger.exception("Failed to build index in background")
-                        finally:
-                            get_cached_index.cache_clear()
-                            get_cached_graph.cache_clear()
-                            _reload_vault_caches(v)
+                loop = asyncio.get_running_loop()
+                loop.run_in_executor(None, _bg_update, vault)
+            else:
+                get_cached_index.cache_clear()
+                get_cached_graph.cache_clear()
 
-                    threading.Thread(
-                        target=_bg_update, args=(vault,), daemon=True
-                    ).start()
-                else:
-                    get_cached_index.cache_clear()
-                    get_cached_graph.cache_clear()
+                loop = asyncio.get_running_loop()
+                loop.run_in_executor(None, _reload_vault_caches, vault)
 
-                    threading.Thread(
-                        target=_reload_vault_caches, args=(vault,), daemon=True
-                    ).start()
+            writer.write(b'{"status": "ok"}\n')
 
-                self.wfile.write(b'{"status": "ok"}\n')
-
-        except Exception:
-            logger.exception("Error handling request")
-            self.wfile.write(b'{"error": "internal"}\n')
-        finally:
-            DaemonState.last_activity = time.time()
-
-
-class TimeoutUnixServer(socketserver.UnixStreamServer):
-    def server_bind(self):
-        address = str(self.server_address)
-        if os.path.exists(address):
+        elif action == "ask":
+            if not worker_proxy:
+                writer.write(b'{"error": "LLM worker not initialized"}\n')
+                return
+                
+            task_id = f"ask_{time.time()}"
+            task = {
+                "type": "task",
+                "id": task_id,
+                "task_type": "ask",
+                "query": req.get("query")
+            }
+            
             try:
-                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
-                    s.connect(address)
-                raise RuntimeError("Another daemon is already running.")
-            except ConnectionRefusedError:
-                os.unlink(address)
-        super().server_bind()
+                result = await worker_proxy.send_task(task)
+                writer.write((json.dumps(result) + "\n").encode())
+            except Exception as e:
+                writer.write((json.dumps({"error": str(e)}) + "\n").encode())
+
+        elif action == "queue_task":
+            if not task_queue:
+                writer.write(b'{"error": "Task queue not initialized"}\n')
+                return
+                
+            task = req.get("task")
+            if task:
+                task_queue.push(task)
+                writer.write(b'{"status": "queued"}\n')
+            else:
+                writer.write(b'{"error": "missing task"}\n')
+
+    except Exception:
+        logger.exception("Error handling request")
+        writer.write(b'{"error": "internal"}\n')
+    finally:
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+        DaemonState.last_activity = time.time()
 
 
-def idle_checker(server):
+async def idle_checker(server: asyncio.Server):
     while True:
-        time.sleep(60)
+        await asyncio.sleep(60)
         if time.time() - DaemonState.last_activity > IDLE_TIMEOUT:
             logger.info("Idle timeout reached. Shutting down daemon.")
-            server.shutdown()
+            server.close()
             break
+
+
+async def process_background_tasks():
+    while True:
+        if task_queue and worker_proxy:
+            task = task_queue.peek()
+            if task:
+                try:
+                    worker_proxy.budget.check_and_consume(0)
+                    
+                    task = task_queue.pop()
+                    if task:
+                        logger.info(f"Processing background task: {task.get('id')}")
+                        await worker_proxy.send_task(task)
+                except BudgetExhausted:
+                    logger.info("Budget exhausted, pausing background tasks")
+                    await asyncio.sleep(60)
+                    continue
+                except Exception as e:
+                    logger.exception("Error processing background task")
+                    
+        await asyncio.sleep(5)
 
 
 def _on_shutdown() -> None:
@@ -344,32 +564,63 @@ def _reload_vault_caches(vault):
         DaemonState.graph_ready = True
 
 
-def main():
+async def async_main():
+    global worker_proxy, task_queue
+    
     SOCKET_PATH.parent.mkdir(parents=True, exist_ok=True)
+    
+    if SOCKET_PATH.exists():
+        try:
+            reader, writer = await asyncio.open_unix_connection(str(SOCKET_PATH))
+            writer.close()
+            await writer.wait_closed()
+            logger.warning("Another daemon is already running. Exiting.")
+            return
+        except ConnectionRefusedError:
+            SOCKET_PATH.unlink()
+        except Exception:
+            SOCKET_PATH.unlink()
 
-    try:
-        server = TimeoutUnixServer(str(SOCKET_PATH), SearchRequestHandler)
-    except RuntimeError:
-        logger.warning("Another daemon is already running. Exiting.")
-        return
+    queue_path = Path.home() / ".config" / "pkm" / "task_queue.json"
+    task_queue = TaskQueue(queue_path)
+    
+    budget = TokenBudget(max_tokens=100000, window_seconds=3600)
+    worker_proxy = LLMWorkerProxy(budget)
+    
+    from pkm.config import discover_vaults
+    vaults = discover_vaults()
+    vault_dir = str(next(iter(vaults.values())).pkm_dir.parent) if vaults else "."
+    
+    await worker_proxy.start(vault_dir)
 
-    checker = threading.Thread(target=idle_checker, args=(server,), daemon=True)
-    checker.start()
+    server = await asyncio.start_unix_server(handle_client, str(SOCKET_PATH))
+    
+    checker_task = asyncio.create_task(idle_checker(server))
+    bg_task = asyncio.create_task(process_background_tasks())
 
-    # Pre-load model in background thread so daemon is ready for first request
-    threading.Thread(target=_preload_model, daemon=True).start()
+    loop = asyncio.get_running_loop()
+    loop.run_in_executor(None, _preload_model)
 
     logger.info("Daemon started. Listening on %s", SOCKET_PATH)
     try:
-        server.serve_forever()
+        async with server:
+            await server.serve_forever()
     finally:
         logger.info("Daemon shutting down.")
+        checker_task.cancel()
+        bg_task.cancel()
+        if worker_proxy and worker_proxy.process:
+            worker_proxy.process.terminate()
         _on_shutdown()
         if SOCKET_PATH.exists():
             try:
                 SOCKET_PATH.unlink()
             except OSError:
                 pass
+
+
+def main():
+    asyncio.run(async_main())
 
 
 if __name__ == "__main__":

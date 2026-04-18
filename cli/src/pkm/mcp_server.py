@@ -9,7 +9,7 @@ from __future__ import annotations
 
 
 import click
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP, Context
 
 from pkm.config import VaultConfig, get_vault
 
@@ -162,6 +162,79 @@ def index() -> dict:
         return {"error": str(e.message)}
     except Exception as e:
         return {"error": str(e)}
+
+
+@mcp.tool()
+async def pkm_ask(
+    query: str,
+    ctx: Context,
+    vault: str | None = None,
+    timeout: int = 120,
+) -> dict:
+    """Ask a natural language question about your vault.
+
+    Args:
+        query: The natural language question to ask.
+        vault: Vault name for cross-vault search. Uses server vault if omitted.
+        timeout: Timeout in seconds to wait for the result.
+    """
+    import json
+    import asyncio
+    from pathlib import Path
+
+    target_vault = _get_vault(vault)
+    sock_path = Path.home() / ".config" / "pkm" / "daemon.sock"
+
+    if not sock_path.exists():
+        return {"error": "Daemon is not running. Start it with 'pkm daemon start'."}
+
+    ctx.info(f"Connecting to daemon to ask: {query}")
+
+    try:
+        reader, writer = await asyncio.open_unix_connection(str(sock_path))
+        
+        req = {
+            "action": "ask",
+            "query": query,
+            "vault_name": target_vault.name,
+        }
+        writer.write(json.dumps(req).encode("utf-8") + b"\n")
+        await writer.drain()
+
+        ctx.info("Waiting for daemon response...")
+        
+        # Wait for response with timeout
+        data = await asyncio.wait_for(reader.readline(), timeout=timeout)
+        
+        if not data:
+            return {"error": "No response from daemon."}
+
+        resp = json.loads(data.decode("utf-8"))
+        
+        if "error" in resp:
+            error_msg = resp["error"]
+            if error_msg == "BudgetExhausted":
+                return {"error": "Token budget exhausted. Please try again later."}
+            return {"error": error_msg}
+
+        if "result" in resp:
+            ctx.info("Received response from daemon.")
+            return {"result": resp["result"]}
+        else:
+            return {"error": "Invalid response format from daemon."}
+
+    except asyncio.TimeoutError:
+        return {"error": f"Request timed out after {timeout} seconds."}
+    except ConnectionRefusedError:
+        return {"error": "Connection refused. Is the daemon running?"}
+    except Exception as e:
+        return {"error": f"An unexpected error occurred: {e}"}
+    finally:
+        try:
+            writer.close()
+            await writer.wait_closed()
+        except Exception:
+            pass
 
 
 def run_server(vault: VaultConfig) -> None:
