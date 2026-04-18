@@ -159,7 +159,7 @@ class SearchRequestHandler(socketserver.StreamRequestHandler):
                     self.wfile.write(b'{"error": "vault not found"}\n')
                     return
 
-                graph_path = vault.pkm_dir / ".context" / "graph.json"
+                graph_path = vault.pkm_dir / "graph.json"
                 if not graph_path.exists():
                     self.wfile.write(b'{"error": "graph not found"}\n')
                     return

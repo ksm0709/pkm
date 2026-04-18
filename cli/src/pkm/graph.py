@@ -148,11 +148,8 @@ class ASTCache:
 
 def build_ast_and_graph(vault: VaultConfig) -> None:
     """Build Incremental AST Cache and networkx graph."""
-    context_dir = vault.pkm_dir / ".context"
-    context_dir.mkdir(parents=True, exist_ok=True)
-
-    db_path = context_dir / "ast.db"
-    graph_path = context_dir / "graph.json"
+    db_path = vault.pkm_dir / "ast.db"
+    graph_path = vault.pkm_dir / "graph.json"
 
     cache = ASTCache(db_path)
 

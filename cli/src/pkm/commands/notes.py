@@ -569,7 +569,7 @@ def auto_link(ctx: click.Context, note_id: str | None, all_notes: bool, dry_run:
     
     vault = ctx.obj["vault"]
     from pkm.graph import ASTCache
-    db_path = vault.pkm_dir / ".context" / "ast.db"
+    db_path = vault.pkm_dir / "ast.db"
     if not db_path.exists():
         console.print("[red]AST cache not found. Run 'pkm index' first.[/red]")
         raise SystemExit(1)
@@ -632,7 +632,7 @@ def split_note(ctx: click.Context, note_id: str | None, all_notes: bool, dry_run
         
     vault = ctx.obj["vault"]
     from pkm.graph import ASTCache
-    db_path = vault.pkm_dir / ".context" / "ast.db"
+    db_path = vault.pkm_dir / "ast.db"
     cache = ASTCache(db_path) if db_path.exists() else None
     
     all_notes_list = _search_notes(vault, "")

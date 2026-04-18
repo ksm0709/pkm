@@ -455,7 +455,7 @@ def get_graph_context_via_daemon(note_id: str, vault, depth: int = 1) -> dict | 
     import json
     from pathlib import Path
     
-    graph_path = vault.pkm_dir / ".context" / "graph.json"
+    graph_path = vault.pkm_dir / "graph.json"
     if not graph_path.exists():
         return None
         
