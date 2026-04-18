@@ -405,8 +405,15 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                 writer.write(b'{"error": "LLM worker not initialized"}\n')
                 return
 
+            env_keys = req.get("env_keys", {})
+            if env_keys:
+                os.environ.update(env_keys)
+
             query = req.get("query")
             vault_name = req.get("vault_name")
+            env_vars = req.get("env", {})
+            for k, v in env_vars.items():
+                os.environ[k] = v
 
             from pkm.config import discover_vaults
 
@@ -453,6 +460,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                 "query": query,
                 "context": context_str,
                 "model": req.get("model", "gemini/gemini-3.1-flash-preview"),
+                "env_keys": env_keys,
             }
 
             try:

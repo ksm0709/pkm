@@ -91,8 +91,11 @@ ipc = IPCClient()
 
 
 def handle_ask(
-    task_id: str, query: str, context: str, vault_dir: str, model: Optional[str] = None
+    task_id: str, query: str, context: str, vault_dir: str, model: Optional[str] = None, env_keys: Optional[Dict[str, str]] = None
 ):
+    if env_keys:
+        os.environ.update(env_keys)
+
     system_prompt = (
         "You are a helpful PKM assistant. You have access to the user's vault.\n"
         "Answer the user's query based on the provided context from their notes.\n"
@@ -176,6 +179,10 @@ def main():
                 task_id = str(msg.get("id", ""))
                 task_type = msg.get("task_type")
 
+                env_vars = msg.get("env", {})
+                for k, v in env_vars.items():
+                    os.environ[k] = v
+
                 if task_type == "ask":
                     handle_ask(
                         task_id,
@@ -183,6 +190,7 @@ def main():
                         msg.get("context", ""),
                         vault_dir,
                         msg.get("model"),
+                        msg.get("env_keys", {}),
                     )
                 elif task_type == "zettelkasten_maintenance":
                     handle_zettelkasten_maintenance(

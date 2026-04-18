@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 import sys
 from pathlib import Path
@@ -108,6 +109,9 @@ def ask_cmd(
         except Exception:
             pass
 
+    import os
+    env_keys = {k: v for k, v in os.environ.items() if k.endswith("_API_KEY")}
+
     sock_path = Path.home() / ".config" / "pkm" / "daemon.sock"
 
     if not sock_path.exists():
@@ -127,6 +131,7 @@ def ask_cmd(
                     "query": query_str,
                     "vault_name": vault.name,
                     "model": final_model,
+                    "env_keys": env_keys,
                 }
                 sock.sendall(json.dumps(req).encode("utf-8") + b"\n")
 

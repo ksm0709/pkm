@@ -183,6 +183,7 @@ async def pkm_ask(
     """
     import json
     import asyncio
+    import os
     from pathlib import Path
     from pkm.config import load_config
 
@@ -209,6 +210,8 @@ async def pkm_ask(
         except Exception:
             pass
 
+    env_keys = {k: v for k, v in os.environ.items() if k.endswith("_API_KEY")}
+
     writer = None
     try:
         reader, writer = await asyncio.open_unix_connection(str(sock_path))
@@ -218,6 +221,7 @@ async def pkm_ask(
             "query": query,
             "vault_name": target_vault.name,
             "model": final_model,
+            "env_keys": env_keys,
         }
         writer.write(json.dumps(req).encode("utf-8") + b"\n")
         await writer.drain()
