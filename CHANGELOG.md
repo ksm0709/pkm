@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v2.37.0 (2026-04-18)
+
+### Chores
+
+- **ask**: Switch default LLM model to gemini-3.1-flash-preview
+  ([`e69e973`](https://github.com/ksm0709/pkm/commit/e69e973bbecc50c5835dea36a665147bac86fcfe))
+
+### Features
+
+- **ask**: Auto model selection and fallback with curated list
+  ([`f6f0bed`](https://github.com/ksm0709/pkm/commit/f6f0beddae9ae8d561b02dc80a3c7d7294b79d32))
+
+
 ## v2.36.0 (2026-04-18)
 
 ### Features
