@@ -124,7 +124,10 @@ def build_index(
 
     cursor = conn.cursor()
     cursor.execute("SELECT note_id, mtime, model, embedding FROM vector_cache")
-    cache = {row[0]: {"mtime": row[1], "model": row[2], "embedding": row[3]} for row in cursor.fetchall()}
+    cache = {
+        row[0]: {"mtime": row[1], "model": row[2], "embedding": row[3]}
+        for row in cursor.fetchall()
+    }
 
     entries: list[IndexEntry] = []
     to_encode_texts = []
@@ -135,8 +138,12 @@ def build_index(
         current_mtime = note.path.stat().st_mtime
 
         cached = cache.get(note_id)
-        if cached and cached["mtime"] >= current_mtime and cached["model"] == model_name:
-            emb = np.frombuffer(cached["embedding"], dtype='<f4')
+        if (
+            cached
+            and cached["mtime"] >= current_mtime
+            and cached["model"] == model_name
+        ):
+            emb = np.frombuffer(cached["embedding"], dtype="<f4")
             entries.append(
                 IndexEntry(
                     note_id=note_id,
@@ -161,11 +168,11 @@ def build_index(
         for note, emb in zip(to_encode_notes, embeddings):
             note_id = str(note.id)
             current_mtime = note.path.stat().st_mtime
-            blob = np.array(emb, dtype='<f4').tobytes()
+            blob = np.array(emb, dtype="<f4").tobytes()
 
             conn.execute(
                 "INSERT OR REPLACE INTO vector_cache (note_id, mtime, model, embedding) VALUES (?, ?, ?, ?)",
-                (note_id, current_mtime, model_name, blob)
+                (note_id, current_mtime, model_name, blob),
             )
 
             entries.append(
@@ -193,17 +200,20 @@ def build_index(
     )
 
     vault.pkm_dir.mkdir(parents=True, exist_ok=True)
-    
+
     import sqlite3
+
     db_path = vault.pkm_dir / "vector.db"
     try:
         with sqlite3.connect(db_path) as conn:
             conn.execute("CREATE TEMPORARY TABLE active_notes (note_id TEXT)")
             conn.executemany(
                 "INSERT INTO active_notes (note_id) VALUES (?)",
-                [(e.note_id,) for e in entries]
+                [(e.note_id,) for e in entries],
             )
-            conn.execute("DELETE FROM vector_cache WHERE note_id NOT IN (SELECT note_id FROM active_notes)")
+            conn.execute(
+                "DELETE FROM vector_cache WHERE note_id NOT IN (SELECT note_id FROM active_notes)"
+            )
             conn.execute("DROP TABLE active_notes")
     except sqlite3.Error:
         pass
