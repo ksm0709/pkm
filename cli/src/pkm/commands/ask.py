@@ -51,17 +51,18 @@ def ask_cmd(
             )
             sys.exit(1)
 
-    if not query:
-        console.print("[red]Error:[/red] Missing argument 'QUERY'.")
-        sys.exit(1)
-
-    vault = ctx.obj["vault"]
-    query_str = " ".join(query)
-
     from pkm.config import load_config
 
     config_model = load_config().get("defaults", {}).get("model")
     final_model = model or config_model or "gpt-4o-mini"
+
+    if not query:
+        console.print(f"Current LLM model: [bold green]{final_model}[/bold green]\n")
+        click.echo(ctx.get_help())
+        sys.exit(1)
+
+    vault = ctx.obj["vault"]
+    query_str = " ".join(query)
 
     try:
         import litellm
