@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.39.0 (2026-04-18)
+
+### Features
+
+- **ask**: Auto-start daemon and remove terminal animations
+  ([`694d607`](https://github.com/ksm0709/pkm/commit/694d60738cd1effb409d4b71ee37262c2a01c260))
+
+
 ## v2.38.3 (2026-04-18)
 
 ### Bug Fixes
