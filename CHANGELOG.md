@@ -2,6 +2,27 @@
 
 <!-- version list -->
 
+## v2.29.0 (2026-04-18)
+
+### Chores
+
+- Add mistletoe test scripts for parser research
+  ([`10ce33e`](https://github.com/ksm0709/pkm/commit/10ce33e603127dad915e29ae39708fa44ed7e2f9))
+
+- Add test probes and dummy graph for graphify research
+  ([`d6741b4`](https://github.com/ksm0709/pkm/commit/d6741b4c4554a68517227a4f58071f14b3bc3677))
+
+### Features
+
+- **pkm**: Implement incremental AST caching and daemon graph integration
+  ([`76242f3`](https://github.com/ksm0709/pkm/commit/76242f33c74e3f28bfadac25b644fb9668dd663f))
+
+### Refactoring
+
+- **pkm**: Clean up unused workflows and simplify core loops in plugin skill
+  ([`9da3506`](https://github.com/ksm0709/pkm/commit/9da3506664be215bff76c160876bc6f5b96851aa))
+
+
 ## v2.28.5 (2026-04-16)
 
 ### Bug Fixes
