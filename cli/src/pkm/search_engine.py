@@ -332,7 +332,6 @@ def search_via_daemon(
     if not index_path.exists():
         return None
 
-    index_mtime = index_path.stat().st_mtime
     sock_path = Path.home() / ".config" / "pkm" / "daemon.sock"
 
     try:
@@ -454,20 +453,19 @@ def get_graph_context_via_daemon(note_id: str, vault, depth: int = 1) -> dict | 
     import socket
     import json
     from pathlib import Path
-    
+
     graph_path = vault.pkm_dir / "graph.json"
     if not graph_path.exists():
         return None
-        
-    graph_mtime = graph_path.stat().st_mtime
+
     sock_path = Path.home() / ".config" / "pkm" / "daemon.sock"
-    
+
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             sock.settimeout(0.2)
             sock.connect(str(sock_path))
             sock.settimeout(1.5)
-            
+
             req = {
                 "action": "get_graph_context",
                 "note_id": note_id,
@@ -475,16 +473,16 @@ def get_graph_context_via_daemon(note_id: str, vault, depth: int = 1) -> dict | 
                 "vault_name": vault.name,
             }
             sock.sendall(json.dumps(req).encode("utf-8") + b"\n")
-            
+
             f = sock.makefile("r", encoding="utf-8")
             resp_line = f.readline()
             if not resp_line:
                 return None
-                
+
             data = json.loads(resp_line)
             if "error" in data:
                 return None
-                
+
             return data
     except Exception:
         return None
