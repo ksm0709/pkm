@@ -3,12 +3,18 @@
 # Redirect all output to stderr so the LLM sees the messages when exiting with code 2
 exec 1>&2
 
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+# Check if we should skip the hook (e.g., when agent is waiting for background tasks)
+if [ -f "$ROOT/.skip-hook" ]; then
+    rm "$ROOT/.skip-hook"
+    exit 0
+fi
+
 # Check if there are any tracked or untracked changes
 if git diff HEAD --quiet && [ -z "$(git ls-files --others --exclude-standard)" ]; then
     exit 0
 fi
-
-ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$ROOT/cli" || exit 2
 
 # Run quality gates — only show output on failure

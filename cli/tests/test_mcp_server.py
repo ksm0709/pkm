@@ -277,7 +277,7 @@ class TestMcpE2EProtocol:
         assert "serverInfo" in result or "capabilities" in result
 
     def test_tools_list(self, mcp_process) -> None:
-        """After initialize, tools/list returns 4 tools."""
+        """After initialize, tools/list returns 5 tools."""
         # Initialize first
         self._send_and_recv(
             mcp_process,
@@ -319,7 +319,8 @@ class TestMcpE2EProtocol:
         assert "daily_add" in tool_names
         assert "search" in tool_names
         assert "index" in tool_names
-        assert len(tools) == 4
+        assert "pkm_ask" in tool_names
+        assert len(tools) == 5
 
         # Verify inputSchema exists on each tool
         for tool in tools:

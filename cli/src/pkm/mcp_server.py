@@ -8,8 +8,10 @@ Runs as a foreground stdio server. An MCP client spawns this process via config:
 from __future__ import annotations
 
 
+from typing import Any
+
 import click
-from mcp.server.fastmcp import FastMCP, Context
+from mcp.server.fastmcp import FastMCP
 
 from pkm.config import VaultConfig, get_vault
 
@@ -37,10 +39,10 @@ def note_add(
     type: str | None = None,
     importance: int | None = None,
     tags: list[str] | None = None,
-    meta: dict | None = None,
+    meta: dict[str, Any] | None = None,
     session_id: str | None = None,
     agent_id: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Create an atomic note in the PKM vault.
 
     Args:
@@ -76,7 +78,7 @@ def note_add(
 
 
 @mcp.tool()
-def daily_add(text: str) -> dict:
+def daily_add(text: str) -> dict[str, Any]:
     """Append a timestamped log entry to today's daily note.
 
     Args:
@@ -101,7 +103,7 @@ def search(
     vault: str | None = None,
     memory_type: str | None = None,
     min_importance: float = 1.0,
-) -> dict:
+) -> dict[str, Any]:
     """Search notes semantically via the PKM daemon.
 
     Args:
@@ -150,7 +152,7 @@ def search(
 
 
 @mcp.tool()
-def index() -> dict:
+def index() -> dict[str, Any]:
     """Rebuild the semantic search index for the current vault."""
     from pkm.search_engine import build_index
 
@@ -167,10 +169,10 @@ def index() -> dict:
 @mcp.tool()
 async def pkm_ask(
     query: str,
-    ctx: Context,
+    ctx: Any,
     vault: str | None = None,
     timeout: int = 120,
-) -> dict:
+) -> dict[str, Any]:
     """Ask a natural language question about your vault.
 
     Args:
@@ -190,9 +192,10 @@ async def pkm_ask(
 
     ctx.info(f"Connecting to daemon to ask: {query}")
 
+    writer = None
     try:
         reader, writer = await asyncio.open_unix_connection(str(sock_path))
-        
+
         req = {
             "action": "ask",
             "query": query,
@@ -202,15 +205,14 @@ async def pkm_ask(
         await writer.drain()
 
         ctx.info("Waiting for daemon response...")
-        
-        # Wait for response with timeout
+
         data = await asyncio.wait_for(reader.readline(), timeout=timeout)
-        
+
         if not data:
             return {"error": "No response from daemon."}
 
         resp = json.loads(data.decode("utf-8"))
-        
+
         if "error" in resp:
             error_msg = resp["error"]
             if error_msg == "BudgetExhausted":
@@ -231,8 +233,9 @@ async def pkm_ask(
         return {"error": f"An unexpected error occurred: {e}"}
     finally:
         try:
-            writer.close()
-            await writer.wait_closed()
+            if writer:
+                writer.close()
+                await writer.wait_closed()
         except Exception:
             pass
 
