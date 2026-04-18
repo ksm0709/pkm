@@ -462,6 +462,7 @@ def search_via_daemon(
         try:
             subprocess.Popen(
                 [sys.executable, "-m", "pkm.daemon"],
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
@@ -507,6 +508,7 @@ def update_index_via_daemon(vault: VaultConfig) -> bool:
         try:
             subprocess.Popen(
                 [sys.executable, "-m", "pkm.daemon"],
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
