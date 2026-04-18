@@ -170,6 +170,7 @@ def index() -> dict[str, Any]:
 async def pkm_ask(
     query: str,
     vault: str | None = None,
+    model: str | None = None,
     timeout: int = 120,
 ) -> dict[str, Any]:
     """Ask a natural language question about your vault.
@@ -177,17 +178,32 @@ async def pkm_ask(
     Args:
         query: The natural language question to ask.
         vault: Vault name for cross-vault search. Uses server vault if omitted.
+        model: Optional LLM model to use. Overrides config if provided.
         timeout: Timeout in seconds to wait for the result.
     """
     import json
     import asyncio
     from pathlib import Path
+    from pkm.config import load_config
 
     target_vault = _get_vault(vault)
     sock_path = Path.home() / ".config" / "pkm" / "daemon.sock"
 
     if not sock_path.exists():
         return {"error": "Daemon is not running. Start it with 'pkm daemon start'."}
+
+    config_model = load_config().get("defaults", {}).get("model")
+    final_model = model or config_model or "gpt-4o-mini"
+
+    try:
+        import litellm
+        validation = litellm.validate_environment(final_model)
+        if not validation.get('keys_in_environment', True):
+            missing = validation.get('missing_keys', [])
+            if missing:
+                return {"error": f"API keys for model '{final_model}' are missing from your environment: {', '.join(missing)}. Export them and restart the daemon."}
+    except Exception:
+        pass
 
     writer = None
     try:
@@ -197,6 +213,7 @@ async def pkm_ask(
             "action": "ask",
             "query": query,
             "vault_name": target_vault.name,
+            "model": final_model,
         }
         writer.write(json.dumps(req).encode("utf-8") + b"\n")
         await writer.drain()

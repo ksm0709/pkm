@@ -14,15 +14,50 @@ console = Console()
 
 
 @click.command("ask")
-@click.argument("query", nargs=-1, required=True)
+@click.argument("query", nargs=-1, required=False)
 @click.option(
     "--timeout", type=int, default=120, help="Timeout in seconds to wait for the result"
 )
+@click.option("--model", type=str, help="LLM model to use (overrides config)")
+@click.option("--list-models", is_flag=True, help="List available model providers via litellm")
 @click.pass_context
-def ask_cmd(ctx: click.Context, query: tuple[str, ...], timeout: int) -> None:
+def ask_cmd(ctx: click.Context, query: tuple[str, ...], timeout: int, model: str | None, list_models: bool) -> None:
     """Ask a natural language question about your vault."""
+    if list_models:
+        try:
+            import litellm
+            console.print("[bold cyan]Available LiteLLM Providers:[/bold cyan]")
+            providers = sorted(list(litellm.models_by_provider.keys()))
+            console.print(", ".join(providers))
+            console.print("\n[dim]Note: Most providers require specific API keys (e.g. OPENAI_API_KEY, ANTHROPIC_API_KEY).[/dim]")
+            console.print("[dim]For a full list of models per provider, visit: https://docs.litellm.ai/docs/providers[/dim]")
+            sys.exit(0)
+        except ImportError:
+            console.print("[red]Error:[/red] litellm is not installed. Please install it (e.g. `uv pip install litellm`) to list models.")
+            sys.exit(1)
+
+    if not query:
+        console.print("[red]Error:[/red] Missing argument 'QUERY'.")
+        sys.exit(1)
+
     vault = ctx.obj["vault"]
     query_str = " ".join(query)
+
+    from pkm.config import load_config
+    config_model = load_config().get("defaults", {}).get("model")
+    final_model = model or config_model or "gpt-4o-mini"
+    
+    try:
+        import litellm
+        validation = litellm.validate_environment(final_model)
+        if not validation.get('keys_in_environment', True):
+            missing = validation.get('missing_keys', [])
+            if missing:
+                console.print(f"[red]Error:[/red] API keys for model '{final_model}' are missing from your environment: {', '.join(missing)}")
+                console.print(f"[yellow]Hint: Export them and restart the daemon (e.g. `export {missing[0]}=\"...\" && pkm daemon restart`)[/yellow]")
+                sys.exit(1)
+    except Exception:
+        pass
 
     sock_path = Path.home() / ".config" / "pkm" / "daemon.sock"
 
@@ -32,7 +67,7 @@ def ask_cmd(ctx: click.Context, query: tuple[str, ...], timeout: int) -> None:
         )
         sys.exit(1)
 
-    with console.status("[cyan]Asking daemon...[/cyan]"):
+    with console.status(f"[cyan]Asking daemon using model '{final_model}'...[/cyan]"):
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
                 sock.settimeout(timeout)
@@ -42,6 +77,7 @@ def ask_cmd(ctx: click.Context, query: tuple[str, ...], timeout: int) -> None:
                     "action": "ask",
                     "query": query_str,
                     "vault_name": vault.name,
+                    "model": final_model,
                 }
                 sock.sendall(json.dumps(req).encode("utf-8") + b"\n")
 
