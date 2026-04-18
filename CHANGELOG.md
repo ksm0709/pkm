@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.32.0 (2026-04-18)
+
+### Features
+
+- **pkm**: Replace vault cd with vault edit and change where output for alias use
+  ([`d1c20a3`](https://github.com/ksm0709/pkm/commit/d1c20a340f31ac89d84a6b6fea63cc5175a8e307))
+
+
 ## v2.31.0 (2026-04-18)
 
 ### Bug Fixes
