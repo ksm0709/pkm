@@ -252,11 +252,11 @@ def search_cmd(
                 pass
         results = filtered
 
-
     # Append graph context
     if output_format == "json":
         try:
             from pkm.search_engine import get_graph_context_via_daemon
+
             for r in results:
                 graph_context = get_graph_context_via_daemon(r.note_id, vault, depth)
                 if graph_context:

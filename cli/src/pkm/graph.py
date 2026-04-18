@@ -60,7 +60,7 @@ def _extract_metadata_from_ast(
         current_offset = offset
         for child in node.get("children", []):
             current_offset = traverse(child, current_offset)
-            
+
         if node_type == "RawText":
             return offset + len(node.get("content", ""))
         return current_offset

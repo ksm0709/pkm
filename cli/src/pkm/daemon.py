@@ -95,6 +95,7 @@ class SearchRequestHandler(socketserver.StreamRequestHandler):
                     return
 
                 from pkm.config import discover_vaults
+
                 vaults = discover_vaults()
                 if vault_name and vault_name in vaults:
                     vault = vaults[vault_name]
@@ -139,16 +140,17 @@ class SearchRequestHandler(socketserver.StreamRequestHandler):
                 note_id = req.get("note_id")
                 depth = req.get("depth", 1)
                 vault_name = req.get("vault_name")
-                
+
                 if not note_id:
                     self.wfile.write(b'{"error": "missing note_id"}\n')
                     return
-                    
+
                 if not DaemonState.graph_ready:
                     self.wfile.write(b'{"error": "graph not ready"}\n')
                     return
 
                 from pkm.config import discover_vaults
+
                 vaults = discover_vaults()
                 if vault_name and vault_name in vaults:
                     vault = vaults[vault_name]
@@ -164,16 +166,17 @@ class SearchRequestHandler(socketserver.StreamRequestHandler):
                     self.wfile.write(b'{"error": "graph not found"}\n')
                     return
                 graph_mtime = graph_path.stat().st_mtime
-                    
+
                 graph = get_cached_graph(str(graph_path), graph_mtime)
                 if not graph or note_id not in graph:
                     self.wfile.write(b'{"error": "note not found in graph"}\n')
                     return
-                    
+
                 import networkx as nx
+
                 subgraph = nx.ego_graph(graph, note_id, radius=depth)
                 context = nx.node_link_data(subgraph)
-                
+
                 res_data = json.dumps(context) + "\n"
                 self.wfile.write(res_data.encode("utf-8"))
 
@@ -181,6 +184,7 @@ class SearchRequestHandler(socketserver.StreamRequestHandler):
                 vault_name = req.get("vault_name")
 
                 from pkm.config import discover_vaults
+
                 vaults = discover_vaults()
                 if vault_name and vault_name in vaults:
                     vault = vaults[vault_name]
@@ -192,8 +196,10 @@ class SearchRequestHandler(socketserver.StreamRequestHandler):
                     return
 
                 if action == "update_index":
+
                     def _bg_update(v):
                         from pkm.search_engine import build_index
+
                         try:
                             build_index(v)
                         except Exception:
@@ -203,7 +209,9 @@ class SearchRequestHandler(socketserver.StreamRequestHandler):
                             get_cached_graph.cache_clear()
                             _reload_vault_caches(v)
 
-                    threading.Thread(target=_bg_update, args=(vault,), daemon=True).start()
+                    threading.Thread(
+                        target=_bg_update, args=(vault,), daemon=True
+                    ).start()
                 else:
                     get_cached_index.cache_clear()
                     get_cached_graph.cache_clear()
@@ -328,9 +336,7 @@ def _reload_vault_caches(vault):
         graph_path = vault.pkm_dir / ".context" / "graph.json"
         if graph_path.exists():
             get_cached_graph(str(graph_path), graph_path.stat().st_mtime)
-        logger.info(
-            "Graph cache reloaded successfully for vault %s.", vault.name
-        )
+        logger.info("Graph cache reloaded successfully for vault %s.", vault.name)
     except Exception:
         logger.exception("Failed to reload graph cache")
     finally:
