@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v2.38.0 (2026-04-18)
+
+### Code Style
+
+- Format models.py
+  ([`53dfeea`](https://github.com/ksm0709/pkm/commit/53dfeea67b02cbcdc962e1e5b7363758037d2b5f))
+
+### Features
+
+- **ask**: Implement RAG context retrieval and update prompt
+  ([`5cbcd33`](https://github.com/ksm0709/pkm/commit/5cbcd33c3325077bdca31043623c8cf49fbd77ed))
+
+
 ## v2.37.1 (2026-04-18)
 
 ### Bug Fixes
