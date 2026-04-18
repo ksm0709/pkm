@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.38.2 (2026-04-18)
+
+### Bug Fixes
+
+- **ask**: Return clean error if auto mode finds no API keys
+  ([`efd296b`](https://github.com/ksm0709/pkm/commit/efd296bd2e0658f7c450cabbaf8024f27debea65))
+
+
 ## v2.38.1 (2026-04-18)
 
 ### Bug Fixes
