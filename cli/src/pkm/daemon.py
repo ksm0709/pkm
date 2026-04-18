@@ -26,6 +26,14 @@ logging.basicConfig(
 logger = logging.getLogger("pkm.daemon")
 
 
+def redact(data: Any) -> Any:
+    if isinstance(data, dict):
+        return {k: ("<REDACTED>" if "key" in k.lower() or "token" in k.lower() else redact(v)) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [redact(i) for i in data]
+    return data
+
+
 class DaemonState:
     last_activity = time.time()
     graph_ready = False
@@ -157,7 +165,10 @@ class LLMWorkerProxy:
             line = await self.process.stderr.readline()
             if not line:
                 break
-            logger.info(f"[Worker STDERR] {line.decode().strip()}")
+            text = line.decode().strip()
+            if "key" in text.lower() or "token" in text.lower():
+                text = "<REDACTED>"
+            logger.info(f"[Worker STDERR] {text}")
 
     async def _handle_worker_stdout(self):
         if not self.process or not self.process.stdout:
@@ -618,6 +629,7 @@ async def async_main():
     global worker_proxy, task_queue
 
     SOCKET_PATH.parent.mkdir(parents=True, exist_ok=True)
+    os.chmod(SOCKET_PATH.parent, 0o700)
 
     if SOCKET_PATH.exists():
         try:
@@ -645,6 +657,7 @@ async def async_main():
     await worker_proxy.start(vault_dir)
 
     server = await asyncio.start_unix_server(handle_client, str(SOCKET_PATH))
+    os.chmod(str(SOCKET_PATH), 0o600)
 
     checker_task = asyncio.create_task(idle_checker(server))
     bg_task = asyncio.create_task(process_background_tasks())

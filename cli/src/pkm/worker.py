@@ -13,6 +13,14 @@ logging.basicConfig(
 logger = logging.getLogger("pkm.worker")
 
 
+def redact(data: Any) -> Any:
+    if isinstance(data, dict):
+        return {k: ("<REDACTED>" if "key" in k.lower() or "token" in k.lower() else redact(v)) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [redact(i) for i in data]
+    return data
+
+
 class IPCClient:
     def __init__(self):
         self.request_counter = 0
@@ -81,7 +89,7 @@ class IPCClient:
                     break
                 else:
                     logger.warning(
-                        f"Unexpected message while waiting for LLM response: {msg}"
+                        f"Unexpected message while waiting for LLM response: {redact(msg)}"
                     )
 
         raise RuntimeError(f"All models failed. Last error: {last_error}")
