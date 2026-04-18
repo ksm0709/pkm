@@ -17,4 +17,5 @@ LINT_OUT=$(uv run ruff check --fix . 2>&1) || { echo "Linting failed."; echo "$L
 TEST_OUT=$(uv run pytest tests/ -q 2>&1) || { echo "Tests failed."; echo "$TEST_OUT"; exit 2; }
 
 echo "Code changes are present. All quality gates (lint, format, test) PASSED! If no new request has been submitted, commit and push the changes by yourself."
+echo "QUALITY MAINTENANCE ITEM: Ensure that README.md, docs/, and plugin/skills/SKILL.md are updated to reflect your changes before completing the task."
 exit 2

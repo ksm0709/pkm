@@ -10,5 +10,8 @@
         ]
       }
     ]
-  }
+  },
+  "customInstructions": [
+    "QUALITY MAINTENANCE ITEM: Before finishing any feature or bug fix, you MUST update README.md, the docs/ directory, and plugin/skills/SKILL.md if applicable to keep documentation in sync."
+  ]
 }
