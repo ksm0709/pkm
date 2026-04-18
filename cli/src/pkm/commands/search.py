@@ -127,8 +127,10 @@ def index_cmd(ctx: click.Context) -> None:
     with console.status("[cyan]Loading model and encoding notes...[/cyan]"):
         vector_index = build_index(vault)
     count = len(vector_index.entries)
-    console.print(f"[green]Index built:[/green] {count} note(s) indexed.")
-    console.print(f"Saved to [dim]{vault.pkm_dir / 'index.json'}[/dim]")
+    console.print(f"[green]✓ AST cache updated[/green] [dim]({vault.pkm_dir / 'ast.db'})[/dim]")
+    console.print(f"[green]✓ Structural graph built[/green] [dim]({vault.pkm_dir / 'graph.json'})[/dim]")
+    console.print(f"[green]✓ Vector cache updated[/green] [dim]({vault.pkm_dir / 'vector.db'})[/dim]")
+    console.print(f"[green]✓ Semantic index built:[/green] {count} note(s) indexed [dim]({vault.pkm_dir / 'index.json'})[/dim]")
 
 
 @click.command("search")
