@@ -52,6 +52,8 @@ def _extras_suffix() -> str:
 @click.argument("version", default=None, required=False)
 def update_cmd(version: str | None) -> None:
     """Update pkm to the latest version, or a specific VERSION tag (e.g. v0.3.0)."""
+    from pkm import __version__ as prev_version
+    
     cli_dir = find_local_cli_dir()
     in_git_repo = cli_dir is not None and (cli_dir.parent / ".git").exists()
 
@@ -157,6 +159,38 @@ def update_cmd(version: str | None) -> None:
     # Sync skill and command files — removes stale commands from old versions
     install_skill_files()
 
+    try:
+        if in_git_repo:
+            import re
+            changelog_path = repo_dir / "CHANGELOG.md"
+            if changelog_path.exists():
+                content = changelog_path.read_text(encoding="utf-8")
+                sections = re.split(r'\n## (v[0-9]+\.[0-9]+\.[0-9]+.*)\n', content)
+                if len(sections) >= 3:
+                    parsed = []
+                    for i in range(1, len(sections), 2):
+                        header = "## " + sections[i]
+                        body = sections[i+1].strip()
+                        parsed.append((header, body))
+                    
+                    since_v = prev_version if prev_version.startswith("v") else f"v{prev_version}"
+                    idx = -1
+                    for i, (h, b) in enumerate(parsed):
+                        if since_v in h:
+                            idx = i
+                            break
+                    
+                    if idx > 0:
+                        cl_text = "\n\n".join(f"{h}\n\n{b}" for h, b in parsed[:idx])
+                        from rich.markdown import Markdown
+                        console.print(f"\n[bold]Changes since {since_v}:[/bold]")
+                        console.print(Markdown(cl_text))
+                    elif idx == 0:
+                        console.print(f"\n[dim]No new changes found in changelog since {since_v}.[/dim]")
+    except Exception:
+        pass
+
     result = subprocess.run(["pkm", "--version"], capture_output=True, text=True)
     if result.returncode == 0:
-        console.print(result.stdout.strip())
+        first_line = result.stdout.strip().split("\n")[0]
+        console.print(f"\n[bold green]Now running: {first_line}[/bold green]")

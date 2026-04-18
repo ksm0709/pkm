@@ -29,9 +29,23 @@ VAULT_FREE_COMMANDS = {"vault", "config", "setup", "update", "hook", "daemon", "
 _console = Console()
 
 
+def print_version(ctx: click.Context, param: click.Parameter, value: bool) -> None:
+    if not value or ctx.resilient_parsing:
+        return
+    _console.print(f"[bold]pkm[/bold] v{__version__} — Personal Knowledge Management CLI\n")
+    try:
+        from pkm.changelog import get_changelog
+        cl = get_changelog(latest_n=3)
+        if cl:
+            from rich.markdown import Markdown
+            _console.print(Markdown(cl))
+    except Exception:
+        pass
+    ctx.exit()
+
 @click.group(invoke_without_command=True)
 @click.option("--vault", "-v", default=None, help="Vault name (default: auto-detected)")
-@click.version_option(version=__version__, prog_name="pkm")
+@click.option("--version", is_flag=True, callback=print_version, expose_value=False, is_eager=True, help="Show the version and latest changelog")
 @click.pass_context
 def main(ctx: click.Context, vault: str | None) -> None:
     """Personal Knowledge Management CLI for Obsidian vaults."""
