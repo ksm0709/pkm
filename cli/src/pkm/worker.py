@@ -37,25 +37,45 @@ class IPCClient:
         self.request_counter += 1
         req_id = f"llm_req_{self.request_counter}"
 
-        req = {"type": "llm_request", "id": req_id, "messages": messages}
-        if model:
-            req["model"] = model
+        models_to_try = [model] if model and model != "auto" else []
+        if not models_to_try:
+            try:
+                from pkm.models import resolve_auto_models
 
-        self.send_message(req)
+                models_to_try = resolve_auto_models()
+            except ImportError:
+                models_to_try = ["gemini/gemini-3.1-flash-lite-preview", "gpt-4o-mini"]
 
-        while True:
-            msg = self.read_message()
-            if not msg:
-                raise RuntimeError("EOF while waiting for LLM response")
+        last_error = None
+        for current_model in models_to_try:
+            req = {
+                "type": "llm_request",
+                "id": req_id,
+                "messages": messages,
+                "model": current_model,
+            }
 
-            if msg.get("type") == "llm_response" and msg.get("id") == req_id:
-                return msg.get("content", "")
-            elif msg.get("type") == "llm_error" and msg.get("id") == req_id:
-                raise RuntimeError(f"LLM Error: {msg.get('message')}")
-            else:
-                logger.warning(
-                    f"Unexpected message while waiting for LLM response: {msg}"
-                )
+            self.send_message(req)
+
+            while True:
+                msg = self.read_message()
+                if not msg:
+                    raise RuntimeError("EOF while waiting for LLM response")
+
+                if msg.get("type") == "llm_response" and msg.get("id") == req_id:
+                    return msg.get("content", "")
+                elif msg.get("type") == "llm_error" and msg.get("id") == req_id:
+                    last_error = msg.get("message")
+                    logger.warning(
+                        f"LLM Error with model {current_model}: {last_error}"
+                    )
+                    break
+                else:
+                    logger.warning(
+                        f"Unexpected message while waiting for LLM response: {msg}"
+                    )
+
+        raise RuntimeError(f"All models failed. Last error: {last_error}")
 
 
 ipc = IPCClient()

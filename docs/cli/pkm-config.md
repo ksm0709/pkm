@@ -15,7 +15,7 @@ Manage PKM configuration.
 - `default-vault`: Default vault name used when `--vault` is not specified
 - `editor`: Editor command used by `pkm daily edit` (e.g. 'vim', 'code --wait')
 - `graph-depth`: Default graph traversal depth for search and show commands
-- `model`: LLM model used by `pkm ask` (default: gemini/gemini-3.1-flash-preview, e.g. claude-3-5-sonnet-20241022)
+- `model`: LLM model used by `pkm ask` (default: auto, e.g. gemini/gemini-3.1-flash-preview, claude-3-5-sonnet-20241022)
 
 ## Examples
 ```bash

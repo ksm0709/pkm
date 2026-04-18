@@ -32,17 +32,43 @@ def ask_cmd(
 ) -> None:
     """Ask a natural language question about your vault."""
     if list_models:
+        from pkm.models import get_available_models
+        from rich.table import Table
+
         try:
             import litellm
 
-            console.print("[bold cyan]Available LiteLLM Providers:[/bold cyan]")
-            providers = sorted(list(litellm.models_by_provider.keys()))
-            console.print(", ".join(providers))
+            console.print("[bold cyan]PKM Recommended LLM Models:[/bold cyan]")
+
+            table = Table(show_header=True, header_style="bold")
+            table.add_column("Model ID")
+            table.add_column("Provider")
+            table.add_column("Context")
+            table.add_column("Input/1M")
+            table.add_column("Output/1M")
+            table.add_column("API Key Ready?")
+
+            for m in get_available_models():
+                val = litellm.validate_environment(m.id)
+                has_keys = val.get("keys_in_environment", True)
+                status = (
+                    "[green]Yes[/green]"
+                    if has_keys
+                    else f"[red]No ({', '.join(val.get('missing_keys', []))})[/red]"
+                )
+
+                table.add_row(
+                    m.id,
+                    m.provider,
+                    m.context_window,
+                    m.input_cost_1m,
+                    m.output_cost_1m,
+                    status,
+                )
+
+            console.print(table)
             console.print(
-                "\n[dim]Note: Most providers require specific API keys (e.g. OPENAI_API_KEY, ANTHROPIC_API_KEY).[/dim]"
-            )
-            console.print(
-                "[dim]For a full list of models per provider, visit: https://docs.litellm.ai/docs/providers[/dim]"
+                "\n[dim]When model='auto', PKM will automatically use the best available model from this list.[/dim]"
             )
             sys.exit(0)
         except ImportError:
@@ -54,7 +80,7 @@ def ask_cmd(
     from pkm.config import load_config
 
     config_model = load_config().get("defaults", {}).get("model")
-    final_model = model or config_model or "gemini/gemini-3.1-flash-preview"
+    final_model = model or config_model or "auto"
 
     if not query:
         console.print(f"Current LLM model: [bold green]{final_model}[/bold green]\n")
@@ -64,22 +90,23 @@ def ask_cmd(
     vault = ctx.obj["vault"]
     query_str = " ".join(query)
 
-    try:
-        import litellm
+    if final_model != "auto":
+        try:
+            import litellm
 
-        validation = litellm.validate_environment(final_model)
-        if not validation.get("keys_in_environment", True):
-            missing = validation.get("missing_keys", [])
-            if missing:
-                console.print(
-                    f"[red]Error:[/red] API keys for model '{final_model}' are missing from your environment: {', '.join(missing)}"
-                )
-                console.print(
-                    f'[yellow]Hint: Export them and restart the daemon (e.g. `export {missing[0]}="..." && pkm daemon restart`)[/yellow]'
-                )
-                sys.exit(1)
-    except Exception:
-        pass
+            validation = litellm.validate_environment(final_model)
+            if not validation.get("keys_in_environment", True):
+                missing = validation.get("missing_keys", [])
+                if missing:
+                    console.print(
+                        f"[red]Error:[/red] API keys for model '{final_model}' are missing from your environment: {', '.join(missing)}"
+                    )
+                    console.print(
+                        f'[yellow]Hint: Export them and restart the daemon (e.g. `export {missing[0]}="..." && pkm daemon restart`)[/yellow]'
+                    )
+                    sys.exit(1)
+        except Exception:
+            pass
 
     sock_path = Path.home() / ".config" / "pkm" / "daemon.sock"
 

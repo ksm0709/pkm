@@ -193,20 +193,21 @@ async def pkm_ask(
         return {"error": "Daemon is not running. Start it with 'pkm daemon start'."}
 
     config_model = load_config().get("defaults", {}).get("model")
-    final_model = model or config_model or "gemini/gemini-3.1-flash-preview"
+    final_model = model or config_model or "auto"
 
-    try:
-        import litellm
+    if final_model != "auto":
+        try:
+            import litellm
 
-        validation = litellm.validate_environment(final_model)
-        if not validation.get("keys_in_environment", True):
-            missing = validation.get("missing_keys", [])
-            if missing:
-                return {
-                    "error": f"API keys for model '{final_model}' are missing from your environment: {', '.join(missing)}. Export them and restart the daemon."
-                }
-    except Exception:
-        pass
+            validation = litellm.validate_environment(final_model)
+            if not validation.get("keys_in_environment", True):
+                missing = validation.get("missing_keys", [])
+                if missing:
+                    return {
+                        "error": f"API keys for model '{final_model}' are missing from your environment: {', '.join(missing)}. Export them and restart the daemon."
+                    }
+        except Exception:
+            pass
 
     writer = None
     try:
