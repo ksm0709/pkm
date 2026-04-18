@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.36.0 (2026-04-18)
+
+### Features
+
+- **ask**: Show configured model when no query is provided
+  ([`93d350f`](https://github.com/ksm0709/pkm/commit/93d350fff1e43eb86e89c0684d1aa36f4f839be4))
+
+
 ## v2.35.0 (2026-04-18)
 
 ### Features
