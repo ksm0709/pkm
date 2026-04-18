@@ -109,16 +109,16 @@ def ask_cmd(
         except Exception:
             pass
 
-    import os
+
     env_keys = {k: v for k, v in os.environ.items() if k.endswith("_API_KEY")}
 
     sock_path = Path.home() / ".config" / "pkm" / "daemon.sock"
 
     console.print(f"[dim]Asking daemon using model '{final_model}'...[/dim]")
-    
+
     import time
     import subprocess
-    
+
     sock = None
     for attempt in range(50):
         try:
@@ -145,7 +145,7 @@ def ask_cmd(
                     console.print(f"[red]Failed to start daemon: {e}[/red]")
                     sys.exit(1)
             time.sleep(0.1)
-            
+
     if not sock:
         console.print("[red]Error:[/red] Daemon failed to start or connection refused.")
         sys.exit(1)
@@ -191,9 +191,7 @@ def ask_cmd(
                 sys.exit(1)
 
     except socket.timeout:
-        console.print(
-            f"[red]Error:[/red] Request timed out after {timeout} seconds."
-        )
+        console.print(f"[red]Error:[/red] Request timed out after {timeout} seconds.")
         sys.exit(1)
     except Exception as e:
         console.print(f"[red]Error:[/red] An unexpected error occurred: {e}")

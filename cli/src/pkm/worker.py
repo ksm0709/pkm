@@ -15,7 +15,14 @@ logger = logging.getLogger("pkm.worker")
 
 def redact(data: Any) -> Any:
     if isinstance(data, dict):
-        return {k: ("<REDACTED>" if "key" in k.lower() or "token" in k.lower() else redact(v)) for k, v in data.items()}
+        return {
+            k: (
+                "<REDACTED>"
+                if "key" in k.lower() or "token" in k.lower()
+                else redact(v)
+            )
+            for k, v in data.items()
+        }
     elif isinstance(data, list):
         return [redact(i) for i in data]
     return data
@@ -99,7 +106,12 @@ ipc = IPCClient()
 
 
 def handle_ask(
-    task_id: str, query: str, context: str, vault_dir: str, model: Optional[str] = None, env_keys: Optional[Dict[str, str]] = None
+    task_id: str,
+    query: str,
+    context: str,
+    vault_dir: str,
+    model: Optional[str] = None,
+    env_keys: Optional[Dict[str, str]] = None,
 ):
     if env_keys:
         os.environ.update(env_keys)

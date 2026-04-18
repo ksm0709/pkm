@@ -28,7 +28,14 @@ logger = logging.getLogger("pkm.daemon")
 
 def redact(data: Any) -> Any:
     if isinstance(data, dict):
-        return {k: ("<REDACTED>" if "key" in k.lower() or "token" in k.lower() else redact(v)) for k, v in data.items()}
+        return {
+            k: (
+                "<REDACTED>"
+                if "key" in k.lower() or "token" in k.lower()
+                else redact(v)
+            )
+            for k, v in data.items()
+        }
     elif isinstance(data, list):
         return [redact(i) for i in data]
     return data
