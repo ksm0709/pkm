@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v2.39.1 (2026-04-18)
+
+### Bug Fixes
+
+- **ask**: Add missing final_model assignment in mcp_server.py
+  ([`c166f9a`](https://github.com/ksm0709/pkm/commit/c166f9a674398e1ff182de24e4e4b2ccb805b154))
+
+### Code Style
+
+- **ask**: Apply ruff formatting to python files
+  ([`9aa5a9e`](https://github.com/ksm0709/pkm/commit/9aa5a9e160921d348acdeae66d9a65ac9ecf54fb))
+
+
 ## v2.39.0 (2026-04-18)
 
 ### Features
