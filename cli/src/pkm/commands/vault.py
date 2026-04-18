@@ -232,6 +232,37 @@ def open(name: str) -> None:
 
 
 @vault.command()
+@click.argument("name", required=False)
+def cd(name: str | None) -> None:
+    """Start a new shell in the vault directory."""
+    from pkm.config import get_vault_context
+
+    if name:
+        vaults = discover_vaults()
+        if name not in vaults:
+            raise click.ClickException(
+                f"Vault '{name}' not found. Available: {', '.join(vaults) or 'none'}"
+            )
+        vc = vaults[name]
+    else:
+        try:
+            vc, _ = get_vault_context()
+        except click.ClickException:
+            raise click.ClickException("No active vault detected. Provide a vault name.")
+
+    console.print(
+        f"[dim]Starting new shell in {vc.path}. Type 'exit' to return.[/dim]"
+    )
+
+    os.chdir(vc.path)
+    shell = os.environ.get("SHELL", "bash")
+    if os.name == "nt":
+        shell = os.environ.get("COMSPEC", "cmd.exe")
+    
+    os.execlp(shell, shell)
+
+
+@vault.command()
 def setup() -> None:
     """Declare the current directory as a PKM vault."""
     from pathlib import Path
