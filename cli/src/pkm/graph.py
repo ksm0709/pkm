@@ -32,7 +32,7 @@ def _extract_metadata_from_ast(
     headings = []
     plain_text_offsets = []
 
-    def traverse(node: dict[str, Any], offset: int):
+    def traverse(node: dict[str, Any], offset: int) -> int:
         node_type = node.get("type")
 
         if node_type == "Heading":
@@ -57,10 +57,15 @@ def _extract_metadata_from_ast(
             for match in re.finditer(r"\[\[(.*?)\]\]", content):
                 links.append(match.group(1).split("|")[0])
 
+        current_offset = offset
         for child in node.get("children", []):
-            traverse(child, offset)
+            current_offset = traverse(child, current_offset)
+            
+        if node_type == "RawText":
+            return offset + len(node.get("content", ""))
+        return current_offset
 
-    traverse(ast_dict, 0)
+    traverse(ast_dict, current_offset)
     return links, headings, plain_text_offsets
 
 

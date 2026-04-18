@@ -589,20 +589,28 @@ def auto_link(ctx: click.Context, note_id: str | None, all_notes: bool, dry_run:
         content = file_path.read_text(encoding="utf-8")
         new_content = content
         
-        for offset_info in metadata.plain_text_offsets:
+        import re
+        m = re.match(r"^---\s*\n(.*?)\n---\s*\n?", content, re.DOTALL)
+        body_offset = m.end() if m else 0
+        
+        offsets = sorted(metadata.plain_text_offsets, key=lambda x: x.get("offset", 0), reverse=True)
+        
+        for offset_info in offsets:
             text = offset_info["text"]
+            offset = offset_info.get("offset", 0) + body_offset
+            length = offset_info.get("length", len(text))
+            
             if not text.strip():
                 continue
                 
             new_text = text
             for title in titles.keys():
                 if title != n.title and title in new_text:
-                    # Simple replacement, avoiding already linked text
                     if f"[[{title}]]" not in new_text:
                         new_text = new_text.replace(title, f"[[{title}]]")
             
             if new_text != text:
-                new_content = new_content.replace(text, new_text)
+                new_content = new_content[:offset] + new_text + new_content[offset+length:]
                 
         if new_content != content:
             if dry_run:
@@ -634,9 +642,46 @@ def split_note(ctx: click.Context, note_id: str | None, all_notes: bool, dry_run
         file_path = Path(n.path)
         content = file_path.read_text(encoding="utf-8")
         
-        # Graceful degradation: split by H2 if no semantic grouping
-        import re
-        parts = re.split(r'\n## ', content)
+        parts = []
+        is_semantic = False
+        metadata = cache.get(n.id) if cache else None
+        
+        if metadata and metadata.plain_text_offsets:
+            try:
+                from pkm.search_engine import _require_transformers
+                import numpy as np
+                
+                blocks = [info["text"] for info in metadata.plain_text_offsets if info["text"].strip()]
+                if len(blocks) > 1:
+                    model = _require_transformers("all-MiniLM-L6-v2")
+                    embeddings = model.encode(blocks, show_progress_bar=False)
+                    
+                    current_part = blocks[0]
+                    for i in range(1, len(blocks)):
+                        emb1 = np.array(embeddings[i-1])
+                        emb2 = np.array(embeddings[i])
+                        norm1 = np.linalg.norm(emb1)
+                        norm2 = np.linalg.norm(emb2)
+                        if norm1 == 0 or norm2 == 0:
+                            sim = 0.0
+                        else:
+                            sim = np.dot(emb1, emb2) / (norm1 * norm2)
+                        
+                        if sim < 0.5:
+                            parts.append(current_part)
+                            current_part = blocks[i]
+                        else:
+                            current_part += "\n\n" + blocks[i]
+                    parts.append(current_part)
+                    is_semantic = True
+            except Exception:
+                parts = []
+                
+        if len(parts) <= 1:
+            import re
+            parts = re.split(r'\n## ', content)
+            is_semantic = False
+            
         if len(parts) <= 1:
             continue
             
@@ -644,26 +689,29 @@ def split_note(ctx: click.Context, note_id: str | None, all_notes: bool, dry_run
             console.print(f"[yellow]Would split {n.id} into {len(parts)} notes[/yellow]")
             continue
             
-        # Backup
         bak_path = file_path.with_suffix('.md.bak')
         bak_path.write_text(content, encoding="utf-8")
         console.print(f"[dim]Created backup {bak_path.name}[/dim]")
         
-        # Split
         for i, part in enumerate(parts):
             if i == 0:
-                # First part keeps original name
                 file_path.write_text(part, encoding="utf-8")
             else:
-                # Child notes
-                lines = part.split('\n')
+                lines = part.strip().split('\n')
                 heading = lines[0].strip()
-                child_slug = _slugify(heading)
+                import re
+                heading_clean = re.sub(r'^#+\s*', '', heading)
+                child_slug = _slugify(heading_clean)
+                if not child_slug:
+                    child_slug = f"part-{i}"
                 child_id = f"{n.id}-{child_slug}"
                 child_path = vault.notes_dir / f"{child_id}.md"
                 
-                child_content = f"## {part}"
-                # Inherit tags
+                if is_semantic:
+                    child_content = part
+                else:
+                    child_content = f"## {part}"
+                    
                 from pkm.frontmatter import generate_frontmatter, render
                 fm = generate_frontmatter(child_id, tags=n.tags, aliases=[], source=n.id)
                 final_content = render(fm, child_content)

@@ -167,7 +167,7 @@ def test_hook_setup_claude_code_writes_settings(
     result = runner.invoke(main, ["hook", "setup", "--tool", "claude-code"])
     assert result.exit_code == 0, result.output
 
-    settings = tmp_path / ".claude" / "settings.json"
+    settings = tmp_path / "home" / ".claude" / "settings.json"
     assert settings.exists(), "setup must write settings.json"
     data = json.loads(settings.read_text())
     assert "SessionStart" in data["hooks"]

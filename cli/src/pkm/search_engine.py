@@ -343,8 +343,7 @@ def search_via_daemon(
 
             req = {
                 "query": query,
-                "index_path": str(index_path),
-                "index_mtime": index_mtime,
+                "vault_name": vault.name,
                 "top_n": top_n,
                 "min_importance": min_importance,
                 "memory_type_filter": memory_type_filter,
@@ -396,7 +395,7 @@ def update_index_via_daemon(vault: VaultConfig) -> bool:
 
             req = {
                 "action": "update_index",
-                "vault_path": str(vault.path),
+                "vault_name": vault.name,
             }
             sock.sendall(json.dumps(req).encode("utf-8") + b"\n")
 
@@ -473,8 +472,7 @@ def get_graph_context_via_daemon(note_id: str, vault, depth: int = 1) -> dict | 
                 "action": "get_graph_context",
                 "note_id": note_id,
                 "depth": depth,
-                "graph_path": str(graph_path),
-                "graph_mtime": graph_mtime,
+                "vault_name": vault.name,
             }
             sock.sendall(json.dumps(req).encode("utf-8") + b"\n")
             

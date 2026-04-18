@@ -275,7 +275,7 @@ def test_setup_hooks_claude_code_writes_settings(
 ):
     """setup-hooks --tool claude-code merges PKM hooks into ~/.claude/settings.json."""
     fake_home = tmp_path / "home"
-    fake_home.mkdir()
+    fake_home.mkdir(exist_ok=True)
     monkeypatch.setenv("HOME", str(fake_home))
     monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
 

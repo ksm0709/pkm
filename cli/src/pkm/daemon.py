@@ -34,29 +34,39 @@ class DaemonState:
 
 @lru_cache(maxsize=2)
 def get_cached_graph(graph_path: str, graph_mtime: float):
-    try:
-        import networkx as nx
+    for _ in range(3):
+        try:
+            import networkx as nx
 
-        path = Path(graph_path)
-        if not path.exists():
+            path = Path(graph_path)
+            if not path.exists():
+                return None
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return nx.node_link_graph(data)
+        except json.JSONDecodeError:
+            time.sleep(0.1)
+        except Exception:
+            logger.exception("Failed to load cached graph")
             return None
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return nx.node_link_graph(data)
-    except Exception:
-        logger.exception("Failed to load cached graph")
-        return None
+    logger.error("Failed to load cached graph after retries")
+    return None
 
 
 @lru_cache(maxsize=2)
 def get_cached_ast(ast_path: str, ast_mtime: float):
-    try:
-        path = Path(ast_path)
-        if not path.exists():
+    for _ in range(3):
+        try:
+            path = Path(ast_path)
+            if not path.exists():
+                return None
+            return json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            time.sleep(0.1)
+        except Exception:
+            logger.exception("Failed to load cached AST")
             return None
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        logger.exception("Failed to load cached AST")
-        return None
+    logger.error("Failed to load cached AST after retries")
+    return None
 
 
 @lru_cache(maxsize=2)
@@ -91,21 +101,37 @@ class SearchRequestHandler(socketserver.StreamRequestHandler):
 
             if action == "search":
                 query = req.get("query", "")
-                index_path = req.get("index_path")
-                index_mtime = req.get("index_mtime", 0.0)
+                vault_name = req.get("vault_name")
                 top_n = req.get("top_n", 10)
                 min_importance = req.get("min_importance", 1.0)
                 memory_type_filter = req.get("memory_type_filter")
                 recency_weight = req.get("recency_weight", 0.0)
                 include_graph_context = req.get("include_graph_context", False)
 
-                if not query or not index_path:
+                if not query:
                     self.wfile.write(b"[]\n")
                     return
 
+                from pkm.config import discover_vaults
+                vaults = discover_vaults()
+                if vault_name and vault_name in vaults:
+                    vault = vaults[vault_name]
+                else:
+                    vault = next(iter(vaults.values())) if vaults else None
+
+                if not vault:
+                    self.wfile.write(b"[]\n")
+                    return
+
+                index_path = vault.pkm_dir / "index.json"
+                if not index_path.exists():
+                    self.wfile.write(b"[]\n")
+                    return
+                index_mtime = index_path.stat().st_mtime
+
                 _require_transformers("all-MiniLM-L6-v2")
 
-                index = get_cached_index(index_path, index_mtime)
+                index = get_cached_index(str(index_path), index_mtime)
 
                 results = search(
                     query=query,
@@ -130,18 +156,34 @@ class SearchRequestHandler(socketserver.StreamRequestHandler):
             elif action == "get_graph_context":
                 note_id = req.get("note_id")
                 depth = req.get("depth", 1)
-                graph_path = req.get("graph_path")
-                graph_mtime = req.get("graph_mtime", 0.0)
+                vault_name = req.get("vault_name")
                 
-                if not note_id or not graph_path:
-                    self.wfile.write(b'{"error": "missing note_id or graph_path"}\n')
+                if not note_id:
+                    self.wfile.write(b'{"error": "missing note_id"}\n')
                     return
                     
                 if not DaemonState.graph_ready:
                     self.wfile.write(b'{"error": "graph not ready"}\n')
                     return
+
+                from pkm.config import discover_vaults
+                vaults = discover_vaults()
+                if vault_name and vault_name in vaults:
+                    vault = vaults[vault_name]
+                else:
+                    vault = next(iter(vaults.values())) if vaults else None
+
+                if not vault:
+                    self.wfile.write(b'{"error": "vault not found"}\n')
+                    return
+
+                graph_path = vault.pkm_dir / "graph.json"
+                if not graph_path.exists():
+                    self.wfile.write(b'{"error": "graph not found"}\n')
+                    return
+                graph_mtime = graph_path.stat().st_mtime
                     
-                graph = get_cached_graph(graph_path, graph_mtime)
+                graph = get_cached_graph(str(graph_path), graph_mtime)
                 if not graph or note_id not in graph:
                     self.wfile.write(b'{"error": "note not found in graph"}\n')
                     return
@@ -154,27 +196,41 @@ class SearchRequestHandler(socketserver.StreamRequestHandler):
                 self.wfile.write(res_data.encode("utf-8"))
 
             elif action in ("update_index", "RELOAD_INDEX"):
-                vault_path = req.get("vault_path")
-                if not vault_path:
-                    self.wfile.write(b'{"error": "missing vault_path"}\n')
+                vault_name = req.get("vault_name")
+
+                from pkm.config import discover_vaults
+                vaults = discover_vaults()
+                if vault_name and vault_name in vaults:
+                    vault = vaults[vault_name]
+                else:
+                    vault = next(iter(vaults.values())) if vaults else None
+
+                if not vault:
+                    self.wfile.write(b'{"error": "vault not found"}\n')
                     return
 
-                from pkm.config import VaultConfig
-
-                vault = VaultConfig(name=Path(vault_path).name, path=Path(vault_path))
-
                 if action == "update_index":
-                    from pkm.search_engine import build_index
+                    def _bg_update(v):
+                        from pkm.search_engine import build_index
+                        try:
+                            build_index(v)
+                        except Exception:
+                            logger.exception("Failed to build index in background")
+                        finally:
+                            get_cached_index.cache_clear()
+                            get_cached_graph.cache_clear()
+                            get_cached_ast.cache_clear()
+                            _reload_vault_caches(v)
 
-                    build_index(vault)
+                    threading.Thread(target=_bg_update, args=(vault,), daemon=True).start()
+                else:
+                    get_cached_index.cache_clear()
+                    get_cached_graph.cache_clear()
+                    get_cached_ast.cache_clear()
 
-                get_cached_index.cache_clear()
-                get_cached_graph.cache_clear()
-                get_cached_ast.cache_clear()
-
-                threading.Thread(
-                    target=_reload_vault_caches, args=(vault,), daemon=True
-                ).start()
+                    threading.Thread(
+                        target=_reload_vault_caches, args=(vault,), daemon=True
+                    ).start()
 
                 self.wfile.write(b'{"status": "ok"}\n')
 

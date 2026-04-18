@@ -99,9 +99,19 @@ def vault_config(tmp_vault: VaultConfig) -> VaultConfig:
 
 
 @pytest.fixture(autouse=True)
-def disable_auto_vault(monkeypatch):
+def mock_home(monkeypatch, tmp_path):
+    """Mock Path.home() to use a temporary directory."""
+    home_dir = tmp_path / "home"
+    home_dir.mkdir()
+    monkeypatch.setattr(Path, "home", lambda: home_dir)
+    return home_dir
+
+@pytest.fixture(autouse=True)
+def disable_auto_vault(monkeypatch, tmp_path):
     """Disable auto git project and local config mapping during tests."""
     from pkm import config
+    import os
 
     monkeypatch.setattr(config, "get_git_vault_name", lambda cwd=None: None)
     monkeypatch.setattr(config, "get_local_config_vault", lambda: None)
+    monkeypatch.setenv("PKM_VAULTS_ROOT", str(tmp_path))
