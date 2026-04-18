@@ -29,7 +29,6 @@ logger = logging.getLogger("pkm.daemon")
 class DaemonState:
     last_activity = time.time()
     graph_ready = False
-    ast_ready = False
 
 
 @lru_cache(maxsize=2)
@@ -49,23 +48,6 @@ def get_cached_graph(graph_path: str, graph_mtime: float):
             logger.exception("Failed to load cached graph")
             return None
     logger.error("Failed to load cached graph after retries")
-    return None
-
-
-@lru_cache(maxsize=2)
-def get_cached_ast(ast_path: str, ast_mtime: float):
-    for _ in range(3):
-        try:
-            path = Path(ast_path)
-            if not path.exists():
-                return None
-            return json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            time.sleep(0.1)
-        except Exception:
-            logger.exception("Failed to load cached AST")
-            return None
-    logger.error("Failed to load cached AST after retries")
     return None
 
 
@@ -177,7 +159,7 @@ class SearchRequestHandler(socketserver.StreamRequestHandler):
                     self.wfile.write(b'{"error": "vault not found"}\n')
                     return
 
-                graph_path = vault.pkm_dir / "graph.json"
+                graph_path = vault.pkm_dir / ".context" / "graph.json"
                 if not graph_path.exists():
                     self.wfile.write(b'{"error": "graph not found"}\n')
                     return
@@ -219,14 +201,12 @@ class SearchRequestHandler(socketserver.StreamRequestHandler):
                         finally:
                             get_cached_index.cache_clear()
                             get_cached_graph.cache_clear()
-                            get_cached_ast.cache_clear()
                             _reload_vault_caches(v)
 
                     threading.Thread(target=_bg_update, args=(vault,), daemon=True).start()
                 else:
                     get_cached_index.cache_clear()
                     get_cached_graph.cache_clear()
-                    get_cached_ast.cache_clear()
 
                     threading.Thread(
                         target=_reload_vault_caches, args=(vault,), daemon=True
@@ -331,39 +311,30 @@ def _preload_model():
 
         vaults = discover_vaults()
         for vault in vaults.values():
-            graph_path = vault.pkm_dir / "graph.json"
-            ast_path = vault.pkm_dir / "ast_cache.json"
+            graph_path = vault.pkm_dir / ".context" / "graph.json"
 
             if graph_path.exists():
                 get_cached_graph(str(graph_path), graph_path.stat().st_mtime)
-            if ast_path.exists():
-                get_cached_ast(str(ast_path), ast_path.stat().st_mtime)
 
         DaemonState.graph_ready = True
-        DaemonState.ast_ready = True
-        logger.info("Graph and AST cache pre-loaded successfully.")
+        logger.info("Graph pre-loaded successfully.")
     except Exception:
-        logger.exception("Failed to pre-load graph and AST cache")
+        logger.exception("Failed to pre-load graph")
 
 
 def _reload_vault_caches(vault):
     DaemonState.graph_ready = False
-    DaemonState.ast_ready = False
     try:
-        graph_path = vault.pkm_dir / "graph.json"
-        ast_path = vault.pkm_dir / "ast_cache.json"
+        graph_path = vault.pkm_dir / ".context" / "graph.json"
         if graph_path.exists():
             get_cached_graph(str(graph_path), graph_path.stat().st_mtime)
-        if ast_path.exists():
-            get_cached_ast(str(ast_path), ast_path.stat().st_mtime)
         logger.info(
-            "Graph and AST cache reloaded successfully for vault %s.", vault.name
+            "Graph cache reloaded successfully for vault %s.", vault.name
         )
     except Exception:
-        logger.exception("Failed to reload graph and AST cache")
+        logger.exception("Failed to reload graph cache")
     finally:
         DaemonState.graph_ready = True
-        DaemonState.ast_ready = True
 
 
 def main():
