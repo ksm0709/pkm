@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
+import shlex
 from datetime import datetime
 from pathlib import Path
 
@@ -159,15 +161,32 @@ def init_vault_dirs(vault_path: Path, name: str) -> None:
 
 @vault.command()
 def where() -> None:
-    """Show the currently active vault name and path."""
+    """Show the currently active vault path."""
     from pkm.config import get_vault_context
 
     try:
         vc, _source = get_vault_context()
-        click.echo(vc.name)
         click.echo(str(vc.path))
     except click.ClickException:
-        click.echo("No vault detected. Run 'pkm vault list' to see available vaults.")
+        pass
+
+
+@vault.command()
+@click.argument("name", required=False)
+def edit(name: str | None) -> None:
+    """Open the vault in the configured editor."""
+    from pkm.config import get_vault_context, discover_vaults
+
+    if name:
+        vaults = discover_vaults()
+        if name not in vaults:
+            raise click.ClickException(f"Vault '{name}' not found.")
+        vc = vaults[name]
+    else:
+        vc, _ = get_vault_context()
+
+    editor_cmd = load_config().get("editor") or os.environ.get("EDITOR", "vim")
+    subprocess.run([*shlex.split(editor_cmd), str(vc.path)])
 
 
 @vault.command()
@@ -229,37 +248,6 @@ def open(name: str) -> None:
     data["defaults"]["vault"] = name
     save_config(data)
     console.print(f"[green]★ Switched to vault '{name}'[/green]")
-
-
-@vault.command()
-@click.argument("name", required=False)
-def cd(name: str | None) -> None:
-    """Start a new shell in the vault directory."""
-    from pkm.config import get_vault_context
-
-    if name:
-        vaults = discover_vaults()
-        if name not in vaults:
-            raise click.ClickException(
-                f"Vault '{name}' not found. Available: {', '.join(vaults) or 'none'}"
-            )
-        vc = vaults[name]
-    else:
-        try:
-            vc, _ = get_vault_context()
-        except click.ClickException:
-            raise click.ClickException(
-                "No active vault detected. Provide a vault name."
-            )
-
-    console.print(f"[dim]Starting new shell in {vc.path}. Type 'exit' to return.[/dim]")
-
-    os.chdir(vc.path)
-    shell = os.environ.get("SHELL", "bash")
-    if os.name == "nt":
-        shell = os.environ.get("COMSPEC", "cmd.exe")
-
-    os.execlp(shell, shell)
 
 
 @vault.command()

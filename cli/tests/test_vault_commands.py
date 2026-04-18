@@ -29,8 +29,50 @@ def _patch_vaults(monkeypatch, vaults: dict[str, VaultConfig]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# vault list
+# vault edit
 # ---------------------------------------------------------------------------
+
+
+def test_vault_edit_opens_editor(tmp_path: Path, monkeypatch):
+    vaults = _make_vaults(tmp_path)
+    _patch_vaults(monkeypatch, vaults)
+
+    mock_run = []
+
+    monkeypatch.setattr(
+        "pkm.commands.vault.subprocess.run", lambda args: mock_run.append(args)
+    )
+    monkeypatch.setattr("pkm.commands.vault.load_config", lambda: {"editor": "code --wait"})
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["vault", "edit", "alpha"])
+    assert result.exit_code == 0, result.output
+    assert len(mock_run) == 1
+    assert mock_run[0] == ["code", "--wait", str(vaults["alpha"].path)]
+
+
+def test_vault_edit_active_vault(tmp_path: Path, monkeypatch):
+    vaults = _make_vaults(tmp_path)
+    _patch_vaults(monkeypatch, vaults)
+
+    # Mock get_vault_context to return alpha as active
+    monkeypatch.setattr(
+        "pkm.config.get_vault_context", lambda: (vaults["alpha"], "config")
+    )
+
+    mock_run = []
+
+    monkeypatch.setattr(
+        "pkm.commands.vault.subprocess.run", lambda args: mock_run.append(args)
+    )
+    monkeypatch.setattr("pkm.commands.vault.load_config", lambda: {"editor": "vim"})
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["vault", "edit"])
+    assert result.exit_code == 0, result.output
+    assert len(mock_run) == 1
+    assert mock_run[0] == ["vim", str(vaults["alpha"].path)]
+
 
 
 def test_vault_list_shows_table(tmp_path: Path, monkeypatch):
@@ -476,57 +518,6 @@ def test_vault_setup_gitignore_tip(tmp_path: Path, monkeypatch):
     assert ".gitignore" in result.output
 
 
-# ---------------------------------------------------------------------------
-# vault cd
-# ---------------------------------------------------------------------------
-
-
-def test_vault_cd_switches_directory(tmp_path: Path, monkeypatch):
-    vaults = _make_vaults(tmp_path)
-    _patch_vaults(monkeypatch, vaults)
-
-    mock_chdir = []
-    mock_execlp = []
-
-    monkeypatch.setattr(
-        "pkm.commands.vault.os.chdir", lambda path: mock_chdir.append(path)
-    )
-    monkeypatch.setattr(
-        "pkm.commands.vault.os.execlp", lambda *args: mock_execlp.append(args)
-    )
-
-    runner = CliRunner()
-    result = runner.invoke(main, ["vault", "cd", "alpha"])
-    assert result.exit_code == 0, result.output
-    assert mock_chdir == [vaults["alpha"].path]
-    assert len(mock_execlp) == 1
-    assert "bash" in mock_execlp[0][0] or "cmd.exe" in mock_execlp[0][0]
-
-
-def test_vault_cd_active_vault(tmp_path: Path, monkeypatch):
-    vaults = _make_vaults(tmp_path)
-    _patch_vaults(monkeypatch, vaults)
-
-    # Mock get_vault_context to return alpha as active
-    monkeypatch.setattr(
-        "pkm.config.get_vault_context", lambda: (vaults["alpha"], "config")
-    )
-
-    mock_chdir = []
-    mock_execlp = []
-
-    monkeypatch.setattr(
-        "pkm.commands.vault.os.chdir", lambda path: mock_chdir.append(path)
-    )
-    monkeypatch.setattr(
-        "pkm.commands.vault.os.execlp", lambda *args: mock_execlp.append(args)
-    )
-
-    runner = CliRunner()
-    result = runner.invoke(main, ["vault", "cd"])
-    assert result.exit_code == 0, result.output
-    assert mock_chdir == [vaults["alpha"].path]
-    assert len(mock_execlp) == 1
 
 
 def test_vault_unset_migrates_to_parent(tmp_path: Path, monkeypatch):
