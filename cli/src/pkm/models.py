@@ -80,5 +80,5 @@ def resolve_auto_models() -> List[str]:
             pass
 
     if not valid_models:
-        valid_models.append(get_available_models()[0].id)
+        return []
     return valid_models

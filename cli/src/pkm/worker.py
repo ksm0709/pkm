@@ -47,7 +47,13 @@ class IPCClient:
 
                 models_to_try = resolve_auto_models()
             except ImportError:
-                models_to_try = ["gemini/gemini-3.1-flash-lite-preview", "gpt-4o-mini"]
+                models_to_try = []
+
+        if not models_to_try:
+            raise RuntimeError(
+                "No API keys found for any supported models. Please export an API key "
+                "(e.g. GEMINI_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY) and restart the daemon."
+            )
 
         last_error = None
         for current_model in models_to_try:
