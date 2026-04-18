@@ -488,8 +488,12 @@ def test_vault_cd_switches_directory(tmp_path: Path, monkeypatch):
     mock_chdir = []
     mock_execlp = []
 
-    monkeypatch.setattr("pkm.commands.vault.os.chdir", lambda path: mock_chdir.append(path))
-    monkeypatch.setattr("pkm.commands.vault.os.execlp", lambda *args: mock_execlp.append(args))
+    monkeypatch.setattr(
+        "pkm.commands.vault.os.chdir", lambda path: mock_chdir.append(path)
+    )
+    monkeypatch.setattr(
+        "pkm.commands.vault.os.execlp", lambda *args: mock_execlp.append(args)
+    )
 
     runner = CliRunner()
     result = runner.invoke(main, ["vault", "cd", "alpha"])
@@ -502,15 +506,21 @@ def test_vault_cd_switches_directory(tmp_path: Path, monkeypatch):
 def test_vault_cd_active_vault(tmp_path: Path, monkeypatch):
     vaults = _make_vaults(tmp_path)
     _patch_vaults(monkeypatch, vaults)
-    
+
     # Mock get_vault_context to return alpha as active
-    monkeypatch.setattr("pkm.config.get_vault_context", lambda: (vaults["alpha"], "config"))
+    monkeypatch.setattr(
+        "pkm.config.get_vault_context", lambda: (vaults["alpha"], "config")
+    )
 
     mock_chdir = []
     mock_execlp = []
 
-    monkeypatch.setattr("pkm.commands.vault.os.chdir", lambda path: mock_chdir.append(path))
-    monkeypatch.setattr("pkm.commands.vault.os.execlp", lambda *args: mock_execlp.append(args))
+    monkeypatch.setattr(
+        "pkm.commands.vault.os.chdir", lambda path: mock_chdir.append(path)
+    )
+    monkeypatch.setattr(
+        "pkm.commands.vault.os.execlp", lambda *args: mock_execlp.append(args)
+    )
 
     runner = CliRunner()
     result = runner.invoke(main, ["vault", "cd"])

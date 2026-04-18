@@ -248,17 +248,17 @@ def cd(name: str | None) -> None:
         try:
             vc, _ = get_vault_context()
         except click.ClickException:
-            raise click.ClickException("No active vault detected. Provide a vault name.")
+            raise click.ClickException(
+                "No active vault detected. Provide a vault name."
+            )
 
-    console.print(
-        f"[dim]Starting new shell in {vc.path}. Type 'exit' to return.[/dim]"
-    )
+    console.print(f"[dim]Starting new shell in {vc.path}. Type 'exit' to return.[/dim]")
 
     os.chdir(vc.path)
     shell = os.environ.get("SHELL", "bash")
     if os.name == "nt":
         shell = os.environ.get("COMSPEC", "cmd.exe")
-    
+
     os.execlp(shell, shell)
 
 
