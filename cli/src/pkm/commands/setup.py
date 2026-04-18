@@ -65,6 +65,18 @@ def install_skill_files() -> bool:
     return True
 
 
+def install_shell_aliases() -> None:
+    """Add pkmcd alias to ~/.bashrc and ~/.zshrc if they exist."""
+    alias_line = "alias pkmcd='cd $(pkm vault where)'"
+    for shell_rc in [Path.home() / ".bashrc", Path.home() / ".zshrc"]:
+        if shell_rc.exists():
+            content = shell_rc.read_text(encoding="utf-8")
+            if "alias pkmcd=" not in content:
+                with shell_rc.open("a", encoding="utf-8") as f:
+                    f.write(f"\n{alias_line}\n")
+                console.print(f"[green]✓ Added pkmcd alias to {shell_rc.name}[/green]")
+
+
 def _load_setup_choices() -> dict | None:
     """Return saved setup choices from config, or None if not previously saved."""
     cfg = load_config()
@@ -220,6 +232,8 @@ def setup_cmd() -> None:
         console.print(
             "[yellow]⚠ Skill files not found in package — skipping skill install[/yellow]"
         )
+
+    install_shell_aliases()
 
     # Done
     console.print()

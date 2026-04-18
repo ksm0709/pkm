@@ -42,7 +42,9 @@ def test_vault_edit_opens_editor(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(
         "pkm.commands.vault.subprocess.run", lambda args: mock_run.append(args)
     )
-    monkeypatch.setattr("pkm.commands.vault.load_config", lambda: {"editor": "code --wait"})
+    monkeypatch.setattr(
+        "pkm.commands.vault.load_config", lambda: {"editor": "code --wait"}
+    )
 
     runner = CliRunner()
     result = runner.invoke(main, ["vault", "edit", "alpha"])
@@ -72,7 +74,6 @@ def test_vault_edit_active_vault(tmp_path: Path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert len(mock_run) == 1
     assert mock_run[0] == ["vim", str(vaults["alpha"].path)]
-
 
 
 def test_vault_list_shows_table(tmp_path: Path, monkeypatch):
@@ -516,8 +517,6 @@ def test_vault_setup_gitignore_tip(tmp_path: Path, monkeypatch):
 
     assert result.exit_code == 0, result.output
     assert ".gitignore" in result.output
-
-
 
 
 def test_vault_unset_migrates_to_parent(tmp_path: Path, monkeypatch):

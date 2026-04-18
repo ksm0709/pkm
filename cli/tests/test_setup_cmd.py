@@ -34,6 +34,7 @@ def test_setup_new_vault(tmp_path: Path, runner: CliRunner) -> None:
         patch("pkm.commands.setup._save_config_merged") as mock_save,
         patch("pkm.commands.setup.init_vault_dirs") as mock_init,
         patch("pkm.commands.setup.subprocess.run") as mock_run,
+        patch("pkm.commands.setup.install_shell_aliases") as mock_aliases,
     ):
         mock_run.return_value.returncode = 0
 
@@ -48,6 +49,7 @@ def test_setup_new_vault(tmp_path: Path, runner: CliRunner) -> None:
     assert "Setup complete" in result.output
     mock_init.assert_called_once()
     mock_save.assert_called_once()
+    mock_aliases.assert_called_once()
     _, kwargs = mock_save.call_args
     assert kwargs["default_vault"] == "mynotes"
 

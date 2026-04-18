@@ -9,7 +9,7 @@ import click
 from rich.console import Console
 
 from pkm._install_source import cli_source, find_local_cli_dir
-from pkm.commands.setup import install_skill_files
+from pkm.commands.setup import install_shell_aliases, install_skill_files
 from pkm.version_check import get_recent_versions
 
 console = Console()
@@ -158,6 +158,7 @@ def update_cmd(version: str | None) -> None:
 
     # Sync skill and command files — removes stale commands from old versions
     install_skill_files()
+    install_shell_aliases()
 
     try:
         if in_git_repo:
