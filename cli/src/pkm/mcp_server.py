@@ -190,6 +190,9 @@ async def pkm_ask(
     target_vault = _get_vault(vault)
     sock_path = Path.home() / ".config" / "pkm" / "daemon.sock"
 
+    config_model = load_config().get("defaults", {}).get("model")
+    final_model = model or config_model or "auto"
+
     env_keys = {k: v for k, v in os.environ.items() if k.endswith("_API_KEY")}
 
     reader = None
