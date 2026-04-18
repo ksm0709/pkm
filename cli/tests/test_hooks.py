@@ -191,28 +191,6 @@ def test_hook_setup_idempotent(runner, vault_env, tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# pkm agent deprecation warnings
-# ---------------------------------------------------------------------------
-
-
-def test_deprecated_agent_hook_session_start_warns(runner, vault_env):
-    result = runner.invoke(main, ["agent", "hook", "session-start"])
-    assert result.exit_code == 0
-    assert "deprecated" in result.output.lower() or "DeprecationWarning" in (
-        result.output + str(result.exception or "")
-    )
-
-
-def test_deprecated_agent_setup_hooks_warns(runner, vault_env, tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    (tmp_path / ".claude").mkdir(parents=True)
-    result = runner.invoke(
-        main, ["agent", "setup-hooks", "--tool", "claude-code", "--dry-run"]
-    )
-    assert result.exit_code == 0
-
-
-# ---------------------------------------------------------------------------
 # Local mock_model fixture for test_hooks
 # ---------------------------------------------------------------------------
 
