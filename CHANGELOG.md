@@ -2,6 +2,85 @@
 
 <!-- version list -->
 
+## v2.31.0 (2026-04-18)
+
+### Bug Fixes
+
+- **pkm**: Correct graph path and remove ast load in daemon
+  ([`7887122`](https://github.com/ksm0709/pkm/commit/7887122ab80ed3bd256eb5e06f144f63a7d43a42))
+
+- **pkm**: Create daemon log directory before logging to prevent CI FileNotFoundError
+  ([`a3af880`](https://github.com/ksm0709/pkm/commit/a3af88092ede9770885e70b7cac8d260e1927194))
+
+- **pkm**: Defer numpy import until after transformer check
+  ([`aafe2fa`](https://github.com/ksm0709/pkm/commit/aafe2fa4856f69ab70863cb5785fdb271c013dc4))
+
+- **pkm**: Flatten multidimensional embeddings in semantic search
+  ([`64781af`](https://github.com/ksm0709/pkm/commit/64781af78c7e45af478d792e391179f50a55bebe))
+
+- **pkm**: Handle dict response format in daemon search
+  ([`f3ce04b`](https://github.com/ksm0709/pkm/commit/f3ce04bc38b128053f9c2d460e74c884b65de6ea))
+
+- **pkm**: Move ast.db and graph.json from .context/ to pkm_dir root
+  ([`df61529`](https://github.com/ksm0709/pkm/commit/df615294333794b853c5dc8fab3c7c8f1a2ff5b6))
+
+- **pkm**: Prevent subprocess Popen from hanging the shell on stdin
+  ([`ee01b2c`](https://github.com/ksm0709/pkm/commit/ee01b2ca293bf9631aafbfc93cd9a9bf8ccc3c5e))
+
+- **pkm**: Remove unused mtime variables to pass linter
+  ([`adeab21`](https://github.com/ksm0709/pkm/commit/adeab219aee4c947596c535c750a9f291c203ab9))
+
+- **pkm**: Resolve validator rejections for semantic split, safe auto-link, and daemon security
+  ([`5a0057c`](https://github.com/ksm0709/pkm/commit/5a0057c174b9779b264e566a1c247eb7457abeea))
+
+### Code Style
+
+- **pkm**: Apply formatter fixes to changelog.py
+  ([`6c5784b`](https://github.com/ksm0709/pkm/commit/6c5784b590f1361b1b809850e15684879f76935c))
+
+- **pkm**: Apply formatter to config command
+  ([`aef7bc4`](https://github.com/ksm0709/pkm/commit/aef7bc4fe9e3223ca4c2fdd6d53946194457d11a))
+
+- **pkm**: Apply formatter to search engine and commands
+  ([`c1f614e`](https://github.com/ksm0709/pkm/commit/c1f614ec63e3fbbabe422f7068a0c0d2b5e1eb5c))
+
+- **pkm**: Apply formatter to vault commands and tests
+  ([`70e2623`](https://github.com/ksm0709/pkm/commit/70e26231d949e80960e5bdcf9cfa3f681c189725))
+
+- **pkm**: Apply linter and formatter fixes
+  ([`23fce8b`](https://github.com/ksm0709/pkm/commit/23fce8b477fb31e1d23ac80c5667f8c5b216481d))
+
+### Features
+
+- **pkm**: Add cd command to start a shell in the vault directory
+  ([`64c520e`](https://github.com/ksm0709/pkm/commit/64c520e02c26bfc302962a1a9d45fdc6aeedd17f))
+
+- **pkm**: Add changelog parser and apply code formatting to search engine
+  ([`1139077`](https://github.com/ksm0709/pkm/commit/11390775657308d933f31c65444ca3f1d17c2e3e))
+
+- **pkm**: Dynamically show all available configs in config list
+  ([`76fe34f`](https://github.com/ksm0709/pkm/commit/76fe34fe305783c196a6750185bcacde30d474fe))
+
+- **pkm**: Implement incremental FAISS embedding cache via vector.db
+  ([`2197057`](https://github.com/ksm0709/pkm/commit/2197057037476877f3fd302ef7209073b4bea78a))
+
+- **pkm**: Show changelog on --version and update commands
+  ([`f0ac01a`](https://github.com/ksm0709/pkm/commit/f0ac01a01e245fd5aa68169319082780ce6c6f1e))
+
+- **pkm**: Verbose success logs for all indexing components
+  ([`56d4729`](https://github.com/ksm0709/pkm/commit/56d4729bfeebeba7618b5e93bb5105df583a7993))
+
+### Refactoring
+
+- **pkm**: Remove deprecated agent command and tests
+  ([`c3d1b16`](https://github.com/ksm0709/pkm/commit/c3d1b16bb489b1dba9b009ebaa7968a92809cb15))
+
+### Testing
+
+- **pkm**: Add regression tests for deferred numpy import fallback
+  ([`bcc5358`](https://github.com/ksm0709/pkm/commit/bcc5358e548ec0abdb07254745f0d79609bb67a3))
+
+
 ## v2.30.0 (2026-04-18)
 
 ### Features
