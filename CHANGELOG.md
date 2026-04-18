@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.30.0 (2026-04-18)
+
+### Features
+
+- **pkm**: Implement auto-link, split, and graph traversal context
+  ([`e59334d`](https://github.com/ksm0709/pkm/commit/e59334ddb12370fc8d6061285a09f740a0895725))
+
+
 ## v2.29.0 (2026-04-18)
 
 ### Chores
