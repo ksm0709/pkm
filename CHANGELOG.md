@@ -2,6 +2,32 @@
 
 <!-- version list -->
 
+## v2.33.0 (2026-04-18)
+
+### Bug Fixes
+
+- Remove unused variable include_graph_context in daemon.py
+  ([`a17a31b`](https://github.com/ksm0709/pkm/commit/a17a31bfbea140ca5cf100811727802084742722))
+
+- **mcp**: Update test assertion for tools count and fix type hints
+  ([`cced391`](https://github.com/ksm0709/pkm/commit/cced39135009edfed2a68beb70c6ef2b95b741f1))
+
+### Chores
+
+- Add documentation update reminder to quality hooks
+  ([`cdea52b`](https://github.com/ksm0709/pkm/commit/cdea52ba208bf0724e3a93523cbeb20ed9cb3af4))
+
+### Documentation
+
+- Restructure CLI and MCP server documentation
+  ([`726a675`](https://github.com/ksm0709/pkm/commit/726a67576cadc5a78721f985000d4f14323c9a10))
+
+### Features
+
+- Add ask command for natural language vault queries
+  ([`e770687`](https://github.com/ksm0709/pkm/commit/e770687ab34b9e2eca55c7b53dc0c4206875aef0))
+
+
 ## v2.32.0 (2026-04-18)
 
 ### Features
