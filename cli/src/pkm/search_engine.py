@@ -69,6 +69,7 @@ class SearchResult:
     memory_type: str | None = None
     importance: float = IMPORTANCE_DEFAULT
     path: str = ""
+    graph_context: dict | None = None
 
 
 def _extract_created_at(
@@ -448,3 +449,44 @@ def is_index_stale(vault: VaultConfig) -> bool:
                 return True
 
     return False
+
+
+def get_graph_context_via_daemon(note_id: str, vault, depth: int = 1) -> dict | None:
+    import socket
+    import json
+    from pathlib import Path
+    
+    graph_path = vault.pkm_dir / ".context" / "graph.json"
+    if not graph_path.exists():
+        return None
+        
+    graph_mtime = graph_path.stat().st_mtime
+    sock_path = Path.home() / ".config" / "pkm" / "daemon.sock"
+    
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.settimeout(0.2)
+            sock.connect(str(sock_path))
+            sock.settimeout(1.5)
+            
+            req = {
+                "action": "get_graph_context",
+                "note_id": note_id,
+                "depth": depth,
+                "graph_path": str(graph_path),
+                "graph_mtime": graph_mtime,
+            }
+            sock.sendall(json.dumps(req).encode("utf-8") + b"\n")
+            
+            f = sock.makefile("r", encoding="utf-8")
+            resp_line = f.readline()
+            if not resp_line:
+                return None
+                
+            data = json.loads(resp_line)
+            if "error" in data:
+                return None
+                
+            return data
+    except Exception:
+        return None

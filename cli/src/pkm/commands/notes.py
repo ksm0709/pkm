@@ -308,8 +308,9 @@ def edit(ctx: click.Context, query: str) -> None:
     show_default=True,
     help="Max number of notes to return (json mode)",
 )
+@click.option("--depth", type=int, default=1, help="Graph traversal depth")
 @click.pass_context
-def show(ctx: click.Context, query: str, output_format: str, top: int) -> None:
+def show(ctx: click.Context, query: str, output_format: str, top: int, depth: int) -> None:
     """Show note contents. Default: JSON array of matching notes.
 
     Agent usage (JSON, default):
@@ -347,6 +348,14 @@ def show(ctx: click.Context, query: str, output_format: str, top: int) -> None:
             except Exception:
                 pass
 
+
+        graph_context = None
+        try:
+            from pkm.search_engine import get_graph_context_via_daemon
+            graph_context = get_graph_context_via_daemon(n.id, vault, depth)
+        except Exception:
+            pass
+
         items.append(
             {
                 "title": n.title,
@@ -355,8 +364,10 @@ def show(ctx: click.Context, query: str, output_format: str, top: int) -> None:
                 "body": n.body,
                 "frontmatter": n.meta,
                 "backlinks": backlink_titles,
+                "graph_context": graph_context,
             }
         )
+
 
     payload = {
         "query": query,
@@ -544,6 +555,121 @@ def note_log(ctx: click.Context, tail: int) -> None:
     shown = non_empty[-tail:] if tail < len(non_empty) else non_empty
     click.echo("\n".join(shown))
 
+
+
+@note.command(name="auto-link")
+@click.argument("note_id", required=False)
+@click.option("--all", "all_notes", is_flag=True, help="Process all notes")
+@click.option("--dry-run", is_flag=True, required=True, help="Mandatory dry-run mode")
+@click.pass_context
+def auto_link(ctx: click.Context, note_id: str | None, all_notes: bool, dry_run: bool) -> None:
+    """Auto-link plain text matching other notes' titles."""
+    if not note_id and not all_notes:
+        raise click.UsageError("Must provide either note_id or --all")
+    
+    vault = ctx.obj["vault"]
+    from pkm.graph import ASTCache
+    db_path = vault.pkm_dir / ".context" / "ast.db"
+    if not db_path.exists():
+        console.print("[red]AST cache not found. Run 'pkm index' first.[/red]")
+        raise SystemExit(1)
+        
+    cache = ASTCache(db_path)
+    all_notes_list = _search_notes(vault, "")
+    titles = {n.title: n.id for n in all_notes_list if n.title}
+    
+    notes_to_process = all_notes_list if all_notes else [n for n in all_notes_list if n.id == note_id]
+    
+    for n in notes_to_process:
+        metadata = cache.get(n.id)
+        if not metadata:
+            continue
+            
+        file_path = Path(metadata.path)
+        content = file_path.read_text(encoding="utf-8")
+        new_content = content
+        
+        for offset_info in metadata.plain_text_offsets:
+            text = offset_info["text"]
+            if not text.strip():
+                continue
+                
+            new_text = text
+            for title in titles.keys():
+                if title != n.title and title in new_text:
+                    # Simple replacement, avoiding already linked text
+                    if f"[[{title}]]" not in new_text:
+                        new_text = new_text.replace(title, f"[[{title}]]")
+            
+            if new_text != text:
+                new_content = new_content.replace(text, new_text)
+                
+        if new_content != content:
+            if dry_run:
+                console.print(f"[yellow]Would update links in {n.id}[/yellow]")
+            else:
+                file_path.write_text(new_content, encoding="utf-8")
+                console.print(f"[green]Updated links in {n.id}[/green]")
+
+
+@note.command(name="split")
+@click.argument("note_id", required=False)
+@click.option("--all", "all_notes", is_flag=True, help="Process all notes")
+@click.option("--dry-run", is_flag=True, required=True, help="Mandatory dry-run mode")
+@click.pass_context
+def split_note(ctx: click.Context, note_id: str | None, all_notes: bool, dry_run: bool) -> None:
+    """Split notes into smaller atomic notes."""
+    if not note_id and not all_notes:
+        raise click.UsageError("Must provide either note_id or --all")
+        
+    vault = ctx.obj["vault"]
+    from pkm.graph import ASTCache
+    db_path = vault.pkm_dir / ".context" / "ast.db"
+    cache = ASTCache(db_path) if db_path.exists() else None
+    
+    all_notes_list = _search_notes(vault, "")
+    notes_to_process = all_notes_list if all_notes else [n for n in all_notes_list if n.id == note_id]
+    
+    for n in notes_to_process:
+        file_path = Path(n.path)
+        content = file_path.read_text(encoding="utf-8")
+        
+        # Graceful degradation: split by H2 if no semantic grouping
+        import re
+        parts = re.split(r'\n## ', content)
+        if len(parts) <= 1:
+            continue
+            
+        if dry_run:
+            console.print(f"[yellow]Would split {n.id} into {len(parts)} notes[/yellow]")
+            continue
+            
+        # Backup
+        bak_path = file_path.with_suffix('.md.bak')
+        bak_path.write_text(content, encoding="utf-8")
+        console.print(f"[dim]Created backup {bak_path.name}[/dim]")
+        
+        # Split
+        for i, part in enumerate(parts):
+            if i == 0:
+                # First part keeps original name
+                file_path.write_text(part, encoding="utf-8")
+            else:
+                # Child notes
+                lines = part.split('\n')
+                heading = lines[0].strip()
+                child_slug = _slugify(heading)
+                child_id = f"{n.id}-{child_slug}"
+                child_path = vault.notes_dir / f"{child_id}.md"
+                
+                child_content = f"## {part}"
+                # Inherit tags
+                from pkm.frontmatter import generate_frontmatter, render
+                fm = generate_frontmatter(child_id, tags=n.tags, aliases=[], source=n.id)
+                final_content = render(fm, child_content)
+                
+                child_path.write_text(final_content, encoding="utf-8")
+                console.print(f"[green]Created child note {child_id}[/green]")
 
 note.add_command(stale)
 note.add_command(orphans)

@@ -126,6 +126,33 @@ class SearchRequestHandler(socketserver.StreamRequestHandler):
 
                 res_data = json.dumps(response_obj) + "\n"
                 self.wfile.write(res_data.encode("utf-8"))
+
+            elif action == "get_graph_context":
+                note_id = req.get("note_id")
+                depth = req.get("depth", 1)
+                graph_path = req.get("graph_path")
+                graph_mtime = req.get("graph_mtime", 0.0)
+                
+                if not note_id or not graph_path:
+                    self.wfile.write(b'{"error": "missing note_id or graph_path"}\n')
+                    return
+                    
+                if not DaemonState.graph_ready:
+                    self.wfile.write(b'{"error": "graph not ready"}\n')
+                    return
+                    
+                graph = get_cached_graph(graph_path, graph_mtime)
+                if not graph or note_id not in graph:
+                    self.wfile.write(b'{"error": "note not found in graph"}\n')
+                    return
+                    
+                import networkx as nx
+                subgraph = nx.ego_graph(graph, note_id, radius=depth)
+                context = nx.node_link_data(subgraph)
+                
+                res_data = json.dumps(context) + "\n"
+                self.wfile.write(res_data.encode("utf-8"))
+
             elif action in ("update_index", "RELOAD_INDEX"):
                 vault_path = req.get("vault_path")
                 if not vault_path:
