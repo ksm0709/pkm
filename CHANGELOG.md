@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.35.0 (2026-04-18)
+
+### Features
+
+- **ask**: Support configurable LLM models via CLI and config
+  ([`9ab01b9`](https://github.com/ksm0709/pkm/commit/9ab01b958bbe30c117a841004e414b622e1ce9ae))
+
+
 ## v2.34.0 (2026-04-18)
 
 ### Features
