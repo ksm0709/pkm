@@ -278,9 +278,10 @@ def search(
 ) -> list[SearchResult]:
     """Search the index for notes semantically similar to the query."""
     model = _require_transformers(model_name)
-    
+
     import numpy as np
     from datetime import datetime, timezone
+
     query_emb = model.encode([query], show_progress_bar=False)[0]
 
     now = datetime.now(timezone.utc)

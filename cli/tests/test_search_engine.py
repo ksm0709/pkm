@@ -604,14 +604,17 @@ def test_find_similar_returns_search_result_objects(monkeypatch, clear_model_cac
     assert 0.0 <= r.score <= 1.0
 
 
-def test_build_index_missing_search_extras(tmp_vault: VaultConfig, monkeypatch, clear_model_cache):
+def test_build_index_missing_search_extras(
+    tmp_vault: VaultConfig, monkeypatch, clear_model_cache
+):
     import builtins
     import click
-    
+
     monkeypatch.delitem(sys.modules, "numpy", raising=False)
     monkeypatch.delitem(sys.modules, "sentence_transformers", raising=False)
 
     original_import = builtins.__import__
+
     def mock_import(name, *args, **kwargs):
         if name.startswith("numpy") or name.startswith("sentence_transformers"):
             raise ModuleNotFoundError(f"No module named '{name}'")
@@ -619,18 +622,21 @@ def test_build_index_missing_search_extras(tmp_vault: VaultConfig, monkeypatch, 
 
     monkeypatch.setattr(builtins, "__import__", mock_import)
 
-    with pytest.raises(click.ClickException, match="sentence-transformers is not installed"):
+    with pytest.raises(
+        click.ClickException, match="sentence-transformers is not installed"
+    ):
         build_index(tmp_vault)
 
 
 def test_search_missing_search_extras(monkeypatch, clear_model_cache):
     import builtins
     import click
-    
+
     monkeypatch.delitem(sys.modules, "numpy", raising=False)
     monkeypatch.delitem(sys.modules, "sentence_transformers", raising=False)
 
     original_import = builtins.__import__
+
     def mock_import(name, *args, **kwargs):
         if name.startswith("numpy") or name.startswith("sentence_transformers"):
             raise ModuleNotFoundError(f"No module named '{name}'")
@@ -639,5 +645,7 @@ def test_search_missing_search_extras(monkeypatch, clear_model_cache):
     monkeypatch.setattr(builtins, "__import__", mock_import)
 
     index = VectorIndex(model="m", created_at="2026-04-09", entries=[])
-    with pytest.raises(click.ClickException, match="sentence-transformers is not installed"):
+    with pytest.raises(
+        click.ClickException, match="sentence-transformers is not installed"
+    ):
         search("query", index)
