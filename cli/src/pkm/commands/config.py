@@ -31,7 +31,7 @@ CONFIG_SCHEMA = {
     },
     "model": {
         "internal_key": "model",
-        "description": "LLM model used by pkm ask (default: gpt-4o-mini)",
+        "description": "LLM model used by pkm ask (default: gemini/gemini-3.1-flash-preview)",
     },
 }
 

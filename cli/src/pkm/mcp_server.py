@@ -193,7 +193,7 @@ async def pkm_ask(
         return {"error": "Daemon is not running. Start it with 'pkm daemon start'."}
 
     config_model = load_config().get("defaults", {}).get("model")
-    final_model = model or config_model or "gpt-4o-mini"
+    final_model = model or config_model or "gemini/gemini-3.1-flash-preview"
 
     try:
         import litellm

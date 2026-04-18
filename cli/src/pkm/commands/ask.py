@@ -54,7 +54,7 @@ def ask_cmd(
     from pkm.config import load_config
 
     config_model = load_config().get("defaults", {}).get("model")
-    final_model = model or config_model or "gpt-4o-mini"
+    final_model = model or config_model or "gemini/gemini-3.1-flash-preview"
 
     if not query:
         console.print(f"Current LLM model: [bold green]{final_model}[/bold green]\n")

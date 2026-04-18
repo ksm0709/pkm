@@ -22,11 +22,11 @@ The natural language reporting capability is also exposed as an MCP tool (`pkm_a
 
 ## LLM Configuration
 
-The daemon uses [LiteLLM](https://docs.litellm.ai/) to proxy API calls, which supports over 100+ LLM providers. By default, it uses `gpt-4o-mini`.
+The daemon uses [LiteLLM](https://docs.litellm.ai/) to proxy API calls, which supports over 100+ LLM providers. By default, it uses `gemini/gemini-3.1-flash-preview`.
 
-To use the default configuration, export your OpenAI API key before starting the daemon:
+To use the default configuration, export your Gemini API key before starting the daemon:
 ```bash
-export OPENAI_API_KEY="your-openai-api-key"
+export GEMINI_API_KEY="your-gemini-api-key"
 pkm daemon start
 ```
 
