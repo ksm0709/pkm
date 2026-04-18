@@ -447,7 +447,10 @@ def search_via_daemon(
             if "error" in data:
                 return None
 
-            return [SearchResult(**res) for res in data]
+            if isinstance(data, list):
+                return [SearchResult(**res) for res in data]
+
+            return [SearchResult(**res) for res in data.get("results", [])]
 
     except (FileNotFoundError, ConnectionRefusedError, socket.timeout):
         daemon_dir = Path.home() / ".config" / "pkm"
