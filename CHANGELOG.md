@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.42.0 (2026-04-19)
+
+### Features
+
+- **graph**: Fallback to body text if description is missing in frontmatter
+  ([`f5e4efd`](https://github.com/ksm0709/pkm/commit/f5e4efd18d2dde28abf7b69551a9c5a8f9b75ec5))
+
+
 ## v2.41.0 (2026-04-19)
 
 ### Documentation
