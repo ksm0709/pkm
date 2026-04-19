@@ -29,17 +29,10 @@ def setup_sandbox(vault_dir: Path | str):
         Path(sys.prefix).resolve(),
         Path(sys.base_prefix).resolve(),
         Path(__file__).parent.parent.parent.resolve(),
-        Path("~/.agents/skills/pkm").expanduser().resolve(),
+        Path.home().resolve(),
     ]
 
     def audit_hook(event: str, args: tuple[object, ...]):
-        if event in {
-            "socket.connect",
-            "socket.bind",
-            "socket.getaddrinfo",
-            "socket.getnameinfo",
-        }:
-            raise SandboxViolation(f"Network access blocked: {event}")
 
         if event in {
             "os.system",

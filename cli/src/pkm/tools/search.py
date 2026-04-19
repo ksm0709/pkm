@@ -14,7 +14,7 @@ def _get_vault(vault_dir: str) -> VaultConfig:
     return VaultConfig(name=Path(vault_dir).name, path=Path(vault_dir))
 
 
-@tool
+@tool()
 def semantic_search(
     query: str,
     top: int = 5,
@@ -72,7 +72,7 @@ def semantic_search(
         return f"Error performing semantic search: {str(e)}"
 
 
-@tool
+@tool()
 def get_graph_context(note_id: str, depth: int = 1) -> str:
     """Get the AST-based graph connections (links, tags) for a specific note.
 

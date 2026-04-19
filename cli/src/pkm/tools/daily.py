@@ -10,7 +10,7 @@ def _get_vault(vault_dir: str) -> VaultConfig:
     return VaultConfig(name=Path(vault_dir).name, path=Path(vault_dir))
 
 
-@tool
+@tool()
 def add_daily_log(text: str) -> str:
     """Append a timestamped log entry to today's daily note.
 
@@ -27,7 +27,7 @@ def add_daily_log(text: str) -> str:
         return f"Error adding daily log: {str(e)}"
 
 
-@tool
+@tool()
 def read_daily_log(date_str: str | None = None) -> str:
     """Read the daily note for a specific date.
 

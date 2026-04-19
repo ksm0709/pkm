@@ -569,6 +569,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                 "model": req.get("model", "gemini/gemini-3.1-flash-preview"),
                 "reasoning_effort": req.get("reasoning_effort"),
                 "env_keys": env_keys,
+                "env": {"PKM_VAULT_DIR": str(vault.path)} if vault else {},
                 "cwd": req.get("cwd"),
             }
 
@@ -778,10 +779,16 @@ async def async_main():
 
     worker_proxy = LLMWorkerProxy()
 
-    from pkm.config import discover_vaults
+    from pkm.config import get_vault
 
-    vaults = discover_vaults()
-    vault_dir = str(next(iter(vaults.values())).pkm_dir.parent) if vaults else "."
+    try:
+        active_vault = get_vault()
+        vault_dir = str(active_vault.path)
+    except Exception:
+        from pkm.config import discover_vaults
+
+        vaults = discover_vaults()
+        vault_dir = str(next(iter(vaults.values())).path) if vaults else "."
 
     await worker_proxy.start(vault_dir)
 

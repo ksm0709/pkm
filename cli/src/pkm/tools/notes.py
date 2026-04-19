@@ -9,7 +9,7 @@ def _get_vault(vault_dir: str) -> VaultConfig:
     return VaultConfig(name=Path(vault_dir).name, path=Path(vault_dir))
 
 
-@tool
+@tool()
 def add_note(
     title: str,
     content: str,
@@ -42,7 +42,7 @@ def add_note(
         return f"Error creating note: {str(e)}"
 
 
-@tool
+@tool()
 def search_notes(query: str) -> str:
     """Search notes by title (case-insensitive partial match).
 
@@ -64,7 +64,7 @@ def search_notes(query: str) -> str:
         return f"Error searching notes: {str(e)}"
 
 
-@tool
+@tool()
 def read_note(note_id: str) -> str:
     """Read the full content and metadata of a note.
 
@@ -85,7 +85,7 @@ def read_note(note_id: str) -> str:
     return f"Error: Note '{note_id}' not found."
 
 
-@tool
+@tool()
 def update_note(note_id: str, content: str, tags: list[str] | None = None) -> str:
     """Update the content and optionally tags of an existing note.
 

@@ -31,8 +31,6 @@ def redact(data: Any) -> Any:
 
 class IPCClient:
     def __init__(self):
-        self.request_counter = 0
-        self.pending_requests: Dict[str, asyncio.Future[Any]] = {}
         self._abort_event = None
 
     @property
@@ -68,21 +66,8 @@ class IPCClient:
                 if msg_type == "abort":
                     logger.info("Received abort signal from daemon")
                     self.abort_event.set()
-                    continue
-
-                if msg_type in ("llm_response", "llm_error"):
-                    req_id = msg.get("id")
-                    if req_id in self.pending_requests:
-                        future = self.pending_requests.pop(req_id)
-                        if not future.done():
-                            future.set_result(msg)
-                    else:
-                        logger.warning(
-                            f"Received response for unknown request: {req_id}"
-                        )
                 elif msg_type == "task":
                     logger.info(f"Received task: {msg.get('id')}")
-                    # Dispatch task
                     asyncio.create_task(handle_task(msg))
                 else:
                     logger.warning(f"Unexpected message type: {msg_type}")
@@ -90,67 +75,6 @@ class IPCClient:
                 logger.error(f"Failed to decode JSON: {e}")
             except Exception as e:
                 logger.error(f"Error in reader loop: {e}")
-
-    async def call_llm(
-        self, messages: List[Dict[str, str]], model: Optional[str] = None
-    ) -> str:
-        self.request_counter += 1
-        req_id = f"llm_req_{self.request_counter}"
-
-        if os.environ.get("PKM_TEST_MOCK_LLM") == "1":
-            return f"Mocked response for: {messages[-1]['content']}"
-
-        models_to_try = [model] if model and model != "auto" else []
-        if not models_to_try:
-            try:
-                from pkm.models import resolve_auto_models
-
-                models_to_try = resolve_auto_models()
-            except ImportError:
-                models_to_try = []
-
-        if not models_to_try:
-            raise RuntimeError(
-                "No API keys found for any supported models. Please export an API key "
-                "(e.g. GEMINI_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY) and restart the daemon."
-            )
-
-        last_error = None
-        for current_model in models_to_try:
-            req = {
-                "type": "llm_request",
-                "id": req_id,
-                "messages": messages,
-                "model": current_model,
-            }
-
-            future = self.loop.create_future()
-            self.pending_requests[req_id] = future
-
-            await self.send_message(req)
-
-            # Wait for response or abort
-            abort_task = asyncio.create_task(self.abort_event.wait())
-
-            done, pending = await asyncio.wait(
-                [future, abort_task], return_when=asyncio.FIRST_COMPLETED
-            )
-
-            if abort_task in done:
-                future.cancel()
-                raise RuntimeError("Aborted by daemon")
-
-            abort_task.cancel()
-            msg = future.result()
-
-            if msg.get("type") == "llm_response":
-                return msg.get("content", "")
-            elif msg.get("type") == "llm_error":
-                last_error = msg.get("message")
-                logger.warning(f"LLM Error with model {current_model}: {last_error}")
-                continue
-
-        raise RuntimeError(f"All models failed. Last error: {last_error}")
 
 
 ipc = IPCClient()
@@ -240,6 +164,7 @@ async def _run_agent_task(
             max_iterations=1000,
             hooks={"on_tool_start": on_tool_start},
             litellm_kwargs=litellm_kwargs,
+            load_builtin_tools=False,
         )
 
         response_chunks = []
@@ -302,11 +227,19 @@ async def handle_ask(
     cwd: Optional[str] = None,
 ):
     system_prompt = (
-        "You are a helpful PKM assistant. You have access to the user's vault.\n"
-        "You have tools to interact with the vault (search, read, write). Use them autonomously to fulfill the user's request.\n"
-        "Answer the user's query based on the provided context from their notes and the results of your tool calls.\n"
-        "Provide an informative and compact summary report.\n"
-        "If the context does not contain the answer, say so, but still try to be helpful."
+        "You are an autonomous PKM agent with direct access to the user's vault via the following tools:\n"
+        "- read_daily_log(date_str): read a daily note\n"
+        "- add_daily_log(text): append to today's daily note\n"
+        "- read_note(note_id): read an atomic note\n"
+        "- search_notes(query): search notes by title\n"
+        "- semantic_search(query, top, memory_type, min_importance): semantic similarity search\n"
+        "- add_note(title, content, tags, memory_type, importance): create a new atomic note\n"
+        "- update_note(note_id, content, tags): update an existing note\n"
+        "- get_graph_context(note_id, depth): get wikilink graph connections for a note\n"
+        "ALWAYS use these tools directly to interact with the vault — never use shell commands.\n"
+        "When asked to execute a workflow (e.g. zettelkasten maintenance), call `load_skill` with the appropriate skill ID "
+        "to get full instructions, then execute every step by calling the vault tools listed above.\n"
+        "Always complete the requested action — do not just describe what you would do."
     )
     user_content = f"Context:\n{context}\n\nQuery: {query}" if context else query
 
