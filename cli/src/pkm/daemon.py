@@ -569,6 +569,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                 "model": req.get("model", "gemini/gemini-3.1-flash-preview"),
                 "reasoning_effort": req.get("reasoning_effort"),
                 "env_keys": env_keys,
+                "cwd": req.get("cwd"),
             }
 
             async def on_stream(msg):

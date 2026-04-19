@@ -168,6 +168,7 @@ def ask_cmd(
                 "reasoning_effort": final_reasoning_effort,
                 "env_keys": env_keys,
                 "graph_depth": graph_depth,
+                "cwd": os.getcwd(),
             }
             sock.sendall(json.dumps(req).encode("utf-8") + b"\n")
 

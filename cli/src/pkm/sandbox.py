@@ -34,14 +34,6 @@ def setup_sandbox(vault_dir: Path | str):
 
     def audit_hook(event: str, args: tuple[object, ...]):
         if event in {
-            "socket.connect",
-            "socket.bind",
-            "socket.getaddrinfo",
-            "socket.getnameinfo",
-        }:
-            raise SandboxViolation(f"Network access blocked: {event}")
-
-        if event in {
             "os.system",
             "os.exec",
             "os.posix_spawn",
@@ -50,7 +42,7 @@ def setup_sandbox(vault_dir: Path | str):
         }:
             raise SandboxViolation(f"Command execution blocked: {event}")
 
-        if event in {"sys._getframe", "ctypes.dlopen", "ctypes.dlsym", "mmap.__new__"}:
+        if event in {"ctypes.dlopen", "ctypes.dlsym", "mmap.__new__"}:
             raise SandboxViolation(f"Dangerous operation blocked: {event}")
 
         if event == "open":

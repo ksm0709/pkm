@@ -164,6 +164,7 @@ async def handle_ask(
     model: Optional[str] = None,
     env_keys: Optional[Dict[str, str]] = None,
     reasoning_effort: Optional[str] = None,
+    cwd: Optional[str] = None,
 ):
     if env_keys:
         os.environ.update(env_keys)
@@ -298,6 +299,7 @@ async def handle_zettelkasten_maintenance(
     vault_dir: str,
     model: Optional[str] = None,
     env_keys: Optional[Dict[str, str]] = None,
+    reasoning_effort: Optional[str] = None,
 ):
     if env_keys:
         os.environ.update(env_keys)
@@ -360,6 +362,10 @@ async def handle_zettelkasten_maintenance(
                 }
             )
 
+        litellm_kwargs = {}
+        if reasoning_effort:
+            litellm_kwargs["reasoning_effort"] = reasoning_effort
+
         agent = Agent(
             session_id=f"pkm-maint-{task_id}",
             model=resolved_model,
@@ -369,6 +375,7 @@ async def handle_zettelkasten_maintenance(
             instruction_dirs=[vault_dir],
             max_iterations=1000,
             hooks={"on_tool_start": on_tool_start},
+            litellm_kwargs=litellm_kwargs,
         )
 
         response_chunks = []
@@ -459,6 +466,17 @@ async def handle_task(msg: Dict[str, Any]):
 
 async def main():
     logger.info("PKM LLM Worker started")
+    
+    vault_dir = os.environ.get("PKM_VAULT_DIR", ".")
+    try:
+        os.chdir(vault_dir)
+        from pkm.sandbox import setup_sandbox
+        setup_sandbox(vault_dir)
+        logger.info(f"Sandbox initialized for vault: {vault_dir}")
+    except Exception as e:
+        logger.error(f"Failed to initialize sandbox: {e}")
+        sys.exit(1)
+        
     await ipc.reader_loop()
 
 
