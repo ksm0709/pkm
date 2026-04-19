@@ -211,7 +211,6 @@ async def handle_ask(
         tools = get_pkm_tools()
 
         skills_dirs = [
-            os.path.expanduser("~/.claude/skills/pkm"),
             os.path.expanduser("~/.agents/skills/pkm"),
         ]
 
@@ -221,6 +220,7 @@ async def handle_ask(
             system_prompt=system_prompt,
             tools=tools,
             skills_dirs=skills_dirs,
+            instruction_dirs=[vault_dir],
         )
 
         response_chunks = []

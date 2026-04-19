@@ -92,10 +92,10 @@ Criteria for deciding when to promote from a daily note to an atomic note:
 
 ## CLI Tool: `pkm`
 
-Python CLI tool at `~/.claude/skills/pkm/scripts/pkm-cli/`. Install with:
+Python CLI tool at `~/.agents/skills/pkm/scripts/pkm-cli/`. Install with:
 
 ```bash
-cd ~/.claude/skills/pkm/scripts/pkm-cli && uv pip install -e ".[search]"
+cd ~/.agents/skills/pkm/scripts/pkm-cli && uv pip install -e ".[search]"
 ```
 
 ### Configuration

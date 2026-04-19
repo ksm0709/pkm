@@ -13,7 +13,7 @@ pkm vault init  # configure your vault
 
 Install via Claude Code plugin marketplace (recommended).
 
-Or register the hooks manually by adding to `~/.claude/settings.json`:
+Or register the hooks manually by adding to `~/.claude/settings.json` or `~/.agents/settings.json` (if using opencode):
 
 ```json
 {
