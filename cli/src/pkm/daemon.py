@@ -728,23 +728,27 @@ def _reload_vault_caches(vault):
         DaemonState.graph_ready = True
 
 
-MAINTENANCE_INTERVAL = 3600 * 4
-
 async def maintenance_checker():
-    last_run = time.time()
+    import datetime
+
+    last_run_date = None
+
     while True:
         await asyncio.sleep(60)
-        now = time.time()
-        if now - last_run > MAINTENANCE_INTERVAL:
+        
+        now = datetime.datetime.now()
+        current_date = now.date()
+        
+        if now.hour == 2 and last_run_date != current_date:
             if task_queue:
                 task = {
                     "type": "task",
-                    "id": f"maint_{int(now)}",
+                    "id": f"maint_{int(now.timestamp())}",
                     "task_type": "zettelkasten_maintenance"
                 }
                 task_queue.push(task)
-                logger.info(f"Scheduled periodic Zettelkasten maintenance task: {task['id']}")
-            last_run = now
+                logger.info(f"Scheduled daily Zettelkasten maintenance task: {task['id']}")
+            last_run_date = current_date
 
 async def async_main():
     global worker_proxy, task_queue
