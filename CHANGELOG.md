@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v2.50.0 (2026-04-19)
+
+### Bug Fixes
+
+- Parse manage_tasks JSON string and handle pending status in ask streaming
+  ([`da0e9f3`](https://github.com/ksm0709/pkm/commit/da0e9f3b05c3f8b4b053b2cf0d4d22adf8cebd52))
+
+### Features
+
+- Resolve and display actual model name when model='auto'
+  ([`bf1270b`](https://github.com/ksm0709/pkm/commit/bf1270b6bb90160c91251811618f98e964889baf))
+
+
 ## v2.49.0 (2026-04-19)
 
 ### Bug Fixes
