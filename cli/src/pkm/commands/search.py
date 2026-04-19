@@ -70,16 +70,15 @@ def format_search_results(
             "query": query,
             "result_count": len(results),
             "results": items,
+            "next_steps": [
+                "pkm note show <title>  — open a specific note",
+                "pkm search <keyword>  (add --top N to change result count)",
+                "pkm note add --content '<insight>' --type semantic  — save insight",
+            ],
         }
         if stale_warning:
             payload["warning"] = stale_warning
         print(json.dumps(payload, ensure_ascii=False, indent=2))
-        print("")
-        print("* Next: pkm note show <title>  — open a specific note")
-        print(
-            "* Search more: pkm search <keyword>  (add --top N to change result count)"
-        )
-        print("* Save insight: pkm note add --content '<insight>' --type semantic")
     else:
         if stale_warning:
             console.print(f"[yellow]Warning:[/yellow] {stale_warning}")
