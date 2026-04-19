@@ -146,7 +146,7 @@ pkm vault open <name>              # Switch active vault
 
 # Maintenance
 pkm stats                          # Vault statistics
-pkm search <query>                 # Semantic search (requires pkm index first)
+pkm search <query>                 # Semantic search (use --format json --depth 1 to include related note metadata)
 pkm ask <query>                    # Ask a natural language question (uses semantic search for RAG context, requires daemon & air-gapped worker)
 pkm ask --list-models              # List available LLM models
 pkm index                          # Build/rebuild search index

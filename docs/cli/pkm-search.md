@@ -8,6 +8,8 @@ Search vault notes semantically.
 ## Description
 Search your vault semantically instead of using exact keyword matches. The default output is JSON (optimized for machine/agent reading). Use `--format table` for human-readable display.
 
+When using JSON format, `pkm search` will also include `graph_context` if `--depth` is set > 0. This context includes the full frontmatter metadata and descriptions of all related notes within the specified graph depth, without requiring additional disk reads.
+
 ## Options
 - `-n, --top INTEGER`: Number of results to return (default: 10).
 - `--format [json|table]`: Output format.
