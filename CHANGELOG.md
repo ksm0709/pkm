@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.55.0 (2026-04-19)
+
+### Features
+
+- **tools**: Expand tiny agent + MCP tool suite from 8 to 17 tools
+  ([`76cb9f8`](https://github.com/ksm0709/pkm/commit/76cb9f83b0ab7481212689698ba4119ae7ce1a40))
+
+
 ## v2.54.0 (2026-04-19)
 
 ### Features
