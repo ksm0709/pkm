@@ -110,7 +110,6 @@ def ask_cmd(
         except Exception:
             pass
 
-
     env_keys = {k: v for k, v in os.environ.items() if k.endswith("_API_KEY")}
 
     sock_path = Path.home() / ".config" / "pkm" / "daemon.sock"

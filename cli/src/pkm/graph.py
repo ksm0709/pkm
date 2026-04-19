@@ -173,7 +173,13 @@ def build_ast_and_graph(vault: VaultConfig) -> None:
             metadata = parse_file_ast(file_path, note_id)
             cache.set(metadata)
 
-        graph.add_node(note_id, type="note", title=note.title, path=str(file_path))
+        graph.add_node(
+            note_id,
+            type="note",
+            title=note.title,
+            path=str(file_path),
+            meta=note.meta,
+        )
 
         for tag in metadata.tags:
             tag_id = f"tag:{tag}"
@@ -184,7 +190,15 @@ def build_ast_and_graph(vault: VaultConfig) -> None:
             graph.add_node(link, type="note_or_unresolved", title=link)
             graph.add_edge(note_id, link, type="wikilink")
 
+    import datetime
+
+    def _default(obj: object) -> str:
+        if isinstance(obj, (datetime.date, datetime.datetime)):
+            return str(obj)
+        raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
     graph_data = nx.node_link_data(graph)
     graph_path.write_text(
-        json.dumps(graph_data, ensure_ascii=False, indent=2), encoding="utf-8"
+        json.dumps(graph_data, ensure_ascii=False, indent=2, default=_default),
+        encoding="utf-8",
     )
