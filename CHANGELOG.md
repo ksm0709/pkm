@@ -2,6 +2,44 @@
 
 <!-- version list -->
 
+## v2.44.0 (2026-04-19)
+
+### Build System
+
+- **cli**: Use tiny-agent-py via direct path
+  ([`77c7215`](https://github.com/ksm0709/pkm/commit/77c721594df824cd5c1235b364f06fdb1ae23c80))
+
+- **deps**: Use remote git url for tiny-agent-py to fix CI
+  ([`3876dc4`](https://github.com/ksm0709/pkm/commit/3876dc4dd3c36f1dd6978430a937ec556e99495e))
+
+### Documentation
+
+- **ask**: Update documentation for tiny-agent-py integration
+  ([`08829d9`](https://github.com/ksm0709/pkm/commit/08829d9a711af43e5e6b1d22c8323ff82832638c))
+
+- **ask**: Update documentation for tools wrapper layer
+  ([`bfca8a7`](https://github.com/ksm0709/pkm/commit/bfca8a7664d7af529a12dfc09b66323613f21d2a))
+
+### Features
+
+- **ask**: Inject pkm skills into agent and refine tools sandbox compatibility
+  ([`8ef34c2`](https://github.com/ksm0709/pkm/commit/8ef34c2473b44ff761570790bd42f405f1d44ef3))
+
+- **ask**: Integrate tiny-agent-py for pkm ask execution
+  ([`7d31834`](https://github.com/ksm0709/pkm/commit/7d318344d85b00a7561c7ee3d9a98bcf6abb7f8c))
+
+- **tools**: Introduce pkm tools wrapper layer
+  ([`9c2b772`](https://github.com/ksm0709/pkm/commit/9c2b7724c54b1ad0666d3089f45330962c6b6f53))
+
+### Refactoring
+
+- **worker**: Integrate tools wrapper into daemon and worker
+  ([`3e0435b`](https://github.com/ksm0709/pkm/commit/3e0435bd0260881eb729cab027439581d7ac2442))
+
+- **worker**: Refine AGENTS.md injection and skill directory config
+  ([`ca1cc6c`](https://github.com/ksm0709/pkm/commit/ca1cc6c70d4ce69857eaebcbd2d701440fb10e8a))
+
+
 ## v2.43.0 (2026-04-19)
 
 ### Chores
