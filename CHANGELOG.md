@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.50.1 (2026-04-19)
+
+### Bug Fixes
+
+- Fix thinking display - use direct ANSI writes to avoid rich markup issues
+  ([`b023781`](https://github.com/ksm0709/pkm/commit/b02378170b18354d02a9b3b189fde14918718b7f))
+
+
 ## v2.50.0 (2026-04-19)
 
 ### Bug Fixes
