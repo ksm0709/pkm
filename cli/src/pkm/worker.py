@@ -170,7 +170,8 @@ async def handle_ask(
 
     system_prompt = (
         "You are a helpful PKM assistant. You have access to the user's vault.\n"
-        "Answer the user's query based on the provided context from their notes.\n"
+        "You have tools to interact with the vault (search, read, write). Use them autonomously to fulfill the user's request.\n"
+        "Answer the user's query based on the provided context from their notes and the results of your tool calls.\n"
         "Provide an informative and compact summary report.\n"
         "If the context does not contain the answer, say so, but still try to be helpful."
     )
@@ -190,6 +191,7 @@ async def handle_ask(
 
     try:
         from tiny_agent.agent import Agent
+        from pkm.tools import get_pkm_tools
         
         ipc.abort_event.clear()
         
@@ -206,10 +208,13 @@ async def handle_ask(
             
         resolved_model = models_to_try[0]
         
+        tools = get_pkm_tools()
+        
         agent = Agent(
             session_id=f"pkm-ask-{task_id}",
             model=resolved_model,
-            system_prompt=system_prompt
+            system_prompt=system_prompt,
+            tools=tools
         )
 
         response_chunks = []
