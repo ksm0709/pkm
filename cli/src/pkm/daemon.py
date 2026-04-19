@@ -459,15 +459,58 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                         ),
                     )
 
-                    context_parts = []
+                    import yaml
+                    from pkm.frontmatter import parse
+                    
+                    graph_depth = req.get("graph_depth", 0)
+
+                    unique_note_ids = set()
+                    notes_to_include = []
+
                     for res in results:
+                        if res.note_id not in unique_note_ids:
+                            unique_note_ids.add(res.note_id)
+                            notes_to_include.append({
+                                "title": res.title,
+                                "path": res.path
+                            })
+
+                    if graph_depth > 0 and DaemonState.graph_ready:
+                        graph_path = vault.pkm_dir / ".context" / "graph.json"
+                        if graph_path.exists():
+                            graph_mtime = graph_path.stat().st_mtime
+                            graph = get_cached_graph(str(graph_path), graph_mtime)
+                            
+                            if graph:
+                                import networkx as nx
+                                for res in results:
+                                    if res.note_id in graph:
+                                        subgraph = nx.ego_graph(graph, res.note_id, radius=graph_depth)
+                                        for node_id, node_data in subgraph.nodes(data=True):
+                                            if node_data.get("type") == "note" and node_id not in unique_note_ids:
+                                                unique_note_ids.add(node_id)
+                                                notes_to_include.append({
+                                                    "title": node_data.get("title", node_id),
+                                                    "path": node_data.get("path")
+                                                })
+
+                    context_parts = []
+                    for note_info in notes_to_include:
                         try:
-                            content = Path(res.path).read_text(encoding="utf-8")
-                            context_parts.append(
-                                f"--- Note: {res.title} ---\nTags: {', '.join(res.tags)}\n{content}\n"
-                            )
-                        except Exception:
-                            pass
+                            if note_info.get("path"):
+                                note = parse(Path(note_info["path"]))
+                                if note.meta:
+                                    meta_str = yaml.dump(note.meta, allow_unicode=True, default_flow_style=False, sort_keys=False).strip()
+                                    meta_section = f"Metadata:\n{meta_str}\n"
+                                else:
+                                    meta_section = "Metadata: None\n"
+                                    
+                                context_parts.append(
+                                    f"--- Note: {note.title} ---\n{meta_section}\nContent:\n{note.body}\n"
+                                )
+                        except Exception as e:
+                            logger.warning(f"Failed to read note for context: {e}")
+                            
                     context_str = "\n".join(context_parts)
 
             task_id = f"ask_{time.time()}"

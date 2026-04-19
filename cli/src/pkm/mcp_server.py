@@ -192,6 +192,7 @@ async def pkm_ask(
 
     config_model = load_config().get("defaults", {}).get("model")
     final_model = model or config_model or "auto"
+    graph_depth = load_config().get("defaults", {}).get("graph-depth", 0)
 
     env_keys = {k: v for k, v in os.environ.items() if k.endswith("_API_KEY")}
 
@@ -230,6 +231,7 @@ async def pkm_ask(
             "vault_name": target_vault.name,
             "model": final_model,
             "env_keys": env_keys,
+            "graph_depth": graph_depth,
         }
         writer.write(json.dumps(req).encode("utf-8") + b"\n")
         await writer.drain()

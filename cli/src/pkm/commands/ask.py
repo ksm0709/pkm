@@ -82,6 +82,7 @@ def ask_cmd(
 
     config_model = load_config().get("defaults", {}).get("model")
     final_model = model or config_model or "auto"
+    graph_depth = load_config().get("defaults", {}).get("graph-depth", 0)
 
     if not query:
         console.print(f"Current LLM model: [bold green]{final_model}[/bold green]\n")
@@ -158,6 +159,7 @@ def ask_cmd(
                 "vault_name": vault.name,
                 "model": final_model,
                 "env_keys": env_keys,
+                "graph_depth": graph_depth,
             }
             sock.sendall(json.dumps(req).encode("utf-8") + b"\n")
 
