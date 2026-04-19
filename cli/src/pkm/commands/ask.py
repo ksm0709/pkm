@@ -20,7 +20,9 @@ console = Console()
     "--timeout", type=int, default=120, help="Timeout in seconds to wait for the result"
 )
 @click.option("--model", type=str, help="LLM model to use (overrides config)")
-@click.option("--reasoning-effort", type=str, help="Reasoning effort for capable models")
+@click.option(
+    "--reasoning-effort", type=str, help="Reasoning effort for capable models"
+)
 @click.option(
     "--list-models", is_flag=True, help="List available model providers via litellm"
 )
@@ -171,6 +173,9 @@ def ask_cmd(
 
             f = sock.makefile("r", encoding="utf-8")
 
+            reasoning_buffer = ""
+            has_reasoning = False
+
             while True:
                 resp_line = f.readline()
                 if not resp_line:
@@ -187,6 +192,9 @@ def ask_cmd(
                     if c_type == "tool_start":
                         pass
                     elif c_type == "tool_detail":
+                        if has_reasoning:
+                            console.print("\r\033[K", end="")
+                            has_reasoning = False
                         name = chunk.get("name", "unknown")
                         args_dict = chunk.get("arguments", {})
                         arg_parts = []
@@ -202,22 +210,41 @@ def ask_cmd(
                             if len(arg_str) > 100:
                                 arg_str = arg_str[:97] + "..."
                         console.print(f"[dim]Running tool: {name}({arg_str})...[/dim]")
+                    elif c_type == "reasoning":
+                        has_reasoning = True
+                        reasoning_text = chunk.get("content", "")
+                        if reasoning_text:
+                            reasoning_buffer += reasoning_text
+                            display_text = reasoning_buffer[-80:].replace("\n", " ").replace("\r", " ")
+                            console.print(f"\r\033[K[dim italic]\[thinking...] {display_text}[/dim italic]", end="")
                     continue
 
                 if data.get("type") == "error" or "error" in data:
-                    error_msg = data.get("message") or data.get("error", "Unknown error")
+                    if has_reasoning:
+                        console.print("\r\033[K", end="")
+                    error_msg = data.get("message") or data.get(
+                        "error", "Unknown error"
+                    )
                     console.print(f"[red]Error:[/red] {error_msg}")
                     sys.exit(1)
 
                 if "data" in data and "response" in data["data"]:
+                    if has_reasoning:
+                        console.print("\r\033[K", end="")
                     console.print(data["data"]["response"])
                     break
                 elif "response" in data:
+                    if has_reasoning:
+                        console.print("\r\033[K", end="")
                     console.print(data["response"])
                     break
                 else:
                     if data.get("status") == "success":
+                        if has_reasoning:
+                            console.print("\r\033[K", end="")
                         break
+                    if has_reasoning:
+                        console.print("\r\033[K", end="")
                     console.print(
                         f"[red]Error:[/red] Invalid response format from daemon: {data}"
                     )

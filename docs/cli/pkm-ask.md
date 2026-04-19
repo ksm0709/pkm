@@ -70,6 +70,9 @@ pkm ask <query>
 pkm ask "what was that idea about X?"
 ```
 
+### Reasoning Display
+When using capable models with reasoning enabled (e.g. via `--reasoning-effort`), the daemon will automatically stream the model's internal thinking/reasoning chunks directly to your terminal. Reasoning is displayed in a subtle dim, italic style to separate it clearly from the final answer.
+
 ## Requirements
 
 The `ask` command requires the PKM daemon to be running. Start it with:
