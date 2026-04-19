@@ -5,12 +5,12 @@ from __future__ import annotations
 import functools
 import json
 import sys
+import traceback
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 import click
-
-
-from typing import Any
 
 
 def _safe_hook(fn):
@@ -23,8 +23,6 @@ def _safe_hook(fn):
         except KeyboardInterrupt:
             sys.exit(130)  # conventional SIGINT exit code
         except Exception as e:
-            import traceback
-
             print(f"[pkm hook error] {e}", file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
             sys.exit(0)
@@ -215,9 +213,7 @@ def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None
     try:
         zettel_signal = vault.pkm_dir / "zettel-pending"
         if zettel_signal.exists():
-            import json as _json
-
-            sig = _json.loads(zettel_signal.read_text(encoding="utf-8"))
+            sig = json.loads(zettel_signal.read_text(encoding="utf-8"))
             marked = sig.get("marked", 0)
             lines.append("## Zettel Loop Ready")
             lines.append(
@@ -288,7 +284,6 @@ def _tail_daily_entries(vault, total: int = 10) -> list[str]:
     If today has fewer entries than *total*, backfill from yesterday.
     Returns formatted lines with date headers when mixing days.
     """
-    from datetime import date, timedelta
 
     daily_dir = vault.daily_dir
     today = date.today()
@@ -317,9 +312,6 @@ def _tail_daily_entries(vault, total: int = 10) -> list[str]:
 def _handle_turn_start(
     ctx, output_format: str, session_id: str | None, **_ignored
 ) -> None:
-    import json as _json
-    import sys as _sys
-
     vault = ctx.obj["vault"]
     lines: list[str] = []
 
@@ -341,19 +333,17 @@ def _handle_turn_start(
 
     # --- Dynamic context injection from stdin + daily note ---
     user_prompt = ""
-    if not _sys.stdin.isatty():
+    if not sys.stdin.isatty():
         try:
-            raw = _sys.stdin.read(65536)  # 64 KB cap — hook payloads are always small
-            payload = _json.loads(raw)
+            raw = sys.stdin.read(65536)  # 64 KB cap — hook payloads are always small
+            payload = json.loads(raw)
             user_prompt = str(payload.get("prompt", ""))
         except Exception:
             pass
 
     daily_snippet = ""
     try:
-        from datetime import date as _date
-
-        today = _date.today().isoformat()
+        today = date.today().isoformat()
         daily_path = vault.daily_dir / f"{today}.md"
         if daily_path.exists():
             text = daily_path.read_text(encoding="utf-8")
@@ -426,7 +416,6 @@ def _handle_turn_end(
     # Write summary to daily note if provided
     if summary:
         vault = ctx.obj["vault"]
-        from datetime import datetime, timezone, date
 
         now = datetime.now(timezone.utc)
         today = date.today().isoformat()
