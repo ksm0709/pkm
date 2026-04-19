@@ -195,4 +195,4 @@ Good contribution areas include:
 
 ## License
 
-See the repository for license details.
+This project is licensed under the AGPLv3 (GNU Affero General Public License v3.0). This means you are free to use and modify the code, but if you distribute your modified version over a network, you must make the source code of your modifications available under the same license.
