@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import socket
 import sys
 from pathlib import Path
@@ -308,8 +309,10 @@ def ask_cmd(
                                 if line.strip()
                             ]
                             display_text = " / ".join(lines[-2:]) if lines else ""
-                            if len(display_text) > 120:
-                                display_text = display_text[-120:]
+                            term_width = shutil.get_terminal_size().columns
+                            max_text = max(20, term_width - len("[thinking] ") - 1)
+                            if len(display_text) > max_text:
+                                display_text = display_text[-max_text:]
                             sys.stdout.write(
                                 f"\r\033[2K\033[38;5;246m[thinking] {display_text}\033[0m"
                             )
