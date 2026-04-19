@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.47.0 (2026-04-19)
+
+### Features
+
+- Add reasoning-effort config for ask command
+  ([`3f3f999`](https://github.com/ksm0709/pkm/commit/3f3f9996a9b19a2174037f68d26a9dc72322e0d5))
+
+
 ## v2.46.0 (2026-04-19)
 
 ### Features
