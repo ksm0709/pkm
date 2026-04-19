@@ -70,11 +70,6 @@ def format_search_results(
             "query": query,
             "result_count": len(results),
             "results": items,
-            "next_steps": [
-                "pkm note show <title>  — open a specific note",
-                "pkm search <keyword>  (add --top N to change result count)",
-                "pkm note add --content '<insight>' --type semantic  — save insight",
-            ],
         }
         if stale_warning:
             payload["warning"] = stale_warning

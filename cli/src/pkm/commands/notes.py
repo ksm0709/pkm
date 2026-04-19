@@ -376,10 +376,6 @@ def show(
         "notes": items,
     }
     click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
-    click.echo("")
-    click.echo("* Edit note: pkm note edit <title>")
-    click.echo("* Find related: pkm search <keyword>")
-    click.echo("* View backlink: pkm note show <backlink-title>")
 
 
 @note.command(name="search")

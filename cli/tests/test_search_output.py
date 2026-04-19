@@ -72,7 +72,7 @@ def test_search_json_fields(runner, indexed_vault):
     """JSON output must use 'score' field (not 'similarity')."""
     result = runner.invoke(main, ["search", "mvcc"])
     assert result.exit_code == 0
-    json_text = result.output.split("\n* ")[0].strip()
+    json_text = result.output.strip()
     data = json.loads(json_text)
     if data["results"]:
         r = data["results"][0]
@@ -82,15 +82,6 @@ def test_search_json_fields(runner, indexed_vault):
         assert "title" in r
         assert "importance" in r
         assert "note_id" in r
-
-
-def test_search_json_action_guide_on_stdout(runner, indexed_vault):
-    """Text action guide must appear on stdout after JSON."""
-    result = runner.invoke(main, ["search", "database"])
-    assert result.exit_code == 0
-    assert "pkm note show" in result.output
-    assert "pkm search" in result.output
-    assert "pkm note add" in result.output
 
 
 def test_search_json_description_from_frontmatter(runner, indexed_vault, tmp_vault):
@@ -103,7 +94,7 @@ def test_search_json_description_from_frontmatter(runner, indexed_vault, tmp_vau
     runner.invoke(main, ["index"])
     result = runner.invoke(main, ["search", "frontmatter description"])
     assert result.exit_code == 0
-    json_text = result.output.split("\n* ")[0].strip()
+    json_text = result.output.strip()
     data = json.loads(json_text)
     matching = [r for r in data["results"] if r["title"] == "desc-test"]
     if matching:
@@ -139,7 +130,7 @@ def test_note_search_defaults_to_json(runner, indexed_vault):
     """pkm note search must output JSON by default."""
     result = runner.invoke(main, ["note", "search", "database"])
     assert result.exit_code == 0
-    json_text = result.output.split("\n* ")[0].strip()
+    json_text = result.output.strip()
     data = json.loads(json_text)
     assert "results" in data
 
@@ -155,12 +146,6 @@ def test_note_search_results_match_pkm_search(runner, indexed_vault):
     assert d1["result_count"] == d2["result_count"]
 
 
-def test_note_search_action_guide(runner, indexed_vault):
-    result = runner.invoke(main, ["note", "search", "database"])
-    assert result.exit_code == 0
-    assert "pkm note show" in result.output
-
-
 # ---------------------------------------------------------------------------
 # pkm note show — JSON redesign
 # ---------------------------------------------------------------------------
@@ -170,7 +155,7 @@ def test_note_show_defaults_to_json(runner, vault_env):
     """pkm note show without --format outputs JSON array."""
     result = runner.invoke(main, ["note", "show", "mvcc"])
     assert result.exit_code == 0
-    json_text = result.output.split("\n* ")[0].strip()
+    json_text = result.output.strip()
     data = json.loads(json_text)
     assert "notes" in data
     assert "result_count" in data
@@ -179,7 +164,7 @@ def test_note_show_defaults_to_json(runner, vault_env):
 def test_note_show_json_includes_body(runner, vault_env):
     result = runner.invoke(main, ["note", "show", "mvcc"])
     assert result.exit_code == 0
-    json_text = result.output.split("\n* ")[0].strip()
+    json_text = result.output.strip()
     data = json.loads(json_text)
     if data["notes"]:
         assert "body" in data["notes"][0]
@@ -189,7 +174,7 @@ def test_note_show_json_includes_body(runner, vault_env):
 def test_note_show_json_includes_backlinks(runner, vault_env):
     result = runner.invoke(main, ["note", "show", "mvcc"])
     assert result.exit_code == 0
-    json_text = result.output.split("\n* ")[0].strip()
+    json_text = result.output.strip()
     data = json.loads(json_text)
     if data["notes"]:
         assert "backlinks" in data["notes"][0]
@@ -207,7 +192,7 @@ def test_note_show_top_n(runner, vault_env):
     """pkm note show --top 1 returns at most 1 note."""
     result = runner.invoke(main, ["note", "show", "2026", "--top", "1"])
     assert result.exit_code == 0
-    json_text = result.output.split("\n* ")[0].strip()
+    json_text = result.output.strip()
     data = json.loads(json_text)
     assert len(data["notes"]) <= 1
 
@@ -217,11 +202,5 @@ def test_note_show_no_interactive_prompt(runner, vault_env):
     from pkm.commands import notes as notes_mod
 
     assert not hasattr(notes_mod, "_select_note") or not callable(
-        getattr(notes_mod, "_select_note", None)
+        getattr(notes_mod, "_select_note")
     )
-
-
-def test_note_show_json_action_guide(runner, vault_env):
-    result = runner.invoke(main, ["note", "show", "mvcc"])
-    assert result.exit_code == 0
-    assert "pkm note edit" in result.output or "pkm search" in result.output
