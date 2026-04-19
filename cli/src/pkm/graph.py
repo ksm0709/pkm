@@ -173,12 +173,20 @@ def build_ast_and_graph(vault: VaultConfig) -> None:
             metadata = parse_file_ast(file_path, note_id)
             cache.set(metadata)
 
+        meta = dict(note.meta)
+        if not meta.get("description") and note.body:
+            body_text = note.body.strip()
+            if body_text:
+                meta["description"] = body_text[:200].replace("\n", " ").strip() + (
+                    "..." if len(body_text) > 200 else ""
+                )
+
         graph.add_node(
             note_id,
             type="note",
             title=note.title,
             path=str(file_path),
-            meta=note.meta,
+            meta=meta,
         )
 
         for tag in metadata.tags:

@@ -79,7 +79,7 @@ Content...
 Related: [[YYYY-MM-DD]] (first learned), [[related-concept]]
 ```
 
-The `description` field is optional and appears next to the title in backlink lists.
+The `description` field is optional and appears next to the title in backlink lists. If omitted, the system will automatically extract the first 200 characters of the note's body to use as a fallback description.
 
 ### 3. Knowledge Extraction — Criteria for Promotion
 
