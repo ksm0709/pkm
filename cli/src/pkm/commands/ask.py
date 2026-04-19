@@ -215,8 +215,15 @@ def ask_cmd(
                         reasoning_text = chunk.get("content", "")
                         if reasoning_text:
                             reasoning_buffer += reasoning_text
-                            display_text = reasoning_buffer[-80:].replace("\n", " ").replace("\r", " ")
-                            console.print(f"\r\033[K[dim italic]\[thinking...] {display_text}[/dim italic]", end="")
+                            display_text = (
+                                reasoning_buffer[-80:]
+                                .replace("\n", " ")
+                                .replace("\r", " ")
+                            )
+                            console.print(
+                                f"\r\033[K[dim italic]\\[thinking...] {display_text}[/dim italic]",
+                                end="",
+                            )
                     continue
 
                 if data.get("type") == "error" or "error" in data:
