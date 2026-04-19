@@ -11,14 +11,13 @@ def _get_vault(vault_dir: str) -> VaultConfig:
 
 
 @tool
-def add_daily_log(text: str, vault_dir: str | None = None) -> str:
+def add_daily_log(text: str) -> str:
     """Append a timestamped log entry to today's daily note.
 
     Args:
         text: The text to log.
-        vault_dir: The vault directory path. If not provided, uses PKM_VAULT_DIR env var.
     """
-    v_dir = vault_dir or os.environ.get("PKM_VAULT_DIR", ".")
+    v_dir = os.environ.get("PKM_VAULT_DIR", ".")
     vault = _get_vault(v_dir)
 
     try:
@@ -29,14 +28,13 @@ def add_daily_log(text: str, vault_dir: str | None = None) -> str:
 
 
 @tool
-def read_daily_log(date_str: str | None = None, vault_dir: str | None = None) -> str:
+def read_daily_log(date_str: str | None = None) -> str:
     """Read the daily note for a specific date.
 
     Args:
         date_str: The date in YYYY-MM-DD format. Defaults to today.
-        vault_dir: The vault directory path. If not provided, uses PKM_VAULT_DIR env var.
     """
-    v_dir = vault_dir or os.environ.get("PKM_VAULT_DIR", ".")
+    v_dir = os.environ.get("PKM_VAULT_DIR", ".")
     vault = _get_vault(v_dir)
 
     target_date = date_str or datetime.now().strftime("%Y-%m-%d")

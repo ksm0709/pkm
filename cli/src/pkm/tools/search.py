@@ -15,7 +15,6 @@ def semantic_search(
     top: int = 5,
     memory_type: str | None = None,
     min_importance: float = 1.0,
-    vault_dir: str | None = None,
 ) -> str:
     """Search vault notes semantically.
 
@@ -24,9 +23,8 @@ def semantic_search(
         top: Number of results to return.
         memory_type: Optional filter by memory type ('episodic', 'semantic', 'procedural').
         min_importance: Minimum importance score (1.0 to 10.0).
-        vault_dir: The vault directory path. If not provided, uses PKM_VAULT_DIR env var.
     """
-    v_dir = vault_dir or os.environ.get("PKM_VAULT_DIR", ".")
+    v_dir = os.environ.get("PKM_VAULT_DIR", ".")
     vault = _get_vault(v_dir)
 
     try:

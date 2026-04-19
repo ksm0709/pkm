@@ -16,7 +16,6 @@ def add_note(
     tags: list[str] | None = None,
     memory_type: str | None = None,
     importance: int | None = None,
-    vault_dir: str | None = None,
 ) -> str:
     """Create a new atomic note in the vault.
 
@@ -26,9 +25,8 @@ def add_note(
         tags: Optional list of tags.
         memory_type: Optional memory type (e.g., 'semantic', 'episodic', 'procedural').
         importance: Optional importance score (1-10).
-        vault_dir: The vault directory path. If not provided, uses PKM_VAULT_DIR env var.
     """
-    v_dir = vault_dir or os.environ.get("PKM_VAULT_DIR", ".")
+    v_dir = os.environ.get("PKM_VAULT_DIR", ".")
     vault = _get_vault(v_dir)
     try:
         note_path = create_note(
@@ -45,14 +43,13 @@ def add_note(
 
 
 @tool
-def search_notes(query: str, vault_dir: str | None = None) -> str:
+def search_notes(query: str) -> str:
     """Search notes by title (case-insensitive partial match).
 
     Args:
         query: The search query.
-        vault_dir: The vault directory path. If not provided, uses PKM_VAULT_DIR env var.
     """
-    v_dir = vault_dir or os.environ.get("PKM_VAULT_DIR", ".")
+    v_dir = os.environ.get("PKM_VAULT_DIR", ".")
     vault = _get_vault(v_dir)
     try:
         matches = _search_notes(vault, query)

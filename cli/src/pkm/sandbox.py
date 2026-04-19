@@ -29,6 +29,8 @@ def setup_sandbox(vault_dir: Path | str):
         Path(sys.prefix).resolve(),
         Path(sys.base_prefix).resolve(),
         Path(__file__).parent.parent.parent.resolve(),
+        Path("~/.claude/skills/pkm").expanduser().resolve(),
+        Path("~/.agents/skills/pkm").expanduser().resolve(),
     ]
 
     def audit_hook(event: str, args: tuple[object, ...]):
