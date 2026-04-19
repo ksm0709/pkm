@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v2.48.1 (2026-04-19)
+
+### Bug Fixes
+
+- Pass cwd to LLM worker and restore litellm_kwargs/instruction_dirs to support AGENTS.md and
+  reasoning
+  ([`41da8fa`](https://github.com/ksm0709/pkm/commit/41da8fa92411d2c12d44d60dde6d095aaabab6a9))
+
+
 ## v2.48.0 (2026-04-19)
 
 ### Chores
