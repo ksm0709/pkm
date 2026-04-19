@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.55.1 (2026-04-19)
+
+### Bug Fixes
+
+- **tools**: Use list[str] | None for mark_consolidated to satisfy Gemini schema
+  ([`b28c655`](https://github.com/ksm0709/pkm/commit/b28c6550ec1619fac7675a5d711a65af35ef1f95))
+
+
 ## v2.55.0 (2026-04-19)
 
 ### Features
