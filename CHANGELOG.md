@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.54.0 (2026-04-19)
+
+### Features
+
+- Replace socket-based daemon uniqueness check with fcntl flock
+  ([`dd5243b`](https://github.com/ksm0709/pkm/commit/dd5243b3ed54329835d553b45364f5204ff8b122))
+
+
 ## v2.53.0 (2026-04-19)
 
 ### Features
