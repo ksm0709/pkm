@@ -2,6 +2,35 @@
 
 <!-- version list -->
 
+## v2.43.0 (2026-04-19)
+
+### Chores
+
+- Add AGPLv3 license
+  ([`f7a1dfe`](https://github.com/ksm0709/pkm/commit/f7a1dfe9305fb6e2944b5700a927918e9240bfe1))
+
+- Clean up root directory
+  ([`f6f2146`](https://github.com/ksm0709/pkm/commit/f6f21462da354579faf6c699fea95a456485bbd6))
+
+### Code Style
+
+- **cli**: Remove next_steps action guide from JSON output
+  ([`ffcd294`](https://github.com/ksm0709/pkm/commit/ffcd2942407037d6dc15646ec4c4a67134e06654))
+
+- **search**: Move next steps guide into JSON payload
+  ([`07d923e`](https://github.com/ksm0709/pkm/commit/07d923e79e2c50f8ce13fbfe4f874f9a55cdf273))
+
+### Features
+
+- **hook**: Add instruction to prioritize MCP tools over CLI in session-start hook
+  ([`8339a58`](https://github.com/ksm0709/pkm/commit/8339a5803538a723d8c841e775f26ce58ef2c9f1))
+
+### Refactoring
+
+- **hook**: Remove AI-generated local imports
+  ([`7143bd5`](https://github.com/ksm0709/pkm/commit/7143bd52e22438393c85f02a3cfe67e9706eacca))
+
+
 ## v2.42.0 (2026-04-19)
 
 ### Features
