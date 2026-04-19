@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.53.0 (2026-04-19)
+
+### Features
+
+- Auto-restart daemon on pkm version update
+  ([`c180470`](https://github.com/ksm0709/pkm/commit/c18047058d8c927b64f4df805b32ec6a36148e0d))
+
+
 ## v2.52.0 (2026-04-19)
 
 ### Documentation
