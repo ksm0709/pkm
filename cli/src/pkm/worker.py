@@ -15,15 +15,19 @@ logger = logging.getLogger("pkm.worker")
 
 
 def reasoning_kwargs(model: str, effort: Optional[str]) -> Dict[str, Any]:
-    """Translate reasoning_effort to model-compatible litellm kwargs."""
+    """Translate reasoning_effort to model-compatible litellm kwargs.
+
+    When adding a new model or provider, check the parameter name at:
+    https://docs.litellm.ai/docs/providers
+    """
     if not effort:
         return {}
     # Gemini 3+ uses thinking_level (low/high)
     if "gemini-3" in model:
         level = "high" if effort in ("medium", "high", "xhigh") else "low"
         return {"thinking_level": level}
-    # Gemini 2.5 uses thinking with budget_tokens; litellm maps reasoning_effort natively
-    # All other models (Anthropic, OpenAI o-series) use reasoning_effort directly
+    # Gemini 2.5: litellm maps reasoning_effort → thinking budget_tokens natively
+    # Anthropic (claude-3-7+), OpenAI o-series: use reasoning_effort directly
     return {"reasoning_effort": effort}
 
 
