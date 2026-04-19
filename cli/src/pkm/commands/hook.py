@@ -244,6 +244,7 @@ def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None
     lines.extend(
         [
             "## PKM",
+            "**IMPORTANT: If MCP tools (e.g., pkm_search, pkm_daily_add) are available, ALWAYS prioritize using them over CLI commands.**",
             '`pkm daily add "<text>"` — log decisions, findings, code changes',
             '`pkm daily add --sub "<title>"` — create linked sub-note + log [[wikilink]] in today\'s daily',
             '`pkm search "<query>"` — recall related notes',
