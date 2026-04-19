@@ -211,7 +211,8 @@ def ask_cmd(
                         pass
                     elif c_type == "tool_detail":
                         if has_reasoning:
-                            console.print("\r\033[K", end="")
+                            sys.stdout.write("\r\033[2K")
+                            sys.stdout.flush()
                             has_reasoning = False
                         name = chunk.get("name", "unknown")
                         if name in _HIDDEN_TOOLS:
@@ -265,15 +266,14 @@ def ask_cmd(
                             display_text = " / ".join(lines[-2:]) if lines else ""
                             if len(display_text) > 120:
                                 display_text = display_text[-120:]
-                            console.print(
-                                f"\r\033[K[dim italic]\\[thinking] {display_text}[/dim italic]",
-                                end="",
-                            )
+                            sys.stdout.write(f"\r\033[2K\033[38;5;246m[thinking] {display_text}\033[0m")
+                            sys.stdout.flush()
                     continue
 
                 if data.get("type") == "error" or "error" in data:
                     if has_reasoning:
-                        console.print("\r\033[K", end="")
+                        sys.stdout.write("\r\033[2K")
+                        sys.stdout.flush()
                     error_msg = data.get("message") or data.get(
                         "error", "Unknown error"
                     )
@@ -282,12 +282,14 @@ def ask_cmd(
 
                 if "data" in data and "response" in data["data"]:
                     if has_reasoning:
-                        console.print("\r\033[K", end="")
+                        sys.stdout.write("\r\033[2K")
+                        sys.stdout.flush()
                     console.print(data["data"]["response"])
                     break
                 elif "response" in data:
                     if has_reasoning:
-                        console.print("\r\033[K", end="")
+                        sys.stdout.write("\r\033[2K")
+                        sys.stdout.flush()
                     console.print(data["response"])
                     break
                 else:
@@ -296,7 +298,8 @@ def ask_cmd(
                             console.print("\r\033[K", end="")
                         break
                     if has_reasoning:
-                        console.print("\r\033[K", end="")
+                        sys.stdout.write("\r\033[2K")
+                        sys.stdout.flush()
                     console.print(
                         f"[red]Error:[/red] Invalid response format from daemon: {data}"
                     )
