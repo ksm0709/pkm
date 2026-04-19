@@ -2,6 +2,20 @@
 
 <!-- version list -->
 
+## v2.46.0 (2026-04-19)
+
+### Features
+
+- Add get_graph_context tool for agent to use AST-based auto-linking
+  ([`44bab3f`](https://github.com/ksm0709/pkm/commit/44bab3f0620ba2fede9bacc9d40e324ffdf5710f))
+
+### Refactoring
+
+- **skills**: Remove unneeded command and reference directories, define core zettelkasten
+  maintenance workflow
+  ([`99c0a41`](https://github.com/ksm0709/pkm/commit/99c0a4109a503d68e520c7fb10d9046e5f068c98))
+
+
 ## v2.45.1 (2026-04-19)
 
 ### Bug Fixes
