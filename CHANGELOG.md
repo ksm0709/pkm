@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.51.0 (2026-04-19)
+
+### Features
+
+- Add reasoning_kwargs() to translate reasoning_effort per model family
+  ([`6149bff`](https://github.com/ksm0709/pkm/commit/6149bffcb88c422b01764ce9da9a1b8570e05933))
+
+
 ## v2.50.2 (2026-04-19)
 
 ### Bug Fixes
