@@ -2,7 +2,7 @@
 
 Ask a natural language question about your vault.
 
-The `pkm ask` command allows you to query your PKM vault using natural language. It sends the query to a background ML daemon which performs semantic search to retrieve relevant context (RAG) and leverages an LLM to answer questions using that context.
+The `pkm ask` command allows you to query your PKM vault using natural language. It sends the query to a background ML daemon which performs semantic search to retrieve relevant context (RAG) and leverages an LLM to answer questions using that context. It is equipped with a wrapper layer that exposes PKM commands (e.g., creating notes, reading logs, semantic search) as tools to the autonomous agent.
 
 ## Architecture & Security
 
