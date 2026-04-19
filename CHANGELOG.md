@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.40.0 (2026-04-19)
+
+### Features
+
+- **ask**: Provide full metadata and graph traversal context for RAG
+  ([`9c91060`](https://github.com/ksm0709/pkm/commit/9c910604974d0710b6ad9a0765ab984a0afba34c))
+
+
 ## v2.39.1 (2026-04-18)
 
 ### Bug Fixes
