@@ -179,8 +179,8 @@ def ask_cmd(
                 "semantic_search", "add_note", "update_note", "get_graph_context",
             }
             _HIDDEN_TOOLS = {"turn_start", "turn_stop"}
-            _TASK_ICONS = {"todo": "○", "in_progress": "▶", "done": "✓", "blocked": "✗"}
-            _TASK_COLORS = {"todo": "dim", "in_progress": "bold cyan", "done": "green", "blocked": "red"}
+            _TASK_ICONS = {"todo": "○", "pending": "○", "in_progress": "▶", "done": "✓", "blocked": "✗"}
+            _TASK_COLORS = {"todo": "dim", "pending": "dim", "in_progress": "bold cyan", "done": "green", "blocked": "red"}
 
             reasoning_buffer = ""
             has_reasoning = False
@@ -209,9 +209,20 @@ def ask_cmd(
                             continue
                         args_dict = chunk.get("arguments", {})
                         if name == "manage_tasks":
-                            tasks = args_dict.get("tasks", []) if isinstance(args_dict, dict) else []
+                            tasks_raw = args_dict.get("tasks", []) if isinstance(args_dict, dict) else []
+                            if isinstance(tasks_raw, str):
+                                try:
+                                    tasks = json.loads(tasks_raw)
+                                except Exception:
+                                    tasks = []
+                            elif isinstance(tasks_raw, list):
+                                tasks = tasks_raw
+                            else:
+                                tasks = []
                             for t in tasks[:5]:
-                                t_name = t.get("name", "?")
+                                if not isinstance(t, dict):
+                                    continue
+                                t_name = t.get("title") or t.get("name", "?")
                                 t_status = t.get("status", "todo")
                                 icon = _TASK_ICONS.get(t_status, "·")
                                 color = _TASK_COLORS.get(t_status, "dim")
