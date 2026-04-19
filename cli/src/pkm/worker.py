@@ -214,6 +214,19 @@ async def handle_ask(
             os.path.expanduser("~/.agents/skills/pkm"),
         ]
 
+        async def on_tool_start(name, arguments, agent_ref):
+            await ipc.send_message(
+                {
+                    "type": "stream",
+                    "id": task_id,
+                    "chunk": {
+                        "type": "tool_detail",
+                        "name": name,
+                        "arguments": arguments,
+                    },
+                }
+            )
+
         agent = Agent(
             session_id=f"pkm-ask-{task_id}",
             model=resolved_model,
@@ -222,6 +235,7 @@ async def handle_ask(
             skills_dirs=skills_dirs,
             instruction_dirs=[vault_dir],
             max_iterations=1000,
+            hooks={"on_tool_start": on_tool_start},
         )
 
         response_chunks = []

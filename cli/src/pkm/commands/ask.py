@@ -178,8 +178,23 @@ def ask_cmd(
                     chunk = data.get("chunk", {})
                     c_type = chunk.get("type")
                     if c_type == "tool_start":
+                        pass
+                    elif c_type == "tool_detail":
                         name = chunk.get("name", "unknown")
-                        console.print(f"[dim]Running tool: {name}...[/dim]")
+                        args_dict = chunk.get("arguments", {})
+                        arg_parts = []
+                        if isinstance(args_dict, dict):
+                            for k, v in args_dict.items():
+                                v_str = str(v)
+                                if len(v_str) > 50:
+                                    v_str = v_str[:47] + "..."
+                                arg_parts.append(f"{k}={v_str!r}")
+                            arg_str = ", ".join(arg_parts)
+                        else:
+                            arg_str = str(args_dict)
+                            if len(arg_str) > 100:
+                                arg_str = arg_str[:97] + "..."
+                        console.print(f"[dim]Running tool: {name}({arg_str})...[/dim]")
                     continue
 
                 if data.get("type") == "error" or "error" in data:
