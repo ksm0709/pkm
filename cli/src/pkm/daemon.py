@@ -1,6 +1,7 @@
 """Background daemon for fast semantic search and LLM task orchestration."""
 
 import asyncio
+import fcntl
 import json
 import os
 import time
@@ -14,6 +15,7 @@ from pkm.search_engine import VectorIndex, IndexEntry, search, _require_transfor
 import logging
 
 SOCKET_PATH = Path.home() / ".config" / "pkm" / "daemon.sock"
+LOCK_PATH = Path.home() / ".config" / "pkm" / "daemon.lock"
 LOG_PATH = Path.home() / ".config" / "pkm" / "daemon.log"
 LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 IDLE_TIMEOUT = 3600
@@ -796,17 +798,19 @@ async def async_main():
     SOCKET_PATH.parent.mkdir(parents=True, exist_ok=True)
     os.chmod(SOCKET_PATH.parent, 0o700)
 
-    if SOCKET_PATH.exists():
-        try:
-            reader, writer = await asyncio.open_unix_connection(str(SOCKET_PATH))
-            writer.close()
-            await writer.wait_closed()
-            logger.warning("Another daemon is already running. Exiting.")
-            return
-        except ConnectionRefusedError:
-            SOCKET_PATH.unlink()
-        except Exception:
-            SOCKET_PATH.unlink()
+    # Acquire exclusive flock — OS auto-releases on process death (even SIGKILL)
+    _lock_fd = open(LOCK_PATH, "w")
+    try:
+        fcntl.flock(_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        logger.warning("Another daemon is already running (lock held). Exiting.")
+        _lock_fd.close()
+        return
+    _lock_fd.write(str(os.getpid()))
+    _lock_fd.flush()
+
+    # Clean up stale socket from a crashed daemon
+    SOCKET_PATH.unlink(missing_ok=True)
 
     queue_path = Path.home() / ".config" / "pkm" / "task_queue.json"
     task_queue = TaskQueue(queue_path)
@@ -855,6 +859,11 @@ async def async_main():
                 SOCKET_PATH.unlink()
             except OSError:
                 pass
+        try:
+            _lock_fd.close()
+            LOCK_PATH.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 def main():
