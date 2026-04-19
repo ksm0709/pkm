@@ -156,6 +156,141 @@ class IPCClient:
 ipc = IPCClient()
 
 
+async def _run_agent_task(
+    task_id: str,
+    session_prefix: str,
+    user_content: str,
+    system_prompt: str,
+    vault_dir: str,
+    model: Optional[str] = None,
+    env_keys: Optional[Dict[str, str]] = None,
+    reasoning_effort: Optional[str] = None,
+    cwd: Optional[str] = None,
+    skills_dirs: Optional[List[str]] = None,
+    mock_response_prefix: str = "Mocked response for:",
+):
+    if env_keys:
+        os.environ.update(env_keys)
+
+    if os.environ.get("PKM_TEST_MOCK_LLM") == "1":
+        if mock_response_prefix == "Mocked maintenance response":
+            mock_res = mock_response_prefix
+        else:
+            mock_res = f"{mock_response_prefix} {user_content}"
+        await ipc.send_message(
+            {
+                "type": "result",
+                "id": task_id,
+                "status": "success",
+                "data": {"response": mock_res},
+            }
+        )
+        return
+
+    try:
+        from tiny_agent.agent import Agent
+        from pkm.tools import get_pkm_tools
+
+        ipc.abort_event.clear()
+
+        models_to_try = [model] if model and model != "auto" else []
+        if not models_to_try:
+            try:
+                from pkm.models import resolve_auto_models
+
+                models_to_try = resolve_auto_models()
+            except ImportError:
+                models_to_try = ["gemini/gemini-3.1-flash-preview"]
+
+        if not models_to_try:
+            raise RuntimeError("No API keys found for any supported models.")
+
+        resolved_model = models_to_try[0]
+
+        tools = get_pkm_tools()
+
+        async def on_tool_start(name, arguments, agent_ref):
+            await ipc.send_message(
+                {
+                    "type": "stream",
+                    "id": task_id,
+                    "chunk": {
+                        "type": "tool_detail",
+                        "name": name,
+                        "arguments": arguments,
+                    },
+                }
+            )
+
+        litellm_kwargs = {}
+        if reasoning_effort:
+            litellm_kwargs["reasoning_effort"] = reasoning_effort
+
+        instruction_dirs = [vault_dir]
+        if cwd and cwd not in instruction_dirs:
+            instruction_dirs.append(cwd)
+
+        agent = Agent(
+            session_id=f"{session_prefix}-{task_id}",
+            model=resolved_model,
+            system_prompt=system_prompt,
+            tools=tools,
+            skills_dirs=skills_dirs or [],
+            instruction_dirs=instruction_dirs,
+            max_iterations=1000,
+            hooks={"on_tool_start": on_tool_start},
+            litellm_kwargs=litellm_kwargs,
+        )
+
+        response_chunks = []
+
+        async def run_agent():
+            async for chunk in agent.run(user_content):
+                await ipc.send_message(
+                    {"type": "stream", "id": task_id, "chunk": chunk}
+                )
+
+                if chunk.get("type") == "content":
+                    content = chunk.get("content", "")
+                    response_chunks.append(content)
+                elif chunk.get("type") == "error":
+                    raise RuntimeError(chunk.get("content"))
+
+        agent_task = asyncio.create_task(run_agent())
+        abort_task = asyncio.create_task(ipc.abort_event.wait())
+
+        done, pending = await asyncio.wait(
+            [agent_task, abort_task], return_when=asyncio.FIRST_COMPLETED
+        )
+
+        if abort_task in done:
+            agent_task.cancel()
+            try:
+                await agent_task
+            except asyncio.CancelledError:
+                pass
+            raise RuntimeError("Task aborted by daemon")
+
+        if agent_task in done:
+            abort_task.cancel()
+            exc = agent_task.exception()
+            if exc:
+                raise exc
+
+        full_response = "".join(response_chunks)
+
+        await ipc.send_message(
+            {
+                "type": "result",
+                "id": task_id,
+                "status": "success",
+                "data": {"response": full_response},
+            }
+        )
+    except Exception as e:
+        await ipc.send_message({"type": "error", "id": task_id, "message": str(e)})
+
+
 async def handle_ask(
     task_id: str,
     query: str,
@@ -166,9 +301,6 @@ async def handle_ask(
     reasoning_effort: Optional[str] = None,
     cwd: Optional[str] = None,
 ):
-    if env_keys:
-        os.environ.update(env_keys)
-
     system_prompt = (
         "You are a helpful PKM assistant. You have access to the user's vault.\n"
         "You have tools to interact with the vault (search, read, write). Use them autonomously to fulfill the user's request.\n"
@@ -176,122 +308,21 @@ async def handle_ask(
         "Provide an informative and compact summary report.\n"
         "If the context does not contain the answer, say so, but still try to be helpful."
     )
-
     user_content = f"Context:\n{context}\n\nQuery: {query}" if context else query
 
-    if os.environ.get("PKM_TEST_MOCK_LLM") == "1":
-        await ipc.send_message(
-            {
-                "type": "result",
-                "id": task_id,
-                "status": "success",
-                "data": {"response": f"Mocked response for: {user_content}"},
-            }
-        )
-        return
-
-    try:
-        from tiny_agent.agent import Agent
-        from pkm.tools import get_pkm_tools
-
-        ipc.abort_event.clear()
-
-        models_to_try = [model] if model and model != "auto" else []
-        if not models_to_try:
-            try:
-                from pkm.models import resolve_auto_models
-
-                models_to_try = resolve_auto_models()
-            except ImportError:
-                models_to_try = ["gemini/gemini-3.1-flash-preview"]
-
-        if not models_to_try:
-            raise RuntimeError("No API keys found for any supported models.")
-
-        resolved_model = models_to_try[0]
-
-        tools = get_pkm_tools()
-
-        skills_dirs = [
-            os.path.expanduser("~/.agents/skills/pkm"),
-        ]
-
-        async def on_tool_start(name, arguments, agent_ref):
-            await ipc.send_message(
-                {
-                    "type": "stream",
-                    "id": task_id,
-                    "chunk": {
-                        "type": "tool_detail",
-                        "name": name,
-                        "arguments": arguments,
-                    },
-                }
-            )
-
-        litellm_kwargs = {}
-        if reasoning_effort:
-            litellm_kwargs["reasoning_effort"] = reasoning_effort
-
-        agent = Agent(
-            session_id=f"pkm-ask-{task_id}",
-            model=resolved_model,
-            system_prompt=system_prompt,
-            tools=tools,
-            skills_dirs=skills_dirs,
-            instruction_dirs=[vault_dir],
-            max_iterations=1000,
-            hooks={"on_tool_start": on_tool_start},
-            litellm_kwargs=litellm_kwargs,
-        )
-
-        response_chunks = []
-
-        async def run_agent():
-            async for chunk in agent.run(user_content):
-                await ipc.send_message(
-                    {"type": "stream", "id": task_id, "chunk": chunk}
-                )
-
-                if chunk.get("type") == "content":
-                    content = chunk.get("content", "")
-                    response_chunks.append(content)
-                elif chunk.get("type") == "error":
-                    raise RuntimeError(chunk.get("content"))
-
-        agent_task = asyncio.create_task(run_agent())
-        abort_task = asyncio.create_task(ipc.abort_event.wait())
-
-        done, pending = await asyncio.wait(
-            [agent_task, abort_task], return_when=asyncio.FIRST_COMPLETED
-        )
-
-        if abort_task in done:
-            agent_task.cancel()
-            try:
-                await agent_task
-            except asyncio.CancelledError:
-                pass
-            raise RuntimeError("Task aborted by daemon")
-
-        if agent_task in done:
-            abort_task.cancel()
-            exc = agent_task.exception()
-            if exc:
-                raise exc
-
-        full_response = "".join(response_chunks)
-
-        await ipc.send_message(
-            {
-                "type": "result",
-                "id": task_id,
-                "status": "success",
-                "data": {"response": full_response},
-            }
-        )
-    except Exception as e:
-        await ipc.send_message({"type": "error", "id": task_id, "message": str(e)})
+    await _run_agent_task(
+        task_id=task_id,
+        session_prefix="pkm-ask",
+        user_content=user_content,
+        system_prompt=system_prompt,
+        vault_dir=vault_dir,
+        model=model,
+        env_keys=env_keys,
+        reasoning_effort=reasoning_effort,
+        cwd=cwd,
+        skills_dirs=[os.path.expanduser("~/.agents/skills/pkm")],
+        mock_response_prefix="Mocked response for:",
+    )
 
 
 async def handle_zettelkasten_maintenance(
@@ -300,10 +331,8 @@ async def handle_zettelkasten_maintenance(
     model: Optional[str] = None,
     env_keys: Optional[Dict[str, str]] = None,
     reasoning_effort: Optional[str] = None,
+    cwd: Optional[str] = None,
 ):
-    if env_keys:
-        os.environ.update(env_keys)
-
     system_prompt = (
         "You are an autonomous Zettelkasten maintainer.\n"
         "Your task is to execute the following streamlined workflow on the vault:\n"
@@ -313,118 +342,20 @@ async def handle_zettelkasten_maintenance(
         "4. Review and clean up stale or orphaned notes.\n"
         "Execute these steps autonomously using the tools provided. When you are finished, summarize your actions."
     )
-
     user_content = "Please perform the scheduled Zettelkasten maintenance workflow now."
 
-    if os.environ.get("PKM_TEST_MOCK_LLM") == "1":
-        await ipc.send_message(
-            {
-                "type": "result",
-                "id": task_id,
-                "status": "success",
-                "data": {"response": "Mocked maintenance response"},
-            }
-        )
-        return
-
-    try:
-        from tiny_agent.agent import Agent
-        from pkm.tools import get_pkm_tools
-
-        ipc.abort_event.clear()
-
-        models_to_try = [model] if model and model != "auto" else []
-        if not models_to_try:
-            try:
-                from pkm.models import resolve_auto_models
-
-                models_to_try = resolve_auto_models()
-            except ImportError:
-                models_to_try = ["gemini/gemini-3.1-flash-preview"]
-
-        if not models_to_try:
-            raise RuntimeError("No API keys found for any supported models.")
-
-        resolved_model = models_to_try[0]
-
-        tools = get_pkm_tools()
-
-        async def on_tool_start(name, arguments, agent_ref):
-            await ipc.send_message(
-                {
-                    "type": "stream",
-                    "id": task_id,
-                    "chunk": {
-                        "type": "tool_detail",
-                        "name": name,
-                        "arguments": arguments,
-                    },
-                }
-            )
-
-        litellm_kwargs = {}
-        if reasoning_effort:
-            litellm_kwargs["reasoning_effort"] = reasoning_effort
-
-        agent = Agent(
-            session_id=f"pkm-maint-{task_id}",
-            model=resolved_model,
-            system_prompt=system_prompt,
-            tools=tools,
-            skills_dirs=[],
-            instruction_dirs=[vault_dir],
-            max_iterations=1000,
-            hooks={"on_tool_start": on_tool_start},
-            litellm_kwargs=litellm_kwargs,
-        )
-
-        response_chunks = []
-
-        async def run_agent():
-            async for chunk in agent.run(user_content):
-                await ipc.send_message(
-                    {"type": "stream", "id": task_id, "chunk": chunk}
-                )
-
-                if chunk.get("type") == "content":
-                    content = chunk.get("content", "")
-                    response_chunks.append(content)
-                elif chunk.get("type") == "error":
-                    raise RuntimeError(chunk.get("content"))
-
-        agent_task = asyncio.create_task(run_agent())
-        abort_task = asyncio.create_task(ipc.abort_event.wait())
-
-        done, pending = await asyncio.wait(
-            [agent_task, abort_task], return_when=asyncio.FIRST_COMPLETED
-        )
-
-        if abort_task in done:
-            agent_task.cancel()
-            try:
-                await agent_task
-            except asyncio.CancelledError:
-                pass
-            raise RuntimeError("Task aborted by daemon")
-
-        if agent_task in done:
-            abort_task.cancel()
-            exc = agent_task.exception()
-            if exc:
-                raise exc
-
-        full_response = "".join(response_chunks)
-
-        await ipc.send_message(
-            {
-                "type": "result",
-                "id": task_id,
-                "status": "success",
-                "data": {"response": full_response},
-            }
-        )
-    except Exception as e:
-        await ipc.send_message({"type": "error", "id": task_id, "message": str(e)})
+    await _run_agent_task(
+        task_id=task_id,
+        session_prefix="pkm-maint",
+        user_content=user_content,
+        system_prompt=system_prompt,
+        vault_dir=vault_dir,
+        model=model,
+        env_keys=env_keys,
+        reasoning_effort=reasoning_effort,
+        cwd=cwd,
+        mock_response_prefix="Mocked maintenance response",
+    )
 
 
 async def handle_task(msg: Dict[str, Any]):
@@ -446,6 +377,7 @@ async def handle_task(msg: Dict[str, Any]):
             msg.get("model"),
             msg.get("env_keys", {}),
             msg.get("reasoning_effort"),
+            msg.get("cwd"),
         )
     elif task_type == "zettelkasten_maintenance":
         await handle_zettelkasten_maintenance(
@@ -453,6 +385,8 @@ async def handle_task(msg: Dict[str, Any]):
             vault_dir,
             msg.get("model"),
             msg.get("env_keys", {}),
+            msg.get("reasoning_effort"),
+            msg.get("cwd"),
         )
     else:
         await ipc.send_message(
@@ -466,17 +400,18 @@ async def handle_task(msg: Dict[str, Any]):
 
 async def main():
     logger.info("PKM LLM Worker started")
-    
+
     vault_dir = os.environ.get("PKM_VAULT_DIR", ".")
     try:
         os.chdir(vault_dir)
         from pkm.sandbox import setup_sandbox
+
         setup_sandbox(vault_dir)
         logger.info(f"Sandbox initialized for vault: {vault_dir}")
     except Exception as e:
         logger.error(f"Failed to initialize sandbox: {e}")
         sys.exit(1)
-        
+
     await ipc.reader_loop()
 
 
