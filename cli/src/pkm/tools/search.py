@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from tiny_agent.agent import tool
+from tiny_agent.tools import tool
 from pkm.config import VaultConfig
 from pkm.search_engine import search_via_daemon, load_index, search as search_fn
 

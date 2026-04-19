@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from tiny_agent.agent import tool
+from tiny_agent.tools import tool
 from pkm.config import VaultConfig
 from pkm.commands.notes import create_note, _search_notes
 

@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from datetime import datetime
-from tiny_agent.agent import tool
+from tiny_agent.tools import tool
 from pkm.config import VaultConfig
 from pkm.commands.daily import add_daily_entry
 
