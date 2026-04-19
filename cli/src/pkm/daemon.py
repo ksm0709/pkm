@@ -731,6 +731,34 @@ def _reload_vault_caches(vault):
         DaemonState.graph_ready = True
 
 
+async def version_checker(server: asyncio.Server):
+    import importlib.metadata as meta
+    from pathlib import Path as _Path
+
+    try:
+        dist = meta.distribution("pkm")
+        metadata_file = _Path(str(dist.locate_file("METADATA")))
+        startup_mtime = metadata_file.stat().st_mtime
+        startup_version = dist.version
+    except Exception:
+        return
+
+    while True:
+        await asyncio.sleep(60)
+        try:
+            current_mtime = metadata_file.stat().st_mtime
+            if current_mtime != startup_mtime:
+                current_version = meta.Distribution.from_name("pkm").version
+                logger.info(
+                    "PKM updated %s → %s, restarting daemon.", startup_version, current_version
+                )
+                server.close()
+                SOCKET_PATH.unlink(missing_ok=True)
+                os.execv(sys.executable, [sys.executable, "-m", "pkm.daemon"])
+        except Exception as e:
+            logger.warning("Version check error: %s", e)
+
+
 async def maintenance_checker():
     import datetime
 
@@ -804,6 +832,7 @@ async def async_main():
     checker_task = asyncio.create_task(idle_checker(server))
     maint_task = asyncio.create_task(maintenance_checker())
     bg_task = asyncio.create_task(process_background_tasks())
+    version_task = asyncio.create_task(version_checker(server))
 
     loop = asyncio.get_running_loop()
     loop.run_in_executor(None, _preload_model)
@@ -817,6 +846,7 @@ async def async_main():
         checker_task.cancel()
         maint_task.cancel()
         bg_task.cancel()
+        version_task.cancel()
         if worker_proxy and worker_proxy.process:
             worker_proxy.process.terminate()
         _on_shutdown()
