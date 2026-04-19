@@ -25,7 +25,7 @@ search = [
     "sentence-transformers>=2.0",
     "numpy>=1.24",
     "litellm>=1.0.0",
-    "tiny-agent-py @ file:///home/taeho/repos/tiny-agent-py",
+    "tiny-agent-py @ git+https://github.com/ksm0709/tiny-agent-py.git",
 ]
 dev = [
     "pytest>=7.0",
