@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.55.2 (2026-04-19)
+
+### Bug Fixes
+
+- Adapt thinking display width to terminal size
+  ([`47e41cd`](https://github.com/ksm0709/pkm/commit/47e41cda57a043fd7b5866f9460515c7d9006a5d))
+
+
 ## v2.55.1 (2026-04-19)
 
 ### Bug Fixes
