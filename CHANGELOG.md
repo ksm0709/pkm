@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v2.45.1 (2026-04-19)
+
+### Bug Fixes
+
+- Schedule zettelkasten maintenance daily at 2 AM instead of interval
+  ([`85f5bdc`](https://github.com/ksm0709/pkm/commit/85f5bdc0f36e5d22cf97692f62affac65f711658))
+
+### Refactoring
+
+- Simplify Zettelkasten workflow via daemon periodic execution
+  ([`b2f5360`](https://github.com/ksm0709/pkm/commit/b2f5360eb31c4f992ab23b639bd1933c521b1162))
+
+
 ## v2.45.0 (2026-04-19)
 
 ### Features
