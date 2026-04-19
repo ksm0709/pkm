@@ -736,20 +736,23 @@ async def maintenance_checker():
 
     while True:
         await asyncio.sleep(60)
-        
+
         now = datetime.datetime.now()
         current_date = now.date()
-        
+
         if now.hour == 2 and last_run_date != current_date:
             if task_queue:
                 task = {
                     "type": "task",
                     "id": f"maint_{int(now.timestamp())}",
-                    "task_type": "zettelkasten_maintenance"
+                    "task_type": "zettelkasten_maintenance",
                 }
                 task_queue.push(task)
-                logger.info(f"Scheduled daily Zettelkasten maintenance task: {task['id']}")
+                logger.info(
+                    f"Scheduled daily Zettelkasten maintenance task: {task['id']}"
+                )
             last_run_date = current_date
+
 
 async def async_main():
     global worker_proxy, task_queue
