@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v2.52.0 (2026-04-19)
+
+### Documentation
+
+- Add litellm provider reference URL to reasoning_kwargs docstring
+  ([`abccb78`](https://github.com/ksm0709/pkm/commit/abccb78ca10e7deaa2347b7164e0ccf8b8829bca))
+
+### Features
+
+- Use gemini-3-flash-preview as default model (AI Studio, supports thinking)
+  ([`cb444c1`](https://github.com/ksm0709/pkm/commit/cb444c106d062ec6de5d356fb4966b698e0c7905))
+
+
 ## v2.51.0 (2026-04-19)
 
 ### Features
