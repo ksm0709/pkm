@@ -163,6 +163,7 @@ async def handle_ask(
     vault_dir: str,
     model: Optional[str] = None,
     env_keys: Optional[Dict[str, str]] = None,
+    reasoning_effort: Optional[str] = None,
 ):
     if env_keys:
         os.environ.update(env_keys)
@@ -227,6 +228,10 @@ async def handle_ask(
                 }
             )
 
+        litellm_kwargs = {}
+        if reasoning_effort:
+            litellm_kwargs["reasoning_effort"] = reasoning_effort
+
         agent = Agent(
             session_id=f"pkm-ask-{task_id}",
             model=resolved_model,
@@ -236,6 +241,7 @@ async def handle_ask(
             instruction_dirs=[vault_dir],
             max_iterations=1000,
             hooks={"on_tool_start": on_tool_start},
+            litellm_kwargs=litellm_kwargs,
         )
 
         response_chunks = []
@@ -314,7 +320,7 @@ async def handle_zettelkasten_maintenance(
                 "type": "result",
                 "id": task_id,
                 "status": "success",
-                "data": {"response": f"Mocked maintenance response"},
+                "data": {"response": "Mocked maintenance response"},
             }
         )
         return
@@ -432,6 +438,7 @@ async def handle_task(msg: Dict[str, Any]):
             vault_dir,
             msg.get("model"),
             msg.get("env_keys", {}),
+            msg.get("reasoning_effort"),
         )
     elif task_type == "zettelkasten_maintenance":
         await handle_zettelkasten_maintenance(

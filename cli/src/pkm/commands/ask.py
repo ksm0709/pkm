@@ -20,6 +20,7 @@ console = Console()
     "--timeout", type=int, default=120, help="Timeout in seconds to wait for the result"
 )
 @click.option("--model", type=str, help="LLM model to use (overrides config)")
+@click.option("--reasoning-effort", type=str, help="Reasoning effort for capable models")
 @click.option(
     "--list-models", is_flag=True, help="List available model providers via litellm"
 )
@@ -29,6 +30,7 @@ def ask_cmd(
     query: tuple[str, ...],
     timeout: int,
     model: str | None,
+    reasoning_effort: str | None,
     list_models: bool,
 ) -> None:
     """Ask a natural language question about your vault."""
@@ -80,9 +82,13 @@ def ask_cmd(
 
     from pkm.config import load_config
 
-    config_model = load_config().get("defaults", {}).get("model")
+    config_data = load_config().get("defaults", {})
+    config_model = config_data.get("model")
+    config_reasoning_effort = config_data.get("reasoning-effort")
     final_model = model or config_model or "auto"
-    graph_depth = load_config().get("defaults", {}).get("graph-depth", 0)
+    graph_depth = config_data.get("graph-depth", 0)
+
+    final_reasoning_effort = reasoning_effort or config_reasoning_effort
 
     if not query:
         console.print(f"Current LLM model: [bold green]{final_model}[/bold green]\n")
@@ -157,6 +163,7 @@ def ask_cmd(
                 "query": query_str,
                 "vault_name": vault.name,
                 "model": final_model,
+                "reasoning_effort": final_reasoning_effort,
                 "env_keys": env_keys,
                 "graph_depth": graph_depth,
             }

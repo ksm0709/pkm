@@ -33,6 +33,10 @@ CONFIG_SCHEMA = {
         "internal_key": "model",
         "description": "LLM model used by pkm ask (default: auto)",
     },
+    "reasoning-effort": {
+        "internal_key": "reasoning-effort",
+        "description": "Reasoning effort for capable models (e.g., low, medium, high)",
+    },
 }
 
 VALID_KEYS = set(CONFIG_SCHEMA.keys())
