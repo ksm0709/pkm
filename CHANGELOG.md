@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v2.50.2 (2026-04-19)
+
+### Bug Fixes
+
+- Rename ambiguous variable l→ln in ask.py (E741), revert Gemini 2.5 model changes
+  ([`b79e45a`](https://github.com/ksm0709/pkm/commit/b79e45ad48dade11313eb341e3bd574b3c023ae0))
+
+### Code Style
+
+- Add blank line after import in maintenance_checker (linter)
+  ([`1530e27`](https://github.com/ksm0709/pkm/commit/1530e27b70d6d2088be23bb8a496c85a7c8378e6))
+
+
 ## v2.50.1 (2026-04-19)
 
 ### Bug Fixes
