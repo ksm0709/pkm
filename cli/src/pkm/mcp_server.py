@@ -394,13 +394,15 @@ def list_consolidation_candidates() -> dict[str, Any]:
 
 
 @mcp.tool()
-def mark_consolidated(date_str: str, distilled_note_ids: list[str]) -> dict[str, Any]:
+def mark_consolidated(date_str: str, distilled_note_ids: list[str] | None = None) -> dict[str, Any]:
     """Mark a daily note as consolidated. Requires distilled_note_ids for auditability."""
     from pkm.commands.consolidate import _parse_frontmatter, _set_frontmatter_field
     from datetime import date
 
     vault = _get_vault()
     try:
+        if not distilled_note_ids:
+            return {"error": "distilled_note_ids is required — provide IDs of notes created during distillation."}
         today = date.today().isoformat()
         if date_str == today:
             return {

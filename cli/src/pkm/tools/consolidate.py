@@ -45,7 +45,7 @@ def list_consolidation_candidates() -> str:
 
 
 @tool()
-def mark_consolidated(date_str: str, distilled_note_ids: list[str]) -> str:
+def mark_consolidated(date_str: str, distilled_note_ids: list[str] | None = None) -> str:
     """Mark a daily note as consolidated after distilling its insights into atomic notes.
 
     Use ONLY after the user has distilled insights from that daily note — this is a
@@ -61,11 +61,13 @@ def mark_consolidated(date_str: str, distilled_note_ids: list[str]) -> str:
         if date_str == today:
             return "Error: Cannot mark today's daily note as consolidated — it is still in use."
 
+        if not distilled_note_ids:
+            return "Error: distilled_note_ids is required — provide the IDs of notes created during distillation."
+
         note_path = vault.daily_dir / f"{date_str}.md"
         if not note_path.exists():
             return f"Error: Daily note not found: {date_str}.md"
 
-        # Validate all distilled note IDs exist
         missing = []
         for nid in distilled_note_ids:
             if not (vault.notes_dir / f"{nid}.md").exists():
