@@ -62,3 +62,51 @@ def search_notes(query: str) -> str:
         return "\n\n".join(results)
     except Exception as e:
         return f"Error searching notes: {str(e)}"
+
+
+@tool
+def read_note(note_id: str) -> str:
+    """Read the full content and metadata of a note.
+    
+    Args:
+        note_id: The ID of the note (typically the filename without .md).
+    """
+    v_dir = os.environ.get("PKM_VAULT_DIR", ".")
+    vault = _get_vault(v_dir)
+    
+    for base_dir in [vault.notes_dir, vault.daily_dir]:
+        path = base_dir / f"{note_id}.md"
+        if path.exists():
+            from pkm.frontmatter import parse
+            note = parse(path)
+            return f"--- Note: {note.title} ---\nMetadata:\n{note.meta}\nContent:\n{note.body}"
+            
+    return f"Error: Note '{note_id}' not found."
+
+
+@tool
+def update_note(note_id: str, content: str, tags: list[str] | None = None) -> str:
+    """Update the content and optionally tags of an existing note.
+    
+    Args:
+        note_id: The ID of the note.
+        content: The new full content of the note.
+        tags: Optional new list of tags to replace the old ones.
+    """
+    v_dir = os.environ.get("PKM_VAULT_DIR", ".")
+    vault = _get_vault(v_dir)
+    
+    for base_dir in [vault.notes_dir, vault.daily_dir]:
+        path = base_dir / f"{note_id}.md"
+        if path.exists():
+            from pkm.frontmatter import parse, render
+            note = parse(path)
+            if tags is not None:
+                note.meta["tags"] = tags
+            new_text = render(note.meta, content)
+            path.write_text(new_text, encoding="utf-8")
+            from pkm.commands.notes import _append_operation_log
+            _append_operation_log(vault, "update", note.id, note.title)
+            return f"Successfully updated note '{note_id}'"
+            
+    return f"Error: Note '{note_id}' not found."

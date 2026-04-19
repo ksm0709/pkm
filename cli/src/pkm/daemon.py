@@ -728,6 +728,24 @@ def _reload_vault_caches(vault):
         DaemonState.graph_ready = True
 
 
+MAINTENANCE_INTERVAL = 3600 * 4
+
+async def maintenance_checker():
+    last_run = time.time()
+    while True:
+        await asyncio.sleep(60)
+        now = time.time()
+        if now - last_run > MAINTENANCE_INTERVAL:
+            if task_queue:
+                task = {
+                    "type": "task",
+                    "id": f"maint_{int(now)}",
+                    "task_type": "zettelkasten_maintenance"
+                }
+                task_queue.push(task)
+                logger.info(f"Scheduled periodic Zettelkasten maintenance task: {task['id']}")
+            last_run = now
+
 async def async_main():
     global worker_proxy, task_queue
 
@@ -762,6 +780,7 @@ async def async_main():
     os.chmod(str(SOCKET_PATH), 0o600)
 
     checker_task = asyncio.create_task(idle_checker(server))
+    maint_task = asyncio.create_task(maintenance_checker())
     bg_task = asyncio.create_task(process_background_tasks())
 
     loop = asyncio.get_running_loop()
@@ -774,6 +793,7 @@ async def async_main():
     finally:
         logger.info("Daemon shutting down.")
         checker_task.cancel()
+        maint_task.cancel()
         bg_task.cancel()
         if worker_proxy and worker_proxy.process:
             worker_proxy.process.terminate()

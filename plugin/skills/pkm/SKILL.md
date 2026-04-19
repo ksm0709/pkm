@@ -1,6 +1,6 @@
 ---
 name: pkm
-description: "Personal Knowledge Management for Obsidian vaults — Zettelkasten workflow with daily notes, atomic notes, wikilinks, and a Python CLI tool (pkm). Use this skill whenever the user mentions: daily notes, note management, knowledge extraction, Zettelkasten, note search, backlinks, wikilinks, PKM, note writing, tag search, tag explore, backlink traverse, or wants to create/update/search notes in their Obsidian vaults. Also trigger when the user says /pkm. Workflow triggers: zettel-loop, refine-loop."
+description: "Personal Knowledge Management for Obsidian vaults — Zettelkasten workflow with daily notes, atomic notes, wikilinks, and a Python CLI tool (pkm). Use this skill whenever the user mentions: daily notes, note management, knowledge extraction, Zettelkasten, note search, backlinks, wikilinks, PKM, note writing, tag search, tag explore, backlink traverse, or wants to create/update/search notes in their Obsidian vaults. Also trigger when the user says /pkm."
 ---
 
 # PKM — Personal Knowledge Management
@@ -33,7 +33,6 @@ When used inside a Git repository, the vault name is automatically assigned in `
                                                                                     notes/ ↔ notes/ (knowledge network)
                                                                                          |
                                                                           pkm search (semantic search)
-                                                                          workflows/ (automated knowledge management)
 ```
 
 ### 1. Daily Note — Entry Point for Knowledge
@@ -197,32 +196,6 @@ $ pkm daily add "오늘의 작업 내용"
 ### Tag Index Notes & Backlinks
 
 Tags are managed as physical .md files in the `tags/` directory. Tag notes are created lazily on access, and adding a description turns them into index cards. Backlinks are automatically shown in `note show`, and can also be queried directly with `note links`.
-
-## Workflows
-
-PKM workflows are defined as independent documents in the `workflows/` folder. Find the workflow matching the user's request, read that document, and execute it.
-
-| Workflow | Primary Trigger | Document |
-|----------|----------------|------|
-| Zettel Loop | zettel-loop, knowledge production, promote knowledge | workflows/zettel-loop.md |
-| Refine Loop | refine-loop, knowledge cleanup, vault refinement | workflows/refine-loop.md |
-
-When a user request matches one of the triggers above, read the corresponding `workflows/*.md` and execute it. If multiple workflows could match, ask the user which one they want.
-
-## Workflow Extension Guide
-
-To add a new workflow:
-1. Copy `workflows/_template.md` to create a new file
-2. Fill in Purpose, Trigger, Tools, Principles, Edge Cases, Example Flow, Expected Output
-3. Add an entry to the Workflows table above
-4. Accumulate related know-how in references/principles.md
-
-Criteria for a good workflow:
-- Executable via pkm CLI commands or file tools
-- Respects agent discretion (no excessive step-by-step directives)
-- Clear output definition
-- Consistent quality on repeated execution
-- Unique Primary Trigger (must not overlap with other workflows)
 
 ## Principles & Know-how
 

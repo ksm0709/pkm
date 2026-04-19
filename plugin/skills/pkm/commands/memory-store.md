@@ -1,5 +1,0 @@
----
-description: Store facts, decisions, and patterns as atomic notes for long-term recall
----
-
-Read `~/.claude/skills/pkm/workflows/memory-store.md` and execute the workflow described there.

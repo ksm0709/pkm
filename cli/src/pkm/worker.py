@@ -287,37 +287,128 @@ async def handle_ask(
         await ipc.send_message({"type": "error", "id": task_id, "message": str(e)})
 
 
-async def handle_zettelkasten_maintenance(task_id: str, file_path: str, vault_dir: str):
-    try:
-        full_path = os.path.join(vault_dir, file_path)
-        if not os.path.exists(full_path):
-            raise FileNotFoundError(f"File not found: {file_path}")
+async def handle_zettelkasten_maintenance(
+    task_id: str,
+    vault_dir: str,
+    model: Optional[str] = None,
+    env_keys: Optional[Dict[str, str]] = None,
+):
+    if env_keys:
+        os.environ.update(env_keys)
 
-        with open(full_path, "r", encoding="utf-8") as f:
-            content = f.read()
+    system_prompt = (
+        "You are an autonomous Zettelkasten maintainer.\n"
+        "Your task is to execute the following streamlined workflow on the vault:\n"
+        "1. Read recent daily logs/notes to distill insights.\n"
+        "2. Identify opportunities to split large notes or merge similar ones.\n"
+        "3. Use semantic search to discover and create new auto-linking opportunities between notes.\n"
+        "4. Review and clean up stale or orphaned notes.\n"
+        "Execute these steps autonomously using the tools provided. When you are finished, summarize your actions."
+    )
 
-        messages = [
+    user_content = "Please perform the scheduled Zettelkasten maintenance workflow now."
+
+    if os.environ.get("PKM_TEST_MOCK_LLM") == "1":
+        await ipc.send_message(
             {
-                "role": "system",
-                "content": "You are a Zettelkasten maintainer. Extract tags and suggest wikilinks for the following note. Output JSON with 'tags' (list of strings) and 'links' (list of strings).",
-            },
-            {"role": "user", "content": content},
-        ]
+                "type": "result",
+                "id": task_id,
+                "status": "success",
+                "data": {"response": f"Mocked maintenance response"},
+            }
+        )
+        return
 
-        response = await ipc.call_llm(messages)
+    try:
+        from tiny_agent.agent import Agent
+        from pkm.tools import get_pkm_tools
 
-        try:
-            if response.startswith("```json"):
-                response = response[7:-3].strip()
-            elif response.startswith("```"):
-                response = response[3:-3].strip()
+        ipc.abort_event.clear()
 
-            result_data = json.loads(response)
-        except json.JSONDecodeError:
-            result_data = {"tags": [], "links": [], "raw_response": response}
+        models_to_try = [model] if model and model != "auto" else []
+        if not models_to_try:
+            try:
+                from pkm.models import resolve_auto_models
+
+                models_to_try = resolve_auto_models()
+            except ImportError:
+                models_to_try = ["gemini/gemini-3.1-flash-preview"]
+
+        if not models_to_try:
+            raise RuntimeError("No API keys found for any supported models.")
+
+        resolved_model = models_to_try[0]
+
+        tools = get_pkm_tools()
+
+        async def on_tool_start(name, arguments, agent_ref):
+            await ipc.send_message(
+                {
+                    "type": "stream",
+                    "id": task_id,
+                    "chunk": {
+                        "type": "tool_detail",
+                        "name": name,
+                        "arguments": arguments,
+                    },
+                }
+            )
+
+        agent = Agent(
+            session_id=f"pkm-maint-{task_id}",
+            model=resolved_model,
+            system_prompt=system_prompt,
+            tools=tools,
+            skills_dirs=[],
+            instruction_dirs=[vault_dir],
+            max_iterations=1000,
+            hooks={"on_tool_start": on_tool_start},
+        )
+
+        response_chunks = []
+
+        async def run_agent():
+            async for chunk in agent.run(user_content):
+                await ipc.send_message(
+                    {"type": "stream", "id": task_id, "chunk": chunk}
+                )
+
+                if chunk.get("type") == "content":
+                    content = chunk.get("content", "")
+                    response_chunks.append(content)
+                elif chunk.get("type") == "error":
+                    raise RuntimeError(chunk.get("content"))
+
+        agent_task = asyncio.create_task(run_agent())
+        abort_task = asyncio.create_task(ipc.abort_event.wait())
+
+        done, pending = await asyncio.wait(
+            [agent_task, abort_task], return_when=asyncio.FIRST_COMPLETED
+        )
+
+        if abort_task in done:
+            agent_task.cancel()
+            try:
+                await agent_task
+            except asyncio.CancelledError:
+                pass
+            raise RuntimeError("Task aborted by daemon")
+
+        if agent_task in done:
+            abort_task.cancel()
+            exc = agent_task.exception()
+            if exc:
+                raise exc
+
+        full_response = "".join(response_chunks)
 
         await ipc.send_message(
-            {"type": "result", "id": task_id, "status": "success", "data": result_data}
+            {
+                "type": "result",
+                "id": task_id,
+                "status": "success",
+                "data": {"response": full_response},
+            }
         )
     except Exception as e:
         await ipc.send_message({"type": "error", "id": task_id, "message": str(e)})
@@ -344,7 +435,10 @@ async def handle_task(msg: Dict[str, Any]):
         )
     elif task_type == "zettelkasten_maintenance":
         await handle_zettelkasten_maintenance(
-            task_id, msg.get("file_path", ""), vault_dir
+            task_id,
+            vault_dir,
+            msg.get("model"),
+            msg.get("env_keys", {}),
         )
     else:
         await ipc.send_message(
