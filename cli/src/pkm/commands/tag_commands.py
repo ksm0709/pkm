@@ -51,6 +51,59 @@ def _collect_notes_with_tag(vault: VaultConfig, tag: str) -> list:
     return results
 
 
+def count_all_tags(vault: VaultConfig) -> list[tuple[str, int]]:
+    """Scan notes_dir and daily_dir and return all non-empty tags sorted by count."""
+    tag_counter: Counter[str] = Counter()
+    for d in (vault.notes_dir, vault.daily_dir):
+        if not d.is_dir():
+            continue
+        for md_file in d.glob("*.md"):
+            try:
+                note = parse(md_file)
+                for tag in note.tags:
+                    if tag:
+                        tag_counter[tag] += 1
+            except Exception:
+                pass
+    return tag_counter.most_common()
+
+
+def search_by_tag_pattern(vault: VaultConfig, pattern: str) -> tuple[str, list]:
+    """Return (mode_label, matched_notes) for the given tag search pattern."""
+    all_notes = []
+    for d in (vault.notes_dir, vault.daily_dir):
+        if not d.is_dir():
+            continue
+        for md_file in sorted(d.glob("*.md")):
+            try:
+                note = parse(md_file)
+                if note.tags:
+                    all_notes.append(note)
+            except Exception:
+                pass
+
+    # Single + is AND operator (but ++ in tag names like c++ is preserved)
+    and_parts = re.split(r"(?<!\+)\+(?!\+)", pattern)
+    if len(and_parts) > 1:
+        required_tags = [t.strip() for t in and_parts if t.strip()]
+        matched = [n for n in all_notes if all(t in n.tags for t in required_tags)]
+        mode = f"AND({', '.join(required_tags)})"
+    elif "," in pattern:
+        or_tags = [t.strip() for t in pattern.split(",") if t.strip()]
+        matched = [n for n in all_notes if any(t in n.tags for t in or_tags)]
+        mode = f"OR({', '.join(or_tags)})"
+    elif "*" in pattern or "?" in pattern:
+        matched = [
+            n for n in all_notes if any(fnmatch.fnmatch(t, pattern) for t in n.tags)
+        ]
+        mode = f"glob({pattern})"
+    else:
+        matched = [n for n in all_notes if pattern in n.tags]
+        mode = f"exact({pattern})"
+
+    return mode, matched
+
+
 @click.group(invoke_without_command=True)
 @click.option(
     "--format",
@@ -67,25 +120,10 @@ def tags(ctx: click.Context, output_format: str) -> None:
         return
 
     vault = ctx.obj["vault"]
-    tag_counter: Counter[str] = Counter()
-
-    dirs = [vault.notes_dir, vault.daily_dir]
-    for d in dirs:
-        if not d.is_dir():
-            continue
-        for md_file in d.glob("*.md"):
-            try:
-                note = parse(md_file)
-                for tag in note.tags:
-                    if tag:
-                        tag_counter[tag] += 1
-            except Exception:
-                pass
+    tag_counts = count_all_tags(vault)
 
     if output_format == "json":
-        items = [
-            {"tag": tag, "count": count} for tag, count in tag_counter.most_common()
-        ]
+        items = [{"tag": tag, "count": count} for tag, count in tag_counts]
         print(
             json.dumps(
                 {"tags": items, "count": len(items)}, ensure_ascii=False, indent=2
@@ -96,7 +134,7 @@ def tags(ctx: click.Context, output_format: str) -> None:
         table.add_column("Tag", style="green")
         table.add_column("Count", justify="right")
 
-        for tag, count in tag_counter.most_common():
+        for tag, count in tag_counts:
             table.add_row(tag, str(count))
 
         console.print(table)
@@ -210,38 +248,7 @@ def search(ctx: click.Context, pattern: str, output_format: str) -> None:
     """Search notes by tag pattern. Supports glob (*), AND (+), and OR (,)."""
     vault = ctx.obj["vault"]
 
-    # Collect all notes with their tags
-    all_notes = []
-    for d in (vault.notes_dir, vault.daily_dir):
-        if not d.is_dir():
-            continue
-        for md_file in sorted(d.glob("*.md")):
-            try:
-                note = parse(md_file)
-                if note.tags:
-                    all_notes.append(note)
-            except Exception:
-                pass
-
-    # Parse pattern
-    # Single + is AND operator (but ++ in tag names like c++ is preserved)
-    and_parts = re.split(r"(?<!\+)\+(?!\+)", pattern)
-    if len(and_parts) > 1:
-        required_tags = [t.strip() for t in and_parts if t.strip()]
-        matched = [n for n in all_notes if all(t in n.tags for t in required_tags)]
-        mode = f"AND({', '.join(required_tags)})"
-    elif "," in pattern:
-        or_tags = [t.strip() for t in pattern.split(",") if t.strip()]
-        matched = [n for n in all_notes if any(t in n.tags for t in or_tags)]
-        mode = f"OR({', '.join(or_tags)})"
-    elif "*" in pattern or "?" in pattern:
-        matched = [
-            n for n in all_notes if any(fnmatch.fnmatch(t, pattern) for t in n.tags)
-        ]
-        mode = f"glob({pattern})"
-    else:
-        matched = [n for n in all_notes if pattern in n.tags]
-        mode = f"exact({pattern})"
+    mode, matched = search_by_tag_pattern(vault, pattern)
 
     if output_format == "json":
         items = [

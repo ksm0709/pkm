@@ -267,6 +267,186 @@ async def pkm_ask(
             pass
 
 
+@mcp.tool()
+def vault_stats() -> dict[str, Any]:
+    """Get a snapshot of vault health: note count, orphan count, tag count, avg links, index status."""
+    from pkm.commands.maintenance import compute_vault_stats
+
+    vault = _get_vault()
+    try:
+        return compute_vault_stats(vault)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def list_stale_notes(days: int = 30) -> dict[str, Any]:
+    """List notes not modified in the last N days (default 30), oldest first."""
+    from pkm.commands.maintenance import list_stale
+
+    vault = _get_vault()
+    try:
+        items = list_stale(vault, days)
+        return {"threshold_days": days, "stale_notes": items, "count": len(items)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def list_orphans() -> dict[str, Any]:
+    """List all orphan notes — notes with zero inbound AND zero outbound wikilinks."""
+    from pkm.wikilinks import find_orphans
+    from pkm.frontmatter import parse
+
+    vault = _get_vault()
+    try:
+        paths = find_orphans(vault)
+        items = []
+        for p in paths:
+            try:
+                note = parse(p)
+                items.append({"filename": p.name, "note_id": p.stem, "tags": note.tags})
+            except Exception:
+                items.append({"filename": p.name, "note_id": p.stem, "tags": []})
+        return {"orphans": items, "count": len(items)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def find_backlinks_for_note(note_id: str) -> dict[str, Any]:
+    """Find all notes that link TO a given note (inbound wikilinks). Daemon-free."""
+    from pkm.wikilinks import find_backlinks
+    from pkm.frontmatter import parse
+
+    vault = _get_vault()
+    try:
+        paths = find_backlinks(vault, note_id)
+        items = []
+        for p in paths:
+            try:
+                note = parse(p)
+                items.append({"title": note.title, "path": p.name, "note_id": p.stem})
+            except Exception:
+                items.append({"title": p.stem, "path": p.name, "note_id": p.stem})
+        return {"note_id": note_id, "backlinks": items, "count": len(items)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def list_tags() -> dict[str, Any]:
+    """List all tags used in the vault with their note counts, sorted by frequency."""
+    from pkm.commands.tag_commands import count_all_tags
+
+    vault = _get_vault()
+    try:
+        pairs = count_all_tags(vault)
+        items = [{"tag": tag, "count": count} for tag, count in pairs]
+        return {"tags": items, "count": len(items)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def tag_search(pattern: str) -> dict[str, Any]:
+    """Find notes by tag pattern: exact, glob (db*), AND (python+testing), OR (python,rust)."""
+    from pkm.commands.tag_commands import search_by_tag_pattern
+
+    vault = _get_vault()
+    try:
+        mode, matched = search_by_tag_pattern(vault, pattern)
+        items = [
+            {"title": n.title, "tags": n.tags, "path": n.path.name} for n in matched
+        ]
+        return {"pattern": pattern, "mode": mode, "results": items, "count": len(items)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def list_consolidation_candidates() -> dict[str, Any]:
+    """List daily notes eligible for Zettelkasten consolidation (not today, not already consolidated)."""
+    from pkm.commands.consolidate import _list_candidate_dates
+
+    vault = _get_vault()
+    try:
+        dates = _list_candidate_dates(vault)
+        items = []
+        for date_str in dates:
+            md_file = vault.daily_dir / f"{date_str}.md"
+            entry_count = 0
+            try:
+                text = md_file.read_text(encoding="utf-8")
+                body_start = text.find("---", 3)
+                body = text[body_start + 3 :] if body_start != -1 else text
+                entry_count = sum(
+                    1
+                    for line in body.splitlines()
+                    if line.strip().startswith(("-", "*", "["))
+                )
+            except Exception:
+                pass
+            items.append({"date": date_str, "entry_count": entry_count})
+        return {"candidates": items, "count": len(items)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def mark_consolidated(date_str: str, distilled_note_ids: list[str]) -> dict[str, Any]:
+    """Mark a daily note as consolidated. Requires distilled_note_ids for auditability."""
+    from pkm.commands.consolidate import _parse_frontmatter, _set_frontmatter_field
+    from datetime import date
+
+    vault = _get_vault()
+    try:
+        today = date.today().isoformat()
+        if date_str == today:
+            return {
+                "error": "Cannot mark today's daily note as consolidated — it is still in use."
+            }
+        note_path = vault.daily_dir / f"{date_str}.md"
+        if not note_path.exists():
+            return {"error": f"Daily note not found: {date_str}.md"}
+        missing = [
+            nid
+            for nid in distilled_note_ids
+            if not (vault.notes_dir / f"{nid}.md").exists()
+        ]
+        if missing:
+            return {"error": f"Distilled note IDs not found: {', '.join(missing)}"}
+        text = note_path.read_text(encoding="utf-8")
+        fm = _parse_frontmatter(text)
+        if fm.get("consolidated", False):
+            return {"status": "already_consolidated", "date": date_str}
+        text = _set_frontmatter_field(text, "consolidated", True)
+        text = _set_frontmatter_field(text, "distilled_to", distilled_note_ids)
+        note_path.write_text(text, encoding="utf-8")
+        return {
+            "status": "consolidated",
+            "date": date_str,
+            "distilled_to": distilled_note_ids,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def read_recent_note_activity(tail: int = 20) -> dict[str, Any]:
+    """Read the last N entries from the note operation log (.pkm/log.md). Best-effort only."""
+    vault = _get_vault()
+    try:
+        log_path = vault.pkm_dir / "log.md"
+        if not log_path.exists():
+            return {"log": [], "message": "No activity log yet."}
+        lines = log_path.read_text(encoding="utf-8").splitlines()
+        non_empty = [line for line in lines if line.strip()]
+        return {"log": non_empty[-tail:], "count": len(non_empty[-tail:])}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 def run_server(vault: VaultConfig) -> None:
     """Start the MCP stdio server bound to the given vault."""
     global _current_vault

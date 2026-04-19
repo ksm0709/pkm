@@ -320,7 +320,16 @@ class TestMcpE2EProtocol:
         assert "search" in tool_names
         assert "index" in tool_names
         assert "pkm_ask" in tool_names
-        assert len(tools) == 5
+        assert "vault_stats" in tool_names
+        assert "list_stale_notes" in tool_names
+        assert "list_orphans" in tool_names
+        assert "find_backlinks_for_note" in tool_names
+        assert "list_tags" in tool_names
+        assert "tag_search" in tool_names
+        assert "list_consolidation_candidates" in tool_names
+        assert "mark_consolidated" in tool_names
+        assert "read_recent_note_activity" in tool_names
+        assert len(tools) == 14
 
         # Verify inputSchema exists on each tool
         for tool in tools:

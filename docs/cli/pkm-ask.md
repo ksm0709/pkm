@@ -2,7 +2,7 @@
 
 Ask a natural language question about your vault.
 
-The `pkm ask` command allows you to query your PKM vault using natural language. It sends the query to a background ML daemon which performs semantic search to retrieve relevant context (RAG) and leverages an LLM to answer questions using that context. It is equipped with a wrapper layer that exposes PKM commands (e.g., creating notes, reading logs, semantic search) as tools to the autonomous agent.
+The `pkm ask` command allows you to query your PKM vault using natural language. It sends the query to a background ML daemon which performs semantic search to retrieve relevant context (RAG) and leverages an LLM to answer questions using that context. It is equipped with a wrapper layer that exposes 17 typed PKM tools to the autonomous agent (see [Available Tools](#available-tools) below).
 
 ## Architecture & Security
 
@@ -80,6 +80,32 @@ The `ask` command requires the PKM daemon to be running. Start it with:
 ```bash
 pkm daemon start
 ```
+
+## Available Tools
+
+The agent has access to 17 typed tools for vault interaction:
+
+| Tool | When to use |
+|------|-------------|
+| `read_daily_log(date_str)` | Read a daily note |
+| `add_daily_log(text)` | Append to today's daily note |
+| `read_note(note_id)` | Read an atomic note by ID |
+| `search_notes(query)` | Title-substring search |
+| `semantic_search(query, ...)` | Semantic similarity search |
+| `add_note(title, content, ...)` | Create a new atomic note |
+| `update_note(note_id, content, ...)` | Update an existing note |
+| `get_graph_context(note_id, depth)` | Wikilink graph via daemon (depth>1) |
+| `vault_stats()` | Vault health overview |
+| `list_stale_notes(days)` | Notes not modified in N days |
+| `list_orphans()` | Notes with no inbound or outbound links |
+| `find_backlinks_for_note(note_id)` | Inbound links (daemon-free) |
+| `list_tags()` | All tags with counts |
+| `tag_search(pattern)` | Filter by tag (exact/glob/AND/OR) |
+| `list_consolidation_candidates()` | Daily notes ready for distillation |
+| `mark_consolidated(date_str, distilled_note_ids)` | Mark daily as consolidated |
+| `read_recent_note_activity(tail)` | Last N entries from operation log |
+
+**Tool selection guidance:** use `search_notes` for title match, `semantic_search` for meaning, `tag_search` for topic, `find_backlinks_for_note` when the daemon is unavailable.
 
 ## Options
 

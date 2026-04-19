@@ -193,6 +193,15 @@ def ask_cmd(
                 "add_note",
                 "update_note",
                 "get_graph_context",
+                "vault_stats",
+                "list_stale_notes",
+                "list_orphans",
+                "find_backlinks_for_note",
+                "list_tags",
+                "tag_search",
+                "list_consolidation_candidates",
+                "mark_consolidated",
+                "read_recent_note_activity",
             }
             _HIDDEN_TOOLS = {"turn_start", "turn_stop"}
             _TASK_ICONS = {
@@ -294,9 +303,9 @@ def ask_cmd(
                         if reasoning_text:
                             reasoning_buffer += reasoning_text
                             lines = [
-                                l.strip()
-                                for l in reasoning_buffer.split("\n")
-                                if l.strip()
+                                line.strip()
+                                for line in reasoning_buffer.split("\n")
+                                if line.strip()
                             ]
                             display_text = " / ".join(lines[-2:]) if lines else ""
                             if len(display_text) > 120:

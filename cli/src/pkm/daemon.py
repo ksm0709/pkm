@@ -4,6 +4,7 @@ import asyncio
 import fcntl
 import json
 import os
+import sys
 import time
 from dataclasses import asdict, dataclass
 from functools import lru_cache
@@ -752,7 +753,9 @@ async def version_checker(server: asyncio.Server):
             if current_mtime != startup_mtime:
                 current_version = meta.Distribution.from_name("pkm").version
                 logger.info(
-                    "PKM updated %s → %s, restarting daemon.", startup_version, current_version
+                    "PKM updated %s → %s, restarting daemon.",
+                    startup_version,
+                    current_version,
                 )
                 server.close()
                 SOCKET_PATH.unlink(missing_ok=True)
