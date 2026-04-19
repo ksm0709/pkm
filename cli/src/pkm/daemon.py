@@ -209,6 +209,7 @@ class LLMWorkerProxy:
                         )
 
                         from typing import cast, Any
+
                         response_any = cast(Any, response)
                         content = response_any.choices[0].message.content
                         usage = getattr(response_any, "usage", None)
@@ -251,7 +252,9 @@ class LLMWorkerProxy:
                         logger.warning(f"Budget exhausted: {e}")
                         if self.process and self.process.stdin:
                             abort_msg = {"type": "abort"}
-                            self.process.stdin.write((json.dumps(abort_msg) + "\n").encode())
+                            self.process.stdin.write(
+                                (json.dumps(abort_msg) + "\n").encode()
+                            )
                             await self.process.stdin.drain()
 
                 elif msg.get("type") in ("result", "error"):

@@ -131,16 +131,15 @@ class IPCClient:
 
             # Wait for response or abort
             abort_task = asyncio.create_task(self.abort_event.wait())
-            
+
             done, pending = await asyncio.wait(
-                [future, abort_task],
-                return_when=asyncio.FIRST_COMPLETED
+                [future, abort_task], return_when=asyncio.FIRST_COMPLETED
             )
-            
+
             if abort_task in done:
                 future.cancel()
                 raise RuntimeError("Aborted by daemon")
-                
+
             abort_task.cancel()
             msg = future.result()
 
@@ -192,29 +191,30 @@ async def handle_ask(
     try:
         from tiny_agent.agent import Agent
         from pkm.tools import get_pkm_tools
-        
+
         ipc.abort_event.clear()
-        
+
         models_to_try = [model] if model and model != "auto" else []
         if not models_to_try:
             try:
                 from pkm.models import resolve_auto_models
+
                 models_to_try = resolve_auto_models()
             except ImportError:
                 models_to_try = ["gemini/gemini-3.1-flash-preview"]
-                
+
         if not models_to_try:
             raise RuntimeError("No API keys found for any supported models.")
-            
+
         resolved_model = models_to_try[0]
-        
+
         tools = get_pkm_tools()
-        
+
         agent = Agent(
             session_id=f"pkm-ask-{task_id}",
             model=resolved_model,
             system_prompt=system_prompt,
-            tools=tools
+            tools=tools,
         )
 
         response_chunks = []
