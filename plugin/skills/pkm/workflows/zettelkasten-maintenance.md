@@ -26,7 +26,7 @@ A fully maintained vault with:
    - Identify highly similar notes and merge them.
 
 3. **Auto-Linking**
-   - Perform semantic searches (`pkm search`) to find related notes that are not currently linked via `[[wikilinks]]`.
+   - Perform semantic searches (`pkm search` or `semantic_search`) and analyze AST-based graph connections (`get_graph_context`) to find related notes that are not currently linked via `[[wikilinks]]`.
    - Update notes (`pkm note update`) to add missing `[[wikilinks]]` in the "Related" section.
 
 4. **Health Check & Cleanup**
@@ -44,4 +44,5 @@ A fully maintained vault with:
 - `add_note`
 - `search_notes`
 - `semantic_search`
+- `get_graph_context`
 - `read_daily_log`

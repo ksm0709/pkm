@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from tiny_agent.tools import tool
 from pkm.config import VaultConfig
-from pkm.search_engine import search_via_daemon, load_index, search as search_fn
+from pkm.search_engine import search_via_daemon, load_index, search as search_fn, get_graph_context_via_daemon
 
 
 def _get_vault(vault_dir: str) -> VaultConfig:
@@ -65,3 +65,25 @@ def semantic_search(
         return "\n\n".join(items)
     except Exception as e:
         return f"Error performing semantic search: {str(e)}"
+
+
+@tool
+def get_graph_context(note_id: str, depth: int = 1) -> str:
+    """Get the AST-based graph connections (links, tags) for a specific note.
+    
+    Args:
+        note_id: The ID of the note to query.
+        depth: The traversal depth (default 1).
+    """
+    import json
+    v_dir = os.environ.get("PKM_VAULT_DIR", ".")
+    vault = _get_vault(v_dir)
+
+    try:
+        context = get_graph_context_via_daemon(note_id, vault, depth)
+        if not context:
+            return f"No graph context found for '{note_id}' (Daemon may be down or note missing)."
+        
+        return json.dumps(context, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return f"Error fetching graph context: {str(e)}"

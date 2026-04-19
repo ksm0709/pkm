@@ -301,7 +301,7 @@ async def handle_zettelkasten_maintenance(
         "Your task is to execute the following streamlined workflow on the vault:\n"
         "1. Read recent daily logs/notes to distill insights.\n"
         "2. Identify opportunities to split large notes or merge similar ones.\n"
-        "3. Use semantic search to discover and create new auto-linking opportunities between notes.\n"
+        "3. Use semantic search and AST-based graph connections (`get_graph_context`) to discover and create new auto-linking opportunities between notes.\n"
         "4. Review and clean up stale or orphaned notes.\n"
         "Execute these steps autonomously using the tools provided. When you are finished, summarize your actions."
     )
