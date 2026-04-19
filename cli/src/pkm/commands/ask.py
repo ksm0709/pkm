@@ -126,6 +126,7 @@ def ask_cmd(
     if final_model == "auto":
         try:
             from pkm.models import resolve_auto_models
+
             resolved = resolve_auto_models()
             if resolved:
                 display_model = resolved[0]
@@ -184,12 +185,30 @@ def ask_cmd(
             f = sock.makefile("r", encoding="utf-8")
 
             _PKM_TOOLS = {
-                "read_daily_log", "add_daily_log", "read_note", "search_notes",
-                "semantic_search", "add_note", "update_note", "get_graph_context",
+                "read_daily_log",
+                "add_daily_log",
+                "read_note",
+                "search_notes",
+                "semantic_search",
+                "add_note",
+                "update_note",
+                "get_graph_context",
             }
             _HIDDEN_TOOLS = {"turn_start", "turn_stop"}
-            _TASK_ICONS = {"todo": "○", "pending": "○", "in_progress": "▶", "done": "✓", "blocked": "✗"}
-            _TASK_COLORS = {"todo": "dim", "pending": "dim", "in_progress": "bold cyan", "done": "green", "blocked": "red"}
+            _TASK_ICONS = {
+                "todo": "○",
+                "pending": "○",
+                "in_progress": "▶",
+                "done": "✓",
+                "blocked": "✗",
+            }
+            _TASK_COLORS = {
+                "todo": "dim",
+                "pending": "dim",
+                "in_progress": "bold cyan",
+                "done": "green",
+                "blocked": "red",
+            }
 
             reasoning_buffer = ""
             has_reasoning = False
@@ -219,7 +238,11 @@ def ask_cmd(
                             continue
                         args_dict = chunk.get("arguments", {})
                         if name == "manage_tasks":
-                            tasks_raw = args_dict.get("tasks", []) if isinstance(args_dict, dict) else []
+                            tasks_raw = (
+                                args_dict.get("tasks", [])
+                                if isinstance(args_dict, dict)
+                                else []
+                            )
                             if isinstance(tasks_raw, str):
                                 try:
                                     tasks = json.loads(tasks_raw)
@@ -251,10 +274,18 @@ def ask_cmd(
                             if len(arg_str) > 100:
                                 arg_str = arg_str[:97] + "..."
                         if name in _PKM_TOOLS:
-                            console.print(f"  [bold green]↳ {name}[/bold green][dim]({arg_str})[/dim]")
+                            console.print(
+                                f"  [bold green]↳ {name}[/bold green][dim]({arg_str})[/dim]"
+                            )
                         elif name == "load_skill":
-                            skill_id = args_dict.get("skill_id", arg_str) if isinstance(args_dict, dict) else arg_str
-                            console.print(f"  [bold cyan]⚡ skill: {skill_id}[/bold cyan]")
+                            skill_id = (
+                                args_dict.get("skill_id", arg_str)
+                                if isinstance(args_dict, dict)
+                                else arg_str
+                            )
+                            console.print(
+                                f"  [bold cyan]⚡ skill: {skill_id}[/bold cyan]"
+                            )
                         else:
                             console.print(f"  [dim]· {name}({arg_str})[/dim]")
                     elif c_type == "reasoning":
@@ -262,11 +293,17 @@ def ask_cmd(
                         reasoning_text = chunk.get("content", "")
                         if reasoning_text:
                             reasoning_buffer += reasoning_text
-                            lines = [l.strip() for l in reasoning_buffer.split("\n") if l.strip()]
+                            lines = [
+                                l.strip()
+                                for l in reasoning_buffer.split("\n")
+                                if l.strip()
+                            ]
                             display_text = " / ".join(lines[-2:]) if lines else ""
                             if len(display_text) > 120:
                                 display_text = display_text[-120:]
-                            sys.stdout.write(f"\r\033[2K\033[38;5;246m[thinking] {display_text}\033[0m")
+                            sys.stdout.write(
+                                f"\r\033[2K\033[38;5;246m[thinking] {display_text}\033[0m"
+                            )
                             sys.stdout.flush()
                     continue
 
