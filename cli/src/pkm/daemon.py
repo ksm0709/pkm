@@ -745,6 +745,7 @@ async def maintenance_checker():
         if now.hour == 2 and last_run_date != current_date:
             if task_queue:
                 from pkm.config import discover_vaults
+
                 vaults = discover_vaults()
                 ts = int(now.timestamp())
                 for vault_name, vault in vaults.items():
