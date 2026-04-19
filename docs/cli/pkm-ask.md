@@ -7,14 +7,20 @@ The `pkm ask` command allows you to query your PKM vault using natural language.
 ## Architecture & Security
 
 The `pkm ask` command is powered by a split-architecture background daemon:
-- **Host Daemon**: Orchestrates tasks, manages a JSON-based task queue, tracks global token budgets, and proxies IPC calls.
-- **Air-gapped Sandbox LLM Worker**: Executes tasks isolated to the Vault directory with zero network access, communicating strictly via IPC (stdin/stdout) with the Host Daemon. It utilizes the lightweight `tiny-agent-py` framework to manage LLM interactions, handle contextual memory, and stream responses asynchronously.
+- **Host Daemon**: Orchestrates tasks, manages a JSON-based task queue, and proxies IPC calls.
 
-This ensures that the LLM has high reasoning capability without exposing the host to prompt injection or unauthorized file access, while adhering to the token budgets managed by the daemon.
+## Architecture & Security
 
-## Token Limits & Queue
+`pkm ask` leverages a separated architecture:
+1. **Client (`pkm ask`)**: Sends the query via Unix socket.
+2. **Host Daemon**: Maintains the semantic search index in memory and routes requests.
+3. **Sandbox Worker**: An air-gapped subprocess managed by `tiny-agent-py` that holds the LLM API keys and executes tool calls.
 
-The Host Daemon enforces hard token limits per time window. If the token budget is exhausted, `pkm ask` will fail fast, and background tasks in the JSON queue will pause until the budget resets.
+This ensures that the LLM has high reasoning capability without exposing the host to prompt injection or unauthorized file access.
+
+## Background Tasks
+
+If you use agent hooks that enqueue background tasks, the daemon processes them sequentially.
 
 ## MCP Integration
 

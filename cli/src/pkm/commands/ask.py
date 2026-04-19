@@ -163,33 +163,43 @@ def ask_cmd(
             sock.sendall(json.dumps(req).encode("utf-8") + b"\n")
 
             f = sock.makefile("r", encoding="utf-8")
-            resp_line = f.readline()
 
-            if not resp_line:
-                console.print("[red]Error:[/red] No response from daemon.")
-                sys.exit(1)
-
-            data = json.loads(resp_line)
-
-            if data.get("type") == "error" or "error" in data:
-                error_msg = data.get("message") or data.get("error", "Unknown error")
-                if error_msg == "BudgetExhausted" or "BudgetExhausted" in error_msg:
+            while True:
+                resp_line = f.readline()
+                if not resp_line:
                     console.print(
-                        "[red]Error:[/red] Token budget exhausted. Please try again later."
+                        "[red]Error:[/red] No response from daemon or connection closed."
                     )
-                else:
-                    console.print(f"[red]Error:[/red] {error_msg}")
-                sys.exit(1)
+                    sys.exit(1)
 
-            if "data" in data and "response" in data["data"]:
-                console.print(data["data"]["response"])
-            elif "response" in data:
-                console.print(data["response"])
-            else:
-                console.print(
-                    f"[red]Error:[/red] Invalid response format from daemon: {data}"
-                )
-                sys.exit(1)
+                data = json.loads(resp_line)
+
+                if data.get("type") == "stream":
+                    chunk = data.get("chunk", {})
+                    c_type = chunk.get("type")
+                    if c_type == "tool_start":
+                        name = chunk.get("name", "unknown")
+                        console.print(f"[dim]Running tool: {name}...[/dim]")
+                    continue
+
+                if data.get("type") == "error" or "error" in data:
+                    error_msg = data.get("message") or data.get("error", "Unknown error")
+                    console.print(f"[red]Error:[/red] {error_msg}")
+                    sys.exit(1)
+
+                if "data" in data and "response" in data["data"]:
+                    console.print(data["data"]["response"])
+                    break
+                elif "response" in data:
+                    console.print(data["response"])
+                    break
+                else:
+                    if data.get("status") == "success":
+                        break
+                    console.print(
+                        f"[red]Error:[/red] Invalid response format from daemon: {data}"
+                    )
+                    sys.exit(1)
 
     except socket.timeout:
         console.print(f"[red]Error:[/red] Request timed out after {timeout} seconds.")

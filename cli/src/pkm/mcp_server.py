@@ -245,8 +245,6 @@ async def pkm_ask(
 
         if resp.get("type") == "error" or "error" in resp:
             error_msg = resp.get("message") or resp.get("error", "Unknown error")
-            if error_msg == "BudgetExhausted" or "BudgetExhausted" in error_msg:
-                return {"error": "Token budget exhausted. Please try again later."}
             return {"error": error_msg}
 
         if "data" in resp and "response" in resp["data"]:

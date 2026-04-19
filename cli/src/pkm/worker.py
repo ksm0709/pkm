@@ -221,23 +221,20 @@ async def handle_ask(
             tools=tools,
             skills_dirs=skills_dirs,
             instruction_dirs=[vault_dir],
+            max_iterations=1000,
         )
 
         response_chunks = []
 
         async def run_agent():
-            # Estimate input tokens
-            input_tokens = len(system_prompt) // 4 + len(user_content) // 4
-            await ipc.send_message({"type": "token_usage", "tokens": input_tokens})
-
             async for chunk in agent.run(user_content):
+                await ipc.send_message(
+                    {"type": "stream", "id": task_id, "chunk": chunk}
+                )
+
                 if chunk.get("type") == "content":
                     content = chunk.get("content", "")
                     response_chunks.append(content)
-                    # Estimate output tokens
-                    await ipc.send_message(
-                        {"type": "token_usage", "tokens": len(content) // 4 + 1}
-                    )
                 elif chunk.get("type") == "error":
                     raise RuntimeError(chunk.get("content"))
 
@@ -254,7 +251,7 @@ async def handle_ask(
                 await agent_task
             except asyncio.CancelledError:
                 pass
-            raise RuntimeError("Task aborted due to token budget exhaustion")
+            raise RuntimeError("Task aborted by daemon")
 
         if agent_task in done:
             abort_task.cancel()

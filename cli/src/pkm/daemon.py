@@ -143,10 +143,10 @@ class TaskQueue:
 
 
 class LLMWorkerProxy:
-    def __init__(self, budget: TokenBudget):
-        self.budget = budget
+    def __init__(self):
         self.process: Optional[asyncio.subprocess.Process] = None
         self.pending_tasks: Dict[str, asyncio.Future[Any]] = {}
+        self.stream_callbacks: Dict[str, Any] = {}
 
     async def start(self, vault_dir: str):
         import sys
@@ -257,22 +257,36 @@ class LLMWorkerProxy:
                             )
                             await self.process.stdin.drain()
 
+                elif msg.get("type") == "stream":
+                    task_id = msg.get("id")
+                    if task_id in self.stream_callbacks:
+                        try:
+                            await self.stream_callbacks[task_id](msg)
+                        except Exception:
+                            pass
                 elif msg.get("type") in ("result", "error"):
                     task_id = msg.get("id")
                     if task_id in self.pending_tasks:
                         future = self.pending_tasks.pop(task_id)
                         if not future.done():
                             future.set_result(msg)
+                    if task_id in self.stream_callbacks:
+                        self.stream_callbacks.pop(task_id, None)
             except Exception:
                 logger.exception("Error handling worker message")
 
-    async def send_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def send_task(
+        self, task: Dict[str, Any], stream_callback=None
+    ) -> Dict[str, Any]:
         if not self.process or not self.process.stdin:
             raise RuntimeError("Worker not running")
 
         task_id = str(task.get("id", ""))
         future = asyncio.Future()
         self.pending_tasks[task_id] = future
+
+        if stream_callback:
+            self.stream_callbacks[task_id] = stream_callback
 
         self.process.stdin.write((json.dumps(task) + "\n").encode())
         await self.process.stdin.drain()
@@ -556,8 +570,15 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                 "env_keys": env_keys,
             }
 
+            async def on_stream(msg):
+                try:
+                    writer.write((json.dumps(msg) + "\n").encode())
+                    await writer.drain()
+                except Exception:
+                    pass
+
             try:
-                result = await worker_proxy.send_task(task)
+                result = await worker_proxy.send_task(task, stream_callback=on_stream)
                 writer.write((json.dumps(result) + "\n").encode())
             except Exception as e:
                 writer.write((json.dumps({"error": str(e)}) + "\n").encode())
@@ -728,8 +749,7 @@ async def async_main():
     queue_path = Path.home() / ".config" / "pkm" / "task_queue.json"
     task_queue = TaskQueue(queue_path)
 
-    budget = TokenBudget(max_tokens=100000, window_seconds=3600)
-    worker_proxy = LLMWorkerProxy(budget)
+    worker_proxy = LLMWorkerProxy()
 
     from pkm.config import discover_vaults
 
