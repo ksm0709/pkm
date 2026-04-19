@@ -15,6 +15,15 @@ class ModelInfo:
 
 BEST_MODELS: List[ModelInfo] = [
     ModelInfo(
+        "gemini/gemini-3-flash-preview",
+        "Google",
+        "1M+",
+        "$0.00",
+        "$0.00",
+        97,
+        "Gemini 3 Flash on Google AI Studio. Supports thinking_level.",
+    ),
+    ModelInfo(
         "gemini/gemini-3.1-flash-lite-preview",
         "Google",
         "1M+",

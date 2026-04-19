@@ -141,7 +141,7 @@ async def _run_agent_task(
 
                 models_to_try = resolve_auto_models()
             except ImportError:
-                models_to_try = ["gemini/gemini-3.1-flash-preview"]
+                models_to_try = ["gemini/gemini-3-flash-preview"]
 
         if not models_to_try:
             raise RuntimeError("No API keys found for any supported models.")
