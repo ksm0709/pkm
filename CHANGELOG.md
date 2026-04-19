@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v2.45.0 (2026-04-19)
+
+### Features
+
+- Print tool arguments in pkm ask streaming output
+  ([`8f93151`](https://github.com/ksm0709/pkm/commit/8f93151dc29eeacfc171d1d19c64acda9ba14ee4))
+
+### Refactoring
+
+- Remove token limit from daemon and support streaming for ask
+  ([`a77b1a1`](https://github.com/ksm0709/pkm/commit/a77b1a13d7dfd79da14c89cadc1a5d32fdfde510))
+
+
 ## v2.44.1 (2026-04-19)
 
 ### Bug Fixes
