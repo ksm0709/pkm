@@ -122,7 +122,16 @@ def ask_cmd(
 
     sock_path = Path.home() / ".config" / "pkm" / "daemon.sock"
 
-    console.print(f"[dim]Asking daemon using model '{final_model}'...[/dim]")
+    display_model = final_model
+    if final_model == "auto":
+        try:
+            from pkm.models import resolve_auto_models
+            resolved = resolve_auto_models()
+            if resolved:
+                display_model = resolved[0]
+        except Exception:
+            pass
+    console.print(f"[dim]Asking daemon using model '{display_model}'...[/dim]")
 
     import time
     import subprocess
