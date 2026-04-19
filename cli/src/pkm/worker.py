@@ -1,3 +1,4 @@
+import asyncio
 import sys
 import json
 import os
@@ -31,22 +32,66 @@ def redact(data: Any) -> Any:
 class IPCClient:
     def __init__(self):
         self.request_counter = 0
+        self.pending_requests: Dict[str, asyncio.Future[Any]] = {}
+        self._abort_event = None
 
-    def send_message(self, msg: Dict[str, Any]):
-        sys.stdout.write(json.dumps(msg) + "\n")
-        sys.stdout.flush()
+    @property
+    def abort_event(self):
+        if self._abort_event is None:
+            self._abort_event = asyncio.Event()
+        return self._abort_event
 
-    def read_message(self) -> Optional[Dict[str, Any]]:
-        line = sys.stdin.readline()
-        if not line:
-            return None
-        try:
-            return json.loads(line)
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to decode JSON: {e}")
-            return None
+    @property
+    def loop(self):
+        return asyncio.get_running_loop()
 
-    def call_llm(
+    async def send_message(self, msg: Dict[str, Any]):
+        def _write():
+            sys.stdout.write(json.dumps(msg) + "\n")
+            sys.stdout.flush()
+
+        await self.loop.run_in_executor(None, _write)
+
+    async def reader_loop(self):
+        while True:
+
+            def _read():
+                return sys.stdin.readline()
+
+            line = await self.loop.run_in_executor(None, _read)
+            if not line:
+                break
+            try:
+                msg = json.loads(line)
+                msg_type = msg.get("type")
+
+                if msg_type == "abort":
+                    logger.info("Received abort signal from daemon")
+                    self.abort_event.set()
+                    continue
+
+                if msg_type in ("llm_response", "llm_error"):
+                    req_id = msg.get("id")
+                    if req_id in self.pending_requests:
+                        future = self.pending_requests.pop(req_id)
+                        if not future.done():
+                            future.set_result(msg)
+                    else:
+                        logger.warning(
+                            f"Received response for unknown request: {req_id}"
+                        )
+                elif msg_type == "task":
+                    logger.info(f"Received task: {msg.get('id')}")
+                    # Dispatch task
+                    asyncio.create_task(handle_task(msg))
+                else:
+                    logger.warning(f"Unexpected message type: {msg_type}")
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to decode JSON: {e}")
+            except Exception as e:
+                logger.error(f"Error in reader loop: {e}")
+
+    async def call_llm(
         self, messages: List[Dict[str, str]], model: Optional[str] = None
     ) -> str:
         self.request_counter += 1
@@ -79,25 +124,32 @@ class IPCClient:
                 "model": current_model,
             }
 
-            self.send_message(req)
+            future = self.loop.create_future()
+            self.pending_requests[req_id] = future
 
-            while True:
-                msg = self.read_message()
-                if not msg:
-                    raise RuntimeError("EOF while waiting for LLM response")
+            await self.send_message(req)
 
-                if msg.get("type") == "llm_response" and msg.get("id") == req_id:
-                    return msg.get("content", "")
-                elif msg.get("type") == "llm_error" and msg.get("id") == req_id:
-                    last_error = msg.get("message")
-                    logger.warning(
-                        f"LLM Error with model {current_model}: {last_error}"
-                    )
-                    break
-                else:
-                    logger.warning(
-                        f"Unexpected message while waiting for LLM response: {redact(msg)}"
-                    )
+            # Wait for response or abort
+            abort_task = asyncio.create_task(self.abort_event.wait())
+            
+            done, pending = await asyncio.wait(
+                [future, abort_task],
+                return_when=asyncio.FIRST_COMPLETED
+            )
+            
+            if abort_task in done:
+                future.cancel()
+                raise RuntimeError("Aborted by daemon")
+                
+            abort_task.cancel()
+            msg = future.result()
+
+            if msg.get("type") == "llm_response":
+                return msg.get("content", "")
+            elif msg.get("type") == "llm_error":
+                last_error = msg.get("message")
+                logger.warning(f"LLM Error with model {current_model}: {last_error}")
+                continue
 
         raise RuntimeError(f"All models failed. Last error: {last_error}")
 
@@ -105,7 +157,7 @@ class IPCClient:
 ipc = IPCClient()
 
 
-def handle_ask(
+async def handle_ask(
     task_id: str,
     query: str,
     context: str,
@@ -125,29 +177,95 @@ def handle_ask(
 
     user_content = f"Context:\n{context}\n\nQuery: {query}" if context else query
 
-    messages = [
-        {
-            "role": "system",
-            "content": system_prompt,
-        },
-        {"role": "user", "content": user_content},
-    ]
-
-    try:
-        response = ipc.call_llm(messages, model=model)
-        ipc.send_message(
+    if os.environ.get("PKM_TEST_MOCK_LLM") == "1":
+        await ipc.send_message(
             {
                 "type": "result",
                 "id": task_id,
                 "status": "success",
-                "data": {"response": response},
+                "data": {"response": f"Mocked response for: {user_content}"},
+            }
+        )
+        return
+
+    try:
+        from tiny_agent.agent import Agent
+        
+        ipc.abort_event.clear()
+        
+        models_to_try = [model] if model and model != "auto" else []
+        if not models_to_try:
+            try:
+                from pkm.models import resolve_auto_models
+                models_to_try = resolve_auto_models()
+            except ImportError:
+                models_to_try = ["gemini/gemini-3.1-flash-preview"]
+                
+        if not models_to_try:
+            raise RuntimeError("No API keys found for any supported models.")
+            
+        resolved_model = models_to_try[0]
+        
+        agent = Agent(
+            session_id=f"pkm-ask-{task_id}",
+            model=resolved_model,
+            system_prompt=system_prompt
+        )
+
+        response_chunks = []
+
+        async def run_agent():
+            # Estimate input tokens
+            input_tokens = len(system_prompt) // 4 + len(user_content) // 4
+            await ipc.send_message({"type": "token_usage", "tokens": input_tokens})
+
+            async for chunk in agent.run(user_content):
+                if chunk.get("type") == "content":
+                    content = chunk.get("content", "")
+                    response_chunks.append(content)
+                    # Estimate output tokens
+                    await ipc.send_message(
+                        {"type": "token_usage", "tokens": len(content) // 4 + 1}
+                    )
+                elif chunk.get("type") == "error":
+                    raise RuntimeError(chunk.get("content"))
+
+        agent_task = asyncio.create_task(run_agent())
+        abort_task = asyncio.create_task(ipc.abort_event.wait())
+
+        done, pending = await asyncio.wait(
+            [agent_task, abort_task], return_when=asyncio.FIRST_COMPLETED
+        )
+
+        if abort_task in done:
+            agent_task.cancel()
+            try:
+                await agent_task
+            except asyncio.CancelledError:
+                pass
+            raise RuntimeError("Task aborted due to token budget exhaustion")
+
+        if agent_task in done:
+            abort_task.cancel()
+            exc = agent_task.exception()
+            if exc:
+                raise exc
+
+        full_response = "".join(response_chunks)
+
+        await ipc.send_message(
+            {
+                "type": "result",
+                "id": task_id,
+                "status": "success",
+                "data": {"response": full_response},
             }
         )
     except Exception as e:
-        ipc.send_message({"type": "error", "id": task_id, "message": str(e)})
+        await ipc.send_message({"type": "error", "id": task_id, "message": str(e)})
 
 
-def handle_zettelkasten_maintenance(task_id: str, file_path: str, vault_dir: str):
+async def handle_zettelkasten_maintenance(task_id: str, file_path: str, vault_dir: str):
     try:
         full_path = os.path.join(vault_dir, file_path)
         if not os.path.exists(full_path):
@@ -164,7 +282,7 @@ def handle_zettelkasten_maintenance(task_id: str, file_path: str, vault_dir: str
             {"role": "user", "content": content},
         ]
 
-        response = ipc.call_llm(messages)
+        response = await ipc.call_llm(messages)
 
         try:
             if response.startswith("```json"):
@@ -176,59 +294,50 @@ def handle_zettelkasten_maintenance(task_id: str, file_path: str, vault_dir: str
         except json.JSONDecodeError:
             result_data = {"tags": [], "links": [], "raw_response": response}
 
-        ipc.send_message(
+        await ipc.send_message(
             {"type": "result", "id": task_id, "status": "success", "data": result_data}
         )
     except Exception as e:
-        ipc.send_message({"type": "error", "id": task_id, "message": str(e)})
+        await ipc.send_message({"type": "error", "id": task_id, "message": str(e)})
 
 
-def main():
-    logger.info("PKM LLM Worker started")
+async def handle_task(msg: Dict[str, Any]):
+    task_id = str(msg.get("id", ""))
+    task_type = msg.get("task_type")
+
+    env_vars = msg.get("env", {})
+    for k, v in env_vars.items():
+        os.environ[k] = v
 
     vault_dir = os.environ.get("PKM_VAULT_DIR", ".")
 
-    while True:
-        try:
-            msg = ipc.read_message()
-            if not msg:
-                break
+    if task_type == "ask":
+        await handle_ask(
+            task_id,
+            msg.get("query", ""),
+            msg.get("context", ""),
+            vault_dir,
+            msg.get("model"),
+            msg.get("env_keys", {}),
+        )
+    elif task_type == "zettelkasten_maintenance":
+        await handle_zettelkasten_maintenance(
+            task_id, msg.get("file_path", ""), vault_dir
+        )
+    else:
+        await ipc.send_message(
+            {
+                "type": "error",
+                "id": task_id,
+                "message": f"Unknown task type: {task_type}",
+            }
+        )
 
-            msg_type = msg.get("type")
-            if msg_type == "task":
-                task_id = str(msg.get("id", ""))
-                task_type = msg.get("task_type")
 
-                env_vars = msg.get("env", {})
-                for k, v in env_vars.items():
-                    os.environ[k] = v
-
-                if task_type == "ask":
-                    handle_ask(
-                        task_id,
-                        msg.get("query", ""),
-                        msg.get("context", ""),
-                        vault_dir,
-                        msg.get("model"),
-                        msg.get("env_keys", {}),
-                    )
-                elif task_type == "zettelkasten_maintenance":
-                    handle_zettelkasten_maintenance(
-                        task_id, msg.get("file_path", ""), vault_dir
-                    )
-                else:
-                    ipc.send_message(
-                        {
-                            "type": "error",
-                            "id": task_id,
-                            "message": f"Unknown task type: {task_type}",
-                        }
-                    )
-            else:
-                logger.warning(f"Unexpected message type: {msg_type}")
-        except Exception as e:
-            logger.error(f"Error processing message: {e}")
+async def main():
+    logger.info("PKM LLM Worker started")
+    await ipc.reader_loop()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
