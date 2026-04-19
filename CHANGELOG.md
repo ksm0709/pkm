@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v2.48.0 (2026-04-19)
+
+### Chores
+
+- Remove accidentally tracked local log files
+  ([`9de7293`](https://github.com/ksm0709/pkm/commit/9de729310391a1942ffefe4170053efac682fcd5))
+
+### Features
+
+- Stream reasoning display dynamically in pkm ask
+  ([`a24afe6`](https://github.com/ksm0709/pkm/commit/a24afe6aebeacebedc5988c0f57ff9f0bb577aef))
+
+
 ## v2.47.0 (2026-04-19)
 
 ### Features
