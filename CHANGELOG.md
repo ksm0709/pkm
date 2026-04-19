@@ -2,6 +2,24 @@
 
 <!-- version list -->
 
+## v2.49.0 (2026-04-19)
+
+### Bug Fixes
+
+- Make pkm ask use correct vault and PKM tools for zettelkasten workflow
+  ([`dd10298`](https://github.com/ksm0709/pkm/commit/dd10298a497785460d964d84bf1539354ed3fd02))
+
+### Features
+
+- Improve ask streaming UX and multi-vault zettelkasten maintenance
+  ([`32beeca`](https://github.com/ksm0709/pkm/commit/32beecad7e219b61dbc6992d643371391b8b618a))
+
+### Refactoring
+
+- Simplify LLM worker by reusing Agent factory logic
+  ([`3e8caf1`](https://github.com/ksm0709/pkm/commit/3e8caf16f5f4fba26e78f91602c5b23dad5b028a))
+
+
 ## v2.48.1 (2026-04-19)
 
 ### Bug Fixes
