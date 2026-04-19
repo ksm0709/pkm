@@ -744,15 +744,20 @@ async def maintenance_checker():
 
         if now.hour == 2 and last_run_date != current_date:
             if task_queue:
-                task = {
-                    "type": "task",
-                    "id": f"maint_{int(now.timestamp())}",
-                    "task_type": "zettelkasten_maintenance",
-                }
-                task_queue.push(task)
-                logger.info(
-                    f"Scheduled daily Zettelkasten maintenance task: {task['id']}"
-                )
+                from pkm.config import discover_vaults
+                vaults = discover_vaults()
+                ts = int(now.timestamp())
+                for vault_name, vault in vaults.items():
+                    task = {
+                        "type": "task",
+                        "id": f"maint_{vault_name}_{ts}",
+                        "task_type": "zettelkasten_maintenance",
+                        "env": {"PKM_VAULT_DIR": str(vault.path)},
+                    }
+                    task_queue.push(task)
+                    logger.info(
+                        f"Scheduled Zettelkasten maintenance for vault '{vault_name}': {task['id']}"
+                    )
             last_run_date = current_date
 
 

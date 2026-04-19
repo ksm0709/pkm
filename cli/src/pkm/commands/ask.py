@@ -174,6 +174,14 @@ def ask_cmd(
 
             f = sock.makefile("r", encoding="utf-8")
 
+            _PKM_TOOLS = {
+                "read_daily_log", "add_daily_log", "read_note", "search_notes",
+                "semantic_search", "add_note", "update_note", "get_graph_context",
+            }
+            _HIDDEN_TOOLS = {"turn_start", "turn_stop"}
+            _TASK_ICONS = {"todo": "○", "in_progress": "▶", "done": "✓", "blocked": "✗"}
+            _TASK_COLORS = {"todo": "dim", "in_progress": "bold cyan", "done": "green", "blocked": "red"}
+
             reasoning_buffer = ""
             has_reasoning = False
 
@@ -190,14 +198,25 @@ def ask_cmd(
                 if data.get("type") == "stream":
                     chunk = data.get("chunk", {})
                     c_type = chunk.get("type")
-                    if c_type == "tool_start":
+                    if c_type in ("tool_start", "tool_stop"):
                         pass
                     elif c_type == "tool_detail":
                         if has_reasoning:
                             console.print("\r\033[K", end="")
                             has_reasoning = False
                         name = chunk.get("name", "unknown")
+                        if name in _HIDDEN_TOOLS:
+                            continue
                         args_dict = chunk.get("arguments", {})
+                        if name == "manage_tasks":
+                            tasks = args_dict.get("tasks", []) if isinstance(args_dict, dict) else []
+                            for t in tasks[:5]:
+                                t_name = t.get("name", "?")
+                                t_status = t.get("status", "todo")
+                                icon = _TASK_ICONS.get(t_status, "·")
+                                color = _TASK_COLORS.get(t_status, "dim")
+                                console.print(f"  [{color}]{icon} {t_name}[/{color}]")
+                            continue
                         arg_parts = []
                         if isinstance(args_dict, dict):
                             for k, v in args_dict.items():
@@ -210,19 +229,24 @@ def ask_cmd(
                             arg_str = str(args_dict)
                             if len(arg_str) > 100:
                                 arg_str = arg_str[:97] + "..."
-                        console.print(f"[dim]Running tool: {name}({arg_str})...[/dim]")
+                        if name in _PKM_TOOLS:
+                            console.print(f"  [bold green]↳ {name}[/bold green][dim]({arg_str})[/dim]")
+                        elif name == "load_skill":
+                            skill_id = args_dict.get("skill_id", arg_str) if isinstance(args_dict, dict) else arg_str
+                            console.print(f"  [bold cyan]⚡ skill: {skill_id}[/bold cyan]")
+                        else:
+                            console.print(f"  [dim]· {name}({arg_str})[/dim]")
                     elif c_type == "reasoning":
                         has_reasoning = True
                         reasoning_text = chunk.get("content", "")
                         if reasoning_text:
                             reasoning_buffer += reasoning_text
-                            display_text = (
-                                reasoning_buffer[-80:]
-                                .replace("\n", " ")
-                                .replace("\r", " ")
-                            )
+                            lines = [l.strip() for l in reasoning_buffer.split("\n") if l.strip()]
+                            display_text = " / ".join(lines[-2:]) if lines else ""
+                            if len(display_text) > 120:
+                                display_text = display_text[-120:]
                             console.print(
-                                f"\r\033[K[dim italic]\\[thinking...] {display_text}[/dim italic]",
+                                f"\r\033[K[dim italic]\\[thinking] {display_text}[/dim italic]",
                                 end="",
                             )
                     continue
