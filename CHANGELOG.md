@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v2.41.0 (2026-04-19)
+
+### Documentation
+
+- Document full metadata support in pkm search json output
+  ([`b903deb`](https://github.com/ksm0709/pkm/commit/b903deb38f9cd1f1667646e55a67bf820cd79256))
+
+### Features
+
+- Cache full frontmatter in graph.json for pkm search
+  ([`2b59450`](https://github.com/ksm0709/pkm/commit/2b5945000d1e7a403594dbc24f858f1926c3f76b))
+
+
 ## v2.40.0 (2026-04-19)
 
 ### Features
