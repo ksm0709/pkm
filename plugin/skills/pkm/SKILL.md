@@ -197,12 +197,6 @@ $ pkm daily add "오늘의 작업 내용"
 
 Tags are managed as physical .md files in the `tags/` directory. Tag notes are created lazily on access, and adding a description turns them into index cards. Backlinks are automatically shown in `note show`, and can also be queried directly with `note links`.
 
-## Principles & Know-how
-
-Accumulated PKM principles and patterns are in `references/principles.md`. Read it when making decisions about note structure, tagging strategy, or knowledge organization. This file grows over time as we discover what works.
-
-Read `references/workflows.md` for specific workflow patterns and automation recipes.
-
 ## Task Checklist
 
 When the user asks for PKM help, follow this flow:
