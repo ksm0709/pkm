@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.56.0 (2026-04-20)
+
+### Features
+
+- Graphify-native Phase 1 — enriched graph, clusters, bridge notes
+  ([`5646b58`](https://github.com/ksm0709/pkm/commit/5646b58ad1016b2973e6b773caae788599c28491))
+
+
 ## v2.55.2 (2026-04-19)
 
 ### Bug Fixes

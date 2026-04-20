@@ -1,3 +1,3 @@
 """PKM — Personal Knowledge Management CLI for Obsidian vaults."""
 
-__version__ = "2.55.2"
+__version__ = "2.56.0"
