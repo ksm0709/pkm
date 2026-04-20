@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.57.0 (2026-04-20)
+
+### Features
+
+- Complete Phase 1 follow-up — list_clusters hub matching + E2E tests
+  ([`f9d9f06`](https://github.com/ksm0709/pkm/commit/f9d9f0607be914cc7ffd234a6db08d346b1656c8))
+
+
 ## v2.56.0 (2026-04-20)
 
 ### Features
