@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from pathlib import Path
 from tiny_agent.tools import tool
 from pkm.config import VaultConfig
@@ -13,6 +14,14 @@ from pkm.search_engine import (
 
 def _get_vault(vault_dir: str) -> VaultConfig:
     return VaultConfig(name=Path(vault_dir).name, path=Path(vault_dir))
+
+
+def _slugify(title: str) -> str:
+    """Convert a title to a filename-safe slug."""
+    s = title.strip().lower()
+    s = re.sub(r"[^\w\s-]", "", s)
+    s = re.sub(r"[\s_-]+", "-", s)
+    return s.strip("-") or "hub-note"
 
 
 @tool()
@@ -150,6 +159,8 @@ def list_clusters() -> str:
     is_new=yes means a brand-new cluster this run — a candidate for create_hub_note().
 
     Requires `pkm index` to have been run to build the enriched graph.
+
+    Returns JSON: {"clusters": [{id, member_count, top_tags, hub_note, centroid_drift, is_new}, ...]}
     """
     v_dir = os.environ.get("PKM_VAULT_DIR", ".")
     vault = _get_vault(v_dir)
@@ -162,22 +173,70 @@ def list_clusters() -> str:
         if not clusters:
             return "No clusters found in enriched graph."
 
-        lines = [
-            f"{'#':<4} {'members':<8} {'top_tags':<30} {'hub_note':<30} {'drift':<8} {'new':<5}"
-        ]
-        lines.append("-" * 90)
+        # Find hub notes: index notes whose embeddings are closest to each cluster centroid
+        import numpy as np
+        from pkm.graph import _load_embeddings_from_vector_db, _cosine_distance
+        from pkm.frontmatter import parse as parse_note
+
+        embeddings = _load_embeddings_from_vector_db(vault)
+
+        # Collect index notes that also have embeddings
+        index_notes: list[tuple[str, str, np.ndarray]] = []  # (note_id, title, embedding)
+        notes_dir = vault.notes_dir
+        if notes_dir.is_dir():
+            for md_file in sorted(notes_dir.glob("*.md")):
+                try:
+                    note = parse_note(md_file)
+                    if note.meta.get("type") == "index":
+                        note_id = str(note.id)
+                        if note_id in embeddings:
+                            index_notes.append((note_id, note.title, embeddings[note_id]))
+                except Exception:
+                    pass
+
+        # Build centroids lookup
+        centroids = {}
         for c in clusters:
-            idx = c.get("id", "?")
+            cid = c.get("id")
+            raw = c.get("centroid")
+            if cid is not None and raw is not None:
+                centroids[cid] = np.array(raw, dtype="<f4")
+
+        HUB_THRESHOLD = 0.3
+
+        cluster_list = []
+        for c in clusters:
+            cid = c.get("id")
             member_count = len(c.get("members", []))
-            top_tags = ", ".join(c.get("top_tags", [])) or "—"
+            top_tags = c.get("top_tags", [])
             drift = c.get("centroid_drift")
-            drift_str = f"{drift:.3f}" if drift is not None else "new"
-            is_new = "yes" if c.get("is_new") else "no"
-            hub_note = "—"
-            lines.append(
-                f"{idx:<4} {member_count:<8} {top_tags:<30} {hub_note:<30} {drift_str:<8} {is_new:<5}"
+            is_new = bool(c.get("is_new"))
+
+            hub_note = None
+            if index_notes and cid in centroids:
+                centroid = centroids[cid]
+                best_dist = float("inf")
+                best_title = None
+                for _nid, title, emb in index_notes:
+                    d = _cosine_distance(emb, centroid)
+                    if d < best_dist:
+                        best_dist, best_title = d, title
+                if best_dist < HUB_THRESHOLD:
+                    hub_note = best_title
+
+            cluster_list.append(
+                {
+                    "id": cid,
+                    "member_count": member_count,
+                    "top_tags": top_tags,
+                    "hub_note": hub_note,
+                    "centroid_drift": drift,
+                    "is_new": is_new,
+                }
             )
-        return "\n".join(lines)
+
+        payload = {"clusters": cluster_list}
+        return json.dumps(payload, ensure_ascii=False, indent=2)
     except Exception as e:
         return f"Error listing clusters: {str(e)}"
 
@@ -287,15 +346,14 @@ def create_hub_note(cluster_index: int, title: str, description: str) -> str:
             f"{member_lines}\n"
         )
 
-        from pkm.commands.notes import create_note
-
-        note_path = create_note(
-            vault=vault,
-            title=title,
-            content=content,
-            tags=top_tags if top_tags else None,
-        )
-        note_id = Path(note_path).stem if note_path else title.lower().replace(" ", "-")
-        return f"Created hub note '{title}' at {note_path} (note_id={note_id})"
+        slug = _slugify(title)
+        target = vault.notes_dir / f"{slug}.md"
+        counter = 2
+        while target.exists():
+            target = vault.notes_dir / f"{slug}-{counter}.md"
+            counter += 1
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+        return f"Created hub note '{title}' at {target} (run `pkm index` to update hub matching)"
     except Exception as e:
         return f"Error creating hub note: {str(e)}"
