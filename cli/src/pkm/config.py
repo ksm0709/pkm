@@ -75,6 +75,14 @@ class VaultConfig:
     def artifacts_dir(self) -> Path:
         return self.pkm_dir / "artifacts"
 
+    @property
+    def graph_path(self) -> Path:
+        return self.pkm_dir / "graph.json"
+
+    @property
+    def graph_enriched_path(self) -> Path:
+        return self.pkm_dir / "graph_enriched.json"
+
 
 def get_vaults_root() -> Path:
     """Resolve vaults root from PKM_VAULTS_ROOT env var or default."""

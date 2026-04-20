@@ -241,6 +241,23 @@ def build_index(
         encoding="utf-8",
     )
 
+    # Build enriched graph (semantic_similar edges + Louvain community + centroids).
+    # Requires vector.db to exist (it now does, since we just wrote it).
+    # Graceful degradation: warn but don't fail index build.
+    try:
+        from pkm.graph import build_enriched_graph
+        from pkm.config import load_config
+
+        cfg = load_config().get("defaults", {})
+        threshold = float(cfg.get("graph-similarity-threshold", 0.75))
+        build_enriched_graph(vault, similarity_threshold=threshold)
+    except Exception as e:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            f"Enriched graph build failed; structural graph still available: {e}"
+        )
+
     return index
 
 
@@ -546,12 +563,18 @@ def is_index_stale(vault: VaultConfig) -> bool:
     return False
 
 
-def get_graph_context_via_daemon(note_id: str, vault, depth: int = 1) -> dict | None:
+def get_graph_context_via_daemon(
+    note_id: str, vault, depth: int = 1, tier: str = "enriched"
+) -> dict | None:
     import socket
     import json
     from pathlib import Path
 
-    graph_path = vault.pkm_dir / "graph.json"
+    graph_path = vault.pkm_dir / (
+        "graph_enriched.json" if tier == "enriched" else "graph.json"
+    )
+    if not graph_path.exists():
+        graph_path = vault.pkm_dir / "graph.json"  # fallback
     if not graph_path.exists():
         return None
 
@@ -568,6 +591,7 @@ def get_graph_context_via_daemon(note_id: str, vault, depth: int = 1) -> dict | 
                 "note_id": note_id,
                 "depth": depth,
                 "vault_name": vault.name,
+                "tier": tier,
             }
             sock.sendall(json.dumps(req).encode("utf-8") + b"\n")
 

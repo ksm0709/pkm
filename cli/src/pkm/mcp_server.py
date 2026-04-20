@@ -394,7 +394,9 @@ def list_consolidation_candidates() -> dict[str, Any]:
 
 
 @mcp.tool()
-def mark_consolidated(date_str: str, distilled_note_ids: list[str] | None = None) -> dict[str, Any]:
+def mark_consolidated(
+    date_str: str, distilled_note_ids: list[str] | None = None
+) -> dict[str, Any]:
     """Mark a daily note as consolidated. Requires distilled_note_ids for auditability."""
     from pkm.commands.consolidate import _parse_frontmatter, _set_frontmatter_field
     from datetime import date
@@ -402,7 +404,9 @@ def mark_consolidated(date_str: str, distilled_note_ids: list[str] | None = None
     vault = _get_vault()
     try:
         if not distilled_note_ids:
-            return {"error": "distilled_note_ids is required — provide IDs of notes created during distillation."}
+            return {
+                "error": "distilled_note_ids is required — provide IDs of notes created during distillation."
+            }
         today = date.today().isoformat()
         if date_str == today:
             return {
@@ -445,6 +449,94 @@ def read_recent_note_activity(tail: int = 20) -> dict[str, Any]:
         lines = log_path.read_text(encoding="utf-8").splitlines()
         non_empty = [line for line in lines if line.strip()]
         return {"log": non_empty[-tail:], "count": len(non_empty[-tail:])}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def find_surprising_connections(top_n: int = 20) -> dict[str, Any]:
+    """Find notes that semantically bridge two different topic clusters (hidden cross-cluster links).
+
+    Use when you want to discover non-obvious connections between different vault topic areas.
+    Requires pkm index to have been run to build the enriched graph.
+    """
+    from pkm.tools.search import find_surprising_connections as _tool
+
+    try:
+        result = _tool(top_n=top_n)
+        return {"result": result}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def list_clusters() -> dict[str, Any]:
+    """List all topic clusters with membership stats, hub notes, and centroid drift.
+
+    Use to understand vault thematic structure before create_hub_note() or find_surprising_connections().
+    Requires pkm index to have been run.
+    """
+    from pkm.tools.search import list_clusters as _tool
+
+    try:
+        result = _tool()
+        return {"result": result}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def list_god_nodes(top_n: int = 10) -> dict[str, Any]:
+    """List the most connected notes by combined degree + betweenness centrality.
+
+    Use to identify structural hub notes that hold the knowledge graph together.
+    Requires pkm index to have been run.
+    """
+    from pkm.tools.search import list_god_nodes as _tool
+
+    try:
+        result = _tool(top_n=top_n)
+        return {"result": result}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def create_hub_note(cluster_index: int, title: str, description: str) -> dict[str, Any]:
+    """Create an index note that serves as the hub for a topic cluster.
+
+    Use after list_clusters() identifies a cluster without a hub note.
+    Requires pkm index to have been run to build the enriched graph.
+    """
+    from pkm.tools.search import create_hub_note as _tool
+
+    try:
+        result = _tool(
+            cluster_index=cluster_index, title=title, description=description
+        )
+        return {"result": result}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def add_wikilink(
+    source_note_id: str, target_note_id: str, description: str
+) -> dict[str, Any]:
+    """Append a [[target|description]] entry to the '## Related' section of source note.
+
+    description MUST explain WHY the connection is meaningful — the conceptual bridge,
+    not a description of the target note. Use after find_surprising_connections().
+    """
+    from pkm.tools.links import add_wikilink as _tool
+
+    try:
+        result = _tool(
+            source_note_id=source_note_id,
+            target_note_id=target_note_id,
+            description=description,
+        )
+        return {"result": result}
     except Exception as e:
         return {"error": str(e)}
 

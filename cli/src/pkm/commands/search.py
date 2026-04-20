@@ -133,6 +133,11 @@ def index_cmd(ctx: click.Context) -> None:
     console.print(
         f"[green]✓ Semantic index built:[/green] {count} note(s) indexed [dim]({vault.pkm_dir / 'index.json'})[/dim]"
     )
+    enriched_path = vault.pkm_dir / "graph_enriched.json"
+    if enriched_path.exists():
+        console.print(
+            f"[green]✓ Enriched graph built[/green] [dim]({enriched_path})[/dim]"
+        )
 
 
 @click.command("search")

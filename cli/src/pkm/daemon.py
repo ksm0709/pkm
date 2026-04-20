@@ -29,6 +29,19 @@ logging.basicConfig(
 logger = logging.getLogger("pkm.daemon")
 
 
+def _resolve_graph_path(vault, tier: str = "enriched"):
+    """Return best-available graph path. Preferred: enriched, fallback: structural.
+
+    tier="enriched" -> try graph_enriched.json first, fall back to graph.json.
+    tier="structural" -> graph.json only.
+    """
+    if tier == "enriched":
+        p = vault.pkm_dir / "graph_enriched.json"
+        if p.exists():
+            return p
+    return vault.pkm_dir / "graph.json"
+
+
 def redact(data: Any) -> Any:
     if isinstance(data, dict):
         return {
@@ -49,7 +62,7 @@ class DaemonState:
     graph_ready = False
 
 
-@lru_cache(maxsize=2)
+@lru_cache(maxsize=4)
 def get_cached_graph(graph_path: str, graph_mtime: float):
     for _ in range(3):
         try:
@@ -392,7 +405,8 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                 writer.write(b'{"error": "vault not found"}\n')
                 return
 
-            graph_path = vault.pkm_dir / "graph.json"
+            tier = req.get("tier", "enriched")
+            graph_path = _resolve_graph_path(vault, tier)
             if not graph_path.exists():
                 writer.write(b'{"error": "graph not found"}\n')
                 return
@@ -508,7 +522,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                             )
 
                     if graph_depth > 0 and DaemonState.graph_ready:
-                        graph_path = vault.pkm_dir / ".context" / "graph.json"
+                        graph_path = _resolve_graph_path(vault, "enriched")
                         if graph_path.exists():
                             graph_mtime = graph_path.stat().st_mtime
                             graph = get_cached_graph(str(graph_path), graph_mtime)
@@ -710,8 +724,7 @@ def _preload_model():
 
         vaults = discover_vaults()
         for vault in vaults.values():
-            graph_path = vault.pkm_dir / ".context" / "graph.json"
-
+            graph_path = _resolve_graph_path(vault, "enriched")
             if graph_path.exists():
                 get_cached_graph(str(graph_path), graph_path.stat().st_mtime)
 
@@ -724,7 +737,7 @@ def _preload_model():
 def _reload_vault_caches(vault):
     DaemonState.graph_ready = False
     try:
-        graph_path = vault.pkm_dir / ".context" / "graph.json"
+        graph_path = _resolve_graph_path(vault, "enriched")
         if graph_path.exists():
             get_cached_graph(str(graph_path), graph_path.stat().st_mtime)
         logger.info("Graph cache reloaded successfully for vault %s.", vault.name)

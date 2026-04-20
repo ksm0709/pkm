@@ -45,7 +45,9 @@ def list_consolidation_candidates() -> str:
 
 
 @tool()
-def mark_consolidated(date_str: str, distilled_note_ids: list[str] | None = None) -> str:
+def mark_consolidated(
+    date_str: str, distilled_note_ids: list[str] | None = None
+) -> str:
     """Mark a daily note as consolidated after distilling its insights into atomic notes.
 
     Use ONLY after the user has distilled insights from that daily note — this is a

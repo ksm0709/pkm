@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 from tiny_agent.tools import tool
@@ -73,23 +74,228 @@ def semantic_search(
 
 
 @tool()
-def get_graph_context(note_id: str, depth: int = 1) -> str:
-    """Get the AST-based graph connections (links, tags) for a specific note.
+def get_graph_context(note_id: str, depth: int = 1, tier: str = "enriched") -> str:
+    """Get graph connections for a note.
+
+    tier='enriched' (default) includes semantic_similar edges and community info
+    from graph_enriched.json when available. Falls back to structural graph.json.
+    tier='structural' forces structural (wikilink + has_tag only).
 
     Args:
         note_id: The ID of the note to query.
         depth: The traversal depth (default 1).
+        tier: Graph tier to use ('enriched' or 'structural', default 'enriched').
     """
-    import json
-
     v_dir = os.environ.get("PKM_VAULT_DIR", ".")
     vault = _get_vault(v_dir)
 
     try:
-        context = get_graph_context_via_daemon(note_id, vault, depth)
+        context = get_graph_context_via_daemon(note_id, vault, depth, tier=tier)
         if not context:
             return f"No graph context found for '{note_id}' (Daemon may be down or note missing)."
 
         return json.dumps(context, indent=2, ensure_ascii=False)
     except Exception as e:
         return f"Error fetching graph context: {str(e)}"
+
+
+@tool()
+def find_surprising_connections(top_n: int = 20) -> str:
+    """Find notes that semantically bridge two different topic clusters (hidden cross-cluster links).
+
+    Use this when you want to discover non-obvious connections between different areas of the vault —
+    notes whose embeddings sit equidistant between two cluster centroids, suggesting they could
+    link topics that haven't been explicitly connected yet.
+
+    WHY: Notes deep inside one cluster score lower than equidistant bridge notes due to the
+    asymmetry penalty (|dist_a - dist_b| term). A high bridge_score means the note truly sits
+    between two worlds, not just close to one.
+
+    Call this before add_wikilink() to identify which connections are worth making explicit.
+    Requires `pkm index` to have been run to build the enriched graph.
+
+    Args:
+        top_n: Number of top bridge notes to return (default 20).
+    """
+    v_dir = os.environ.get("PKM_VAULT_DIR", ".")
+    vault = _get_vault(v_dir)
+    try:
+        from pkm.graph import find_surprising_connections as _find
+
+        results = _find(vault, top_n=top_n)
+        if not results:
+            return "No surprising connections found (run `pkm index` first to build enriched graph)."
+        lines = []
+        for r in results:
+            lines.append(
+                f"[[{r['title']}]] bridges cluster {r['cluster_a']}\u2194{r['cluster_b']}"
+                f" (score={r['bridge_score']:.3f}, dist_a={r['dist_a']:.2f}, dist_b={r['dist_b']:.2f})"
+            )
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Error finding surprising connections: {str(e)}"
+
+
+@tool()
+def list_clusters() -> str:
+    """List all topic clusters discovered in the vault with membership stats and hub notes.
+
+    Use this to understand the current thematic structure of the vault — how many clusters exist,
+    how big they are, whether any clusters are new or have shifted (centroid_drift), and which
+    index notes serve as hubs. Call this before create_hub_note() to see which clusters lack hubs,
+    and before find_surprising_connections() to orient yourself in the cluster landscape.
+
+    WHY: Clusters are detected via Louvain community detection on the semantic graph. centroid_drift
+    > 0.2 means the cluster's topic has shifted since the last index run — its hub note may be stale.
+    is_new=yes means a brand-new cluster this run — a candidate for create_hub_note().
+
+    Requires `pkm index` to have been run to build the enriched graph.
+    """
+    v_dir = os.environ.get("PKM_VAULT_DIR", ".")
+    vault = _get_vault(v_dir)
+    try:
+        enriched_path = vault.pkm_dir / "graph_enriched.json"
+        if not enriched_path.exists():
+            return "No enriched graph found (run `pkm index` first)."
+        data = json.loads(enriched_path.read_text())
+        clusters = data.get("clusters", [])
+        if not clusters:
+            return "No clusters found in enriched graph."
+
+        lines = [
+            f"{'#':<4} {'members':<8} {'top_tags':<30} {'hub_note':<30} {'drift':<8} {'new':<5}"
+        ]
+        lines.append("-" * 90)
+        for c in clusters:
+            idx = c.get("id", "?")
+            member_count = len(c.get("members", []))
+            top_tags = ", ".join(c.get("top_tags", [])) or "—"
+            drift = c.get("centroid_drift")
+            drift_str = f"{drift:.3f}" if drift is not None else "new"
+            is_new = "yes" if c.get("is_new") else "no"
+            hub_note = "—"
+            lines.append(
+                f"{idx:<4} {member_count:<8} {top_tags:<30} {hub_note:<30} {drift_str:<8} {is_new:<5}"
+            )
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Error listing clusters: {str(e)}"
+
+
+@tool()
+def list_god_nodes(top_n: int = 10) -> str:
+    """List the most connected notes in the vault by combined degree + betweenness centrality.
+
+    Use this to identify hub notes that hold the knowledge graph together — removing them would
+    fragment large parts of the graph. Useful for understanding vault architecture, finding notes
+    that deserve richer content, and spotting over-connected notes that may need splitting.
+
+    WHY: God nodes combine high degree centrality (many direct connections) and high betweenness
+    centrality (lies on many shortest paths between other notes). A note scoring high on both is
+    a true structural hub, not just a popular reference.
+
+    Loads graph_enriched.json if available, falls back to graph.json.
+    Requires `pkm index` to have been run.
+
+    Args:
+        top_n: Number of top hub notes to return (default 10).
+    """
+    v_dir = os.environ.get("PKM_VAULT_DIR", ".")
+    vault = _get_vault(v_dir)
+    try:
+        import networkx as nx
+
+        enriched_path = vault.pkm_dir / "graph_enriched.json"
+        graph_path = vault.pkm_dir / "graph.json"
+        if enriched_path.exists():
+            data = json.loads(enriched_path.read_text())
+        elif graph_path.exists():
+            data = json.loads(graph_path.read_text())
+        else:
+            return "No graph found (run `pkm index` first)."
+
+        G = nx.node_link_graph(data)
+        note_nodes = [n for n, d in G.nodes(data=True) if d.get("type") == "note"]
+        if not note_nodes:
+            return "No note nodes found in graph."
+        G_notes = G.subgraph(note_nodes).to_undirected()
+        deg = nx.degree_centrality(G_notes)
+        bet = nx.betweenness_centrality(G_notes)
+        scored = [(nid, deg.get(nid, 0.0) + bet.get(nid, 0.0)) for nid in note_nodes]
+        scored.sort(key=lambda x: x[1], reverse=True)
+        top = scored[:top_n]
+        lines = [f"{'note_id':<40} {'centrality':<12}"]
+        lines.append("-" * 54)
+        for nid, score in top:
+            node_data = G.nodes[nid]
+            title = node_data.get("title", nid)
+            lines.append(f"{title:<40} {score:.4f}")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Error listing god nodes: {str(e)}"
+
+
+@tool()
+def create_hub_note(cluster_index: int, title: str, description: str) -> str:
+    """Create an index note that serves as the hub for a topic cluster.
+
+    Use this after list_clusters() identifies a cluster without a hub note and you've
+    read enough member notes to give the cluster a coherent name and description.
+    The hub note links all cluster members via a '## Members' wikilink list and is
+    tagged with the cluster's top_tags, making it discoverable in the vault's graph view.
+
+    WHY: Clusters without hub notes are invisible in Obsidian's graph view — they exist as
+    semantic groupings but have no named entry point. Hub notes make clusters navigable,
+    provide context for why members are related, and give the agent a reference point for
+    future cluster drift reviews.
+
+    Requires `pkm index` to have been run to build the enriched graph.
+
+    Args:
+        cluster_index: The cluster ID from list_clusters() output.
+        title: Descriptive title for the hub note (becomes the note's title and filename).
+        description: A paragraph explaining what this cluster is about and why these notes belong together.
+    """
+    v_dir = os.environ.get("PKM_VAULT_DIR", ".")
+    vault = _get_vault(v_dir)
+    try:
+        enriched_path = vault.pkm_dir / "graph_enriched.json"
+        if not enriched_path.exists():
+            return "No enriched graph found (run `pkm index` first)."
+        data = json.loads(enriched_path.read_text())
+        clusters = data.get("clusters", [])
+        cluster = next((c for c in clusters if c.get("id") == cluster_index), None)
+        if cluster is None:
+            return f"Cluster {cluster_index} not found. Run list_clusters() to see available clusters."
+
+        members = cluster.get("members", [])
+        top_tags = cluster.get("top_tags", [])
+
+        member_lines = "\n".join(f"- [[{m}]]" for m in sorted(members))
+        tags_yaml = "\n".join(f"  - {t}" for t in top_tags) if top_tags else ""
+        tags_block = f"tags:\n{tags_yaml}" if tags_yaml else "tags: []"
+
+        content = (
+            f"---\n"
+            f"title: {title}\n"
+            f"type: index\n"
+            f"importance: 6\n"
+            f"{tags_block}\n"
+            f"---\n\n"
+            f"{description}\n\n"
+            f"## Members\n\n"
+            f"{member_lines}\n"
+        )
+
+        from pkm.commands.notes import create_note
+
+        note_path = create_note(
+            vault=vault,
+            title=title,
+            content=content,
+            tags=top_tags if top_tags else None,
+        )
+        note_id = Path(note_path).stem if note_path else title.lower().replace(" ", "-")
+        return f"Created hub note '{title}' at {note_path} (note_id={note_id})"
+    except Exception as e:
+        return f"Error creating hub note: {str(e)}"
