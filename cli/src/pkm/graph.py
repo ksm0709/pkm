@@ -2,6 +2,7 @@
 
 import datetime
 import json
+import re
 import sqlite3
 from collections import Counter
 from dataclasses import dataclass
@@ -99,9 +100,11 @@ def _add_semantic_edges(
             G.add_edge(src, tgt, **edge_attrs)
 
 
-def _top_tags_for_members(G: nx.DiGraph, members, top_n: int = 3) -> list[str]:
+def _top_tags_for_members(
+    G: nx.DiGraph, members: list[str], top_n: int = 3
+) -> list[str]:
     """Return top-N most-frequent tags across cluster members (from has_tag edges)."""
-    tag_counter: Counter = Counter()
+    tag_counter: Counter[str] = Counter()
     for node_id in members:
         for _, tgt, edata in G.out_edges(node_id, data=True):
             if edata.get("type") == "has_tag":
@@ -205,7 +208,9 @@ def build_enriched_graph(
     data = nx.node_link_data(G)
     data["graph_tier"] = "enriched"
     data["schema_version"] = 1
-    data["built_at"] = datetime.datetime.utcnow().isoformat() + "Z"
+    data["built_at"] = (
+        datetime.datetime.now(datetime.UTC).isoformat().replace("+00:00", "Z")
+    )
     data["model"] = "all-MiniLM-L6-v2"
     data["clusters"] = clusters_meta
     enriched_path.write_text(
@@ -309,8 +314,6 @@ def _extract_metadata_from_ast(
             plain_text_offsets.append(
                 {"text": content, "offset": offset, "length": len(content)}
             )
-
-        import re
 
         if node_type == "RawText":
             content = node.get("content", "")

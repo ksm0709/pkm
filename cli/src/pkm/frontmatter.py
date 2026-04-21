@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -15,7 +17,7 @@ _FM_PATTERN = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
 @dataclass
 class Note:
     path: Path
-    meta: dict = field(default_factory=dict)
+    meta: dict[str, Any] = field(default_factory=dict)
     body: str = ""
 
     @property
@@ -51,7 +53,7 @@ def parse(path: Path) -> Note:
     return Note(path=path, meta=meta, body=body)
 
 
-def render(meta: dict, body: str) -> str:
+def render(meta: dict[str, Any], body: str) -> str:
     fm = yaml.dump(meta, allow_unicode=True, default_flow_style=False, sort_keys=False)
     return f"---\n{fm}---\n\n{body}"
 
@@ -61,9 +63,9 @@ def generate_frontmatter(
     tags: list[str] | None = None,
     aliases: list[str] | None = None,
     description: str | None = None,
-    **extra,
-) -> dict:
-    meta: dict = {"id": note_id, "aliases": aliases or [], "tags": tags or []}
+    **extra: Any,
+) -> dict[str, Any]:
+    meta: dict[str, Any] = {"id": note_id, "aliases": aliases or [], "tags": tags or []}
     if description is not None:
         meta["description"] = description
     meta.update(extra)
@@ -81,13 +83,11 @@ def generate_memory_frontmatter(
     consolidated: bool = False,
     tags: list[str] | None = None,
     aliases: list[str] | None = None,
-    **extra,
-) -> dict:
+    **extra: Any,
+) -> dict[str, Any]:
     """Generate YAML frontmatter for agent memory notes."""
-    from datetime import datetime, timezone
-
     now = datetime.now(timezone.utc).isoformat()
-    fm: dict = {
+    fm: dict[str, Any] = {
         "id": note_id,
         "memory_type": memory_type,
         "importance": float(importance),

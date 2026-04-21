@@ -54,11 +54,8 @@ def create_note(
     Returns the path to the created note file.
     Raises ``ValueError`` for bad input, ``FileExistsError`` if the note already exists.
     """
-    if content and not title:
-        effective_title = content[:50]
-    elif title:
-        effective_title = title
-    else:
+    effective_title = title or (content[:50] if content else None)
+    if not effective_title:
         raise ValueError("Provide a title, or use content for agent usage")
 
     if not no_dedup and content:
@@ -88,7 +85,7 @@ def create_note(
 
     tag_list = tags or []
     body = content or ""
-    extra = dict(meta) if meta else {}
+    extra = dict(meta or {})
 
     is_memory = bool(content or memory_type or importance is not None or session_id)
     if is_memory:

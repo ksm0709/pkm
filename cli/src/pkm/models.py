@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import List
 
 
 @dataclass
@@ -13,7 +12,7 @@ class ModelInfo:
     description: str
 
 
-BEST_MODELS: List[ModelInfo] = [
+BEST_MODELS: list[ModelInfo] = [
     ModelInfo(
         "gemini/gemini-3-flash-preview",
         "Google",
@@ -71,23 +70,20 @@ BEST_MODELS: List[ModelInfo] = [
 ]
 
 
-def get_available_models() -> List[ModelInfo]:
+def get_available_models() -> list[ModelInfo]:
     """Return best models sorted by score descending."""
     return sorted(BEST_MODELS, key=lambda m: m.score, reverse=True)
 
 
-def resolve_auto_models() -> List[str]:
+def resolve_auto_models() -> list[str]:
     import litellm
 
-    valid_models = []
-    for m in get_available_models():
+    def _is_valid(model_id: str) -> bool:
         try:
-            val = litellm.validate_environment(m.id)
-            if val.get("keys_in_environment", True):
-                valid_models.append(m.id)
+            return litellm.validate_environment(model_id).get(
+                "keys_in_environment", True
+            )
         except Exception:
-            pass
+            return False
 
-    if not valid_models:
-        return []
-    return valid_models
+    return [m.id for m in get_available_models() if _is_valid(m.id)]

@@ -2,6 +2,7 @@ import getpass
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -14,7 +15,7 @@ DEFAULT_VAULTS_ROOT = Path.home() / "vaults"
 CONFIG_PATH = Path.home() / ".config" / "pkm" / "config"
 
 
-def load_config() -> dict:
+def load_config() -> dict[str, Any]:
     """Load ~/.config/pkm/config as a dict. Returns {} if file missing."""
     if not CONFIG_PATH.exists():
         return {}
@@ -22,7 +23,7 @@ def load_config() -> dict:
         return tomllib.load(f)
 
 
-def save_config(data: dict) -> None:
+def save_config(data: dict[str, Any]) -> None:
     """Save data to ~/.config/pkm/config in TOML format."""
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     # Serialize manually — structure is simple ([defaults] section only)
@@ -109,8 +110,8 @@ def discover_vaults(root: Path | None = None) -> dict[str, VaultConfig]:
 def get_local_config_vault() -> str | None:
     """Check for .pkm file in cwd or parents and extract vault name."""
     current = Path.cwd()
-    while True:
-        pkm_file = current / ".pkm"
+    for path in [current, *current.parents]:
+        pkm_file = path / ".pkm"
         if pkm_file.exists():
             try:
                 with open(pkm_file, "rb") as f:
@@ -130,22 +131,14 @@ def get_local_config_vault() -> str | None:
                         return line.split("=", 1)[1].strip().strip("\"'")
             except Exception:
                 pass
-
-        if current.parent == current:
-            break
-        current = current.parent
     return None
 
 
 def get_parent_vault(current_dir: Path | None = None) -> VaultConfig | None:
     """Check for .pkm file in parent directories and return the VaultConfig."""
     current = current_dir or Path.cwd()
-    if current.parent == current:
-        return None
-
-    current = current.parent
-    while True:
-        pkm_file = current / ".pkm"
+    for path in current.parents:
+        pkm_file = path / ".pkm"
         name = None
         if pkm_file.exists():
             try:
@@ -172,22 +165,15 @@ def get_parent_vault(current_dir: Path | None = None) -> VaultConfig | None:
             vaults = discover_vaults()
             if name in vaults:
                 return vaults[name]
-
-        if current.parent == current:
-            break
-        current = current.parent
     return None
 
 
 def _find_git_root(cwd: Path | None = None) -> Path | None:
     """Find the git root directory from cwd, or None."""
     current = cwd or Path.cwd()
-    while True:
-        if (current / ".git").exists() and (current / ".git").is_dir():
-            return current
-        if current.parent == current:
-            break
-        current = current.parent
+    for path in [current, *current.parents]:
+        if (path / ".git").is_dir():
+            return path
     return None
 
 

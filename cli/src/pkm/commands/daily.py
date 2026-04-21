@@ -49,8 +49,7 @@ def _sanitize_title(raw: str) -> str:
     title = raw.replace(" ", "-")
     title = re.sub(r"[/\\]", "", title)  # strip path separators
     title = re.sub(r"\.\.+", "", title)  # strip traversal sequences
-    title = title.strip("-").strip()
-    return title
+    return title.strip("-").strip()
 
 
 def add_daily_entry(vault, text: str) -> str:
@@ -272,18 +271,15 @@ def todo(ctx: click.Context, text: str) -> None:
     if "## TODO" in content:
         # Insert after the ## TODO line
         lines = content.splitlines(keepends=True)
-        result = []
-        inserted = False
         for i, line in enumerate(lines):
-            result.append(line)
-            if not inserted and line.rstrip("\n") == "## TODO":
-                result.append(entry)
-                inserted = True
-        content = "".join(result)
-        if not inserted:
-            if not content.endswith("\n"):
-                content += "\n"
-            content += entry
+            if line.rstrip("\n") == "## TODO":
+                lines.insert(i + 1, entry)
+                break
+        else:
+            if not lines[-1].endswith("\n"):
+                lines[-1] += "\n"
+            lines.append(entry)
+        content = "".join(lines)
     else:
         if not content.endswith("\n"):
             content += "\n"

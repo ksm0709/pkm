@@ -13,18 +13,22 @@ import pytest
 from pkm.config import VaultConfig
 
 
+@pytest.fixture
+def mcp_server(tmp_vault: VaultConfig):
+    mcp_mod = pytest.importorskip("pkm.mcp_server")
+    mcp_mod._current_vault = tmp_vault
+    return mcp_mod
+
+
 # ---------------------------------------------------------------------------
 # Unit tests — call tool functions directly with _current_vault set
 # ---------------------------------------------------------------------------
 
 
 class TestNoteAdd:
-    def test_creates_note(self, tmp_vault: VaultConfig) -> None:
+    def test_creates_note(self, mcp_server) -> None:
         """note_add tool creates a note file with correct frontmatter."""
-        mcp_mod = pytest.importorskip("pkm.mcp_server")
-        mcp_mod._current_vault = tmp_vault
-
-        result = mcp_mod.note_add(content="Test semantic note", tags=["test", "mcp"])
+        result = mcp_server.note_add(content="Test semantic note", tags=["test", "mcp"])
         assert result["status"] == "created"
         assert "note_id" in result
 
@@ -35,12 +39,9 @@ class TestNoteAdd:
         assert "test" in text
         assert "mcp" in text
 
-    def test_with_meta(self, tmp_vault: VaultConfig) -> None:
+    def test_with_meta(self, mcp_server) -> None:
         """meta dict is reflected in frontmatter."""
-        mcp_mod = pytest.importorskip("pkm.mcp_server")
-        mcp_mod._current_vault = tmp_vault
-
-        result = mcp_mod.note_add(
+        result = mcp_server.note_add(
             content="Note with meta",
             meta={"source": "neo", "event_type": "goal_completed"},
         )
@@ -49,12 +50,9 @@ class TestNoteAdd:
         assert "source: neo" in text
         assert "event_type: goal_completed" in text
 
-    def test_with_title_and_type(self, tmp_vault: VaultConfig) -> None:
+    def test_with_title_and_type(self, mcp_server) -> None:
         """title and memory_type are respected."""
-        mcp_mod = pytest.importorskip("pkm.mcp_server")
-        mcp_mod._current_vault = tmp_vault
-
-        result = mcp_mod.note_add(
+        result = mcp_server.note_add(
             content="Episodic content",
             title="My Episode",
             type="episodic",
@@ -65,24 +63,20 @@ class TestNoteAdd:
         assert "memory_type: episodic" in text
         assert "importance: 8.0" in text
 
-    def test_duplicate_returns_error(self, tmp_vault: VaultConfig) -> None:
+    def test_duplicate_returns_error(self, mcp_server) -> None:
         """Creating duplicate note returns error dict."""
-        mcp_mod = pytest.importorskip("pkm.mcp_server")
-        mcp_mod._current_vault = tmp_vault
-
-        mcp_mod.note_add(content="First note", title="unique-title", tags=[])
-        result = mcp_mod.note_add(content="Second note", title="unique-title", tags=[])
+        mcp_server.note_add(content="First note", title="unique-title", tags=[])
+        result = mcp_server.note_add(
+            content="Second note", title="unique-title", tags=[]
+        )
         assert "error" in result
         assert "already exists" in result["error"]
 
 
 class TestDailyAdd:
-    def test_appends_entry(self, tmp_vault: VaultConfig) -> None:
+    def test_appends_entry(self, mcp_server, tmp_vault: VaultConfig) -> None:
         """daily_add appends a timestamped entry to today's daily note."""
-        mcp_mod = pytest.importorskip("pkm.mcp_server")
-        mcp_mod._current_vault = tmp_vault
-
-        result = mcp_mod.daily_add(text="Testing MCP daily add")
+        result = mcp_server.daily_add(text="Testing MCP daily add")
         assert result["status"] == "added"
         assert "Testing MCP daily add" in result["entry"]
 
@@ -98,11 +92,8 @@ class TestDailyAdd:
 
 
 class TestSearch:
-    def test_delegates_to_daemon(self, tmp_vault: VaultConfig) -> None:
+    def test_delegates_to_daemon(self, mcp_server) -> None:
         """search tool calls search_via_daemon, not in-process search."""
-        mcp_mod = pytest.importorskip("pkm.mcp_server")
-        mcp_mod._current_vault = tmp_vault
-
         mock_result = MagicMock()
         mock_result.note_id = "test-note"
         mock_result.title = "Test Note"
@@ -116,26 +107,20 @@ class TestSearch:
         with patch(
             "pkm.search_engine.search_via_daemon", return_value=[mock_result]
         ) as mock_daemon:
-            result = mcp_mod.search(query="test query")
+            result = mcp_server.search(query="test query")
             mock_daemon.assert_called_once()
             assert result["count"] == 1
             assert result["results"][0]["note_id"] == "test-note"
 
-    def test_daemon_unavailable_returns_error(self, tmp_vault: VaultConfig) -> None:
+    def test_daemon_unavailable_returns_error(self, mcp_server) -> None:
         """When daemon is unavailable, return error instead of fallback."""
-        mcp_mod = pytest.importorskip("pkm.mcp_server")
-        mcp_mod._current_vault = tmp_vault
-
         with patch("pkm.search_engine.search_via_daemon", return_value=None):
-            result = mcp_mod.search(query="test")
+            result = mcp_server.search(query="test")
             assert "error" in result
             assert result["code"] == -32000
 
-    def test_cross_vault(self, tmp_vault: VaultConfig, tmp_path: Path) -> None:
+    def test_cross_vault(self, mcp_server, tmp_path: Path) -> None:
         """Passing vault parameter resolves alternate vault."""
-        mcp_mod = pytest.importorskip("pkm.mcp_server")
-        mcp_mod._current_vault = tmp_vault
-
         other_vault = VaultConfig(name="other", path=tmp_path / "other-vault")
         other_vault.notes_dir.mkdir(parents=True, exist_ok=True)
 
@@ -145,7 +130,7 @@ class TestSearch:
                 "pkm.search_engine.search_via_daemon", return_value=[]
             ) as mock_search,
         ):
-            mcp_mod.search(query="test", vault="other")
+            mcp_server.search(query="test", vault="other")
             mock_get.assert_called_once_with("other")
             # search_via_daemon should be called with the other vault
             call_args = mock_search.call_args
@@ -153,18 +138,15 @@ class TestSearch:
 
 
 class TestIndex:
-    def test_builds_index(self, tmp_vault: VaultConfig) -> None:
+    def test_builds_index(self, mcp_server, tmp_vault: VaultConfig) -> None:
         """index tool calls build_index and returns count."""
-        mcp_mod = pytest.importorskip("pkm.mcp_server")
-        mcp_mod._current_vault = tmp_vault
-
         mock_index = MagicMock()
         mock_index.entries = [MagicMock(), MagicMock()]
 
         with patch(
             "pkm.search_engine.build_index", return_value=mock_index
         ) as mock_build:
-            result = mcp_mod.index()
+            result = mcp_server.index()
             mock_build.assert_called_once_with(tmp_vault)
             assert result["status"] == "indexed"
             assert result["count"] == 2

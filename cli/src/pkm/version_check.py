@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
+from typing import Any
 from urllib.error import URLError
 from urllib.request import urlopen
 
@@ -26,7 +27,8 @@ def _fetch_latest() -> str | None:
     try:
         url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
         with urlopen(url, timeout=FETCH_TIMEOUT) as resp:
-            return json.loads(resp.read()).get("tag_name")
+            data: dict[str, Any] = json.loads(resp.read())
+            return data.get("tag_name")
     except (URLError, json.JSONDecodeError, Exception):
         return None
 
@@ -35,7 +37,7 @@ def get_latest_version() -> str | None:
     """Return latest release tag, using 24h local cache."""
     try:
         if CACHE_FILE.exists():
-            cached = json.loads(CACHE_FILE.read_text())
+            cached: dict[str, Any] = json.loads(CACHE_FILE.read_text())
             if time.time() - cached.get("checked_at", 0) < CACHE_TTL:
                 return cached.get("latest")
     except (json.JSONDecodeError, OSError):
@@ -55,7 +57,7 @@ def get_recent_versions(n: int = 5) -> list[str]:
     try:
         url = f"https://api.github.com/repos/{GITHUB_REPO}/releases?per_page={n}"
         with urlopen(url, timeout=FETCH_TIMEOUT) as resp:
-            releases = json.loads(resp.read())
+            releases: list[dict[str, Any]] = json.loads(resp.read())
             return [r["tag_name"] for r in releases if r.get("tag_name")]
     except (URLError, json.JSONDecodeError, Exception):
         return []

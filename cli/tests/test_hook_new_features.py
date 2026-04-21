@@ -212,37 +212,33 @@ def test_setup_codex_prints_install_instructions(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_turn_end_exit2_guard_active_exits_0(runner, vault_env):
-    """turn-end-exit2 exits 0 when stop_hook_active guard is set."""
-    payload = json.dumps(
-        {
-            "stop_hook_active": True,
-            "transcript_path": "/some/path.jsonl",
-            "session_id": "abc",
-        }
-    )
+@pytest.mark.parametrize(
+    "payload_dict, expected_exit",
+    [
+        (
+            {
+                "stop_hook_active": True,
+                "transcript_path": "/some/path.jsonl",
+                "session_id": "abc",
+            },
+            0,
+        ),
+        ({"stop_hook_active": False, "session_id": "abc"}, 0),
+        (
+            {
+                "stop_hook_active": False,
+                "transcript_path": "/tmp/session.jsonl",
+                "session_id": "abc",
+            },
+            2,
+        ),
+    ],
+)
+def test_turn_end_exit2_behaviors(runner, vault_env, payload_dict, expected_exit):
+    """turn-end-exit2 behaves correctly based on payload."""
+    payload = json.dumps(payload_dict)
     result = runner.invoke(main, ["hook", "run", "turn-end-exit2"], input=payload)
-    assert result.exit_code == 0
-
-
-def test_turn_end_exit2_no_transcript_exits_0(runner, vault_env):
-    """turn-end-exit2 exits 0 when transcript_path is missing."""
-    payload = json.dumps({"stop_hook_active": False, "session_id": "abc"})
-    result = runner.invoke(main, ["hook", "run", "turn-end-exit2"], input=payload)
-    assert result.exit_code == 0
-
-
-def test_turn_end_exit2_with_transcript_exits_2(runner, vault_env):
-    """turn-end-exit2 exits 2 and writes instructions to stderr when transcript_path present."""
-    payload = json.dumps(
-        {
-            "stop_hook_active": False,
-            "transcript_path": "/tmp/session.jsonl",
-            "session_id": "abc",
-        }
-    )
-    result = runner.invoke(main, ["hook", "run", "turn-end-exit2"], input=payload)
-    assert result.exit_code == 2
-    # CliRunner merges stderr into output — check combined output for instructions
-    assert "KNOWLEDGE EXTRACTION" in result.output
-    assert "/pkm" in result.output  # references skill
+    assert result.exit_code == expected_exit
+    if expected_exit == 2:
+        assert "KNOWLEDGE EXTRACTION" in result.output
+        assert "/pkm" in result.output

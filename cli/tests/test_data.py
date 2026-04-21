@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shutil
+import urllib.error
 from pathlib import Path
 from unittest.mock import patch
 
@@ -126,7 +128,6 @@ class TestDataAdd:
         self, cli_runner, tmp_vault: VaultConfig
     ):
         """Failed download should not leave a partial file."""
-        import urllib.error
 
         def mock_urlretrieve(url, dest):
             # Write partial file, then raise
@@ -146,8 +147,6 @@ class TestDataAdd:
         self, cli_runner, tmp_vault: VaultConfig, tmp_path: Path
     ):
         """data dir should be auto-created if it doesn't exist."""
-        import shutil
-
         shutil.rmtree(tmp_vault.data_dir)
         assert not tmp_vault.data_dir.exists()
 

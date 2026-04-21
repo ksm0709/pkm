@@ -3,17 +3,14 @@
 from __future__ import annotations
 
 import os
+from typing import Any
 
 
-def get_editor(config_data: dict) -> str:
+def get_editor(config_data: dict[str, Any]) -> str:
     """Resolve editor command: config → $VISUAL → $EDITOR → nano."""
-    editor = config_data.get("defaults", {}).get("editor")
-    if editor:
-        return editor
-    visual = os.environ.get("VISUAL")
-    if visual:
-        return visual
-    env_editor = os.environ.get("EDITOR")
-    if env_editor:
-        return env_editor
-    return "nano"
+    return (
+        config_data.get("defaults", {}).get("editor")
+        or os.environ.get("VISUAL")
+        or os.environ.get("EDITOR")
+        or "nano"
+    )

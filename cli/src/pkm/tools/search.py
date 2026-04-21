@@ -64,8 +64,7 @@ def semantic_search(
         if not results:
             return "No results found."
 
-        items = []
-        for r in results:
+        def _get_desc(r) -> str:
             desc = getattr(r, "description", "") or ""
             if not desc:
                 try:
@@ -75,7 +74,12 @@ def semantic_search(
                     desc = note.meta.get("description") or note.body.strip()[:200]
                 except Exception:
                     pass
-            items.append(f"Title: {r.title}\nScore: {r.score:.4f}\nDescription: {desc}")
+            return desc
+
+        items = [
+            f"Title: {r.title}\nScore: {r.score:.4f}\nDescription: {_get_desc(r)}"
+            for r in results
+        ]
 
         return "\n\n".join(items)
     except Exception as e:
@@ -134,12 +138,12 @@ def find_surprising_connections(top_n: int = 20) -> str:
         results = _find(vault, top_n=top_n)
         if not results:
             return "No surprising connections found (run `pkm index` first to build enriched graph)."
-        lines = []
-        for r in results:
-            lines.append(
-                f"[[{r['title']}]] bridges cluster {r['cluster_a']}\u2194{r['cluster_b']}"
-                f" (score={r['bridge_score']:.3f}, dist_a={r['dist_a']:.2f}, dist_b={r['dist_b']:.2f})"
-            )
+
+        lines = [
+            f"[[{r['title']}]] bridges cluster {r['cluster_a']}\u2194{r['cluster_b']}"
+            f" (score={r['bridge_score']:.3f}, dist_a={r['dist_a']:.2f}, dist_b={r['dist_b']:.2f})"
+            for r in results
+        ]
         return "\n".join(lines)
     except Exception as e:
         return f"Error finding surprising connections: {str(e)}"
@@ -181,7 +185,9 @@ def list_clusters() -> str:
         embeddings = _load_embeddings_from_vector_db(vault)
 
         # Collect index notes that also have embeddings
-        index_notes: list[tuple[str, str, np.ndarray]] = []  # (note_id, title, embedding)
+        index_notes: list[
+            tuple[str, str, np.ndarray]
+        ] = []  # (note_id, title, embedding)
         notes_dir = vault.notes_dir
         if notes_dir.is_dir():
             for md_file in sorted(notes_dir.glob("*.md")):
@@ -190,7 +196,9 @@ def list_clusters() -> str:
                     if note.meta.get("type") == "index":
                         note_id = str(note.id)
                         if note_id in embeddings:
-                            index_notes.append((note_id, note.title, embeddings[note_id]))
+                            index_notes.append(
+                                (note_id, note.title, embeddings[note_id])
+                            )
                 except Exception:
                     pass
 
@@ -283,12 +291,10 @@ def list_god_nodes(top_n: int = 10) -> str:
         scored = [(nid, deg.get(nid, 0.0) + bet.get(nid, 0.0)) for nid in note_nodes]
         scored.sort(key=lambda x: x[1], reverse=True)
         top = scored[:top_n]
-        lines = [f"{'note_id':<40} {'centrality':<12}"]
-        lines.append("-" * 54)
-        for nid, score in top:
-            node_data = G.nodes[nid]
-            title = node_data.get("title", nid)
-            lines.append(f"{title:<40} {score:.4f}")
+        lines = [f"{'note_id':<40} {'centrality':<12}", "-" * 54]
+        lines.extend(
+            f"{G.nodes[nid].get('title', nid):<40} {score:.4f}" for nid, score in top
+        )
         return "\n".join(lines)
     except Exception as e:
         return f"Error listing god nodes: {str(e)}"

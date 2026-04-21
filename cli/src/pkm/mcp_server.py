@@ -303,11 +303,12 @@ def list_orphans() -> dict[str, Any]:
         paths = find_orphans(vault)
         items = []
         for p in paths:
+            tags = []
             try:
-                note = parse(p)
-                items.append({"filename": p.name, "note_id": p.stem, "tags": note.tags})
+                tags = parse(p).tags
             except Exception:
-                items.append({"filename": p.name, "note_id": p.stem, "tags": []})
+                pass
+            items.append({"filename": p.name, "note_id": p.stem, "tags": tags})
         return {"orphans": items, "count": len(items)}
     except Exception as e:
         return {"error": str(e)}
@@ -324,11 +325,12 @@ def find_backlinks_for_note(note_id: str) -> dict[str, Any]:
         paths = find_backlinks(vault, note_id)
         items = []
         for p in paths:
+            title = p.stem
             try:
-                note = parse(p)
-                items.append({"title": note.title, "path": p.name, "note_id": p.stem})
+                title = parse(p).title
             except Exception:
-                items.append({"title": p.stem, "path": p.name, "note_id": p.stem})
+                pass
+            items.append({"title": title, "path": p.name, "note_id": p.stem})
         return {"note_id": note_id, "backlinks": items, "count": len(items)}
     except Exception as e:
         return {"error": str(e)}

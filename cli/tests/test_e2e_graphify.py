@@ -19,7 +19,7 @@ from pkm.search_engine import build_index
 
 def _run(coro):
     """Run an async tool coroutine synchronously."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +138,9 @@ def test_e2e_second_index_run_detects_drift(tmp_vault: VaultConfig) -> None:
     assert len(clusters) >= 1
 
     for c in clusters:
-        assert c["is_new"] is False, f"Cluster {c['id']} still marked is_new on second run"
+        assert c["is_new"] is False, (
+            f"Cluster {c['id']} still marked is_new on second run"
+        )
         assert c["centroid_drift"] is not None
         assert c["centroid_drift"] < 0.01, (
             f"Cluster {c['id']} drift={c['centroid_drift']:.4f} unexpectedly large on unchanged vault"
@@ -161,7 +163,7 @@ def test_e2e_find_surprising_connections_returns_bridge_notes(
     results = find_surprising_connections(tmp_vault, top_n=5)
     assert len(results) > 0, "Expected non-empty surprising connections"
 
-    titles = [r["title"] for r in results]
+    [r["title"] for r in results]
     # The bridge note title comes from frontmatter (id used as stem, title defaults to id)
     note_ids = [r["note_id"] for r in results]
     assert "data-driven-recipes" in note_ids, (
@@ -169,7 +171,9 @@ def test_e2e_find_surprising_connections_returns_bridge_notes(
     )
 
     # Bridge note should be in top-3
-    bridge_rank = next(i for i, r in enumerate(results) if r["note_id"] == "data-driven-recipes")
+    bridge_rank = next(
+        i for i, r in enumerate(results) if r["note_id"] == "data-driven-recipes"
+    )
     assert bridge_rank < 3, f"Bridge note ranked {bridge_rank}, expected top-3"
 
 
@@ -214,7 +218,13 @@ def test_e2e_add_wikilink_creates_related_section(tmp_vault: VaultConfig) -> Non
     # python-basics has no ## Related section
     os.environ["PKM_VAULT_DIR"] = str(tmp_vault.path)
     try:
-        result = _run(add_wikilink(source_note_id="python-basics", target_note_id="machine-learning", description="both cover Python ML ecosystem"))
+        result = _run(
+            add_wikilink(
+                source_note_id="python-basics",
+                target_note_id="machine-learning",
+                description="both cover Python ML ecosystem",
+            )
+        )
         assert "Error" not in result, f"Unexpected error: {result}"
 
         text = (tmp_vault.notes_dir / "python-basics.md").read_text(encoding="utf-8")
@@ -238,7 +248,8 @@ def test_e2e_add_wikilink_appends_to_existing_related(tmp_vault: VaultConfig) ->
     note_path = tmp_vault.notes_dir / "python-basics.md"
     original = note_path.read_text(encoding="utf-8")
     note_path.write_text(
-        original.rstrip("\n") + "\n\n## Related\n\n- [[neural-networks|deep learning basics]]\n",
+        original.rstrip("\n")
+        + "\n\n## Related\n\n- [[neural-networks|deep learning basics]]\n",
         encoding="utf-8",
     )
 
@@ -246,14 +257,24 @@ def test_e2e_add_wikilink_appends_to_existing_related(tmp_vault: VaultConfig) ->
 
     os.environ["PKM_VAULT_DIR"] = str(tmp_vault.path)
     try:
-        result = _run(add_wikilink(source_note_id="python-basics", target_note_id="machine-learning", description="both cover Python ML"))
+        result = _run(
+            add_wikilink(
+                source_note_id="python-basics",
+                target_note_id="machine-learning",
+                description="both cover Python ML",
+            )
+        )
         assert "Error" not in result, f"Unexpected error: {result}"
 
         text = note_path.read_text(encoding="utf-8")
-        assert "- [[neural-networks|deep learning basics]]" in text, "Existing entry removed"
-        assert "- [[machine-learning|both cover Python ML]]" in text, "New entry not added"
+        assert "- [[neural-networks|deep learning basics]]" in text, (
+            "Existing entry removed"
+        )
+        assert "- [[machine-learning|both cover Python ML]]" in text, (
+            "New entry not added"
+        )
 
-        related_pos = text.index("## Related")
+        text.index("## Related")
         assert text.count("## Related") == 1, "Duplicate ## Related sections created"
     finally:
         del os.environ["PKM_VAULT_DIR"]
@@ -280,16 +301,18 @@ def test_e2e_create_hub_note_writes_frontmatter_and_members(
 
     os.environ["PKM_VAULT_DIR"] = str(tmp_vault.path)
     try:
-        result = _run(create_hub_note(
-            cluster_index=cluster_id,
-            title="Test Hub Note",
-            description="This is a test hub note for cluster 0.",
-        ))
+        result = _run(
+            create_hub_note(
+                cluster_index=cluster_id,
+                title="Test Hub Note",
+                description="This is a test hub note for cluster 0.",
+            )
+        )
         assert "Error" not in result, f"Unexpected error: {result}"
         assert "Test Hub Note" in result
 
         # Find created file
-        hub_files = list(tmp_vault.notes_dir.glob("*test-hub*")) + list(
+        list(tmp_vault.notes_dir.glob("*test-hub*")) + list(
             tmp_vault.notes_dir.glob("*Test-Hub*")
         )
         # Also search by any file created after we started
@@ -298,7 +321,9 @@ def test_e2e_create_hub_note_writes_frontmatter_and_members(
             for f in tmp_vault.notes_dir.glob("*.md")
             if "test" in f.stem.lower() or "hub" in f.stem.lower()
         ]
-        assert len(created_files) >= 1, f"Hub note file not found; files: {list(tmp_vault.notes_dir.glob('*.md'))}"
+        assert len(created_files) >= 1, (
+            f"Hub note file not found; files: {list(tmp_vault.notes_dir.glob('*.md'))}"
+        )
 
         hub_path = created_files[0]
         text = hub_path.read_text(encoding="utf-8")
@@ -338,18 +363,24 @@ def test_e2e_list_clusters_matches_hub_note_by_centroid(
     os.environ["PKM_VAULT_DIR"] = str(tmp_vault.path)
     try:
         ml_cluster = next(
-            (c for c in clusters if any(t in c.get("top_tags", []) for t in ("ml", "python", "ai"))),
+            (
+                c
+                for c in clusters
+                if any(t in c.get("top_tags", []) for t in ("ml", "python", "ai"))
+            ),
             clusters[0],
         )
-        hub_result = _run(create_hub_note(
-            cluster_index=ml_cluster["id"],
-            title="ML and Python Index",
-            description=(
-                "Index for machine learning, Python programming, neural networks, deep learning, "
-                "artificial intelligence, scikit-learn, TensorFlow, PyTorch, data science, and "
-                "Python libraries for ML. Entry point for all Python-based machine learning notes."
-            ),
-        ))
+        hub_result = _run(
+            create_hub_note(
+                cluster_index=ml_cluster["id"],
+                title="ML and Python Index",
+                description=(
+                    "Index for machine learning, Python programming, neural networks, deep learning, "
+                    "artificial intelligence, scikit-learn, TensorFlow, PyTorch, data science, and "
+                    "Python libraries for ML. Entry point for all Python-based machine learning notes."
+                ),
+            )
+        )
         assert "Error" not in hub_result, f"create_hub_note failed: {hub_result}"
     finally:
         del os.environ["PKM_VAULT_DIR"]

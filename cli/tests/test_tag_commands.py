@@ -72,34 +72,25 @@ def test_tags_show_existing_content(cli_runner, tmp_vault):
     assert "PostgreSQL" in result.output
 
 
-def test_tags_search_glob(cli_runner, tmp_vault):
-    """pkm tags search 'data*' matches notes with database tag."""
-    result = cli_runner("tags", "search", "data*")
+@pytest.mark.parametrize(
+    "query, expected_in, expected_not_in",
+    [
+        ("data*", ["mvcc", "database-isolation"], []),
+        ("database+postgresql", ["mvcc"], ["database-isolation"]),
+        ("database,untagged", ["mvcc", "isolated"], []),
+    ],
+)
+def test_tags_search_patterns(
+    cli_runner, tmp_vault, query, expected_in, expected_not_in
+):
+    """pkm tags search with various patterns."""
+    result = cli_runner("tags", "search", query)
     assert result.exit_code == 0
-    assert (
-        "mvcc" in result.output.lower() or "database-isolation" in result.output.lower()
-    )
-
-
-def test_tags_search_and(cli_runner, tmp_vault):
-    """pkm tags search 'database+postgresql' only matches the mvcc note."""
-    result = cli_runner("tags", "search", "database+postgresql")
-    assert result.exit_code == 0
-    assert "mvcc" in result.output.lower()
-    # database-isolation only has database, not postgresql — should not appear
-    assert "database-isolation" not in result.output
-
-
-def test_tags_search_or(cli_runner, tmp_vault):
-    """pkm tags search 'database,untagged' matches notes from both tags."""
-    result = cli_runner("tags", "search", "database,untagged")
-    assert result.exit_code == 0
-    # database tag notes
-    assert (
-        "mvcc" in result.output.lower() or "database-isolation" in result.output.lower()
-    )
-    # untagged tag note
-    assert "isolated" in result.output
+    output = result.output.lower()
+    for text in expected_in:
+        assert text in output
+    for text in expected_not_in:
+        assert text not in output
 
 
 def test_tags_search_no_results(cli_runner, tmp_vault):

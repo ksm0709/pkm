@@ -38,10 +38,10 @@ def mock_model(monkeypatch):
 
 
 @pytest.fixture
-def indexed_vault(vault_env, tmp_vault, runner, mock_model):
+def indexed_vault(vault_env: VaultConfig, runner: CliRunner, mock_model) -> VaultConfig:
     """Build search index for the tmp vault before tests."""
     runner.invoke(main, ["index"])
-    return tmp_vault
+    return vault_env
 
 
 # ---------------------------------------------------------------------------

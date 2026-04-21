@@ -9,7 +9,8 @@ from pkm.config import VaultConfig
 
 
 def _get_vault(vault_dir: str) -> VaultConfig:
-    return VaultConfig(name=Path(vault_dir).name, path=Path(vault_dir))
+    path = Path(vault_dir)
+    return VaultConfig(name=path.name, path=path)
 
 
 @tool()
@@ -27,7 +28,7 @@ def find_backlinks_for_note(note_id: str) -> str:
         from pkm.frontmatter import parse
 
         paths = find_backlinks(vault, note_id)
-        items = []
+        items: list[dict[str, str]] = []
         for p in paths:
             try:
                 note = parse(p)
@@ -64,12 +65,14 @@ def add_wikilink(source_note_id: str, target_note_id: str, description: str) -> 
         vault = _get_vault(os.environ.get("PKM_VAULT_DIR", "."))
 
         # Find source note file
-        source_path: Path | None = None
-        for search_dir in (vault.notes_dir, vault.daily_dir):
-            candidate = search_dir / f"{source_note_id}.md"
-            if candidate.exists():
-                source_path = candidate
-                break
+        source_path = next(
+            (
+                search_dir / f"{source_note_id}.md"
+                for search_dir in (vault.notes_dir, vault.daily_dir)
+                if (search_dir / f"{source_note_id}.md").exists()
+            ),
+            None,
+        )
         if source_path is None:
             return f"Error: source note '{source_note_id}' not found."
 

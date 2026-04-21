@@ -160,7 +160,7 @@ def _check_consolidation_trigger(vault, config: dict[str, Any]) -> str | None:
         cooldown_hours = int(consolidation_cfg.get("cooldown_hours", 24))
 
         state = _load_session_state(vault)
-        state["session_count"] = state["session_count"] + 1
+        state["session_count"] += 1
 
         if state["session_count"] < threshold:
             _save_session_state(vault, state)

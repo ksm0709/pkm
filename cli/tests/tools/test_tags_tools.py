@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 
+import pytest
 
 from pkm.tools.tags import list_tags, tag_search
 
@@ -34,33 +35,20 @@ def test_list_tags_count_field(tmp_vault, monkeypatch):
     assert result["count"] == len(result["tags"])
 
 
-def test_tag_search_exact_match(tmp_vault, monkeypatch):
+@pytest.mark.parametrize(
+    "pattern, min_count, expected_mode",
+    [
+        ("database", 2, "exact"),
+        ("data*", 1, "glob"),
+        ("database+postgresql", 1, "AND"),
+        ("database,untagged", 2, "OR"),
+    ],
+)
+def test_tag_search_patterns(tmp_vault, monkeypatch, pattern, min_count, expected_mode):
     monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
-    result = json.loads(_run(tag_search(pattern="database")))
-    assert result["count"] >= 2
-    assert "exact" in result["mode"]
-
-
-def test_tag_search_glob_pattern(tmp_vault, monkeypatch):
-    monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
-    result = json.loads(_run(tag_search(pattern="data*")))
-    assert result["count"] >= 1
-    assert "glob" in result["mode"]
-
-
-def test_tag_search_and_pattern(tmp_vault, monkeypatch):
-    monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
-    result = json.loads(_run(tag_search(pattern="database+postgresql")))
-    # Only mvcc note has both tags
-    assert result["count"] >= 1
-    assert "AND" in result["mode"]
-
-
-def test_tag_search_or_pattern(tmp_vault, monkeypatch):
-    monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
-    result = json.loads(_run(tag_search(pattern="database,untagged")))
-    assert result["count"] >= 2
-    assert "OR" in result["mode"]
+    result = json.loads(_run(tag_search(pattern=pattern)))
+    assert result["count"] >= min_count
+    assert expected_mode in result["mode"]
 
 
 def test_tag_search_no_match_returns_empty(tmp_vault, monkeypatch):

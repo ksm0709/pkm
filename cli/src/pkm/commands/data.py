@@ -18,6 +18,14 @@ def _is_url(source: str) -> bool:
     return source.startswith("http://") or source.startswith("https://")
 
 
+def _format_size(size: int) -> str:
+    if size < 1024:
+        return f"{size} B"
+    if size < 1024 * 1024:
+        return f"{size / 1024:.1f} KB"
+    return f"{size / (1024 * 1024):.1f} MB"
+
+
 @click.group(invoke_without_command=True)
 @click.pass_context
 def data(ctx: click.Context) -> None:
@@ -34,13 +42,7 @@ def data(ctx: click.Context) -> None:
             return
         for f in files:
             if f.is_file():
-                size = f.stat().st_size
-                if size < 1024:
-                    size_str = f"{size} B"
-                elif size < 1024 * 1024:
-                    size_str = f"{size / 1024:.1f} KB"
-                else:
-                    size_str = f"{size / (1024 * 1024):.1f} MB"
+                size_str = _format_size(f.stat().st_size)
                 console.print(f"  {f.name}  [dim]({size_str})[/dim]")
 
 

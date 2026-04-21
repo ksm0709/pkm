@@ -14,6 +14,44 @@ from rich.console import Console
 
 console = Console()
 
+_PKM_TOOLS = {
+    "read_daily_log",
+    "add_daily_log",
+    "read_note",
+    "search_notes",
+    "semantic_search",
+    "add_note",
+    "update_note",
+    "get_graph_context",
+    "vault_stats",
+    "list_stale_notes",
+    "list_orphans",
+    "find_backlinks_for_note",
+    "list_tags",
+    "tag_search",
+    "list_consolidation_candidates",
+    "mark_consolidated",
+    "read_recent_note_activity",
+}
+
+_HIDDEN_TOOLS = {"turn_start", "turn_stop"}
+
+_TASK_ICONS = {
+    "todo": "○",
+    "pending": "○",
+    "in_progress": "▶",
+    "done": "✓",
+    "blocked": "✗",
+}
+
+_TASK_COLORS = {
+    "todo": "dim",
+    "pending": "dim",
+    "in_progress": "bold cyan",
+    "done": "green",
+    "blocked": "red",
+}
+
 
 @click.command("ask")
 @click.argument("query", nargs=-1, required=False)
@@ -184,41 +222,6 @@ def ask_cmd(
             sock.sendall(json.dumps(req).encode("utf-8") + b"\n")
 
             f = sock.makefile("r", encoding="utf-8")
-
-            _PKM_TOOLS = {
-                "read_daily_log",
-                "add_daily_log",
-                "read_note",
-                "search_notes",
-                "semantic_search",
-                "add_note",
-                "update_note",
-                "get_graph_context",
-                "vault_stats",
-                "list_stale_notes",
-                "list_orphans",
-                "find_backlinks_for_note",
-                "list_tags",
-                "tag_search",
-                "list_consolidation_candidates",
-                "mark_consolidated",
-                "read_recent_note_activity",
-            }
-            _HIDDEN_TOOLS = {"turn_start", "turn_stop"}
-            _TASK_ICONS = {
-                "todo": "○",
-                "pending": "○",
-                "in_progress": "▶",
-                "done": "✓",
-                "blocked": "✗",
-            }
-            _TASK_COLORS = {
-                "todo": "dim",
-                "pending": "dim",
-                "in_progress": "bold cyan",
-                "done": "green",
-                "blocked": "red",
-            }
 
             reasoning_buffer = ""
             has_reasoning = False

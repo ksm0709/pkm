@@ -63,7 +63,7 @@ def test_index_command(cli_runner, tmp_vault: VaultConfig, mock_model):
     assert "indexed" in result.output.lower()
 
 
-def test_search_command(cli_runner, tmp_vault: VaultConfig, mock_model):
+def test_search_command(cli_runner, mock_model):
     """pkm search displays a results table."""
     # Build index first
     cli_runner("index")
@@ -79,21 +79,21 @@ def test_search_command(cli_runner, tmp_vault: VaultConfig, mock_model):
     )
 
 
-def test_search_memory_type_filter(cli_runner, tmp_vault: VaultConfig, mock_model):
+def test_search_memory_type_filter(cli_runner, mock_model):
     """pkm search --type accepts memory_type filter without error."""
     cli_runner("index")
     result = cli_runner("search", "MVCC", "--type", "semantic")
     assert result.exit_code == 0, result.output
 
 
-def test_search_min_importance_filter(cli_runner, tmp_vault: VaultConfig, mock_model):
+def test_search_min_importance_filter(cli_runner, mock_model):
     """pkm search --min-importance accepts importance filter without error."""
     cli_runner("index")
     result = cli_runner("search", "MVCC", "--min-importance", "5")
     assert result.exit_code == 0, result.output
 
 
-def test_search_recency_weight(cli_runner, tmp_vault: VaultConfig, mock_model):
+def test_search_recency_weight(cli_runner, mock_model):
     """pkm search --recency-weight accepts recency weight without error."""
     cli_runner("index")
     result = cli_runner("search", "MVCC", "--recency-weight", "0.4")

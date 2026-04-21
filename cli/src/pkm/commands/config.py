@@ -131,13 +131,16 @@ def list_config(output_format: str) -> None:
     """List all configuration settings."""
     data = load_config()
 
-    rows: list[tuple[str, str, str]] = []
     defaults = data.get("defaults", {})
 
-    for key, schema in sorted(CONFIG_SCHEMA.items()):
-        internal_key = schema["internal_key"]
-        val = defaults.get(internal_key, "not set")
-        rows.append((key, str(val), schema["description"]))
+    rows = [
+        (
+            key,
+            str(defaults.get(schema["internal_key"], "not set")),
+            schema["description"],
+        )
+        for key, schema in sorted(CONFIG_SCHEMA.items())
+    ]
 
     if output_format == "json":
         print(

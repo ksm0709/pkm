@@ -8,7 +8,8 @@ from pkm.config import VaultConfig
 
 
 def _get_vault(vault_dir: str) -> VaultConfig:
-    return VaultConfig(name=Path(vault_dir).name, path=Path(vault_dir))
+    path = Path(vault_dir)
+    return VaultConfig(name=path.name, path=path)
 
 
 @tool()
@@ -23,7 +24,7 @@ def list_consolidation_candidates() -> str:
         from pkm.commands.consolidate import _list_candidate_dates
 
         dates = _list_candidate_dates(vault)
-        items = []
+        items: list[dict[str, int | str]] = []
         for date_str in dates:
             md_file = vault.daily_dir / f"{date_str}.md"
             entry_count = 0
@@ -70,10 +71,11 @@ def mark_consolidated(
         if not note_path.exists():
             return f"Error: Daily note not found: {date_str}.md"
 
-        missing = []
-        for nid in distilled_note_ids:
-            if not (vault.notes_dir / f"{nid}.md").exists():
-                missing.append(nid)
+        missing = [
+            nid
+            for nid in distilled_note_ids
+            if not (vault.notes_dir / f"{nid}.md").exists()
+        ]
         if missing:
             return f"Error: Distilled note IDs not found in vault: {', '.join(missing)}"
 

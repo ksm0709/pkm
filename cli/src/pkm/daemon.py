@@ -1,19 +1,28 @@
 """Background daemon for fast semantic search and LLM task orchestration."""
 
 import asyncio
+import datetime
 import fcntl
+import hashlib
+import importlib.metadata as meta
 import json
+import logging
 import os
+import socket
 import sys
 import time
 from dataclasses import asdict, dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, Any, Optional
+from pathlib import Path as _Path
+from typing import Dict, Any, Optional, cast
 
+import networkx as nx
+import yaml
+
+from pkm.config import discover_vaults, get_vault
+from pkm.frontmatter import parse
 from pkm.search_engine import VectorIndex, IndexEntry, search, _require_transformers
-
-import logging
 
 SOCKET_PATH = Path.home() / ".config" / "pkm" / "daemon.sock"
 LOCK_PATH = Path.home() / ".config" / "pkm" / "daemon.lock"
@@ -63,11 +72,9 @@ class DaemonState:
 
 
 @lru_cache(maxsize=4)
-def get_cached_graph(graph_path: str, graph_mtime: float):
+def get_cached_graph(graph_path: str, graph_mtime: float) -> nx.DiGraph | None:
     for _ in range(3):
         try:
-            import networkx as nx
-
             path = Path(graph_path)
             if not path.exists():
                 return None
@@ -224,8 +231,6 @@ class LLMWorkerProxy:
                             lambda: litellm.completion(model=model, messages=messages),
                         )
 
-                        from typing import cast, Any
-
                         response_any = cast(Any, response)
                         content = response_any.choices[0].message.content
                         usage = getattr(response_any, "usage", None)
@@ -337,8 +342,6 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                 writer.write(b"[]\n")
                 return
 
-            from pkm.config import discover_vaults
-
             vaults = discover_vaults()
             if vault_name and vault_name in vaults:
                 vault = vaults[vault_name]
@@ -393,8 +396,6 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                 writer.write(b'{"error": "graph not ready"}\n')
                 return
 
-            from pkm.config import discover_vaults
-
             vaults = discover_vaults()
             if vault_name and vault_name in vaults:
                 vault = vaults[vault_name]
@@ -417,8 +418,6 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                 writer.write(b'{"error": "note not found in graph"}\n')
                 return
 
-            import networkx as nx
-
             subgraph = nx.ego_graph(graph, note_id, radius=depth)
             context = nx.node_link_data(subgraph)
 
@@ -427,8 +426,6 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
 
         elif action in ("update_index", "RELOAD_INDEX"):
             vault_name = req.get("vault_name")
-
-            from pkm.config import discover_vaults
 
             vaults = discover_vaults()
             if vault_name and vault_name in vaults:
@@ -480,8 +477,6 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
             for k, v in env_vars.items():
                 os.environ[k] = v
 
-            from pkm.config import discover_vaults
-
             vaults = discover_vaults()
             if vault_name and vault_name in vaults:
                 vault = vaults[vault_name]
@@ -506,9 +501,6 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                         ),
                     )
 
-                    import yaml
-                    from pkm.frontmatter import parse
-
                     graph_depth = req.get("graph_depth", 0)
 
                     unique_note_ids = set()
@@ -528,8 +520,6 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                             graph = get_cached_graph(str(graph_path), graph_mtime)
 
                             if graph:
-                                import networkx as nx
-
                                 for res in results:
                                     if res.note_id in graph:
                                         subgraph = nx.ego_graph(
@@ -659,7 +649,6 @@ async def process_background_tasks():
 def _on_shutdown() -> None:
     """Auto-consolidate eligible daily notes across all vaults on daemon exit."""
     try:
-        from pkm.config import discover_vaults
         from pkm.commands.consolidate import (
             _list_candidate_dates,
             _parse_frontmatter,
@@ -720,8 +709,6 @@ def _preload_model():
         logger.exception("Failed to pre-load model")
 
     try:
-        from pkm.config import discover_vaults
-
         vaults = discover_vaults()
         for vault in vaults.values():
             graph_path = _resolve_graph_path(vault, "enriched")
@@ -748,9 +735,6 @@ def _reload_vault_caches(vault):
 
 
 async def version_checker(server: asyncio.Server):
-    import importlib.metadata as meta
-    from pathlib import Path as _Path
-
     try:
         dist = meta.distribution("pkm")
         metadata_file = _Path(str(dist.locate_file("METADATA")))
@@ -778,9 +762,11 @@ async def version_checker(server: asyncio.Server):
 
 
 async def maintenance_checker():
-    import datetime
-
     last_run_date = None
+    hostname = socket.gethostname()
+    # Deterministic 0-29 min offset per host so machines don't pile up at 2:00 AM.
+    # Same host always gets the same slot; no shared state needed.
+    jitter_min = int(hashlib.md5(hostname.encode()).hexdigest(), 16) % 30
 
     while True:
         await asyncio.sleep(60)
@@ -788,13 +774,34 @@ async def maintenance_checker():
         now = datetime.datetime.now()
         current_date = now.date()
 
-        if now.hour == 2 and last_run_date != current_date:
+        if now.hour == 2 and now.minute == jitter_min and last_run_date != current_date:
             if task_queue:
-                from pkm.config import discover_vaults
-
                 vaults = discover_vaults()
                 ts = int(now.timestamp())
                 for vault_name, vault in vaults.items():
+                    # Belt-and-suspenders: check vault-level marker written by whichever
+                    # machine ran first today (marker lives inside the synced vault).
+                    marker_path = vault.pkm_dir / "zettel-last-run"
+                    if marker_path.exists():
+                        try:
+                            data = json.loads(marker_path.read_text())
+                            if data.get("date") == str(current_date):
+                                logger.info(
+                                    "Zettelkasten maintenance already claimed by '%s' today, skipping vault '%s'",
+                                    data.get("host", "unknown"),
+                                    vault_name,
+                                )
+                                continue
+                        except Exception:
+                            pass
+
+                    # Claim the slot before pushing the task so other machines that
+                    # sync within the next few minutes will see today's marker and skip.
+                    vault.pkm_dir.mkdir(parents=True, exist_ok=True)
+                    marker_path.write_text(
+                        json.dumps({"date": str(current_date), "host": hostname})
+                    )
+
                     task = {
                         "type": "task",
                         "id": f"maint_{vault_name}_{ts}",
@@ -803,7 +810,11 @@ async def maintenance_checker():
                     }
                     task_queue.push(task)
                     logger.info(
-                        f"Scheduled Zettelkasten maintenance for vault '{vault_name}': {task['id']}"
+                        "Scheduled Zettelkasten maintenance for vault '%s': %s (host=%s, slot=2:%02d)",
+                        vault_name,
+                        task["id"],
+                        hostname,
+                        jitter_min,
                     )
             last_run_date = current_date
 
@@ -833,14 +844,10 @@ async def async_main():
 
     worker_proxy = LLMWorkerProxy()
 
-    from pkm.config import get_vault
-
     try:
         active_vault = get_vault()
         vault_dir = str(active_vault.path)
     except Exception:
-        from pkm.config import discover_vaults
-
         vaults = discover_vaults()
         vault_dir = str(next(iter(vaults.values())).path) if vaults else "."
 

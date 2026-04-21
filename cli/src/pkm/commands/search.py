@@ -30,11 +30,9 @@ def _get_description(result) -> str | None:
         from pkm.frontmatter import parse as parse_note
 
         note = parse_note(Path(result.path))
-        desc = note.meta.get("description")
-        if desc:
+        if desc := note.meta.get("description"):
             return str(desc)
-        body = note.body.strip()
-        if body:
+        if body := note.body.strip():
             return body[:200]
     except Exception:
         pass
@@ -51,21 +49,20 @@ def format_search_results(
 ) -> None:
     """Shared helper to format and print search results as JSON or table."""
     if output_format == "json":
-        items = []
-        for r in results:
-            items.append(
-                {
-                    "rank": r.rank,
-                    "title": r.title,
-                    "description": _get_description(r),
-                    "score": round(r.score, 6),
-                    "importance": getattr(r, "importance", None),
-                    "memory_type": getattr(r, "memory_type", None),
-                    "tags": r.tags if r.tags else [],
-                    "note_id": r.note_id,
-                    "graph_context": getattr(r, "graph_context", None),
-                }
-            )
+        items = [
+            {
+                "rank": r.rank,
+                "title": r.title,
+                "description": _get_description(r),
+                "score": round(r.score, 6),
+                "importance": getattr(r, "importance", None),
+                "memory_type": getattr(r, "memory_type", None),
+                "tags": r.tags if r.tags else [],
+                "note_id": r.note_id,
+                "graph_context": getattr(r, "graph_context", None),
+            }
+            for r in results
+        ]
         payload: dict = {
             "query": query,
             "result_count": len(results),

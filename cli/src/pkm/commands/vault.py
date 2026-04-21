@@ -87,18 +87,17 @@ def list_vaults(output_format: str) -> None:
         active_source = ""
 
     if output_format == "json":
-        items = []
-        for name, vc in vaults.items():
-            items.append(
-                {
-                    "name": name,
-                    "type": "git" if name.startswith("@") else "local",
-                    "path": str(vc.path),
-                    "notes": _count_md(vc.notes_dir),
-                    "dailies": _count_md(vc.daily_dir),
-                    "active": name == active_name,
-                }
-            )
+        items = [
+            {
+                "name": name,
+                "type": "git" if name.startswith("@") else "local",
+                "path": str(vc.path),
+                "notes": _count_md(vc.notes_dir),
+                "dailies": _count_md(vc.daily_dir),
+                "active": name == active_name,
+            }
+            for name, vc in vaults.items()
+        ]
         print(
             json.dumps(
                 {
@@ -398,11 +397,11 @@ def _merge_daily_notes(dst_file: Path, src_file: Path) -> None:
 
     # Merge tags (union, deduplicated, preserve order)
     seen: set[str] = set()
-    merged_tags: list[str] = []
-    for tag in dst_note.tags + src_note.tags:
-        if tag and tag not in seen:
-            seen.add(tag)
-            merged_tags.append(tag)
+    merged_tags: list[str] = [
+        tag
+        for tag in dst_note.tags + src_note.tags
+        if tag and tag not in seen and not seen.add(tag)
+    ]
 
     # Merge frontmatter: dst takes precedence, add missing keys from src
     merged_meta = dict(src_note.meta)

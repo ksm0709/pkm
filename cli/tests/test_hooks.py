@@ -29,20 +29,23 @@ def vault_env(tmp_vault: VaultConfig, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_hook_run_session_start_plain(runner, vault_env):
-    result = runner.invoke(main, ["hook", "run", "session-start", "--format", "plain"])
+@pytest.mark.parametrize(
+    "fmt, expected_prefix",
+    [
+        ("plain", ""),
+        ("system-reminder", "<system-reminder>"),
+    ],
+)
+def test_hook_run_session_start_formats(runner, vault_env, fmt, expected_prefix):
+    """session-start outputs correctly based on format."""
+    result = runner.invoke(main, ["hook", "run", "session-start", "--format", fmt])
     assert result.exit_code == 0
-    assert "<system-reminder>" not in result.output
-    assert len(result.output.strip()) > 0
-
-
-def test_hook_run_session_start_system_reminder(runner, vault_env):
-    result = runner.invoke(
-        main, ["hook", "run", "session-start", "--format", "system-reminder"]
-    )
-    assert result.exit_code == 0
-    assert result.output.startswith("<system-reminder>")
-    assert result.output.strip().endswith("</system-reminder>")
+    if expected_prefix:
+        assert result.output.startswith(expected_prefix)
+        assert result.output.strip().endswith("</system-reminder>")
+    else:
+        assert "<system-reminder>" not in result.output
+        assert len(result.output.strip()) > 0
 
 
 def test_hook_run_session_start_no_recent_work_context(runner, vault_env, tmp_vault):
@@ -71,10 +74,24 @@ def test_hook_run_session_start_ignores_irrelevant_options(runner, vault_env):
 # ---------------------------------------------------------------------------
 
 
-def test_hook_run_turn_start_includes_search_instruction(runner, vault_env):
-    result = runner.invoke(main, ["hook", "run", "turn-start", "--format", "plain"])
+@pytest.mark.parametrize(
+    "fmt, expected_prefix, expected_content",
+    [
+        ("plain", "", "pkm search"),
+        ("system-reminder", "<system-reminder>", ""),
+    ],
+)
+def test_hook_run_turn_start_formats(
+    runner, vault_env, fmt, expected_prefix, expected_content
+):
+    """turn-start outputs correctly based on format."""
+    result = runner.invoke(main, ["hook", "run", "turn-start", "--format", fmt])
     assert result.exit_code == 0
-    assert "pkm search" in result.output
+    if expected_prefix:
+        assert result.output.startswith(expected_prefix)
+        assert result.output.strip().endswith("</system-reminder>")
+    if expected_content:
+        assert expected_content in result.output
 
 
 def test_hook_run_turn_start_no_format_json_mention(runner, vault_env):
@@ -82,15 +99,6 @@ def test_hook_run_turn_start_no_format_json_mention(runner, vault_env):
     result = runner.invoke(main, ["hook", "run", "turn-start"])
     assert result.exit_code == 0
     assert "--format json" not in result.output
-
-
-def test_hook_run_turn_start_system_reminder(runner, vault_env):
-    result = runner.invoke(
-        main, ["hook", "run", "turn-start", "--format", "system-reminder"]
-    )
-    assert result.exit_code == 0
-    assert result.output.startswith("<system-reminder>")
-    assert result.output.strip().endswith("</system-reminder>")
 
 
 def test_hook_run_turn_start_with_session(runner, vault_env):
@@ -104,18 +112,12 @@ def test_hook_run_turn_start_with_session(runner, vault_env):
 # ---------------------------------------------------------------------------
 
 
-def test_hook_run_turn_end_always_emits(runner, vault_env):
-    """turn-end must emit preservation guide even without --summary."""
+def test_hook_run_turn_end_default_output(runner, vault_env):
+    """turn-end must emit preservation guide and save commands."""
     result = runner.invoke(main, ["hook", "run", "turn-end"])
     assert result.exit_code == 0
     assert len(result.output.strip()) > 0
     assert "pkm" in result.output.lower()
-
-
-def test_hook_run_turn_end_includes_save_commands(runner, vault_env):
-    result = runner.invoke(main, ["hook", "run", "turn-end"])
-    assert result.exit_code == 0
-    assert "pkm" in result.output
     assert "/pkm" in result.output  # references skill
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -48,7 +49,7 @@ def _make_vault(tmp_path: Path) -> VaultConfig:
     return VaultConfig(name="vault", path=vault_path)
 
 
-def _write_enriched(pkm_dir: Path, clusters: list[dict]) -> None:
+def _write_enriched(pkm_dir: Path, clusters: list[dict[str, Any]]) -> None:
     """Write a minimal graph_enriched.json with given clusters."""
     data = {
         "graph_tier": "enriched",

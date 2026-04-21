@@ -6,6 +6,7 @@ import inspect
 import json
 import unittest.mock as mock
 
+import pytest
 
 from pkm.search_engine import get_graph_context_via_daemon
 from pkm.tools.search import get_graph_context
@@ -62,7 +63,8 @@ def test_via_daemon_passes_tier_in_request(tmp_path):
     assert captured_data["request"]["tier"] == "enriched"
 
 
-def test_via_daemon_returns_none_when_no_graph(tmp_path):
+@pytest.mark.parametrize("tier", ["enriched", "structural"])
+def test_via_daemon_returns_none_when_no_graph(tmp_path, tier):
     """get_graph_context_via_daemon should return None when neither graph file exists."""
     from pkm.config import VaultConfig
 
@@ -72,10 +74,5 @@ def test_via_daemon_returns_none_when_no_graph(tmp_path):
 
     vault = VaultConfig(name="test", path=vault_path)
 
-    result = get_graph_context_via_daemon("some-note", vault, depth=1, tier="enriched")
+    result = get_graph_context_via_daemon("some-note", vault, depth=1, tier=tier)
     assert result is None
-
-    result_structural = get_graph_context_via_daemon(
-        "some-note", vault, depth=1, tier="structural"
-    )
-    assert result_structural is None

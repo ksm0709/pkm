@@ -5,6 +5,8 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 
+import pytest
+
 from pkm.config import (
     VaultSuggestion,
     discover_vaults,
@@ -14,30 +16,24 @@ from pkm.config import (
 )
 
 
-def test_parse_https_remote(tmp_path, monkeypatch):
-    """get_git_vault_name parses https remote URL into @owner--repo format."""
+@pytest.mark.parametrize(
+    "stdout, expected",
+    [
+        ("https://github.com/taeho/pkm.git\n", "@taeho--pkm"),
+        ("git@github.com:taeho/pkm.git\n", "@taeho--pkm"),
+    ],
+)
+def test_parse_remote(tmp_path, monkeypatch, stdout, expected):
+    """get_git_vault_name parses remote URL into @owner--repo format."""
     monkeypatch.setattr("pkm.config._find_git_root", lambda cwd=None: tmp_path)
     mock_result = MagicMock()
     mock_result.returncode = 0
-    mock_result.stdout = "https://github.com/taeho/pkm.git\n"
+    mock_result.stdout = stdout
 
     with patch("subprocess.run", return_value=mock_result):
         name = get_git_vault_name()
 
-    assert name == "@taeho--pkm"
-
-
-def test_parse_ssh_remote(tmp_path, monkeypatch):
-    """get_git_vault_name parses SSH remote URL into @owner--repo format."""
-    monkeypatch.setattr("pkm.config._find_git_root", lambda cwd=None: tmp_path)
-    mock_result = MagicMock()
-    mock_result.returncode = 0
-    mock_result.stdout = "git@github.com:taeho/pkm.git\n"
-
-    with patch("subprocess.run", return_value=mock_result):
-        name = get_git_vault_name()
-
-    assert name == "@taeho--pkm"
+    assert name == expected
 
 
 def test_parse_no_remote(tmp_path, monkeypatch):

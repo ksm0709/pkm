@@ -30,7 +30,7 @@ def get_changelog(latest_n: int | None = None, since_version: str | None = None)
     if len(sections) < 3:
         return ""
 
-    parsed = []
+    parsed: list[tuple[str, str]] = []
     for i in range(1, len(sections), 2):
         header = "## " + sections[i]
         body = sections[i + 1].strip()
@@ -43,15 +43,11 @@ def get_changelog(latest_n: int | None = None, since_version: str | None = None)
         since_v = (
             since_version if since_version.startswith("v") else f"v{since_version}"
         )
-        idx = -1
+
         for i, (h, b) in enumerate(parsed):
             if since_v in h:
-                idx = i
-                break
-
-        if idx > 0:
-            return "\n\n".join(f"{h}\n\n{b}" for h, b in parsed[:idx])
-        elif idx == 0:
-            return "No new changes."
+                if i > 0:
+                    return "\n\n".join(f"{h}\n\n{b}" for h, b in parsed[:i])
+                return "No new changes."
 
     return ""

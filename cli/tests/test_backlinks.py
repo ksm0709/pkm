@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import pytest
+import json
+
 from click.testing import CliRunner
 
 from pkm.cli import main
@@ -34,13 +36,11 @@ def cli_runner(monkeypatch, tmp_vault):
 
 def test_note_show_displays_backlinks(cli_runner, tmp_vault):
     """note show mvcc returns JSON with backlinks array containing linked note titles."""
-    import json as _json
-
     result = cli_runner("note", "show", "mvcc")
     assert result.exit_code == 0
     # New JSON-first output: backlinks appear in the notes[].backlinks array
     json_text = result.output.split("\n* ")[0].strip()
-    data = _json.loads(json_text)
+    data = json.loads(json_text)
     if data["notes"]:
         backlinks = data["notes"][0].get("backlinks", [])
         all_text = result.output.lower()
@@ -57,12 +57,10 @@ def test_note_show_displays_backlinks(cli_runner, tmp_vault):
 
 def test_note_show_backlink_with_description(cli_runner, tmp_vault):
     """note show mvcc JSON output includes backlinks array with note titles."""
-    import json as _json
-
     result = cli_runner("note", "show", "mvcc")
     assert result.exit_code == 0
     json_text = result.output.split("\n* ")[0].strip()
-    data = _json.loads(json_text)
+    data = json.loads(json_text)
     if data["notes"]:
         assert "backlinks" in data["notes"][0]
         assert isinstance(data["notes"][0]["backlinks"], list)

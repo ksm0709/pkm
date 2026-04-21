@@ -56,9 +56,10 @@ def search_notes(query: str) -> str:
         if not matches:
             return f"No notes found matching '{query}'"
 
-        results = []
-        for n in matches[:5]:
-            results.append(f"Title: {n.title}\nID: {n.id}\nContent:\n{n.body[:200]}...")
+        results = [
+            f"Title: {n.title}\nID: {n.id}\nContent:\n{n.body[:200]}..."
+            for n in matches[:5]
+        ]
         return "\n\n".join(results)
     except Exception as e:
         return f"Error searching notes: {str(e)}"

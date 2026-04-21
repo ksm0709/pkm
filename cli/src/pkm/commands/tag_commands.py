@@ -60,9 +60,7 @@ def count_all_tags(vault: VaultConfig) -> list[tuple[str, int]]:
         for md_file in d.glob("*.md"):
             try:
                 note = parse(md_file)
-                for tag in note.tags:
-                    if tag:
-                        tag_counter[tag] += 1
+                tag_counter.update(tag for tag in note.tags if tag)
             except Exception:
                 pass
     return tag_counter.most_common()

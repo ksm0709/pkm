@@ -31,9 +31,10 @@ def orphans(ctx: click.Context, output_format: str) -> None:
     orphan_paths = find_orphans(vault)
 
     if output_format == "json":
-        items = []
-        for path in orphan_paths:
-            items.append({"filename": path.name, "tags": _extract_tags(path)})
+        items = [
+            {"filename": path.name, "tags": _extract_tags(path)}
+            for path in orphan_paths
+        ]
         print(
             json.dumps(
                 {"orphans": items, "count": len(items)}, ensure_ascii=False, indent=2

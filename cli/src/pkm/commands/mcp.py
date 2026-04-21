@@ -22,9 +22,7 @@ def mcp_cmd(ctx: click.Context, vault_name: str | None) -> None:
 
     if vault_name:
         vault = get_vault(vault_name)
-    elif ctx.obj and ctx.obj.get("vault"):
-        vault = ctx.obj["vault"]
     else:
-        vault = get_vault(None)
+        vault = ctx.obj.get("vault") if ctx.obj else get_vault(None)
 
     run_server(vault)

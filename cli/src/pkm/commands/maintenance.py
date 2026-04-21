@@ -32,26 +32,22 @@ def compute_vault_stats(vault: VaultConfig) -> dict:
     )
 
     # Count tasks (excluding archive/)
-    task_count = 0
-    if vault.tasks_dir.is_dir():
-        for md_file in vault.tasks_dir.glob("*.md"):
-            task_count += 1
+    task_count = (
+        len(list(vault.tasks_dir.glob("*.md"))) if vault.tasks_dir.is_dir() else 0
+    )
 
     # Count orphans
     orphan_count = len(find_orphans(vault))
 
     # Count unique tags
     tag_set: set[str] = set()
-    dirs = [vault.notes_dir, vault.daily_dir]
-    for d in dirs:
+    for d in (vault.notes_dir, vault.daily_dir):
         if not d.is_dir():
             continue
         for md_file in d.glob("*.md"):
             try:
                 note = parse(md_file)
-                for tag in note.tags:
-                    if tag:
-                        tag_set.add(tag)
+                tag_set.update(tag for tag in note.tags if tag)
             except Exception:
                 pass
 
@@ -60,8 +56,7 @@ def compute_vault_stats(vault: VaultConfig) -> dict:
     if vault.notes_dir.is_dir():
         for md_file in vault.notes_dir.glob("*.md"):
             try:
-                text = md_file.read_text(encoding="utf-8")
-                total_links += len(extract_links(text))
+                total_links += len(extract_links(md_file.read_text(encoding="utf-8")))
             except Exception:
                 pass
     avg_links = total_links / note_count if note_count > 0 else 0.0

@@ -12,6 +12,8 @@ from click.testing import CliRunner
 
 from pkm.cli import main
 from pkm.config import VaultConfig
+from pkm.daemon import _on_shutdown
+from pkm.commands.consolidate import _parse_frontmatter
 
 
 @pytest.fixture
@@ -50,9 +52,6 @@ def vault_with_dailies(clean_vault: VaultConfig) -> VaultConfig:
 class TestOnShutdown:
     def test_auto_consolidates_eligible_dailies(self, vault_with_dailies):
         """_on_shutdown should mark eligible daily notes as consolidated."""
-        from pkm.daemon import _on_shutdown
-        from pkm.commands.consolidate import _parse_frontmatter
-
         with patch(
             "pkm.config.discover_vaults",
             return_value={"v": vault_with_dailies},
@@ -69,8 +68,6 @@ class TestOnShutdown:
 
     def test_writes_zettel_pending_signal(self, vault_with_dailies):
         """Should write .pkm/zettel-pending with marked count."""
-        from pkm.daemon import _on_shutdown
-
         with patch(
             "pkm.config.discover_vaults",
             return_value={"v": vault_with_dailies},
@@ -85,8 +82,6 @@ class TestOnShutdown:
 
     def test_skips_today(self, vault_with_dailies):
         """Today's daily should NOT be consolidated."""
-        from pkm.daemon import _on_shutdown
-
         today = date.today().isoformat()
         (vault_with_dailies.daily_dir / f"{today}.md").write_text(
             f"---\nid: {today}\ntags:\n  - daily-notes\n---\n- [09:00] Today\n",
@@ -99,8 +94,6 @@ class TestOnShutdown:
         ):
             _on_shutdown()
 
-        from pkm.commands.consolidate import _parse_frontmatter
-
         today_text = (vault_with_dailies.daily_dir / f"{today}.md").read_text(
             encoding="utf-8"
         )
@@ -108,8 +101,6 @@ class TestOnShutdown:
 
     def test_skips_already_consolidated(self, vault_with_dailies):
         """Already-consolidated notes should not be double-marked."""
-        from pkm.daemon import _on_shutdown
-
         d = (date.today() - timedelta(days=1)).isoformat()
         (vault_with_dailies.daily_dir / f"{d}.md").write_text(
             f"---\nid: {d}\nconsolidated: true\ntags:\n  - daily-notes\n---\n- Done\n",
@@ -128,8 +119,6 @@ class TestOnShutdown:
 
     def test_no_signal_when_nothing_to_mark(self, clean_vault):
         """No signal file if no eligible dailies exist."""
-        from pkm.daemon import _on_shutdown
-
         with patch(
             "pkm.config.discover_vaults",
             return_value={"v": clean_vault},

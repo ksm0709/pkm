@@ -16,17 +16,13 @@ _CODE_BLOCK = re.compile(r"```.*?```", re.DOTALL)
 def extract_links(text: str) -> list[str]:
     """Extract all wikilink targets from text, deduped, code blocks excluded."""
     text = _CODE_BLOCK.sub("", text)
-    targets = []
-    seen: set[str] = set()
-    for match in _LINK_PATTERN.finditer(text):
-        target = match.group(1).strip()
-        # Strip .md extension
-        if target.endswith(".md"):
-            target = target[:-3]
-        if target not in seen:
-            seen.add(target)
-            targets.append(target)
-    return targets
+
+    def _clean_target(target: str) -> str:
+        target = target.strip()
+        return target[:-3] if target.endswith(".md") else target
+
+    targets = [_clean_target(m.group(1)) for m in _LINK_PATTERN.finditer(text)]
+    return list(dict.fromkeys(targets))
 
 
 def resolve_link(vault: VaultConfig, link: str) -> Path | None:
@@ -41,10 +37,7 @@ def resolve_link(vault: VaultConfig, link: str) -> Path | None:
         vault.tags_dir / f"{link}.md",
         vault.tags_dir / link,
     ]
-    for path in candidates:
-        if path.exists():
-            return path
-    return None
+    return next((path for path in candidates if path.exists()), None)
 
 
 def find_backlinks(vault: VaultConfig, note_id: str) -> list[Path]:
@@ -53,17 +46,16 @@ def find_backlinks(vault: VaultConfig, note_id: str) -> list[Path]:
     Note: tags_dir is intentionally excluded. Tag notes are lazy-created,
     so including them would make backlink counts non-deterministic.
     """
-    result: list[Path] = []
-    dirs = [vault.daily_dir, vault.notes_dir, vault.tasks_dir]
-    for d in dirs:
-        if not d.is_dir():
-            continue
-        for md_file in sorted(d.rglob("*.md")):
-            text = md_file.read_text(encoding="utf-8")
-            links = extract_links(text)
-            if note_id in links:
-                result.append(md_file)
-    return result
+    dirs = [
+        d for d in (vault.daily_dir, vault.notes_dir, vault.tasks_dir) if d.is_dir()
+    ]
+
+    return [
+        md_file
+        for d in dirs
+        for md_file in sorted(d.rglob("*.md"))
+        if note_id in extract_links(md_file.read_text(encoding="utf-8"))
+    ]
 
 
 def count_backlinks(vault: VaultConfig) -> dict[str, int]:
@@ -97,13 +89,10 @@ def find_orphans(vault: VaultConfig) -> list[Path]:
         return []
 
     backlink_counts = count_backlinks(vault)
-    orphans: list[Path] = []
 
-    for md_file in sorted(vault.notes_dir.glob("*.md")):
-        text = md_file.read_text(encoding="utf-8")
-        outbound = extract_links(text)
-        inbound_count = backlink_counts.get(md_file.stem, 0)
-        if not outbound and inbound_count == 0:
-            orphans.append(md_file)
-
-    return orphans
+    return [
+        md_file
+        for md_file in sorted(vault.notes_dir.glob("*.md"))
+        if not extract_links(md_file.read_text(encoding="utf-8"))
+        and backlink_counts.get(md_file.stem, 0) == 0
+    ]

@@ -7,7 +7,8 @@ from pkm.commands.daily import add_daily_entry
 
 
 def _get_vault(vault_dir: str) -> VaultConfig:
-    return VaultConfig(name=Path(vault_dir).name, path=Path(vault_dir))
+    path = Path(vault_dir)
+    return VaultConfig(name=path.name, path=path)
 
 
 @tool()

@@ -64,16 +64,14 @@ def list_orphans() -> str:
         from pkm.wikilinks import find_orphans
 
         orphan_paths = find_orphans(vault)
-        items = []
-        for path in orphan_paths:
-            note = parse(path)
-            items.append(
-                {
-                    "filename": path.name,
-                    "note_id": path.stem,
-                    "tags": note.tags,
-                }
-            )
+        items = [
+            {
+                "filename": path.name,
+                "note_id": path.stem,
+                "tags": parse(path).tags,
+            }
+            for path in orphan_paths
+        ]
         return json.dumps({"orphans": items, "count": len(items)}, indent=2)
     except Exception as e:
         return f"Error: {e}"

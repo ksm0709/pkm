@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+import datetime
 import json
+import logging
+import os
 import re as _re
+import socket
+import sqlite3
+import subprocess
+import sys
 import time
 from dataclasses import dataclass, field, asdict
+from datetime import timezone
 from pathlib import Path
 
 import click
@@ -79,8 +87,7 @@ def _extract_created_at(
     if ca := frontmatter_data.get("created_at"):
         return str(ca)
     # Try YYYY-MM-DD from filename
-    match = _re.match(r"(\d{4}-\d{2}-\d{2})", note_path.stem)
-    if match:
+    if match := _re.match(r"(\d{4}-\d{2}-\d{2})", note_path.stem):
         return f"{match.group(1)}T00:00:00+00:00"
     return None
 
@@ -91,9 +98,7 @@ def build_index(
     """Build a vector index for all notes and daily notes in the vault."""
     model = _require_transformers(model_name)
 
-    import sqlite3
     import numpy as np
-    import os
     from pkm.graph import build_ast_and_graph
 
     build_ast_and_graph(vault)
@@ -201,8 +206,6 @@ def build_index(
 
     vault.pkm_dir.mkdir(parents=True, exist_ok=True)
 
-    import sqlite3
-
     db_path = vault.pkm_dir / "vector.db"
     try:
         with sqlite3.connect(db_path) as conn:
@@ -219,8 +222,6 @@ def build_index(
         pass
 
     index_path = vault.pkm_dir / "index.json"
-
-    import datetime
 
     def _default(obj: object) -> str:
         if isinstance(obj, (datetime.date, datetime.datetime)):
@@ -252,8 +253,6 @@ def build_index(
         threshold = float(cfg.get("graph-similarity-threshold", 0.75))
         build_enriched_graph(vault, similarity_threshold=threshold)
     except Exception as e:
-        import logging
-
         logging.getLogger(__name__).warning(
             f"Enriched graph build failed; structural graph still available: {e}"
         )
@@ -297,11 +296,10 @@ def search(
     model = _require_transformers(model_name)
 
     import numpy as np
-    from datetime import datetime, timezone
 
     query_emb = model.encode([query], show_progress_bar=False)[0]
 
-    now = datetime.now(timezone.utc)
+    now = datetime.datetime.now(timezone.utc)
 
     scored: list[tuple[float, IndexEntry]] = []
     for entry in index.entries:
@@ -329,7 +327,7 @@ def search(
         recency_score = 1.0
         if recency_weight > 0 and entry.created_at:
             try:
-                created = datetime.fromisoformat(entry.created_at)
+                created = datetime.datetime.fromisoformat(entry.created_at)
                 if created.tzinfo is None:
                     created = created.replace(tzinfo=timezone.utc)
                 hours_ago = (now - created).total_seconds() / 3600
@@ -433,10 +431,6 @@ def search_via_daemon(
     recency_weight: float = 0.0,
 ) -> list[SearchResult] | None:
     """Attempt to search via the background ML daemon. Returns None if daemon is unavailable."""
-    import socket
-    import subprocess
-    import sys
-
     index_path = vault.pkm_dir / "index.json"
     if not index_path.exists():
         return None
@@ -493,10 +487,6 @@ def search_via_daemon(
 
 def update_index_via_daemon(vault: VaultConfig) -> bool:
     """Attempt to update index via the background ML daemon. Returns True if successful."""
-    import socket
-    import subprocess
-    import sys
-
     sock_path = Path.home() / ".config" / "pkm" / "daemon.sock"
 
     try:
@@ -566,10 +556,6 @@ def is_index_stale(vault: VaultConfig) -> bool:
 def get_graph_context_via_daemon(
     note_id: str, vault, depth: int = 1, tier: str = "enriched"
 ) -> dict | None:
-    import socket
-    import json
-    from pathlib import Path
-
     graph_path = vault.pkm_dir / (
         "graph_enriched.json" if tier == "enriched" else "graph.json"
     )

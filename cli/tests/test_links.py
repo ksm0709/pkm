@@ -29,7 +29,7 @@ def cli_runner(runner, tmp_vault: VaultConfig, monkeypatch):
     return invoke
 
 
-def test_orphans_command(cli_runner, tmp_vault: VaultConfig):
+def test_orphans_command(cli_runner):
     result = cli_runner("note", "orphans")
     assert result.exit_code == 0
     # Both orphan notes should appear in output

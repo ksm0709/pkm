@@ -46,57 +46,61 @@ def daemon_env(tmp_path, monkeypatch):
     return vault, config_dir
 
 
-def test_ask_e2e(daemon_env):
+@pytest.fixture
+def daemon_proc(daemon_env):
     vault, config_dir = daemon_env
-
     import sys
 
     env = os.environ.copy()
     env["HOME"] = str(config_dir.parent)
     env["PKM_TEST_MOCK_LLM"] = "1"
 
-    daemon_proc = subprocess.Popen(
+    proc = subprocess.Popen(
         [sys.executable, "-m", "pkm.daemon"],
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
 
-    try:
-        sock_path = config_dir.parent / ".config" / "pkm" / "daemon.sock"
-        for _ in range(50):
-            if sock_path.exists():
-                break
-            time.sleep(0.1)
+    sock_path = config_dir.parent / ".config" / "pkm" / "daemon.sock"
+    for _ in range(50):
+        if sock_path.exists():
+            break
+        time.sleep(0.1)
 
-        assert sock_path.exists(), "Daemon socket not created"
+    assert sock_path.exists(), "Daemon socket not created"
 
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
-            sock.connect(str(sock_path))
-            req = {
-                "action": "ask",
-                "query": "What is the secret password?",
-                "vault_name": "test-vault",
-                "model": "test-model",
-            }
-            sock.sendall(json.dumps(req).encode("utf-8") + b"\n")
+    yield proc, sock_path
 
-            f = sock.makefile("r", encoding="utf-8")
-            resp_line = f.readline()
+    proc.terminate()
+    proc.wait()
 
-            assert resp_line
-            data = json.loads(resp_line)
 
-            assert "error" not in data
+def test_ask_e2e(daemon_proc):
+    proc, sock_path = daemon_proc
 
-            response_text = (
-                data.get("data", {}).get("response", "")
-                if "data" in data
-                else data.get("response", "")
-            )
-            assert "hunter2" in response_text
-            assert "What is the secret password?" in response_text
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+        sock.connect(str(sock_path))
+        req = {
+            "action": "ask",
+            "query": "What is the secret password?",
+            "vault_name": "test-vault",
+            "model": "test-model",
+        }
+        sock.sendall(json.dumps(req).encode("utf-8") + b"\n")
 
-    finally:
-        daemon_proc.terminate()
-        daemon_proc.wait()
+        f = sock.makefile("r", encoding="utf-8")
+        resp_line = f.readline()
+
+        assert resp_line
+        data = json.loads(resp_line)
+
+        assert "error" not in data
+
+        response_text = (
+            data.get("data", {}).get("response", "")
+            if "data" in data
+            else data.get("response", "")
+        )
+        assert "hunter2" in response_text
+        assert "What is the secret password?" in response_text

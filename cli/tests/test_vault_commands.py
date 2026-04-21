@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 
 from pkm.cli import main
@@ -28,15 +29,25 @@ def _patch_vaults(monkeypatch, vaults: dict[str, VaultConfig]) -> None:
     monkeypatch.setattr("pkm.commands.vault.discover_vaults", lambda root=None: vaults)
 
 
+@pytest.fixture
+def vaults(tmp_path: Path) -> dict[str, VaultConfig]:
+    return _make_vaults(tmp_path)
+
+
+@pytest.fixture
+def patched_vaults(
+    monkeypatch, vaults: dict[str, VaultConfig]
+) -> dict[str, VaultConfig]:
+    _patch_vaults(monkeypatch, vaults)
+    return vaults
+
+
 # ---------------------------------------------------------------------------
 # vault edit
 # ---------------------------------------------------------------------------
 
 
-def test_vault_edit_opens_editor(tmp_path: Path, monkeypatch):
-    vaults = _make_vaults(tmp_path)
-    _patch_vaults(monkeypatch, vaults)
-
+def test_vault_edit_opens_editor(patched_vaults, monkeypatch):
     mock_run = []
 
     monkeypatch.setattr(
@@ -50,16 +61,13 @@ def test_vault_edit_opens_editor(tmp_path: Path, monkeypatch):
     result = runner.invoke(main, ["vault", "edit", "alpha"])
     assert result.exit_code == 0, result.output
     assert len(mock_run) == 1
-    assert mock_run[0] == ["code", "--wait", str(vaults["alpha"].path)]
+    assert mock_run[0] == ["code", "--wait", str(patched_vaults["alpha"].path)]
 
 
-def test_vault_edit_active_vault(tmp_path: Path, monkeypatch):
-    vaults = _make_vaults(tmp_path)
-    _patch_vaults(monkeypatch, vaults)
-
+def test_vault_edit_active_vault(patched_vaults, monkeypatch):
     # Mock get_vault_context to return alpha as active
     monkeypatch.setattr(
-        "pkm.config.get_vault_context", lambda: (vaults["alpha"], "config")
+        "pkm.config.get_vault_context", lambda: (patched_vaults["alpha"], "config")
     )
 
     mock_run = []
@@ -73,13 +81,10 @@ def test_vault_edit_active_vault(tmp_path: Path, monkeypatch):
     result = runner.invoke(main, ["vault", "edit"])
     assert result.exit_code == 0, result.output
     assert len(mock_run) == 1
-    assert mock_run[0] == ["vim", str(vaults["alpha"].path)]
+    assert mock_run[0] == ["vim", str(patched_vaults["alpha"].path)]
 
 
-def test_vault_list_shows_table(tmp_path: Path, monkeypatch):
-    vaults = _make_vaults(tmp_path)
-    _patch_vaults(monkeypatch, vaults)
-
+def test_vault_list_shows_table(patched_vaults, monkeypatch):
     runner = CliRunner()
     result = runner.invoke(main, ["vault", "list"])
     assert result.exit_code == 0, result.output
@@ -87,10 +92,7 @@ def test_vault_list_shows_table(tmp_path: Path, monkeypatch):
     assert "beta" in result.output
 
 
-def test_vault_list_shows_counts(tmp_path: Path, monkeypatch):
-    vaults = _make_vaults(tmp_path)
-    _patch_vaults(monkeypatch, vaults)
-
+def test_vault_list_shows_counts(patched_vaults, monkeypatch):
     runner = CliRunner()
     result = runner.invoke(main, ["vault", "list"])
     assert result.exit_code == 0
@@ -98,11 +100,9 @@ def test_vault_list_shows_counts(tmp_path: Path, monkeypatch):
     assert "1" in result.output
 
 
-def test_vault_list_marks_default(tmp_path: Path, monkeypatch):
+def test_vault_list_marks_default(patched_vaults, monkeypatch):
     import json as _json
 
-    vaults = _make_vaults(tmp_path)
-    _patch_vaults(monkeypatch, vaults)
     monkeypatch.setenv("PKM_DEFAULT_VAULT", "beta")
 
     runner = CliRunner()
@@ -187,10 +187,7 @@ def test_vault_add_invalid_name(tmp_path: Path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_vault_remove_moves_to_trash(tmp_path: Path, monkeypatch):
-    vaults = _make_vaults(tmp_path)
-    _patch_vaults(monkeypatch, vaults)
-
+def test_vault_remove_moves_to_trash(patched_vaults, tmp_path: Path, monkeypatch):
     monkeypatch.setattr("pkm.commands.vault.Path.home", lambda: tmp_path / "home")
 
     runner = CliRunner()
@@ -199,40 +196,28 @@ def test_vault_remove_moves_to_trash(tmp_path: Path, monkeypatch):
     assert not (tmp_path / "alpha").exists()
 
 
-def test_vault_remove_shows_stats(tmp_path: Path, monkeypatch):
-    vaults = _make_vaults(tmp_path)
-    _patch_vaults(monkeypatch, vaults)
-
+def test_vault_remove_shows_stats(patched_vaults, monkeypatch):
     runner = CliRunner()
     result = runner.invoke(main, ["vault", "remove", "--yes", "alpha"])
     assert result.exit_code == 0, result.output
     assert "note" in result.output or "1" in result.output
 
 
-def test_vault_remove_shows_trash_path(tmp_path: Path, monkeypatch):
-    vaults = _make_vaults(tmp_path)
-    _patch_vaults(monkeypatch, vaults)
-
+def test_vault_remove_shows_trash_path(patched_vaults, monkeypatch):
     runner = CliRunner()
     result = runner.invoke(main, ["vault", "remove", "--yes", "alpha"])
     assert result.exit_code == 0, result.output
     assert "trash" in result.output
 
 
-def test_vault_remove_confirmation_prompt(tmp_path: Path, monkeypatch):
-    vaults = _make_vaults(tmp_path)
-    _patch_vaults(monkeypatch, vaults)
-
+def test_vault_remove_confirmation_prompt(patched_vaults, tmp_path: Path, monkeypatch):
     runner = CliRunner()
     result = runner.invoke(main, ["vault", "remove", "alpha"], input="n\n")
     assert result.exit_code != 0
     assert (tmp_path / "alpha").exists()
 
 
-def test_vault_remove_not_found(tmp_path: Path, monkeypatch):
-    vaults = _make_vaults(tmp_path)
-    _patch_vaults(monkeypatch, vaults)
-
+def test_vault_remove_not_found(patched_vaults, monkeypatch):
     runner = CliRunner()
     result = runner.invoke(main, ["vault", "remove", "--yes", "nonexistent"])
     assert result.exit_code != 0
@@ -244,10 +229,7 @@ def test_vault_remove_not_found(tmp_path: Path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_vault_open_sets_default(tmp_path: Path, monkeypatch):
-    vaults = _make_vaults(tmp_path)
-    _patch_vaults(monkeypatch, vaults)
-
+def test_vault_open_sets_default(patched_vaults, monkeypatch):
     saved = {}
 
     def fake_save(data):
@@ -262,10 +244,7 @@ def test_vault_open_sets_default(tmp_path: Path, monkeypatch):
     assert saved["defaults"]["vault"] == "beta"
 
 
-def test_vault_open_shows_success(tmp_path: Path, monkeypatch):
-    vaults = _make_vaults(tmp_path)
-    _patch_vaults(monkeypatch, vaults)
-
+def test_vault_open_shows_success(patched_vaults, monkeypatch):
     monkeypatch.setattr("pkm.commands.vault.load_config", lambda: {})
     monkeypatch.setattr("pkm.commands.vault.save_config", lambda d: None)
 
@@ -275,10 +254,7 @@ def test_vault_open_shows_success(tmp_path: Path, monkeypatch):
     assert "alpha" in result.output
 
 
-def test_vault_open_not_found(tmp_path: Path, monkeypatch):
-    vaults = _make_vaults(tmp_path)
-    _patch_vaults(monkeypatch, vaults)
-
+def test_vault_open_not_found(patched_vaults, monkeypatch):
     runner = CliRunner()
     result = runner.invoke(main, ["vault", "open", "nonexistent"])
     assert result.exit_code != 0
