@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v2.58.0 (2026-04-21)
+
+### Features
+
+- **daemon**: Prevent concurrent zettelkasten maintenance across machines
+  ([`c7c67d5`](https://github.com/ksm0709/pkm/commit/c7c67d5aebaca03f3f1a6264925d3d7eda7e5353))
+
+### Refactoring
+
+- Improve readability across codebase
+  ([`dc0d6d5`](https://github.com/ksm0709/pkm/commit/dc0d6d55b37525c7cf2c2153e4412298221f41de))
+
+
 ## v2.57.0 (2026-04-20)
 
 ### Features
