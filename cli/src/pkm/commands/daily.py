@@ -195,8 +195,11 @@ def edit(ctx: click.Context, sub_title: str | None) -> None:
     default=None,
     help="Create a sub-note and log a wikilink. Optionally provide a title directly.",
 )
+@click.option("--vault", "-v", "vault_name", default=None, help="Vault name")
 @click.pass_context
-def add(ctx: click.Context, text: str | None, sub_title: str | None) -> None:
+def add(
+    ctx: click.Context, text: str | None, sub_title: str | None, vault_name: str | None
+) -> None:
     """Append a timestamped log entry before ## TODO.
 
     Use --sub to create a sub-note and log a wikilink, or provide TEXT to log a plain entry.
@@ -206,7 +209,12 @@ def add(ctx: click.Context, text: str | None, sub_title: str | None) -> None:
     if sub_title is None and text is None:
         raise click.UsageError("Either TEXT or --sub is required.")
 
-    vault = ctx.obj["vault"]
+    if vault_name:
+        from pkm.config import get_vault
+
+        vault = get_vault(vault_name)
+    else:
+        vault = ctx.obj["vault"]
     today = datetime.now().strftime("%Y-%m-%d")
     now = datetime.now().strftime("%H:%M")
     note_path = vault.daily_dir / f"{today}.md"

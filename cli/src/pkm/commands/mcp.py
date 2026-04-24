@@ -5,7 +5,7 @@ from __future__ import annotations
 import click
 
 
-@click.command("mcp")
+@click.group("mcp", invoke_without_command=True)
 @click.option("--vault", "-v", "vault_name", default=None, help="Vault name")
 @click.pass_context
 def mcp_cmd(ctx: click.Context, vault_name: str | None) -> None:
@@ -16,13 +16,91 @@ def mcp_cmd(ctx: click.Context, vault_name: str | None) -> None:
 
     Tools exposed: note_add, daily_add, search, index.
     """
-    from pkm.mcp_server import run_server
+    if ctx.invoked_subcommand is None:
+        from pkm.mcp_server import run_server
+        from pkm.config import get_vault
 
-    from pkm.config import get_vault
+        if vault_name:
+            vault = get_vault(vault_name)
+        else:
+            vault = ctx.obj.get("vault") if ctx.obj else get_vault(None)
 
-    if vault_name:
-        vault = get_vault(vault_name)
-    else:
-        vault = ctx.obj.get("vault") if ctx.obj else get_vault(None)
+        run_server(vault)
 
-    run_server(vault)
+
+@mcp_cmd.command("install")
+@click.argument("targets", nargs=-1)
+def install_cmd(targets: tuple[str, ...]) -> None:
+    import json
+    import subprocess
+    from pathlib import Path
+
+    if not targets or "all" in targets:
+        targets = ("claude", "codex", "opencode")
+
+    for target in targets:
+        if target == "claude":
+            try:
+                result = subprocess.run(
+                    ["claude", "mcp", "add", "pkm", "--", "pkm", "mcp"],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode == 0:
+                    click.echo("Installed PKM MCP to Claude Code via CLI")
+                else:
+                    click.echo(
+                        f"Failed to install to Claude Code: {result.stderr}", err=True
+                    )
+            except FileNotFoundError:
+                click.echo("Claude Code CLI not found in PATH", err=True)
+
+        elif target == "codex":
+            config_path = Path.home() / ".codex" / "config.toml"
+            if not config_path.exists():
+                click.echo("~/.codex/config.toml not found", err=True)
+                continue
+
+            try:
+                content = config_path.read_text(encoding="utf-8")
+                if "[mcp_servers.pkm]" in content:
+                    click.echo("PKM MCP already configured in Codex")
+                    continue
+
+                new_server = '\n[mcp_servers.pkm]\ncommand = "pkm"\nargs = ["mcp"]\n'
+                if not content.endswith("\n"):
+                    content += "\n"
+                content += new_server
+                config_path.write_text(content, encoding="utf-8")
+                click.echo(f"Installed PKM MCP to Codex ({config_path})")
+            except Exception as e:
+                click.echo(f"Error writing {config_path}: {e}", err=True)
+
+        elif target == "opencode":
+            config_path = Path.home() / ".config" / "opencode" / "opencode.json"
+            if not config_path.exists():
+                click.echo("~/.config/opencode/opencode.json not found", err=True)
+                continue
+
+            try:
+                data = json.loads(config_path.read_text(encoding="utf-8"))
+                mcp_servers = data.setdefault("mcp", {})
+                if "pkm" in mcp_servers:
+                    click.echo("PKM MCP already configured in OpenCode")
+                    continue
+
+                mcp_servers["pkm"] = {
+                    "type": "local",
+                    "command": ["pkm", "mcp"],
+                    "enabled": True,
+                }
+
+                config_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                click.echo(f"Installed PKM MCP to OpenCode ({config_path})")
+            except Exception as e:
+                click.echo(f"Error writing {config_path}: {e}", err=True)
+        else:
+            click.echo(
+                f"Unknown target: {target}. Valid targets: claude, codex, opencode, all",
+                err=True,
+            )

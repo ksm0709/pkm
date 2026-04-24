@@ -212,6 +212,7 @@ def note(ctx: click.Context) -> None:
     multiple=True,
     help="key=value metadata pairs for frontmatter",
 )
+@click.option("--vault", "-v", "vault_name", default=None, help="Vault name")
 @click.pass_context
 def add(
     ctx: click.Context,
@@ -225,6 +226,7 @@ def add(
     tags: str,
     no_dedup: bool,
     meta_pairs: tuple[str, ...],
+    vault_name: str | None,
 ) -> None:
     """Create a new atomic note in the vault.
 
@@ -241,7 +243,12 @@ def add(
     if use_stdin:
         content = sys.stdin.read().strip()
 
-    vault = ctx.obj["vault"]
+    if vault_name:
+        from pkm.config import get_vault
+
+        vault = get_vault(vault_name)
+    else:
+        vault = ctx.obj["vault"]
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
     meta = (
         {k: v for k, _, v in (p.partition("=") for p in meta_pairs) if k}

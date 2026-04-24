@@ -192,7 +192,7 @@ def test_e2e_pkm_graph_surprising_cli_json(tmp_vault: VaultConfig) -> None:
     runner = CliRunner()
     result = runner.invoke(
         main,
-        ["graph", "surprising"],
+        ["--vault", tmp_vault.name, "graph", "surprising"],
         obj={"vault": tmp_vault},
         catch_exceptions=False,
     )

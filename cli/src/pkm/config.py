@@ -172,7 +172,7 @@ def _find_git_root(cwd: Path | None = None) -> Path | None:
     """Find the git root directory from cwd, or None."""
     current = cwd or Path.cwd()
     for path in [current, *current.parents]:
-        if (path / ".git").is_dir():
+        if (path / ".git").exists():
             return path
     return None
 
