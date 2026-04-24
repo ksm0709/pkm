@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.61.0 (2026-04-24)
+
+### Features
+
+- Daily task summary daemon workflow
+  ([`f1224ff`](https://github.com/ksm0709/pkm/commit/f1224ff9918717a18039a46b1fde9c63d501e9c2))
+
+
 ## v2.60.0 (2026-04-24)
 
 ### Features
