@@ -22,18 +22,30 @@ def drop_privileges() -> None:
     _ = os.umask(0o077)
 
 
-def setup_sandbox(vault_dir: Path | str) -> None:
-    vault_path = Path(vault_dir).resolve()
+_state: dict = {"vault_path": None, "installed": False}
 
-    allowed_read_prefixes = [
-        Path(sys.prefix).resolve(),
-        Path(sys.base_prefix).resolve(),
-        Path(__file__).parent.parent.parent.resolve(),
-        Path.home().resolve(),
-    ]
+_allowed_read_prefixes = [
+    Path(sys.prefix).resolve(),
+    Path(sys.base_prefix).resolve(),
+    Path(__file__).parent.parent.parent.resolve(),
+    Path.home().resolve(),
+]
+
+_allowed_files = {
+    "/etc/localtime",
+    "/etc/timezone",
+    "/etc/resolv.conf",
+    "/etc/hosts",
+}
+
+
+def setup_sandbox(vault_dir: Path | str) -> None:
+    _state["vault_path"] = Path(vault_dir).resolve()
+
+    if _state["installed"]:
+        return
 
     def audit_hook(event: str, args: tuple[object, ...]):
-
         if event in {
             "os.system",
             "os.exec",
@@ -58,7 +70,8 @@ def setup_sandbox(vault_dir: Path | str) -> None:
             except Exception:
                 return
 
-            is_in_vault = target_path.is_relative_to(vault_path)
+            vault_path = _state["vault_path"]
+            is_in_vault = vault_path is not None and target_path.is_relative_to(vault_path)
             is_dev = str(target_path).startswith("/dev/")
 
             if "w" in mode or "a" in mode or "+" in mode:
@@ -70,20 +83,13 @@ def setup_sandbox(vault_dir: Path | str) -> None:
                 if not is_in_vault and not is_dev:
                     is_allowed_sys = any(
                         target_path.is_relative_to(prefix)
-                        for prefix in allowed_read_prefixes
+                        for prefix in _allowed_read_prefixes
                     )
-
-                    allowed_files = {
-                        "/etc/localtime",
-                        "/etc/timezone",
-                        "/etc/resolv.conf",
-                        "/etc/hosts",
-                    }
-
-                    if not is_allowed_sys and str(target_path) not in allowed_files:
+                    if not is_allowed_sys and str(target_path) not in _allowed_files:
                         raise SandboxViolation(
                             f"Read access denied outside vault and allowed prefixes: {target_path}"
                         )
 
     sys.addaudithook(audit_hook)
+    _state["installed"] = True
     drop_privileges()

@@ -352,6 +352,9 @@ async def handle_task(msg: Dict[str, Any]):
 
     vault_dir = os.environ.get("PKM_VAULT_DIR", ".")
 
+    from pkm.sandbox import setup_sandbox
+    setup_sandbox(vault_dir)
+
     if task_type == "ask":
         await handle_ask(
             task_id,
