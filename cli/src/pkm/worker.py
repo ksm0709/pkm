@@ -283,67 +283,9 @@ async def handle_ask(
     )
 
 
-async def handle_zettelkasten_maintenance(
+async def _dispatch_workflow(
     task_id: str,
-    vault_dir: str,
-    model: Optional[str] = None,
-    env_keys: Optional[Dict[str, str]] = None,
-    reasoning_effort: Optional[str] = None,
-    cwd: Optional[str] = None,
-):
-    system_prompt = (
-        "You are an autonomous Zettelkasten maintainer with access to these tools:\n"
-        "- read_daily_log, add_daily_log, read_note, add_note, update_note\n"
-        "- search_notes, semantic_search, get_graph_context\n"
-        "- vault_stats, list_stale_notes, list_orphans, find_backlinks_for_note\n"
-        "- list_tags, tag_search\n"
-        "- list_consolidation_candidates, mark_consolidated\n"
-        "- read_recent_note_activity\n"
-        "- find_surprising_connections(top_n): notes that bridge two topic clusters\n"
-        "- list_clusters(): all clusters with member count, top_tags, hub_note, centroid_drift, is_new\n"
-        "- create_hub_note(cluster_index, title, description): create index note for a cluster\n"
-        "- add_wikilink(source, target, description): append [[target|desc]] to ## Related section\n"
-        "- list_god_nodes(top_n): most connected notes by centrality\n\n"
-        "Execute the following workflow in order:\n\n"
-        "0. CLUSTER DRIFT REVIEW: Call list_clusters().\n"
-        "   For each cluster where (centroid_drift is not None and centroid_drift > 0.2) OR is_new=True:\n"
-        "     - is_new=True: brand-new cluster this run — candidate for create_hub_note() if coherent.\n"
-        "     - centroid_drift > 0.2: cluster topic shifted — if hub note exists, read_note() and\n"
-        "       review whether it still represents the current theme; update or flag stale if not.\n\n"
-        "1. SURPRISING CONNECTIONS: Call find_surprising_connections(top_n=15).\n"
-        "   Each result is a note that semantically bridges two clusters.\n"
-        "   Call read_note() on the bridge note and its top neighbors in each cluster.\n"
-        "   If the bridge reveals a non-obvious conceptual connection, call add_wikilink()\n"
-        "   between the bridge note and a representative note from each cluster.\n"
-        "   The description MUST explain the conceptual bridge (not just describe the notes).\n"
-        "   Skip if: already linked, connection is trivial, or different abstraction levels.\n\n"
-        "2. HUB NOTES: Call list_clusters(). For each cluster without a hub note:\n"
-        "   Call read_note() on the top 3-5 members by importance.\n"
-        "   If the cluster has a coherent theme worth naming, call create_hub_note().\n"
-        "   Skip if the cluster is too small (<3 members) or theme is unclear.\n\n"
-        "3. MAINTENANCE: list_consolidation_candidates() → distill daily notes into atomic notes.\n"
-        "   vault_stats(), list_orphans(), list_stale_notes().\n\n"
-        "Execute autonomously. Prioritize step 0 when centroid_drift is high (clusters changed).\n"
-        "Do not describe what you would do — call the tools and do it."
-    )
-    user_content = "Please perform the scheduled Zettelkasten maintenance workflow now."
-
-    await _run_agent_task(
-        task_id=task_id,
-        session_prefix="pkm-maint",
-        user_content=user_content,
-        system_prompt=system_prompt,
-        vault_dir=vault_dir,
-        model=model,
-        env_keys=env_keys,
-        reasoning_effort=reasoning_effort,
-        cwd=cwd,
-        mock_response_prefix="Mocked maintenance response",
-    )
-
-
-async def handle_daily_task_summary(
-    task_id: str,
+    workflow_id: str,
     vault_dir: str,
     model: Optional[str] = None,
     env_keys: Optional[Dict[str, str]] = None,
@@ -352,98 +294,37 @@ async def handle_daily_task_summary(
 ):
     from pathlib import Path
     from pkm.config import VaultConfig
-    from pkm.tasks import extract_tasks, _parse_tasks_from_text
-    from datetime import date, timedelta
+    from pkm.workflows import load_workflows, resolve_hook
+    from datetime import date
+
+    configs = load_workflows(vault_path=vault_dir)
+    config_map = {c.id: c for c in configs}
+    config = config_map.get(workflow_id)
+    if config is None:
+        await ipc.send_message(
+            {
+                "type": "error",
+                "id": task_id,
+                "message": f"Unknown workflow_id: {workflow_id}",
+            }
+        )
+        return
 
     vault = VaultConfig(name=Path(vault_dir).name, path=Path(vault_dir))
-    tasks = extract_tasks(vault, scan_days=3)
-
-    # Build rollover: yesterday's WIP/TODO → today's daily ## TODO
-    yesterday = str(date.today() - timedelta(days=1))
     today = str(date.today())
-    daily_dir = vault.daily_dir
-    yesterday_paths = []
-    if (daily_dir / f"{yesterday}.md").exists():
-        yesterday_paths.append(daily_dir / f"{yesterday}.md")
-    for p in sorted(daily_dir.glob(f"{yesterday}-*.md")):
-        yesterday_paths.append(p)
 
-    # rollover_items: list of (checkbox_marker, item_text)
-    rollover_items: list[tuple[str, str]] = []
-    for path in yesterday_paths:
-        try:
-            text = path.read_text(encoding="utf-8")
-            day_tasks = _parse_tasks_from_text(text, vault.task_statuses, vault.task_assignee_patterns)
-            for item in day_tasks.get("wip", []):
-                rollover_items.append(("[>]", item))
-            for item in day_tasks.get("todo", []):
-                rollover_items.append(("[ ]", item))
-        except Exception:
-            pass
+    pre_fn = resolve_hook(config.pre_hook)
+    if pre_fn is not None:
+        hook_result = pre_fn(vault, today)
+        system_prompt = config.system_prompt_template.format(**hook_result)
+    else:
+        system_prompt = config.system_prompt_template
 
-    # Write rollover items to today's daily note
-    if rollover_items:
-        from pkm.commands.daily import DAILY_TEMPLATE
-
-        today_path = daily_dir / f"{today}.md"
-        daily_dir.mkdir(parents=True, exist_ok=True)
-        if not today_path.exists():
-            today_path.write_text(DAILY_TEMPLATE.format(date=today), encoding="utf-8")
-        content = today_path.read_text(encoding="utf-8")
-        # Extract only the ## TODO section body (up to the next ## header)
-        existing_todo_lines: set[str] = set()
-        if "## TODO" in content:
-            todo_body = content.split("## TODO", 1)[1]
-            next_section = todo_body.find("\n## ")
-            if next_section != -1:
-                todo_body = todo_body[:next_section]
-            existing_todo_lines = {
-                ln.strip() for ln in todo_body.splitlines() if ln.strip()
-            }
-        new_items = []
-        for marker, item in rollover_items:
-            line = f"- {marker} {item}"
-            if item and line.strip() not in existing_todo_lines:
-                new_items.append(line)
-        if new_items:
-            insert = "\n".join(new_items) + "\n"
-            if "## TODO" in content:
-                content = content.replace("## TODO\n", f"## TODO\n{insert}", 1)
-            else:
-                content += f"\n## TODO\n{insert}"
-            today_path.write_text(content, encoding="utf-8")
-
-    # Build summary content
-    status_emoji = {"wip": "[>]", "todo": "[ ]", "done": "[x]", "cancel": "[-]"}
-    status_header = {
-        "wip": "## WIP",
-        "todo": "## TODO",
-        "done": "## DONE",
-        "cancel": "## CANCEL",
-    }
-    sections = []
-    for status_key in ("wip", "todo", "done", "cancel"):
-        items = tasks.get(status_key, [])
-        if items:
-            marker = status_emoji.get(status_key, "[ ]")
-            lines = [status_header[status_key]]
-            for item in items:
-                lines.append(f"- {marker} {item}")
-            sections.append("\n".join(lines))
-    summary_content = "\n\n".join(sections) if sections else "_No tasks found._"
-
-    system_prompt = (
-        "You are a task summary assistant. Your job is to create today's task summary subnote.\n"
-        "You have access to one tool: create_daily_subnote.\n\n"
-        f"Call create_daily_subnote with title='task-summary' and this exact content:\n\n"
-        f"{summary_content}\n\n"
-        "Call the tool exactly once with the content above. Do not modify the content."
-    )
-    user_content = "Create today's task summary subnote now."
+    user_content = f"Execute the {workflow_id} workflow now."
 
     await _run_agent_task(
         task_id=task_id,
-        session_prefix="pkm-task-summary",
+        session_prefix=f"pkm-{workflow_id}",
         user_content=user_content,
         system_prompt=system_prompt,
         vault_dir=vault_dir,
@@ -451,8 +332,12 @@ async def handle_daily_task_summary(
         env_keys=env_keys,
         reasoning_effort=reasoning_effort,
         cwd=cwd,
-        mock_response_prefix="Mocked task summary response",
+        mock_response_prefix=f"Mocked {workflow_id} response",
     )
+
+    post_fn = resolve_hook(config.post_hook)
+    if post_fn is not None:
+        post_fn(vault, None)
 
 
 async def handle_task(msg: Dict[str, Any]):
@@ -480,18 +365,10 @@ async def handle_task(msg: Dict[str, Any]):
             msg.get("reasoning_effort"),
             msg.get("cwd"),
         )
-    elif task_type == "zettelkasten_maintenance":
-        await handle_zettelkasten_maintenance(
+    elif task_type == "workflow":
+        await _dispatch_workflow(
             task_id,
-            vault_dir,
-            msg.get("model"),
-            msg.get("env_keys", {}),
-            msg.get("reasoning_effort"),
-            msg.get("cwd"),
-        )
-    elif task_type == "daily_task_summary":
-        await handle_daily_task_summary(
-            task_id,
+            msg.get("workflow_id", ""),
             vault_dir,
             msg.get("model"),
             msg.get("env_keys", {}),

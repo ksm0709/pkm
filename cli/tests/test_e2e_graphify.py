@@ -438,12 +438,14 @@ def test_e2e_graceful_degradation_without_vector_db(tmp_vault: VaultConfig) -> N
 
 
 def test_e2e_worker_prompt_mentions_new_tools() -> None:
-    """worker.py handle_zettelkasten_maintenance system prompt references all graphify tools."""
-    import inspect
-    import pkm.worker as worker_module
+    """zettelkasten_maintenance workflow config references all graphify tools."""
+    from pkm.workflows import load_workflows
 
-    source = inspect.getsource(worker_module)
+    configs = load_workflows()
+    maint = next((c for c in configs if c.id == "zettelkasten_maintenance"), None)
+    assert maint is not None, "zettelkasten_maintenance not found in loaded workflows"
 
+    prompt = maint.system_prompt_template
     required = [
         "find_surprising_connections",
         "list_clusters",
@@ -452,4 +454,6 @@ def test_e2e_worker_prompt_mentions_new_tools() -> None:
         "CLUSTER DRIFT REVIEW",
     ]
     for keyword in required:
-        assert keyword in source, f"'{keyword}' not found in worker.py"
+        assert keyword in prompt, (
+            f"'{keyword}' not found in zettelkasten_maintenance system_prompt_template"
+        )

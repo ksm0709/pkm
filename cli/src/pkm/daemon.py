@@ -3,12 +3,10 @@
 import asyncio
 import datetime
 import fcntl
-import hashlib
 import importlib.metadata as meta
 import json
 import logging
 import os
-import socket
 import sys
 import time
 from dataclasses import asdict, dataclass
@@ -21,6 +19,7 @@ import networkx as nx
 import yaml
 
 from pkm.config import discover_vaults, get_vault
+from pkm.workflows import WorkflowConfig, load_workflows, jitter_minutes
 from pkm.frontmatter import parse
 from pkm.search_engine import VectorIndex, IndexEntry, search, _require_transformers
 
@@ -761,12 +760,13 @@ async def version_checker(server: asyncio.Server):
             logger.warning("Version check error: %s", e)
 
 
-async def maintenance_checker():
+async def workflow_checker(config: WorkflowConfig):
+    """Schedule and dispatch a workflow based on its WorkflowConfig."""
+    import socket
+
     last_run_date = None
     hostname = socket.gethostname()
-    # Deterministic 0-29 min offset per host so machines don't pile up at 2:00 AM.
-    # Same host always gets the same slot; no shared state needed.
-    jitter_min = int(hashlib.md5(hostname.encode()).hexdigest(), 16) % 30
+    jitter_min = jitter_minutes(config)
 
     while True:
         await asyncio.sleep(60)
@@ -774,75 +774,23 @@ async def maintenance_checker():
         now = datetime.datetime.now()
         current_date = now.date()
 
-        if now.hour == 2 and now.minute == jitter_min and last_run_date != current_date:
+        if (
+            now.hour == config.schedule_hour
+            and now.minute == jitter_min
+            and last_run_date != current_date
+        ):
             if task_queue:
                 vaults = discover_vaults()
                 ts = int(now.timestamp())
                 for vault_name, vault in vaults.items():
-                    # Belt-and-suspenders: check vault-level marker written by whichever
-                    # machine ran first today (marker lives inside the synced vault).
-                    marker_path = vault.pkm_dir / "zettel-last-run"
+                    marker_path = vault.pkm_dir / config.marker_file
                     if marker_path.exists():
                         try:
                             data = json.loads(marker_path.read_text())
                             if data.get("date") == str(current_date):
                                 logger.info(
-                                    "Zettelkasten maintenance already claimed by '%s' today, skipping vault '%s'",
-                                    data.get("host", "unknown"),
-                                    vault_name,
-                                )
-                                continue
-                        except Exception:
-                            pass
-
-                    # Claim the slot before pushing the task so other machines that
-                    # sync within the next few minutes will see today's marker and skip.
-                    vault.pkm_dir.mkdir(parents=True, exist_ok=True)
-                    marker_path.write_text(
-                        json.dumps({"date": str(current_date), "host": hostname})
-                    )
-
-                    task = {
-                        "type": "task",
-                        "id": f"maint_{vault_name}_{ts}",
-                        "task_type": "zettelkasten_maintenance",
-                        "env": {"PKM_VAULT_DIR": str(vault.path)},
-                    }
-                    task_queue.push(task)
-                    logger.info(
-                        "Scheduled Zettelkasten maintenance for vault '%s': %s (host=%s, slot=2:%02d)",
-                        vault_name,
-                        task["id"],
-                        hostname,
-                        jitter_min,
-                    )
-            last_run_date = current_date
-
-
-async def task_summary_checker():
-    last_run_date = None
-    hostname = socket.gethostname()
-    # 0-29 min jitter per host so machines don't pile up at 08:00
-    jitter_min = int(hashlib.md5((hostname + "summary").encode()).hexdigest(), 16) % 30
-
-    while True:
-        await asyncio.sleep(60)
-
-        now = datetime.datetime.now()
-        current_date = now.date()
-
-        if now.hour == 8 and now.minute == jitter_min and last_run_date != current_date:
-            if task_queue:
-                vaults = discover_vaults()
-                ts = int(now.timestamp())
-                for vault_name, vault in vaults.items():
-                    marker_path = vault.pkm_dir / "summary-last-run"
-                    if marker_path.exists():
-                        try:
-                            data = json.loads(marker_path.read_text())
-                            if data.get("date") == str(current_date):
-                                logger.info(
-                                    "Task summary already claimed by '%s' today, skipping vault '%s'",
+                                    "Workflow '%s' already claimed by '%s' today, skipping vault '%s'",
+                                    config.id,
                                     data.get("host", "unknown"),
                                     vault_name,
                                 )
@@ -857,16 +805,19 @@ async def task_summary_checker():
 
                     task = {
                         "type": "task",
-                        "id": f"summary_{vault_name}_{ts}",
-                        "task_type": "daily_task_summary",
+                        "id": f"{config.id}_{vault_name}_{ts}",
+                        "task_type": "workflow",
+                        "workflow_id": config.id,
                         "env": {"PKM_VAULT_DIR": str(vault.path)},
                     }
                     task_queue.push(task)
                     logger.info(
-                        "Scheduled daily task summary for vault '%s': %s (host=%s, slot=8:%02d)",
+                        "Scheduled workflow '%s' for vault '%s': %s (host=%s, slot=%d:%02d)",
+                        config.id,
                         vault_name,
                         task["id"],
                         hostname,
+                        config.schedule_hour,
                         jitter_min,
                     )
             last_run_date = current_date
@@ -910,8 +861,8 @@ async def async_main():
     os.chmod(str(SOCKET_PATH), 0o600)
 
     checker_task = asyncio.create_task(idle_checker(server))
-    maint_task = asyncio.create_task(maintenance_checker())
-    summary_task = asyncio.create_task(task_summary_checker())
+    workflows = load_workflows()
+    workflow_tasks = [asyncio.create_task(workflow_checker(wf)) for wf in workflows]
     bg_task = asyncio.create_task(process_background_tasks())
     version_task = asyncio.create_task(version_checker(server))
 
@@ -925,8 +876,8 @@ async def async_main():
     finally:
         logger.info("Daemon shutting down.")
         checker_task.cancel()
-        maint_task.cancel()
-        summary_task.cancel()
+        for wt in workflow_tasks:
+            wt.cancel()
         bg_task.cancel()
         version_task.cancel()
         if worker_proxy and worker_proxy.process:
