@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.60.0 (2026-04-24)
+
+### Features
+
+- Add get_note_neighbors — 3-layer parity (tool + MCP + CLI)
+  ([`43cc837`](https://github.com/ksm0709/pkm/commit/43cc8372e5b8b30cf4dab5717e095cd50e2376b3))
+
+
 ## v2.59.1 (2026-04-24)
 
 ### Bug Fixes
