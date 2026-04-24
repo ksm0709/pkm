@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.59.0 (2026-04-24)
+
+### Features
+
+- Improve mcp install and fix git worktree detection
+  ([`20a4548`](https://github.com/ksm0709/pkm/commit/20a4548fbdc523dc49357375c30df5300a4667ea))
+
+
 ## v2.58.0 (2026-04-21)
 
 ### Features
