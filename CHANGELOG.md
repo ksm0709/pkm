@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.63.0 (2026-04-24)
+
+### Features
+
+- Externalize workflow config to workflow.json
+  ([`18ed7ba`](https://github.com/ksm0709/pkm/commit/18ed7ba8e78e73edadd370eb4d9b931d20a35265))
+
+
 ## v2.62.0 (2026-04-24)
 
 ### Features
