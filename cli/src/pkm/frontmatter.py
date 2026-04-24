@@ -26,7 +26,10 @@ class Note:
 
     @property
     def tags(self) -> list[str]:
-        return self.meta.get("tags", [])
+        raw = self.meta.get("tags", [])
+        if isinstance(raw, str):
+            return [t.strip() for t in raw.split(",") if t.strip()]
+        return list(raw) if raw else []
 
     @property
     def aliases(self) -> list[str]:
