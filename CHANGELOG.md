@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.59.1 (2026-04-24)
+
+### Bug Fixes
+
+- Allow sandbox to switch vault between worker tasks
+  ([`a8c7ad3`](https://github.com/ksm0709/pkm/commit/a8c7ad3a12a0f795bdae50d89ea85049d6475f1a))
+
+
 ## v2.59.0 (2026-04-24)
 
 ### Features
