@@ -311,7 +311,7 @@ class TestMcpE2EProtocol:
         assert "list_consolidation_candidates" in tool_names
         assert "mark_consolidated" in tool_names
         assert "read_recent_note_activity" in tool_names
-        assert len(tools) == 19
+        assert len(tools) == 20
 
         # Verify inputSchema exists on each tool
         for tool in tools:

@@ -15,6 +15,7 @@ The MCP server runs a JSON-RPC 2.0 server over `stdio` and exposes the following
 - **`list_tags`**: List all tags used in the vault with their note counts, sorted by frequency.
 - **`tag_search`**: Filter notes by tag pattern (exact, glob `db*`, AND `python+testing`, OR `python,rust`).
 - **`find_backlinks_for_note`**: Find all notes that link TO a given note (daemon-free inbound wikilink scan).
+- **`get_note_neighbors`**: Get all neighbors of a note — outbound wikilinks, inbound backlinks, tag nodes, ghost nodes, and optionally semantic similarity connections. Reads `graph.json` directly (daemon-free). Returns `{note_id, outbound, inbound, semantic}` where each item has `note_id`, `title`, and `type` fields. Pass `include_semantic=true` to include embedding-based connections from `graph_enriched.json`.
 
 **Vault health tools**
 - **`vault_stats`**: Get a snapshot of vault health — note count, orphan count, tag count, avg links, index status.

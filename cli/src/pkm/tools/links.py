@@ -3,6 +3,7 @@ import os
 import re
 from pathlib import Path
 
+import networkx as nx
 from tiny_agent.tools import tool
 
 from pkm.config import VaultConfig
@@ -101,3 +102,75 @@ def add_wikilink(source_note_id: str, target_note_id: str, description: str) -> 
         return f"Added [[{target_note_id}]] to {source_path}"
     except Exception as e:
         return f"Error: {e}"
+
+
+def _get_note_neighbors_data(
+    vault: VaultConfig, note_id: str, include_semantic: bool = False
+) -> dict:
+    """Core neighbor lookup — returns a plain dict (no JSON serialization).
+
+    Raises FileNotFoundError with a user-friendly message when graph.json is missing.
+    """
+    graph_path = vault.pkm_dir / "graph.json"
+    if not graph_path.exists():
+        raise FileNotFoundError("graph not found — run pkm index first")
+
+    G = nx.node_link_graph(json.loads(graph_path.read_text()))
+    if note_id not in G:
+        return {"note_id": note_id, "outbound": [], "inbound": [], "semantic": []}
+
+    def _node(n: str) -> dict:
+        return {
+            "note_id": n,
+            "title": G.nodes[n].get("title", n),
+            "type": G.nodes[n].get("type", "note"),
+        }
+
+    outbound = [_node(n) for n in G.successors(note_id)]
+    inbound = [_node(n) for n in G.predecessors(note_id)]
+
+    semantic: list[dict] = []
+    if include_semantic:
+        enriched_path = vault.pkm_dir / "graph_enriched.json"
+        if enriched_path.exists():
+            EG = nx.node_link_graph(json.loads(enriched_path.read_text()))
+            seen: set[str] = set()
+            for src, tgt, edata in EG.edges(data=True):
+                if edata.get("type") != "semantic_similar":
+                    continue
+                neighbor = tgt if src == note_id else (src if tgt == note_id else None)
+                if neighbor is None or neighbor in seen:
+                    continue
+                seen.add(neighbor)
+                semantic.append(
+                    {
+                        "note_id": neighbor,
+                        "title": EG.nodes[neighbor].get("title", neighbor),
+                        "type": EG.nodes[neighbor].get("type", "note"),
+                        "confidence": edata.get("confidence", 0.0),
+                    }
+                )
+
+    return {
+        "note_id": note_id,
+        "outbound": outbound,
+        "inbound": inbound,
+        "semantic": semantic,
+    }
+
+
+@tool()
+def get_note_neighbors(note_id: str, include_semantic: bool = False) -> str:
+    """Get all neighbors of a note: outbound wikilinks, inbound backlinks, tags, ghost
+    nodes, and optionally semantic connections. Daemon-free (reads graph.json directly).
+    Returns JSON: {note_id, outbound, inbound, semantic}.
+    """
+    try:
+        vault = _get_vault(os.environ.get("PKM_VAULT_DIR", "."))
+        return json.dumps(
+            _get_note_neighbors_data(vault, note_id, include_semantic), indent=2
+        )
+    except FileNotFoundError as e:
+        return json.dumps({"error": str(e)})
+    except Exception as e:
+        return json.dumps({"error": str(e)})

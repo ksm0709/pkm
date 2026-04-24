@@ -337,6 +337,27 @@ def find_backlinks_for_note(note_id: str) -> dict[str, Any]:
 
 
 @mcp.tool()
+def get_note_neighbors(note_id: str, include_semantic: bool = False) -> dict[str, Any]:
+    """Get all neighbors of a note: outbound wikilinks, inbound backlinks, tags, ghost
+    nodes, and optionally semantic connections. Daemon-free (reads graph.json directly).
+
+    Returns {note_id, outbound:[{note_id,title,type}], inbound:[{note_id,title,type}],
+    semantic:[{note_id,title,type,confidence}]}. All node types included (note, tag,
+    note_or_unresolved). Filter by 'type' field as needed.
+    Requires pkm index to have been run to build graph.json.
+    """
+    from pkm.tools.links import _get_note_neighbors_data
+
+    vault = _get_vault()
+    try:
+        return _get_note_neighbors_data(vault, note_id, include_semantic)
+    except FileNotFoundError as e:
+        return {"error": str(e)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
 def list_tags() -> dict[str, Any]:
     """List all tags used in the vault with their note counts, sorted by frequency."""
     from pkm.commands.tag_commands import count_all_tags

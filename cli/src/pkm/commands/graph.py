@@ -74,3 +74,68 @@ def surprising_cmd(ctx: click.Context, top: int, output_format: str) -> None:
         )
 
     console.print(table)
+
+
+@graph_group.command("neighbors")
+@click.argument("note_id")
+@click.option(
+    "--semantic",
+    is_flag=True,
+    default=False,
+    help="Include semantic similarity edges (requires pkm index with embeddings).",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="json",
+    show_default=True,
+    help="Output format. Default JSON is machine-readable; use 'table' for human display.",
+)
+@click.pass_context
+def neighbors_cmd(
+    ctx: click.Context, note_id: str, semantic: bool, output_format: str
+) -> None:
+    """Show all neighbors of a note: outbound links, inbound backlinks, tags, and ghost nodes.
+
+    Default output is JSON (machine-readable). Use --format table for human display.
+    Use --semantic to include embedding-based similarity connections.
+    """
+    import sys
+    from pkm.tools.links import _get_note_neighbors_data
+
+    vault = ctx.obj["vault"]
+    try:
+        result = _get_note_neighbors_data(vault, note_id, semantic)
+    except FileNotFoundError:
+        console.print(
+            "[red]Error:[/red] graph.json not found. "
+            "Run [bold cyan]pkm index[/bold cyan] first."
+        )
+        sys.exit(1)
+
+    if output_format == "json":
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+
+    outbound, inbound, sem = result["outbound"], result["inbound"], result["semantic"]
+
+    if not outbound and not inbound and not sem:
+        console.print(f"[yellow]No connections found for '{note_id}'.[/yellow]")
+        return
+
+    table = Table(title=f"Neighbors of {note_id}", show_lines=False)
+    table.add_column("Section", style="dim", width=10)
+    table.add_column("note_id", style="bold cyan")
+    table.add_column("Title")
+    table.add_column("Type", style="green")
+
+    for item in outbound:
+        table.add_row("outbound", item["note_id"], item["title"], item["type"])
+    for item in inbound:
+        table.add_row("inbound", item["note_id"], item["title"], item["type"])
+    for item in sem:
+        conf = f"{item.get('confidence', 0):.2f}"
+        table.add_row("semantic", item["note_id"], item["title"], f"semantic ({conf})")
+
+    console.print(table)

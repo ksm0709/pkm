@@ -71,7 +71,9 @@ def setup_sandbox(vault_dir: Path | str) -> None:
                 return
 
             vault_path = _state["vault_path"]
-            is_in_vault = vault_path is not None and target_path.is_relative_to(vault_path)
+            is_in_vault = vault_path is not None and target_path.is_relative_to(
+                vault_path
+            )
             is_dev = str(target_path).startswith("/dev/")
 
             if "w" in mode or "a" in mode or "+" in mode:
