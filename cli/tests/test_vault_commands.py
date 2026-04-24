@@ -142,25 +142,9 @@ def test_vault_add_creates_structure(tmp_path: Path, monkeypatch):
     vault_path = tmp_path / "mynewvault"
     assert (vault_path / "daily").is_dir()
     assert (vault_path / "notes").is_dir()
-    assert (vault_path / "tasks").is_dir()
-    assert (vault_path / "tasks" / "archive").is_dir()
     assert (vault_path / "data").is_dir()
     assert (vault_path / ".pkm").is_dir()
     assert (vault_path / ".pkm" / "artifacts").is_dir()
-    assert (vault_path / "tasks" / "ongoing.md").is_file()
-
-
-def test_vault_add_ongoing_md_content(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr("pkm.commands.vault.get_vaults_root", lambda: tmp_path)
-
-    runner = CliRunner()
-    runner.invoke(main, ["vault", "add", "myvault"])
-
-    ongoing = tmp_path / "myvault" / "tasks" / "ongoing.md"
-    content = ongoing.read_text(encoding="utf-8")
-    assert "myvault-ongoing-tasks" in content
-    assert "In Progress" in content
-    assert "🔴" in content
 
 
 def test_vault_add_already_exists(tmp_path: Path, monkeypatch):

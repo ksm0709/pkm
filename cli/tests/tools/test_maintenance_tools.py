@@ -20,7 +20,6 @@ def test_vault_stats_returns_expected_keys(tmp_vault, monkeypatch):
     assert {
         "notes",
         "dailies",
-        "tasks",
         "orphans",
         "unique_tags",
         "avg_links_per_note",

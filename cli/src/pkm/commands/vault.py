@@ -27,29 +27,6 @@ from pkm.config import (
 
 console = Console()
 
-ONGOING_TEMPLATE = """\
----
-id: {name}-ongoing-tasks
-aliases:
-  - ongoing
-tags:
-  - tasks
-  - ongoing
----
-# In Progress
-
-## 🔴 In Progress (WIP)
-
-## 🟡 Upcoming (TODO)
-
-## ✅ Completed This Week
-
-## ⏸ On Hold
-
----
-_Task details: `tasks/task-<slug>.md` | Completed tasks: `tasks/archive/`_
-"""
-
 
 @click.group()
 def vault() -> None:
@@ -141,21 +118,16 @@ def list_vaults(output_format: str) -> None:
 
 
 def init_vault_dirs(vault_path: Path, name: str) -> None:
-    """Create standard vault directory structure and ongoing.md template."""
+    """Create standard vault directory structure."""
     dirs = [
         vault_path / "daily",
         vault_path / "notes",
         vault_path / "tags",
-        vault_path / "tasks" / "archive",
         vault_path / "data",
         vault_path / ".pkm" / "artifacts",
     ]
     for d in dirs:
         d.mkdir(parents=True, exist_ok=True)
-
-    ongoing = vault_path / "tasks" / "ongoing.md"
-    if not ongoing.exists():
-        ongoing.write_text(ONGOING_TEMPLATE.format(name=name), encoding="utf-8")
 
 
 @vault.command()
@@ -345,7 +317,7 @@ def unset(remove: bool) -> None:
     )
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    subdirs = ["daily", "notes", "tags", "tasks", "data", ".pkm/artifacts"]
+    subdirs = ["daily", "notes", "tags", "data", ".pkm/artifacts"]
 
     for subdir in subdirs:
         src_dir = vc.path / subdir

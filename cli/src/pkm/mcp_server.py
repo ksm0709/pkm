@@ -97,6 +97,52 @@ def daily_add(text: str) -> dict[str, Any]:
 
 
 @mcp.tool()
+def create_daily_subnote(title: str, content: str) -> dict[str, Any]:
+    """Create a dated subnote and link it from today's daily note.
+
+    Creates YYYY-MM-DD-{title}.md in the vault daily directory and appends
+    a timestamped [[wikilink]] entry to today's daily note.
+
+    Args:
+        title: Subnote title slug (spaces become hyphens).
+        content: Markdown body content for the new subnote.
+    """
+    import re as _re
+    from datetime import datetime as _dt
+    from pkm.commands.daily import SUBNOTE_TEMPLATE, DAILY_TEMPLATE, _add_subnote_link
+
+    vault = _get_vault()
+    try:
+        today = _dt.now().strftime("%Y-%m-%d")
+        now = _dt.now().strftime("%H:%M")
+
+        title_slug = _re.sub(r"[/\\]", "", title.replace(" ", "-"))
+        title_slug = _re.sub(r"\.\.+", "", title_slug).strip("-").strip()
+        if not title_slug:
+            return {"error": "title cannot be empty"}
+
+        note_id = f"{today}-{title_slug}"
+        note_path = vault.daily_dir / f"{note_id}.md"
+
+        vault.daily_dir.mkdir(parents=True, exist_ok=True)
+        if not str(note_path.resolve()).startswith(str(vault.daily_dir.resolve())):
+            return {"error": "invalid title — would escape daily directory"}
+
+        subnote_content = SUBNOTE_TEMPLATE.format(note_id=note_id) + content
+        if not note_path.exists():
+            note_path.write_text(subnote_content, encoding="utf-8")
+
+        daily_path = vault.daily_dir / f"{today}.md"
+        if not daily_path.exists():
+            daily_path.write_text(DAILY_TEMPLATE.format(date=today), encoding="utf-8")
+
+        _add_subnote_link(daily_path, now, note_id)
+        return {"status": "created", "note_id": note_id, "path": str(note_path)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
 def search(
     query: str,
     top: int = 10,

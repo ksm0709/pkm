@@ -1,6 +1,6 @@
 import getpass
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +47,15 @@ class VaultSuggestion:
 class VaultConfig:
     name: str
     path: Path
+    task_statuses: dict = field(
+        default_factory=lambda: {
+            "todo": ["TODO", "[ ]"],
+            "wip": ["WIP", "[>]"],
+            "done": ["DONE", "[x]"],
+            "cancel": ["CANCEL", "[-]"],
+        }
+    )
+    task_assignee_patterns: list = field(default_factory=list)
 
     @property
     def daily_dir(self) -> Path:
@@ -55,10 +64,6 @@ class VaultConfig:
     @property
     def notes_dir(self) -> Path:
         return self.path / "notes"
-
-    @property
-    def tasks_dir(self) -> Path:
-        return self.path / "tasks"
 
     @property
     def tags_dir(self) -> Path:

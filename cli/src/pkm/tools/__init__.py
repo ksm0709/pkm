@@ -7,7 +7,7 @@ from pkm.tools.search import (
     list_god_nodes,
     create_hub_note,
 )
-from pkm.tools.daily import add_daily_log, read_daily_log
+from pkm.tools.daily import add_daily_log, read_daily_log, create_daily_subnote
 from pkm.tools.maintenance import vault_stats, list_stale_notes, list_orphans
 from pkm.tools.links import find_backlinks_for_note, add_wikilink
 from pkm.tools.tags import list_tags, tag_search
@@ -34,6 +34,7 @@ def get_pkm_tools(scope: str = "all") -> list:
         create_hub_note,
         add_daily_log,
         read_daily_log,
+        create_daily_subnote,
         vault_stats,
         list_stale_notes,
         list_orphans,

@@ -30,8 +30,6 @@ def resolve_link(vault: VaultConfig, link: str) -> Path | None:
     candidates = [
         vault.notes_dir / f"{link}.md",
         vault.notes_dir / link,
-        vault.tasks_dir / f"{link}.md",
-        vault.tasks_dir / link,
         vault.daily_dir / f"{link}.md",
         vault.daily_dir / link,
         vault.tags_dir / f"{link}.md",
@@ -46,9 +44,7 @@ def find_backlinks(vault: VaultConfig, note_id: str) -> list[Path]:
     Note: tags_dir is intentionally excluded. Tag notes are lazy-created,
     so including them would make backlink counts non-deterministic.
     """
-    dirs = [
-        d for d in (vault.daily_dir, vault.notes_dir, vault.tasks_dir) if d.is_dir()
-    ]
+    dirs = [d for d in (vault.daily_dir, vault.notes_dir) if d.is_dir()]
 
     return [
         md_file
@@ -69,7 +65,7 @@ def count_backlinks(vault: VaultConfig) -> dict[str, int]:
     note_ids = [f.stem for f in vault.notes_dir.glob("*.md")]
     counts: dict[str, int] = {note_id: 0 for note_id in note_ids}
 
-    dirs = [vault.daily_dir, vault.notes_dir, vault.tasks_dir]
+    dirs = [vault.daily_dir, vault.notes_dir]
     for d in dirs:
         if not d.is_dir():
             continue

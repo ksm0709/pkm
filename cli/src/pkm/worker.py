@@ -342,6 +342,119 @@ async def handle_zettelkasten_maintenance(
     )
 
 
+async def handle_daily_task_summary(
+    task_id: str,
+    vault_dir: str,
+    model: Optional[str] = None,
+    env_keys: Optional[Dict[str, str]] = None,
+    reasoning_effort: Optional[str] = None,
+    cwd: Optional[str] = None,
+):
+    from pathlib import Path
+    from pkm.config import VaultConfig
+    from pkm.tasks import extract_tasks, _parse_tasks_from_text
+    from datetime import date, timedelta
+
+    vault = VaultConfig(name=Path(vault_dir).name, path=Path(vault_dir))
+    tasks = extract_tasks(vault, scan_days=3)
+
+    # Build rollover: yesterday's WIP/TODO → today's daily ## TODO
+    yesterday = str(date.today() - timedelta(days=1))
+    today = str(date.today())
+    daily_dir = vault.daily_dir
+    yesterday_paths = []
+    if (daily_dir / f"{yesterday}.md").exists():
+        yesterday_paths.append(daily_dir / f"{yesterday}.md")
+    for p in sorted(daily_dir.glob(f"{yesterday}-*.md")):
+        yesterday_paths.append(p)
+
+    # rollover_items: list of (checkbox_marker, item_text)
+    rollover_items: list[tuple[str, str]] = []
+    for path in yesterday_paths:
+        try:
+            text = path.read_text(encoding="utf-8")
+            day_tasks = _parse_tasks_from_text(text, vault.task_statuses, vault.task_assignee_patterns)
+            for item in day_tasks.get("wip", []):
+                rollover_items.append(("[>]", item))
+            for item in day_tasks.get("todo", []):
+                rollover_items.append(("[ ]", item))
+        except Exception:
+            pass
+
+    # Write rollover items to today's daily note
+    if rollover_items:
+        from pkm.commands.daily import DAILY_TEMPLATE
+
+        today_path = daily_dir / f"{today}.md"
+        daily_dir.mkdir(parents=True, exist_ok=True)
+        if not today_path.exists():
+            today_path.write_text(DAILY_TEMPLATE.format(date=today), encoding="utf-8")
+        content = today_path.read_text(encoding="utf-8")
+        # Extract only the ## TODO section body (up to the next ## header)
+        existing_todo_lines: set[str] = set()
+        if "## TODO" in content:
+            todo_body = content.split("## TODO", 1)[1]
+            next_section = todo_body.find("\n## ")
+            if next_section != -1:
+                todo_body = todo_body[:next_section]
+            existing_todo_lines = {
+                ln.strip() for ln in todo_body.splitlines() if ln.strip()
+            }
+        new_items = []
+        for marker, item in rollover_items:
+            line = f"- {marker} {item}"
+            if item and line.strip() not in existing_todo_lines:
+                new_items.append(line)
+        if new_items:
+            insert = "\n".join(new_items) + "\n"
+            if "## TODO" in content:
+                content = content.replace("## TODO\n", f"## TODO\n{insert}", 1)
+            else:
+                content += f"\n## TODO\n{insert}"
+            today_path.write_text(content, encoding="utf-8")
+
+    # Build summary content
+    status_emoji = {"wip": "[>]", "todo": "[ ]", "done": "[x]", "cancel": "[-]"}
+    status_header = {
+        "wip": "## WIP",
+        "todo": "## TODO",
+        "done": "## DONE",
+        "cancel": "## CANCEL",
+    }
+    sections = []
+    for status_key in ("wip", "todo", "done", "cancel"):
+        items = tasks.get(status_key, [])
+        if items:
+            marker = status_emoji.get(status_key, "[ ]")
+            lines = [status_header[status_key]]
+            for item in items:
+                lines.append(f"- {marker} {item}")
+            sections.append("\n".join(lines))
+    summary_content = "\n\n".join(sections) if sections else "_No tasks found._"
+
+    system_prompt = (
+        "You are a task summary assistant. Your job is to create today's task summary subnote.\n"
+        "You have access to one tool: create_daily_subnote.\n\n"
+        f"Call create_daily_subnote with title='task-summary' and this exact content:\n\n"
+        f"{summary_content}\n\n"
+        "Call the tool exactly once with the content above. Do not modify the content."
+    )
+    user_content = "Create today's task summary subnote now."
+
+    await _run_agent_task(
+        task_id=task_id,
+        session_prefix="pkm-task-summary",
+        user_content=user_content,
+        system_prompt=system_prompt,
+        vault_dir=vault_dir,
+        model=model,
+        env_keys=env_keys,
+        reasoning_effort=reasoning_effort,
+        cwd=cwd,
+        mock_response_prefix="Mocked task summary response",
+    )
+
+
 async def handle_task(msg: Dict[str, Any]):
     task_id = str(msg.get("id", ""))
     task_type = msg.get("task_type")
@@ -369,6 +482,15 @@ async def handle_task(msg: Dict[str, Any]):
         )
     elif task_type == "zettelkasten_maintenance":
         await handle_zettelkasten_maintenance(
+            task_id,
+            vault_dir,
+            msg.get("model"),
+            msg.get("env_keys", {}),
+            msg.get("reasoning_effort"),
+            msg.get("cwd"),
+        )
+    elif task_type == "daily_task_summary":
+        await handle_daily_task_summary(
             task_id,
             vault_dir,
             msg.get("model"),

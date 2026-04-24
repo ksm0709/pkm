@@ -819,6 +819,59 @@ async def maintenance_checker():
             last_run_date = current_date
 
 
+async def task_summary_checker():
+    last_run_date = None
+    hostname = socket.gethostname()
+    # 0-29 min jitter per host so machines don't pile up at 08:00
+    jitter_min = int(hashlib.md5((hostname + "summary").encode()).hexdigest(), 16) % 30
+
+    while True:
+        await asyncio.sleep(60)
+
+        now = datetime.datetime.now()
+        current_date = now.date()
+
+        if now.hour == 8 and now.minute == jitter_min and last_run_date != current_date:
+            if task_queue:
+                vaults = discover_vaults()
+                ts = int(now.timestamp())
+                for vault_name, vault in vaults.items():
+                    marker_path = vault.pkm_dir / "summary-last-run"
+                    if marker_path.exists():
+                        try:
+                            data = json.loads(marker_path.read_text())
+                            if data.get("date") == str(current_date):
+                                logger.info(
+                                    "Task summary already claimed by '%s' today, skipping vault '%s'",
+                                    data.get("host", "unknown"),
+                                    vault_name,
+                                )
+                                continue
+                        except Exception:
+                            pass
+
+                    vault.pkm_dir.mkdir(parents=True, exist_ok=True)
+                    marker_path.write_text(
+                        json.dumps({"date": str(current_date), "host": hostname})
+                    )
+
+                    task = {
+                        "type": "task",
+                        "id": f"summary_{vault_name}_{ts}",
+                        "task_type": "daily_task_summary",
+                        "env": {"PKM_VAULT_DIR": str(vault.path)},
+                    }
+                    task_queue.push(task)
+                    logger.info(
+                        "Scheduled daily task summary for vault '%s': %s (host=%s, slot=8:%02d)",
+                        vault_name,
+                        task["id"],
+                        hostname,
+                        jitter_min,
+                    )
+            last_run_date = current_date
+
+
 async def async_main():
     global worker_proxy, task_queue
 
@@ -858,6 +911,7 @@ async def async_main():
 
     checker_task = asyncio.create_task(idle_checker(server))
     maint_task = asyncio.create_task(maintenance_checker())
+    summary_task = asyncio.create_task(task_summary_checker())
     bg_task = asyncio.create_task(process_background_tasks())
     version_task = asyncio.create_task(version_checker(server))
 
@@ -872,6 +926,7 @@ async def async_main():
         logger.info("Daemon shutting down.")
         checker_task.cancel()
         maint_task.cancel()
+        summary_task.cancel()
         bg_task.cancel()
         version_task.cancel()
         if worker_proxy and worker_proxy.process:

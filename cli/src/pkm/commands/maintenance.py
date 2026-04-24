@@ -31,11 +31,6 @@ def compute_vault_stats(vault: VaultConfig) -> dict:
         len(list(vault.daily_dir.glob("*.md"))) if vault.daily_dir.is_dir() else 0
     )
 
-    # Count tasks (excluding archive/)
-    task_count = (
-        len(list(vault.tasks_dir.glob("*.md"))) if vault.tasks_dir.is_dir() else 0
-    )
-
     # Count orphans
     orphan_count = len(find_orphans(vault))
 
@@ -72,7 +67,6 @@ def compute_vault_stats(vault: VaultConfig) -> dict:
     return {
         "notes": note_count,
         "dailies": daily_count,
-        "tasks": task_count,
         "orphans": orphan_count,
         "unique_tags": len(tag_set),
         "avg_links_per_note": round(avg_links, 1),

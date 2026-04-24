@@ -43,12 +43,6 @@ def test_resolve_link_notes(tmp_vault: VaultConfig):
     assert result == tmp_vault.notes_dir / "2026-04-01-mvcc.md"
 
 
-def test_resolve_link_tasks(tmp_vault: VaultConfig):
-    result = resolve_link(tmp_vault, "ongoing")
-    assert result is not None
-    assert result == tmp_vault.tasks_dir / "ongoing.md"
-
-
 def test_resolve_link_daily(tmp_vault: VaultConfig):
     result = resolve_link(tmp_vault, "2026-04-01")
     assert result is not None
