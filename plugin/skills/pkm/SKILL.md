@@ -150,6 +150,10 @@ pkm ask <query>                    # Ask a natural language question (uses seman
 pkm ask <query> --reasoning-effort high # Ask with visible reasoning stream in terminal
 pkm ask --list-models              # List available LLM models
 pkm index                          # Build/rebuild search index
+
+# Workflows (daemon scheduled tasks)
+pkm workflow list                  # List all configured workflows
+pkm workflow run <id>              # Queue a workflow for immediate execution
 ```
 
 ### Design Principles
