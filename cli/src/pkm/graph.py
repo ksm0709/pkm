@@ -472,9 +472,32 @@ def build_ast_and_graph(vault: VaultConfig) -> None:
             graph.add_node(tag_id, type="tag", name=tag)
             graph.add_edge(note_id, tag_id, type="has_tag")
 
+        # Tag notes (files in tags_dir) bridge to their tag node
+        if vault.tags_dir.is_dir() and file_path.parent.resolve() == vault.tags_dir.resolve():
+            tag_name = file_path.stem
+            tag_id = f"tag:{tag_name}"
+            graph.add_node(tag_id, type="tag", name=tag_name)
+            graph.add_edge(note_id, tag_id, type="tag_note")
+
         for link in metadata.links:
             graph.add_node(link, type="note_or_unresolved", title=link)
             graph.add_edge(note_id, link, type="wikilink")
+
+    # Post-process: link tag notes directly to all notes that use that tag.
+    # This makes get_note_neighbors(tag_note) return tagged notes as direct neighbors.
+    if vault.tags_dir.is_dir():
+        for file_path in md_files:
+            if file_path.parent.resolve() != vault.tags_dir.resolve():
+                continue
+            tag_note_id = str(parse_note(file_path).id)
+            tag_hub_id = f"tag:{file_path.stem}"
+            if not graph.has_node(tag_hub_id):
+                continue
+            for tagged_id in list(graph.predecessors(tag_hub_id)):
+                node_type = graph.nodes.get(tagged_id, {}).get("type", "")
+                if node_type in ("note", "note_or_unresolved") and tagged_id != tag_note_id:
+                    graph.add_edge(tag_note_id, tagged_id, type="tagged_by")
+                    graph.add_edge(tagged_id, tag_note_id, type="uses_tag_note")
 
     graph_data = nx.node_link_data(graph)
     graph_path.write_text(
