@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.61.2 (2026-04-24)
+
+### Bug Fixes
+
+- Invalidate AST cache on schema version bump
+  ([`aeefd85`](https://github.com/ksm0709/pkm/commit/aeefd854a9936ab2a4ef3830fbff8916c4047bc1))
+
+
 ## v2.61.1 (2026-04-24)
 
 ### Bug Fixes
