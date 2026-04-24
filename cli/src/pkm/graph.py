@@ -355,6 +355,9 @@ def parse_file_ast(file_path: Path, note_id: str) -> ASTMetadata:
     )
 
 
+_AST_CACHE_VERSION = 2  # bump to invalidate cache after tag-parsing fixes
+
+
 class ASTCache:
     def __init__(self, db_path: Path):
         self.db_path = db_path
@@ -371,6 +374,18 @@ class ASTCache:
                     data TEXT
                 )
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)
+            """)
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key = 'version'"
+            ).fetchone()
+            if row is None or int(row[0]) != _AST_CACHE_VERSION:
+                conn.execute("DELETE FROM ast_cache")
+                conn.execute(
+                    "INSERT OR REPLACE INTO meta (key, value) VALUES ('version', ?)",
+                    (str(_AST_CACHE_VERSION),),
+                )
 
     def get(self, note_id: str) -> ASTMetadata | None:
         with sqlite3.connect(self.db_path) as conn:
