@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.62.0 (2026-04-24)
+
+### Features
+
+- Connect tag notes to all notes using that tag in graph
+  ([`9e726a2`](https://github.com/ksm0709/pkm/commit/9e726a2028ea7dba20bf0d420a57a835b4ae5eb4))
+
+
 ## v2.61.2 (2026-04-24)
 
 ### Bug Fixes
