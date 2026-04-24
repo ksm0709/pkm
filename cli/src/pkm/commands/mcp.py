@@ -30,36 +30,24 @@ def mcp_cmd(ctx: click.Context, vault_name: str | None) -> None:
 
 @mcp_cmd.command("install")
 @click.argument("targets", nargs=-1)
-@click.option("--vault", "-v", "vault_name", default=None, help="Vault name to bind MCP server to")
-@click.pass_context
-def install_cmd(ctx: click.Context, targets: tuple[str, ...], vault_name: str | None) -> None:
+def install_cmd(targets: tuple[str, ...]) -> None:
     import json
     import subprocess
     from pathlib import Path
-    from pkm.config import get_vault
 
     if not targets or "all" in targets:
         targets = ("claude", "codex", "opencode")
-
-    vault_obj = ctx.obj.get("vault") if ctx.obj else None
-    if vault_name:
-        vault_obj = get_vault(vault_name)
-    elif vault_obj is None:
-        vault_obj = get_vault(None)
-
-    vault_arg = vault_obj.name if vault_obj else None
-    mcp_args = ["mcp", "--vault", vault_arg] if vault_arg else ["mcp"]
 
     for target in targets:
         if target == "claude":
             try:
                 result = subprocess.run(
-                    ["claude", "mcp", "add", "pkm", "--", "pkm"] + mcp_args,
+                    ["claude", "mcp", "add", "pkm", "--", "pkm", "mcp"],
                     capture_output=True,
                     text=True,
                 )
                 if result.returncode == 0:
-                    click.echo(f"Installed PKM MCP to Claude Code (vault: {vault_arg or 'auto'})")
+                    click.echo("Installed PKM MCP to Claude Code via CLI")
                 else:
                     click.echo(
                         f"Failed to install to Claude Code: {result.stderr}", err=True
@@ -79,13 +67,12 @@ def install_cmd(ctx: click.Context, targets: tuple[str, ...], vault_name: str | 
                     click.echo("PKM MCP already configured in Codex")
                     continue
 
-                args_toml = json.dumps(mcp_args)
-                new_server = f'\n[mcp_servers.pkm]\ncommand = "pkm"\nargs = {args_toml}\n'
+                new_server = '\n[mcp_servers.pkm]\ncommand = "pkm"\nargs = ["mcp"]\n'
                 if not content.endswith("\n"):
                     content += "\n"
                 content += new_server
                 config_path.write_text(content, encoding="utf-8")
-                click.echo(f"Installed PKM MCP to Codex (vault: {vault_arg or 'auto'}, {config_path})")
+                click.echo(f"Installed PKM MCP to Codex ({config_path})")
             except Exception as e:
                 click.echo(f"Error writing {config_path}: {e}", err=True)
 
@@ -104,12 +91,12 @@ def install_cmd(ctx: click.Context, targets: tuple[str, ...], vault_name: str | 
 
                 mcp_servers["pkm"] = {
                     "type": "local",
-                    "command": ["pkm"] + mcp_args,
+                    "command": ["pkm", "mcp"],
                     "enabled": True,
                 }
 
                 config_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-                click.echo(f"Installed PKM MCP to OpenCode (vault: {vault_arg or 'auto'}, {config_path})")
+                click.echo(f"Installed PKM MCP to OpenCode ({config_path})")
             except Exception as e:
                 click.echo(f"Error writing {config_path}: {e}", err=True)
         else:
