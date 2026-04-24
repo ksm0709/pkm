@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.61.1 (2026-04-24)
+
+### Bug Fixes
+
+- Note.tags returns char-list when YAML value is a scalar string
+  ([`910272b`](https://github.com/ksm0709/pkm/commit/910272b14c372c79ffee00621503544176fe7224))
+
+
 ## v2.61.0 (2026-04-24)
 
 ### Features
