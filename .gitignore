@@ -43,6 +43,7 @@ state/
 cli/.pkm
 
 # Claude / agent context (local-only)
+.claude/scheduled_tasks.lock
 AGENTS.md
 CLAUDE.md
 .context/*
