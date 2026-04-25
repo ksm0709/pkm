@@ -20,9 +20,10 @@ def test_workflow_list_shows_bundled_defaults(tmp_path, monkeypatch):
     runner = CliRunner()
     result = runner.invoke(main, ["workflow", "list"])
     assert result.exit_code == 0
-    # Bundled defaults should always be present (rich may truncate long IDs)
-    assert "zettelkas" in result.output
-    assert "daily_task" in result.output
+    payload = json.loads(result.output)
+    ids = [w["id"] for w in payload]
+    assert "zettelkasten_maintenance" in ids
+    assert "daily_task_summary" in ids
 
 
 def test_workflow_list_shows_entries(tmp_path, monkeypatch):
@@ -44,7 +45,10 @@ def test_workflow_list_shows_entries(tmp_path, monkeypatch):
     runner = CliRunner()
     result = runner.invoke(main, ["workflow", "list"])
     assert result.exit_code == 0
-    assert "my_wf" in result.output
+    payload = json.loads(result.output)
+    ids = [w["id"] for w in payload]
+    assert "my_wf" in ids
+    assert any(w["schedule_hour"] == 3 for w in payload if w["id"] == "my_wf")
     assert "3" in result.output
 
 

@@ -22,10 +22,28 @@ def workflow_group():
 
 @workflow_group.command(name="list")
 @click.option("--vault", "-v", default=None, help="Vault path for override resolution")
-def workflow_list(vault: str | None):
+@click.option("--format", "-f", "fmt", default="json", type=click.Choice(["json", "table"]), help="Output format")
+def workflow_list(vault: str | None, fmt: str):
     """List all configured workflows."""
     vault_path = Path(vault) if vault else None
     configs = load_workflows(vault_path=vault_path)
+
+    if fmt == "json":
+        click.echo(json.dumps(
+            [
+                {
+                    "id": c.id,
+                    "schedule_hour": c.schedule_hour,
+                    "jitter_type": c.jitter_type,
+                    "marker_file": c.marker_file,
+                    "pre_hook": c.pre_hook,
+                    "post_hook": c.post_hook,
+                }
+                for c in configs
+            ],
+            indent=2,
+        ))
+        return
 
     if not configs:
         _console.print("[yellow]No workflows configured.[/yellow]")
