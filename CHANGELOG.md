@@ -2,6 +2,24 @@
 
 <!-- version list -->
 
+## v2.64.0 (2026-04-25)
+
+### Chores
+
+- Ignore .claude/scheduled_tasks.lock
+  ([`3524cbc`](https://github.com/ksm0709/pkm/commit/3524cbc96081163f8b1dd6f28b172ef7d0211187))
+
+### Documentation
+
+- Add pkm workflow commands to SKILL.md and docs/cli/
+  ([`ce1444e`](https://github.com/ksm0709/pkm/commit/ce1444ecd0ca36f1a9282bef2c556468f631d018))
+
+### Features
+
+- Default workflow list output to JSON
+  ([`8e5d905`](https://github.com/ksm0709/pkm/commit/8e5d9051dd3aafa133ec973eba564ef016565392))
+
+
 ## v2.63.0 (2026-04-24)
 
 ### Features
