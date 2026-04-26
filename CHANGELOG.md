@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.68.1 (2026-04-26)
+
+### Bug Fixes
+
+- **hook**: Move Relevant Notes before Recent Context in turn-start output
+  ([`99c0f71`](https://github.com/ksm0709/pkm/commit/99c0f71932010c5af1b0ae2738b1126c61137097))
+
+
 ## v2.68.0 (2026-04-26)
 
 ### Features
