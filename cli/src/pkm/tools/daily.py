@@ -51,7 +51,12 @@ def read_daily_log(date_str: str | None = None) -> str:
 
 
 @tool()
-def create_daily_subnote(title: str, content: str) -> str:
+def create_daily_subnote(
+    title: str,
+    content: str,
+    tags: list[str] | None = None,
+    aliases: list[str] | None = None,
+) -> str:
     """Create a subnote file for today and link it from today's daily note.
 
     Creates YYYY-MM-DD-{title}.md in the daily directory with the given content,
@@ -60,17 +65,23 @@ def create_daily_subnote(title: str, content: str) -> str:
     Args:
         title: Subnote title slug (spaces will be replaced with hyphens).
         content: Markdown content for the subnote body.
+        tags: Optional list of tags for the subnote frontmatter.
+        aliases: Optional list of aliases for the subnote frontmatter.
     """
     import re as _re
     from datetime import datetime as _dt
-    from pkm.commands.daily import SUBNOTE_TEMPLATE, DAILY_TEMPLATE, _add_subnote_link
+    from pkm.commands.daily import (
+        _make_subnote_content,
+        DAILY_TEMPLATE,
+        _add_subnote_link,
+    )
 
     v_dir = os.environ.get("PKM_VAULT_DIR", ".")
     vault = _get_vault(v_dir)
 
     try:
         today = _dt.now().strftime("%Y-%m-%d")
-        now = _dt.now().strftime("%H:%M")
+        now = _dt.now().strftime("%H:%M:%S")
 
         # Sanitize title
         title_slug = _re.sub(r"[/\\]", "", title.replace(" ", "-"))
@@ -87,9 +98,10 @@ def create_daily_subnote(title: str, content: str) -> str:
             return "Error: invalid title — would escape daily directory."
 
         # Write subnote
-        subnote_content = SUBNOTE_TEMPLATE.format(note_id=note_id) + content
         if not note_path.exists():
-            note_path.write_text(subnote_content, encoding="utf-8")
+            note_path.write_text(
+                _make_subnote_content(note_id, content, tags, aliases), encoding="utf-8"
+            )
 
         # Ensure today's daily note exists
         daily_path = vault.daily_dir / f"{today}.md"

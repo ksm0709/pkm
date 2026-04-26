@@ -242,7 +242,7 @@ def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None
             "## PKM",
             "**IMPORTANT: If MCP tools (e.g., pkm_search, pkm_daily_add) are available, ALWAYS prioritize using them over CLI commands.**",
             '`pkm daily add "<text>"` — log decisions, findings, code changes',
-            '`pkm daily add --sub "<title>"` — create linked sub-note + log [[wikilink]] in today\'s daily',
+            '`pkm daily subnote "<title>"` — create linked sub-note + log [[wikilink]] in today\'s daily',
             '`pkm search "<query>"` — recall related notes',
             '`pkm note add --content "<insight>" --type semantic --importance 7 --tags tag1,tag2` — atomic note',
             "  - importance: 1-3 trivial, 4-6 moderate, 7-8 important (arch decisions, bug root causes), 9-10 critical (security, irreversible)",

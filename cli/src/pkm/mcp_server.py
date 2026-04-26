@@ -97,7 +97,12 @@ def daily_add(text: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-def create_daily_subnote(title: str, content: str) -> dict[str, Any]:
+def create_daily_subnote(
+    title: str,
+    content: str,
+    tags: list[str] | None = None,
+    aliases: list[str] | None = None,
+) -> dict[str, Any]:
     """Create a dated subnote and link it from today's daily note.
 
     Creates YYYY-MM-DD-{title}.md in the vault daily directory and appends
@@ -106,15 +111,21 @@ def create_daily_subnote(title: str, content: str) -> dict[str, Any]:
     Args:
         title: Subnote title slug (spaces become hyphens).
         content: Markdown body content for the new subnote.
+        tags: Optional list of tags for the subnote frontmatter.
+        aliases: Optional list of aliases for the subnote frontmatter.
     """
     import re as _re
     from datetime import datetime as _dt
-    from pkm.commands.daily import SUBNOTE_TEMPLATE, DAILY_TEMPLATE, _add_subnote_link
+    from pkm.commands.daily import (
+        _make_subnote_content,
+        DAILY_TEMPLATE,
+        _add_subnote_link,
+    )
 
     vault = _get_vault()
     try:
         today = _dt.now().strftime("%Y-%m-%d")
-        now = _dt.now().strftime("%H:%M")
+        now = _dt.now().strftime("%H:%M:%S")
 
         title_slug = _re.sub(r"[/\\]", "", title.replace(" ", "-"))
         title_slug = _re.sub(r"\.\.+", "", title_slug).strip("-").strip()
@@ -128,9 +139,10 @@ def create_daily_subnote(title: str, content: str) -> dict[str, Any]:
         if not str(note_path.resolve()).startswith(str(vault.daily_dir.resolve())):
             return {"error": "invalid title — would escape daily directory"}
 
-        subnote_content = SUBNOTE_TEMPLATE.format(note_id=note_id) + content
         if not note_path.exists():
-            note_path.write_text(subnote_content, encoding="utf-8")
+            note_path.write_text(
+                _make_subnote_content(note_id, content, tags, aliases), encoding="utf-8"
+            )
 
         daily_path = vault.daily_dir / f"{today}.md"
         if not daily_path.exists():

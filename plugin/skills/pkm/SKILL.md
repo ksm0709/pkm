@@ -42,15 +42,15 @@ Record the day's experiences, learning, and ideas in chronological order. It doe
 ```markdown
 ---
 id: 2026-04-05
+consolidated: false
 aliases: []
 tags:
-  - daily-notes
+- daily-notes
 ---
-- [09:30] Learned today: ...
-- [14:20] Ideas from the meeting: ...
-
-## TODO
-- [09:30] Task item
+## Logs
+- [09:30:12] Learned today: ...
+- [14:20:05] Ideas from the meeting: ...
+- [14:25:33] [[2026-04-05-meeting-notes]]
 ```
 
 ### 2. Atomic Note — Refined Knowledge
@@ -110,8 +110,9 @@ export PKM_DEFAULT_VAULT=<vault-name>  # default vault (first discovered vault i
 # Daily notes
 pkm daily                          # Show/create today's daily note
 pkm daily --vault <name>           # Specific vault
-pkm daily add "learning content"   # Append timestamped entry
-pkm daily todo "task"              # Add to TODO section
+pkm daily add "learning content"   # Append [hh:mm:ss] timestamped entry to ## Logs
+pkm daily subnote "meeting" --content "# Notes" --tags "work"  # Create sub-note + log wikilink
+pkm daily edit                     # Open daily note in editor
 
 # Note management
 pkm note add "Note Title" --tags t1,t2  # Create atomic note with frontmatter
@@ -192,9 +193,9 @@ $ pkm daily add "오늘의 작업 내용"
 
 **Never create or append to daily/note files directly with Write/Edit tools as the first action.** Always use the CLI as the entry gate:
 
-- **Daily entries**: `pkm daily add "<text>"` — ensures timestamp format, frontmatter, and TODO section integrity
+- **Daily entries**: `pkm daily add "<text>"` — ensures [hh:mm:ss] timestamp format and ## Logs section
+- **Sub-notes**: `pkm daily subnote "<title>"` — creates dated sub-note and logs [[wikilink]] in daily
 - **New notes**: `pkm note add "<Title>" --tags t1,t2` — ensures required frontmatter (id, aliases, tags, description)
-- **TODO items**: `pkm daily todo "<task>"` — places item in the correct section
 
 **After** the CLI creates the file/entry, using Read/Edit to modify the internal content is fine (e.g., expanding a note body, fixing wording). The gate applies to creation and appending only.
 

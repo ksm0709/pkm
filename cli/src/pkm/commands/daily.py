@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import shlex
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -19,22 +20,27 @@ console = Console()
 DAILY_TEMPLATE = """\
 ---
 id: {date}
+consolidated: false
 aliases: []
 tags:
-  - daily-notes
+- daily-notes
 ---
-
-## TODO
+## Logs
 """
 
-SUBNOTE_TEMPLATE = """\
----
-id: {note_id}
-aliases: []
-tags: []
----
 
-"""
+def _make_subnote_content(
+    note_id: str,
+    content: str = "",
+    tags: list[str] | None = None,
+    aliases: list[str] | None = None,
+) -> str:
+    """Generate subnote file content with frontmatter."""
+    tags = tags or []
+    aliases = aliases or []
+    tags_yaml = "[]" if not tags else "\n" + "\n".join(f"- {t}" for t in tags)
+    aliases_yaml = "[]" if not aliases else "\n" + "\n".join(f"- {a}" for a in aliases)
+    return f"---\nid: {note_id}\naliases: {aliases_yaml}\ntags: {tags_yaml}\n---\n\n{content}"
 
 
 def _get_subnotes(daily_dir: Path, date_str: str) -> list[Path]:
@@ -61,7 +67,7 @@ def add_daily_entry(vault, text: str) -> str:
     Returns the formatted entry string.
     """
     today = datetime.now().strftime("%Y-%m-%d")
-    now = datetime.now().strftime("%H:%M")
+    now = datetime.now().strftime("%H:%M:%S")
     note_path = vault.daily_dir / f"{today}.md"
 
     vault.daily_dir.mkdir(parents=True, exist_ok=True)
@@ -71,27 +77,21 @@ def add_daily_entry(vault, text: str) -> str:
     content = note_path.read_text(encoding="utf-8")
     entry = f"- [{now}] {text}\n"
 
-    if "## TODO" in content:
-        content = content.replace("## TODO", f"{entry}## TODO", 1)
-    else:
-        if not content.endswith("\n"):
-            content += "\n"
-        content += entry
+    if not content.endswith("\n"):
+        content += "\n"
+    content += entry
 
     note_path.write_text(content, encoding="utf-8")
     return entry
 
 
 def _add_subnote_link(daily_path: Path, now: str, note_id: str) -> None:
-    """Insert a Sub note wikilink entry before ## TODO in the daily note."""
+    """Append a wikilink entry to the daily note."""
     content = daily_path.read_text(encoding="utf-8")
-    entry = f"- [{now}] Sub note added: [[{note_id}]]\n"
-    if "## TODO" in content:
-        content = content.replace("## TODO", f"{entry}## TODO", 1)
-    else:
-        if not content.endswith("\n"):
-            content += "\n"
-        content += entry
+    entry = f"- [{now}] [[{note_id}]]\n"
+    if not content.endswith("\n"):
+        content += "\n"
+    content += entry
     daily_path.write_text(content, encoding="utf-8")
 
 
@@ -122,20 +122,9 @@ def daily(ctx: click.Context) -> None:
 
 
 @daily.command()
-@click.option(
-    "--sub",
-    "sub_title",
-    is_flag=False,
-    flag_value="",
-    default=None,
-    help="Create and edit a sub-note. Optionally provide a title directly.",
-)
 @click.pass_context
-def edit(ctx: click.Context, sub_title: str | None) -> None:
-    """Open today's daily note in an editor.
-
-    Use --sub to create a sub-note interactively, or --sub <title> to skip the prompt.
-    """
+def edit(ctx: click.Context) -> None:
+    """Open today's daily note in an editor."""
     vault = ctx.obj["vault"]
     today = datetime.now().strftime("%Y-%m-%d")
     vault.daily_dir.mkdir(parents=True, exist_ok=True)
@@ -143,42 +132,9 @@ def edit(ctx: click.Context, sub_title: str | None) -> None:
     config_data = load_config()
     editor_cmd = get_editor(config_data)
 
-    if sub_title is not None:
-        if sub_title:
-            raw_title = sub_title
-        else:
-            default_title = datetime.now().strftime("%H-%M")
-            raw_title = click.prompt("Title", default=default_title)
-
-        title = _sanitize_title(raw_title)
-        if not title:
-            raise click.ClickException("Title cannot be empty.")
-
-        note_id = f"{today}-{title}"
-        note_path = vault.daily_dir / f"{note_id}.md"
-
-        # Guard against path traversal
-        if not str(note_path.resolve()).startswith(str(vault.daily_dir.resolve())):
-            raise click.ClickException(
-                "Invalid title: would create file outside daily directory."
-            )
-
-        if not note_path.exists():
-            note_path.write_text(
-                SUBNOTE_TEMPLATE.format(note_id=note_id), encoding="utf-8"
-            )
-            console.print(f"[green]Created:[/green] {note_path.name}")
-        else:
-            console.print(f"[dim]Opening existing:[/dim] {note_path.name}")
-
-        daily_path = vault.daily_dir / f"{today}.md"
-        if not daily_path.exists():
-            daily_path.write_text(DAILY_TEMPLATE.format(date=today), encoding="utf-8")
-        _add_subnote_link(daily_path, datetime.now().strftime("%H:%M"), note_id)
-    else:
-        note_path = vault.daily_dir / f"{today}.md"
-        if not note_path.exists():
-            note_path.write_text(DAILY_TEMPLATE.format(date=today), encoding="utf-8")
+    note_path = vault.daily_dir / f"{today}.md"
+    if not note_path.exists():
+        note_path.write_text(DAILY_TEMPLATE.format(date=today), encoding="utf-8")
 
     result = subprocess.run([*shlex.split(editor_cmd), str(note_path)])
     if result.returncode != 0:
@@ -186,112 +142,101 @@ def edit(ctx: click.Context, sub_title: str | None) -> None:
 
 
 @daily.command()
-@click.argument("text", required=False, default=None)
-@click.option(
-    "--sub",
-    "sub_title",
-    is_flag=False,
-    flag_value="",
-    default=None,
-    help="Create a sub-note and log a wikilink. Optionally provide a title directly.",
-)
+@click.argument("text")
 @click.option("--vault", "-v", "vault_name", default=None, help="Vault name")
 @click.pass_context
-def add(
-    ctx: click.Context, text: str | None, sub_title: str | None, vault_name: str | None
-) -> None:
-    """Append a timestamped log entry before ## TODO.
-
-    Use --sub to create a sub-note and log a wikilink, or provide TEXT to log a plain entry.
-    """
-    if sub_title is not None and text is not None:
-        raise click.UsageError("Cannot use both TEXT and --sub.")
-    if sub_title is None and text is None:
-        raise click.UsageError("Either TEXT or --sub is required.")
-
+def add(ctx: click.Context, text: str, vault_name: str | None) -> None:
+    """Append a timestamped log entry to today's daily note."""
     if vault_name:
         from pkm.config import get_vault
 
         vault = get_vault(vault_name)
     else:
         vault = ctx.obj["vault"]
-    today = datetime.now().strftime("%Y-%m-%d")
-    now = datetime.now().strftime("%H:%M")
-    note_path = vault.daily_dir / f"{today}.md"
 
-    vault.daily_dir.mkdir(parents=True, exist_ok=True)
-    if not note_path.exists():
-        note_path.write_text(DAILY_TEMPLATE.format(date=today), encoding="utf-8")
-
-    if sub_title is not None:
-        if sub_title:
-            raw_title = sub_title
-        else:
-            default_title = datetime.now().strftime("%H-%M")
-            raw_title = click.prompt("Title", default=default_title)
-
-        title = _sanitize_title(raw_title)
-        if not title:
-            raise click.ClickException("Title cannot be empty.")
-
-        note_id = f"{today}-{title}"
-        subnote_path = vault.daily_dir / f"{note_id}.md"
-
-        if not str(subnote_path.resolve()).startswith(str(vault.daily_dir.resolve())):
-            raise click.ClickException(
-                "Invalid title: would create file outside daily directory."
-            )
-
-        if not subnote_path.exists():
-            subnote_path.write_text(
-                SUBNOTE_TEMPLATE.format(note_id=note_id), encoding="utf-8"
-            )
-            console.print(f"[green]Created:[/green] {subnote_path.name}")
-        else:
-            console.print(f"[dim]Sub-note exists:[/dim] {subnote_path.name}")
-
-        _add_subnote_link(note_path, now, note_id)
-        entry = f"- [{now}] Sub note added: [[{note_id}]]\n"
-        console.print(f"Linked: {entry}", end="")
-    else:
-        add_daily_entry(vault, text)
-        now = datetime.now().strftime("%H:%M")
-        console.print(f"Daily note added at [{now}].")
+    add_daily_entry(vault, text)
+    now = datetime.now().strftime("%H:%M:%S")
+    console.print(f"Daily note added at [{now}].")
 
 
 @daily.command()
-@click.argument("text")
+@click.argument("title")
+@click.option("--content", "content", default="", help="Subnote body content.")
+@click.option(
+    "--tags", "tags_str", default="", help='Comma-separated tags, e.g. "work,ideas".'
+)
+@click.option(
+    "--aliases",
+    "aliases_str",
+    default="",
+    help='Comma-separated aliases, e.g. "My Note,Alias".',
+)
+@click.option(
+    "--stdin",
+    "from_stdin",
+    is_flag=True,
+    default=False,
+    help="Read content from stdin (mutually exclusive with --content).",
+)
 @click.pass_context
-def todo(ctx: click.Context, text: str) -> None:
-    """Append a timestamped TODO entry after ## TODO."""
+def subnote(
+    ctx: click.Context,
+    title: str,
+    content: str,
+    tags_str: str,
+    aliases_str: str,
+    from_stdin: bool,
+) -> None:
+    """Create a subnote and log a wikilink in today's daily note.
+
+    The subnote YYYY-MM-DD-TITLE.md is created in the daily directory.
+    If it already exists, only the wikilink is added to the daily log.
+
+    \b
+    Agent usage examples:
+      pkm daily subnote "meeting" --content "# Meeting\\n- discussed roadmap" --tags "work,meeting"
+      pkm daily subnote "todo" --tags "tasks" --aliases "TODOs"
+      echo "# Ideas" | pkm daily subnote "ideas" --stdin
+    """
+    if from_stdin and content:
+        raise click.UsageError("Cannot use both --content and --stdin.")
+
     vault = ctx.obj["vault"]
     today = datetime.now().strftime("%Y-%m-%d")
-    now = datetime.now().strftime("%H:%M")
-    note_path = vault.daily_dir / f"{today}.md"
+    now = datetime.now().strftime("%H:%M:%S")
 
-    if not note_path.exists():
-        vault.daily_dir.mkdir(parents=True, exist_ok=True)
-        note_path.write_text(DAILY_TEMPLATE.format(date=today), encoding="utf-8")
+    if from_stdin:
+        content = sys.stdin.read()
 
-    content = note_path.read_text(encoding="utf-8")
-    entry = f"- [{now}] {text}\n"
+    tags = [t.strip() for t in tags_str.split(",") if t.strip()] if tags_str else []
+    aliases = (
+        [a.strip() for a in aliases_str.split(",") if a.strip()] if aliases_str else []
+    )
 
-    if "## TODO" in content:
-        # Insert after the ## TODO line
-        lines = content.splitlines(keepends=True)
-        for i, line in enumerate(lines):
-            if line.rstrip("\n") == "## TODO":
-                lines.insert(i + 1, entry)
-                break
-        else:
-            if not lines[-1].endswith("\n"):
-                lines[-1] += "\n"
-            lines.append(entry)
-        content = "".join(lines)
+    title_slug = _sanitize_title(title)
+    if not title_slug:
+        raise click.ClickException("Title cannot be empty.")
+
+    note_id = f"{today}-{title_slug}"
+    subnote_path = vault.daily_dir / f"{note_id}.md"
+
+    vault.daily_dir.mkdir(parents=True, exist_ok=True)
+    if not str(subnote_path.resolve()).startswith(str(vault.daily_dir.resolve())):
+        raise click.ClickException(
+            "Invalid title: would create file outside daily directory."
+        )
+
+    if not subnote_path.exists():
+        subnote_path.write_text(
+            _make_subnote_content(note_id, content, tags, aliases), encoding="utf-8"
+        )
+        console.print(f"[green]Created:[/green] {subnote_path.name}")
     else:
-        if not content.endswith("\n"):
-            content += "\n"
-        content += entry
+        console.print(f"[dim]Sub-note exists:[/dim] {subnote_path.name}")
 
-    note_path.write_text(content, encoding="utf-8")
-    console.print(f"Added TODO: {entry}", end="")
+    daily_path = vault.daily_dir / f"{today}.md"
+    if not daily_path.exists():
+        daily_path.write_text(DAILY_TEMPLATE.format(date=today), encoding="utf-8")
+
+    _add_subnote_link(daily_path, now, note_id)
+    console.print(f"Logged: [[{note_id}]]")
