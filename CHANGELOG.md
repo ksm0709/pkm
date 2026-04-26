@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.67.0 (2026-04-26)
+
+### Features
+
+- **hook**: Add codex payload support to _extract_user_prompt
+  ([`0529326`](https://github.com/ksm0709/pkm/commit/0529326c298f091ef8767bb509e62eb9d73f4b95))
+
+
 ## v2.66.0 (2026-04-26)
 
 ### Features
