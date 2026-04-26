@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.66.0 (2026-04-26)
+
+### Features
+
+- **hook**: Platform-aware user prompt extraction for multi-agent support
+  ([`137dcf6`](https://github.com/ksm0709/pkm/commit/137dcf67e301d5b2b0a340dd4006fdff91996f23))
+
+
 ## v2.65.0 (2026-04-26)
 
 ### Features
