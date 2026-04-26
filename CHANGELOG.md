@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.68.0 (2026-04-26)
+
+### Features
+
+- **hook**: Add opencode payload support to _extract_user_prompt
+  ([`0b3cb63`](https://github.com/ksm0709/pkm/commit/0b3cb63e6bafbcbbb171dddb10f1a366861191ea))
+
+
 ## v2.67.0 (2026-04-26)
 
 ### Features
