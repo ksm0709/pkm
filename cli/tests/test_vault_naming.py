@@ -225,6 +225,73 @@ def test_get_vault_context_uses_existing_git_vault(tmp_path, monkeypatch):
     assert source == "Git Project"
 
 
+def test_get_vault_context_git_vault_missing_falls_back_to_global_config(
+    tmp_path, monkeypatch
+):
+    """git vault name found but directory missing → falls back to Global Config vault.
+
+    Regression: the original elif chain consumed the git-project branch without
+    setting `name`, so Global Config and First Discovered fallbacks never ran.
+    """
+    from pkm.config import get_vault_context
+
+    vaults_root = tmp_path / "vaults"
+    fallback_vault = vaults_root / "default"
+    (fallback_vault / "daily").mkdir(parents=True)
+    (fallback_vault / "notes").mkdir()
+
+    monkeypatch.setattr("pkm.config.get_vaults_root", lambda: vaults_root)
+    monkeypatch.setattr("pkm.config.get_local_config_vault", lambda: None)
+    monkeypatch.delenv("PKM_DEFAULT_VAULT", raising=False)
+    monkeypatch.setattr(
+        "pkm.config.load_config", lambda: {"defaults": {"vault": "default"}}
+    )
+    monkeypatch.setattr(
+        "pkm.config.get_git_vault_name", lambda cwd=None: "@taeho--myrepo"
+    )
+    monkeypatch.setattr("pkm.config._get_git_project_name_legacy", lambda: None)
+
+    # @taeho--myrepo dir does NOT exist → should fall back to Global Config
+    assert not (vaults_root / "@taeho--myrepo").exists()
+
+    vc, source = get_vault_context()
+
+    assert vc.name == "default"
+    assert source == "Global Config"
+
+
+def test_get_vault_context_git_vault_missing_falls_back_to_first_discovered(
+    tmp_path, monkeypatch
+):
+    """git vault name found but directory missing → falls back to First Discovered vault.
+
+    Regression: same elif-chain bug; Global Config also absent means First Discovered
+    must still be reachable.
+    """
+    from pkm.config import get_vault_context
+
+    vaults_root = tmp_path / "vaults"
+    discovered_vault = vaults_root / "personal"
+    (discovered_vault / "daily").mkdir(parents=True)
+    (discovered_vault / "notes").mkdir()
+
+    monkeypatch.setattr("pkm.config.get_vaults_root", lambda: vaults_root)
+    monkeypatch.setattr("pkm.config.get_local_config_vault", lambda: None)
+    monkeypatch.delenv("PKM_DEFAULT_VAULT", raising=False)
+    monkeypatch.setattr("pkm.config.load_config", lambda: {})
+    monkeypatch.setattr(
+        "pkm.config.get_git_vault_name", lambda cwd=None: "@taeho--myrepo"
+    )
+    monkeypatch.setattr("pkm.config._get_git_project_name_legacy", lambda: None)
+
+    assert not (vaults_root / "@taeho--myrepo").exists()
+
+    vc, source = get_vault_context()
+
+    assert vc.name == "personal"
+    assert source == "First Discovered"
+
+
 def test_get_vault_context_migrates_legacy_vault_without_creating(
     tmp_path, monkeypatch
 ):

@@ -327,18 +327,22 @@ def get_vault_context(name: str | None = None) -> tuple[VaultConfig, str]:
         if (get_vaults_root() / vault_name).is_dir():
             name = vault_name
             source = "Git Project"
-    elif (name := load_config().get("defaults", {}).get("vault")) is not None:
-        source = "Global Config"
-    else:
-        vaults = discover_vaults()
-        if vaults:
-            name = next(iter(vaults))
-            source = "First Discovered"
+
+    # Fallbacks if git vault missing or no git vault
+    if name is None:
+        if (name_cfg := load_config().get("defaults", {}).get("vault")) is not None:
+            name = name_cfg
+            source = "Global Config"
         else:
-            raise click.ClickException(
-                f"No vaults found under {get_vaults_root()}. "
-                "A vault needs a daily/ or notes/ subdirectory."
-            )
+            vaults = discover_vaults()
+            if vaults:
+                name = next(iter(vaults))
+                source = "First Discovered"
+            else:
+                raise click.ClickException(
+                    f"No vaults found under {get_vaults_root()}. "
+                    "A vault needs a daily/ or notes/ subdirectory."
+                )
 
     vaults = discover_vaults()
     if name not in vaults:
