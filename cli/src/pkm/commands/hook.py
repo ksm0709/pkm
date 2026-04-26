@@ -354,17 +354,8 @@ def _handle_turn_start(
     daily_tail_n = int(hooks_cfg.get("daily_tail_n", 10))
     search_top_n = int(hooks_cfg.get("search_top_n", 3))
 
-    # --- Recent daily entries for context continuity ---
-    try:
-        tail = _tail_daily_entries(vault, total=daily_tail_n)
-        if tail:
-            lines.append("## Recent Context")
-            lines.extend(tail)
-            lines.append("")
-    except Exception:
-        pass
-
     # --- Dynamic context injection from stdin + daily note ---
+    # Read stdin first so we can use user_prompt for search before building output.
     user_prompt = ""
     if not sys.stdin.isatty():
         try:
@@ -395,6 +386,7 @@ def _handle_turn_start(
         query_parts.append(daily_snippet[:100])
     query = " ".join(query_parts).strip() or "important decision error finding pattern"
 
+    # --- Relevant Notes first: highest priority, must survive any truncation ---
     try:
         from pkm.search_engine import (
             load_index,
@@ -418,6 +410,16 @@ def _handle_turn_start(
                 desc = _get_note_desc(r)
                 suffix = f" — {desc}" if desc else ""
                 lines.append(f"- [{mt}|imp:{r.importance:.0f}] {r.title}{suffix}")
+            lines.append("")
+    except Exception:
+        pass
+
+    # --- Recent daily entries (lower priority, appended after notes) ---
+    try:
+        tail = _tail_daily_entries(vault, total=daily_tail_n)
+        if tail:
+            lines.append("## Recent Context")
+            lines.extend(tail)
             lines.append("")
     except Exception:
         pass
