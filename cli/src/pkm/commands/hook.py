@@ -212,17 +212,20 @@ def _extract_user_prompt(payload: dict[str, Any]) -> str:
     then falls back through known field locations for unrecognised platforms.
 
     Known payload shapes:
-      hermes  (pre_llm_call):         extra.user_message
-      claude-code (UserPromptSubmit): prompt
-      codex   (UserPromptSubmit):     prompt | input | user_prompt | userPrompt | text
+      hermes      (pre_llm_call):         extra.platform="hermes", extra.user_message
+      claude-code (UserPromptSubmit):     prompt
+      codex       (UserPromptSubmit):     prompt | input | user_prompt | userPrompt | text
+      opencode    (UserPromptSubmit, via oh-my-openagent): prompt, hook_source="opencode-plugin"
     """
     _PLATFORM_EXTRACTORS: dict[str, Any] = {
         "hermes": lambda p: p.get("extra", {}).get("user_message", ""),
         "claude-code": lambda p: p.get("prompt", ""),
+        "opencode-plugin": lambda p: p.get("prompt", ""),
     }
 
     extra = payload.get("extra", {})
-    platform = extra.get("platform", "")
+    # hermes sends platform in extra.platform; opencode sends hook_source at top level
+    platform = extra.get("platform") or payload.get("hook_source", "")
     if platform in _PLATFORM_EXTRACTORS:
         return _PLATFORM_EXTRACTORS[platform](payload) or ""
 
