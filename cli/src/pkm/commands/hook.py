@@ -210,11 +210,14 @@ def _extract_user_prompt(payload: dict[str, Any]) -> str:
 
     Tries a platform-specific extractor first (keyed by extra.platform),
     then falls back through known field locations for unrecognised platforms.
+
+    Known payload shapes:
+      hermes  (pre_llm_call):         extra.user_message
+      claude-code (UserPromptSubmit): prompt
+      codex   (UserPromptSubmit):     prompt | input | user_prompt | userPrompt | text
     """
     _PLATFORM_EXTRACTORS: dict[str, Any] = {
-        # hermes pre_llm_call payload
         "hermes": lambda p: p.get("extra", {}).get("user_message", ""),
-        # claude-code UserPromptSubmit payload
         "claude-code": lambda p: p.get("prompt", ""),
     }
 
@@ -223,8 +226,13 @@ def _extract_user_prompt(payload: dict[str, Any]) -> str:
     if platform in _PLATFORM_EXTRACTORS:
         return _PLATFORM_EXTRACTORS[platform](payload) or ""
 
-    # Fallback chain for unknown/missing platform field
-    return extra.get("user_message") or payload.get("prompt") or ""
+    # Fallback chain: covers codex + unknown platforms.
+    # Order mirrors codex readPromptText: prompt→input→user_prompt→userPrompt→text
+    for key in ("user_message", "prompt", "input", "user_prompt", "userPrompt", "text"):
+        val = extra.get(key) or payload.get(key)
+        if val and str(val).strip():
+            return str(val).strip()
+    return ""
 
 
 def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None:
