@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.69.1 (2026-04-26)
+
+### Bug Fixes
+
+- **config**: Fallback to Global Config/First Discovered when git vault dir missing
+  ([`9cb66e4`](https://github.com/ksm0709/pkm/commit/9cb66e41d4cba6942d3e963b3e44ba7f8b8af055))
+
+
 ## v2.69.0 (2026-04-26)
 
 ### Features
