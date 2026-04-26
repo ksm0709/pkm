@@ -205,6 +205,28 @@ def _check_consolidation_trigger(vault, config: dict[str, Any]) -> str | None:
         return None
 
 
+def _extract_user_prompt(payload: dict[str, Any]) -> str:
+    """Extract the user's message from an agent hook payload.
+
+    Tries a platform-specific extractor first (keyed by extra.platform),
+    then falls back through known field locations for unrecognised platforms.
+    """
+    _PLATFORM_EXTRACTORS: dict[str, Any] = {
+        # hermes pre_llm_call payload
+        "hermes": lambda p: p.get("extra", {}).get("user_message", ""),
+        # claude-code UserPromptSubmit payload
+        "claude-code": lambda p: p.get("prompt", ""),
+    }
+
+    extra = payload.get("extra", {})
+    platform = extra.get("platform", "")
+    if platform in _PLATFORM_EXTRACTORS:
+        return _PLATFORM_EXTRACTORS[platform](payload) or ""
+
+    # Fallback chain for unknown/missing platform field
+    return extra.get("user_message") or payload.get("prompt") or ""
+
+
 def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None:
     vault = ctx.obj["vault"]
     lines = []
@@ -337,7 +359,7 @@ def _handle_turn_start(
         try:
             raw = sys.stdin.read(65536)  # 64 KB cap — hook payloads are always small
             payload = json.loads(raw)
-            user_prompt = str(payload.get("prompt", ""))
+            user_prompt = str(_extract_user_prompt(payload))
         except Exception:
             pass
 
