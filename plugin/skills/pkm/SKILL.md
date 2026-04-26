@@ -89,7 +89,24 @@ Criteria for deciding when to promote from a daily note to an atomic note:
 - **Structuring value**: When scattered notes can be organized into a single concept
 - **Connection potential**: When meaningful connections can be made with existing atomic notes
 
-## CLI Tool: `pkm`
+## Interface: MCP Tools
+
+> Use this interface when PKM MCP server is configured (visible as `mcp__pkm__*` tools in your tool list). If MCP tools are available, always prefer them — they are faster and require no shell.
+
+```
+mcp__pkm__daily_add(text="log decisions, findings, code changes")
+mcp__pkm__search(query="query string")
+mcp__pkm__note_add(content="insight", memory_type="semantic", importance=7, tags=["tag1", "tag2"])
+mcp__pkm__create_daily_subnote(title="sub-note title")
+```
+
+**importance scale**: 1-3 trivial · 4-6 moderate · 7-8 important (arch decisions, bug root causes) · 9-10 critical (security, irreversible). Bias 7+ for anything the next agent would need. Default 5 if unsure.
+
+## Interface: CLI
+
+> Use this interface when MCP tools are **not** available (no `mcp__pkm__*` in your tool list). All operations go through the `pkm` CLI.
+
+### Setup
 
 Python CLI tool at `~/.agents/skills/pkm/scripts/pkm-cli/`. Install with:
 

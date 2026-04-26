@@ -205,6 +205,60 @@ def _check_consolidation_trigger(vault, config: dict[str, Any]) -> str | None:
         return None
 
 
+def _detect_pkm_mcp() -> bool:
+    """Return True if a PKM MCP server is configured in any supported agent tool.
+
+    Checks (in order): Claude Code → hermes → opencode.
+    Returns False on any parse error — never raises.
+    """
+    # Claude Code: ~/.claude/settings.json → mcpServers.pkm
+    try:
+        settings_path = Path.home() / ".claude" / "settings.json"
+        if settings_path.exists():
+            data = json.loads(settings_path.read_text(encoding="utf-8"))
+            if "pkm" in (data.get("mcpServers") or {}):
+                return True
+    except Exception:
+        pass
+
+    # hermes: ~/.hermes/config.yaml → mcp_servers.pkm
+    try:
+        config_path = Path.home() / ".hermes" / "config.yaml"
+        if config_path.exists():
+            text = config_path.read_text(encoding="utf-8")
+            try:
+                import yaml  # type: ignore[import]
+
+                data = yaml.safe_load(text) or {}
+                if "pkm" in (data.get("mcp_servers") or {}):
+                    return True
+            except ImportError:
+                # yaml not installed — fall back to a line-level heuristic
+                in_mcp = False
+                for line in text.splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith("mcp_servers"):
+                        in_mcp = True
+                    elif in_mcp and stripped.startswith("pkm"):
+                        return True
+                    elif in_mcp and not line[:1].isspace() and ":" in stripped:
+                        in_mcp = False
+    except Exception:
+        pass
+
+    # opencode: ~/.config/opencode/opencode.json → mcp.pkm
+    try:
+        config_path = Path.home() / ".config" / "opencode" / "opencode.json"
+        if config_path.exists():
+            data = json.loads(config_path.read_text(encoding="utf-8"))
+            if "pkm" in (data.get("mcp") or {}):
+                return True
+    except Exception:
+        pass
+
+    return False
+
+
 def _extract_user_prompt(payload: dict[str, Any]) -> str:
     """Extract the user's message from an agent hook payload.
 
@@ -269,22 +323,36 @@ def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None
     except Exception:
         pass
 
-    # 2. PKM command reference — single source of truth
-    lines.extend(
-        [
-            "## PKM",
-            "**IMPORTANT: If MCP tools (e.g., pkm_search, pkm_daily_add) are available, ALWAYS prioritize using them over CLI commands.**",
-            '`pkm daily add "<text>"` — log decisions, findings, code changes',
-            '`pkm daily subnote "<title>"` — create linked sub-note + log [[wikilink]] in today\'s daily',
-            '`pkm search "<query>"` — recall related notes',
-            '`pkm note add --content "<insight>" --type semantic --importance 7 --tags tag1,tag2` — atomic note',
-            "  - importance: 1-3 trivial, 4-6 moderate, 7-8 important (arch decisions, bug root causes), 9-10 critical (security, irreversible)",
-            "  - Bias 7+ for anything the next agent would need. Default 5 if unsure.",
-            "`pkm data add <fname> <path-or-url>` — copy local file or download URL into vault data/",
-            "`pkm data rm <fname>` — remove a data file from vault",
-            "For detailed workflows and usage: `/pkm` skill",
-        ]
-    )
+    # 2. PKM command reference — MCP or CLI depending on what's available
+    use_mcp = _detect_pkm_mcp()
+    if use_mcp:
+        lines.extend(
+            [
+                "## PKM",
+                "Use MCP tools for all PKM operations:",
+                "`mcp__pkm__daily_add` — log decisions, findings, code changes",
+                "`mcp__pkm__search` — recall related notes",
+                "`mcp__pkm__note_add` — create atomic notes (importance: 1-3 trivial, 4-6 moderate, 7-8 important, 9-10 critical)",
+                "  - Bias importance 7+ for anything the next agent would need. Default 5 if unsure.",
+                "`mcp__pkm__create_daily_subnote` — create linked sub-note + log [[wikilink]] in today's daily",
+                "For detailed workflows and usage: `/pkm` skill",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "## PKM",
+                '`pkm daily add "<text>"` — log decisions, findings, code changes',
+                '`pkm daily subnote "<title>"` — create linked sub-note + log [[wikilink]] in today\'s daily',
+                '`pkm search "<query>"` — recall related notes',
+                '`pkm note add --content "<insight>" --type semantic --importance 7 --tags tag1,tag2` — atomic note',
+                "  - importance: 1-3 trivial, 4-6 moderate, 7-8 important (arch decisions, bug root causes), 9-10 critical (security, irreversible)",
+                "  - Bias 7+ for anything the next agent would need. Default 5 if unsure.",
+                "`pkm data add <fname> <path-or-url>` — copy local file or download URL into vault data/",
+                "`pkm data rm <fname>` — remove a data file from vault",
+                "For detailed workflows and usage: `/pkm` skill",
+            ]
+        )
 
     content = "\n".join(lines).strip()
 
@@ -426,10 +494,16 @@ def _handle_turn_start(
 
     if session_id:
         lines.append(f"Session: {session_id}")
-    lines.append(
-        '`pkm search "<query>"` — recall related notes if needed'
-        "\nFor full command reference see the `/pkm` skill or session-start context."
-    )
+    if _detect_pkm_mcp():
+        lines.append(
+            "`mcp__pkm__search` — recall related notes if needed"
+            "\nFor full command reference see the `/pkm` skill or session-start context."
+        )
+    else:
+        lines.append(
+            '`pkm search "<query>"` — recall related notes if needed'
+            "\nFor full command reference see the `/pkm` skill or session-start context."
+        )
 
     content = "\n".join(lines)
     if output_format == "system-reminder":
