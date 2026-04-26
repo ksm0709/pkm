@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.65.0 (2026-04-26)
+
+### Features
+
+- Simplify daily note format with ## Logs section and subnote command
+  ([`eebe4e5`](https://github.com/ksm0709/pkm/commit/eebe4e57974fb0d17dc93a2c5af1c8a62eb0f424))
+
+
 ## v2.64.0 (2026-04-25)
 
 ### Chores
