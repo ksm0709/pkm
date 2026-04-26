@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.69.0 (2026-04-26)
+
+### Features
+
+- **hook**: Separate MCP vs CLI interface based on auto-detection
+  ([`11b8b80`](https://github.com/ksm0709/pkm/commit/11b8b80a5f548e4d780f8ca63adeb3fddd318099))
+
+
 ## v2.68.1 (2026-04-26)
 
 ### Bug Fixes
