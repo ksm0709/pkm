@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.71.1 (2026-05-01)
+
+### Bug Fixes
+
+- **hook**: Silence Claude Code stop hook — exit 0 without output
+  ([`de64842`](https://github.com/ksm0709/pkm/commit/de6484210ae3d164324b8cc9c399d1e7f0599f05))
+
+
 ## v2.71.0 (2026-05-01)
 
 ### Bug Fixes
