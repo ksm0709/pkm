@@ -93,6 +93,7 @@ def daily_add(text: str) -> dict[str, Any]:
     Use for work summaries, observations, and progress notes that don't need independent
     future reference. This is the lightest PKM write and should be called at the END of
     every session. Do NOT use for reusable knowledge — use note_add() instead.
+    To READ a past daily note, use read_daily_log(offset=N).
 
     Args:
         text: The text to log. Keep to 1-3 sentences summarizing what was done.
@@ -110,6 +111,55 @@ def daily_add(text: str) -> dict[str, Any]:
 
 
 @mcp.tool()
+def read_daily_log(
+    offset: int = 0,
+    date_str: str | None = None,
+) -> dict[str, Any]:
+    """Read a daily note for past or present (read-only context retrieval).
+
+    Use BEFORE starting work to recall what happened yesterday or N days ago — pulls
+    the full daily log so the agent can pick up where the previous session left off.
+    Most common: offset=1 (yesterday) at session start.
+
+    Trigger condition: user references prior work ("어제", "지난번", "yesterday",
+        "what did we do"), or you need to chain context across sessions.
+    Anti-case: do NOT call repeatedly in a loop scanning many days — use offset with
+        a specific N. For multi-day search, prefer search() or pkm_ask().
+    Workflow position: SESSION-START context recall, before any write operation.
+
+    Args:
+        offset: Days before today. 0=today, 1=yesterday, N=N days ago. Default 0.
+        date_str: Explicit date in YYYY-MM-DD format. Takes precedence over offset.
+
+    Returns:
+        dict with status, date, and content (or message if not found).
+    """
+    from pkm.commands.daily import resolve_target_date
+
+    vault = _get_vault()
+    try:
+        target = resolve_target_date(date_str, offset)
+    except ValueError as e:
+        return {"status": "error", "message": str(e)}
+
+    note_path = vault.daily_dir / f"{target}.md"
+    if not note_path.exists():
+        return {
+            "status": "not_found",
+            "date": target,
+            "message": f"No daily note for {target}",
+        }
+    try:
+        return {
+            "status": "ok",
+            "date": target,
+            "content": note_path.read_text(encoding="utf-8"),
+        }
+    except Exception as e:
+        return {"status": "error", "date": target, "message": str(e)}
+
+
+@mcp.tool()
 def create_daily_subnote(
     title: str,
     content: str,
@@ -123,6 +173,7 @@ def create_daily_subnote(
     Creates YYYY-MM-DD-{title}.md in the vault daily directory and appends a timestamped
     [[wikilink]] entry to today's daily note.
     For permanent reusable knowledge, use note_add() instead.
+    To READ a past daily note, use read_daily_log(offset=N).
 
     Args:
         title: Subnote title slug (spaces become hyphens).

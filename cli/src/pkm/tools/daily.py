@@ -1,9 +1,8 @@
 import os
 from pathlib import Path
-from datetime import datetime
 from tiny_agent.tools import tool
 from pkm.config import VaultConfig
-from pkm.commands.daily import add_daily_entry
+from pkm.commands.daily import add_daily_entry, resolve_target_date
 
 
 def _get_vault(vault_dir: str) -> VaultConfig:
@@ -29,16 +28,21 @@ def add_daily_log(text: str) -> str:
 
 
 @tool()
-def read_daily_log(date_str: str | None = None) -> str:
-    """Read the daily note for a specific date.
+def read_daily_log(date_str: str | None = None, offset: int = 0) -> str:
+    """Read the daily note for a past or present date.
 
     Args:
-        date_str: The date in YYYY-MM-DD format. Defaults to today.
+        date_str: The date in YYYY-MM-DD format. Takes precedence over offset.
+        offset: Days before today (0=today, 1=yesterday). Ignored if date_str given.
     """
     v_dir = os.environ.get("PKM_VAULT_DIR", ".")
     vault = _get_vault(v_dir)
 
-    target_date = date_str or datetime.now().strftime("%Y-%m-%d")
+    try:
+        target_date = resolve_target_date(date_str, offset)
+    except ValueError as e:
+        return f"Error resolving date: {e}"
+
     note_path = vault.daily_dir / f"{target_date}.md"
 
     if not note_path.exists():

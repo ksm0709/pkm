@@ -91,6 +91,73 @@ class TestDailyAdd:
         assert "Testing MCP daily add" in content
 
 
+class TestReadDailyLog:
+    def _yesterday(self) -> str:
+        from datetime import date, timedelta
+
+        return (date.today() - timedelta(days=1)).isoformat()
+
+    def test_reads_yesterday_via_offset(
+        self, mcp_server, tmp_vault: VaultConfig
+    ) -> None:
+        """read_daily_log(offset=1) returns yesterday's note content."""
+        y = self._yesterday()
+        (tmp_vault.daily_dir / f"{y}.md").write_text("YESTERDAY\n", encoding="utf-8")
+
+        result = mcp_server.read_daily_log(offset=1)
+        assert result["status"] == "ok"
+        assert result["date"] == y
+        assert "YESTERDAY" in result["content"]
+
+    def test_reads_via_explicit_date_str(
+        self, mcp_server, tmp_vault: VaultConfig
+    ) -> None:
+        """read_daily_log(date_str=...) reads the explicit date."""
+        (tmp_vault.daily_dir / "2026-04-15.md").write_text("EXP\n", encoding="utf-8")
+        result = mcp_server.read_daily_log(date_str="2026-04-15")
+        assert result["status"] == "ok"
+        assert result["date"] == "2026-04-15"
+        assert "EXP" in result["content"]
+
+    def test_date_str_overrides_offset(
+        self, mcp_server, tmp_vault: VaultConfig
+    ) -> None:
+        """date_str takes precedence over offset."""
+        (tmp_vault.daily_dir / "2026-04-15.md").write_text("EXP\n", encoding="utf-8")
+        result = mcp_server.read_daily_log(offset=99, date_str="2026-04-15")
+        assert result["status"] == "ok"
+        assert result["date"] == "2026-04-15"
+
+    def test_not_found_status(self, mcp_server, tmp_vault: VaultConfig) -> None:
+        """Missing daily note returns not_found status with the resolved date."""
+        y = self._yesterday()
+        result = mcp_server.read_daily_log(offset=1)
+        assert result["status"] == "not_found"
+        assert result["date"] == y
+
+    def test_negative_offset_error(self, mcp_server) -> None:
+        """Negative offset returns error status."""
+        result = mcp_server.read_daily_log(offset=-1)
+        assert result["status"] == "error"
+        assert "offset" in result["message"].lower()
+
+    def test_bad_date_str_error(self, mcp_server) -> None:
+        """Malformed date_str returns error status."""
+        result = mcp_server.read_daily_log(date_str="not-a-date")
+        assert result["status"] == "error"
+
+    def test_default_is_today(self, mcp_server, tmp_vault: VaultConfig) -> None:
+        """No args defaults to today."""
+        from datetime import date
+
+        today = date.today().isoformat()
+        (tmp_vault.daily_dir / f"{today}.md").write_text("TODAY-X\n", encoding="utf-8")
+        result = mcp_server.read_daily_log()
+        assert result["status"] == "ok"
+        assert result["date"] == today
+        assert "TODAY-X" in result["content"]
+
+
 class TestSearch:
     def test_delegates_to_daemon(self, mcp_server) -> None:
         """search tool calls search_via_daemon, not in-process search."""
@@ -311,7 +378,8 @@ class TestMcpE2EProtocol:
         assert "list_consolidation_candidates" in tool_names
         assert "mark_consolidated" in tool_names
         assert "read_recent_note_activity" in tool_names
-        assert len(tools) == 21
+        assert "read_daily_log" in tool_names
+        assert len(tools) == 22
 
         # Verify inputSchema exists on each tool
         for tool in tools:

@@ -12,6 +12,7 @@ The MCP server runs a JSON-RPC 2.0 server over `stdio` and exposes the following
 - **`create_daily_subnote`**: Create a dated subnote (`YYYY-MM-DD-{title}.md`) and add a `[[wikilink]]` entry to today's daily note.
 
 **Search & discovery tools**
+- **`read_daily_log`**: Read a past or present daily note. Use `offset=N` for N days ago (`0`=today, `1`=yesterday) or `date_str=YYYY-MM-DD` for an explicit date (`date_str` wins if both given).
 - **`search`**: Perform semantic search across your notes to retrieve context.
 - **`list_tags`**: List all tags used in the vault with their note counts, sorted by frequency.
 - **`tag_search`**: Filter notes by tag pattern (exact, glob `db*`, AND `python+testing`, OR `python,rust`).

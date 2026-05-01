@@ -470,3 +470,167 @@ def test_daily_todo_command_removed(cli_runner, tmp_vault):
     """daily todo command no longer exists."""
     result = cli_runner("daily", "todo", "some item")
     assert result.exit_code != 0
+
+
+# ---------------------------------------------------------------------------
+# daily --offset / --date (read past daily notes)
+# ---------------------------------------------------------------------------
+
+
+def _yesterday_str() -> str:
+    from datetime import date, timedelta
+
+    return (date.today() - timedelta(days=1)).isoformat()
+
+
+def test_daily_offset_yesterday_shows_existing(cli_runner, tmp_vault):
+    """daily --offset 1 reads yesterday's note when it exists."""
+    y = _yesterday_str()
+    note = tmp_vault.daily_dir / f"{y}.md"
+    note.write_text("YESTERDAY-CONTENT\n", encoding="utf-8")
+
+    result = cli_runner("daily", "--offset", "1")
+    assert result.exit_code == 0
+    assert "YESTERDAY-CONTENT" in result.output
+
+
+def test_daily_offset_no_note_does_not_create(cli_runner, tmp_vault):
+    """daily --offset N for a missing past note prints a warning and does NOT create it."""
+    y = _yesterday_str()
+    note = tmp_vault.daily_dir / f"{y}.md"
+    assert not note.exists()
+
+    result = cli_runner("daily", "--offset", "1")
+    assert result.exit_code == 0
+    assert y in result.output
+    assert "No daily note" in result.output
+    assert not note.exists()
+
+
+def test_daily_date_overrides_offset(cli_runner, tmp_vault):
+    """When both --date and --offset are given, --date wins."""
+    explicit = "2026-04-15"
+    note = tmp_vault.daily_dir / f"{explicit}.md"
+    note.write_text("EXPLICIT-DATE-CONTENT\n", encoding="utf-8")
+
+    result = cli_runner("daily", "--offset", "5", "--date", explicit)
+    assert result.exit_code == 0
+    assert "EXPLICIT-DATE-CONTENT" in result.output
+
+
+def test_daily_negative_offset_errors(cli_runner, tmp_vault):
+    """daily --offset -1 fails with a parameter error."""
+    result = cli_runner("daily", "--offset", "-1")
+    assert result.exit_code != 0
+    assert "offset" in result.output.lower()
+
+
+def test_daily_bad_date_errors(cli_runner, tmp_vault):
+    """daily --date with bad format fails."""
+    result = cli_runner("daily", "--date", "not-a-date")
+    assert result.exit_code != 0
+
+
+def test_daily_today_unchanged(cli_runner, tmp_vault):
+    """daily with no offset args behaves identically to before (creates today)."""
+    today_str = today()
+    note = tmp_vault.daily_dir / f"{today_str}.md"
+    assert not note.exists()
+
+    result = cli_runner("daily")
+    assert result.exit_code == 0
+    assert note.exists()
+    assert f"id: {today_str}" in note.read_text(encoding="utf-8")
+
+
+def test_daily_offset_shows_subnotes_for_target(cli_runner, tmp_vault):
+    """daily --offset N shows subnotes from the target date (not today)."""
+    y = _yesterday_str()
+    (tmp_vault.daily_dir / f"{y}.md").write_text("Y-MAIN\n", encoding="utf-8")
+    (tmp_vault.daily_dir / f"{y}-meeting.md").write_text("Y-SUB\n", encoding="utf-8")
+
+    result = cli_runner("daily", "--offset", "1")
+    assert result.exit_code == 0
+    assert "Y-MAIN" in result.output
+    assert "--- meeting ---" in result.output
+    assert "Y-SUB" in result.output
+
+
+def test_daily_edit_offset_no_note_errors(cli_runner, tmp_vault, monkeypatch):
+    """daily edit --offset N refuses to create a missing past note."""
+    calls: list = []
+    monkeypatch.setattr("pkm.commands.daily.load_config", lambda: {})
+    monkeypatch.setattr("pkm.commands.daily.subprocess.run", _fake_run(calls))
+
+    y = _yesterday_str()
+    note = tmp_vault.daily_dir / f"{y}.md"
+    assert not note.exists()
+
+    result = cli_runner("daily", "edit", "--offset", "1")
+    assert result.exit_code != 0
+    assert not note.exists()
+    assert calls == []
+
+
+def test_daily_edit_offset_opens_existing(cli_runner, tmp_vault, monkeypatch):
+    """daily edit --offset 1 opens an existing past note in the editor."""
+    calls: list = []
+    monkeypatch.setattr("pkm.commands.daily.load_config", lambda: {})
+    monkeypatch.setattr("pkm.commands.daily.subprocess.run", _fake_run(calls))
+
+    y = _yesterday_str()
+    note = tmp_vault.daily_dir / f"{y}.md"
+    note.write_text("y content\n", encoding="utf-8")
+
+    result = cli_runner("daily", "edit", "--offset", "1")
+    assert result.exit_code == 0
+    assert calls
+    assert str(note) == calls[0][-1]
+
+
+def test_daily_edit_negative_offset_errors(cli_runner, tmp_vault, monkeypatch):
+    """daily edit --offset -1 fails before launching editor."""
+    calls: list = []
+    monkeypatch.setattr("pkm.commands.daily.load_config", lambda: {})
+    monkeypatch.setattr("pkm.commands.daily.subprocess.run", _fake_run(calls))
+
+    result = cli_runner("daily", "edit", "--offset", "-1")
+    assert result.exit_code != 0
+    assert calls == []
+
+
+# ---------------------------------------------------------------------------
+# resolve_target_date helper
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_target_date_today_default():
+    from pkm.commands.daily import resolve_target_date
+
+    assert resolve_target_date(None, 0) == today()
+
+
+def test_resolve_target_date_offset_yesterday():
+    from pkm.commands.daily import resolve_target_date
+
+    assert resolve_target_date(None, 1) == _yesterday_str()
+
+
+def test_resolve_target_date_explicit_overrides():
+    from pkm.commands.daily import resolve_target_date
+
+    assert resolve_target_date("2025-12-31", 99) == "2025-12-31"
+
+
+def test_resolve_target_date_negative_offset_raises():
+    from pkm.commands.daily import resolve_target_date
+
+    with pytest.raises(ValueError):
+        resolve_target_date(None, -1)
+
+
+def test_resolve_target_date_bad_format_raises():
+    from pkm.commands.daily import resolve_target_date
+
+    with pytest.raises(ValueError):
+        resolve_target_date("nope", 0)

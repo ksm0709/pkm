@@ -6,7 +6,7 @@ import re
 import shlex
 import subprocess
 import sys
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import click
@@ -41,6 +41,20 @@ def _make_subnote_content(
     tags_yaml = "[]" if not tags else "\n" + "\n".join(f"- {t}" for t in tags)
     aliases_yaml = "[]" if not aliases else "\n" + "\n".join(f"- {a}" for a in aliases)
     return f"---\nid: {note_id}\naliases: {aliases_yaml}\ntags: {tags_yaml}\n---\n\n{content}"
+
+
+def resolve_target_date(date_str: str | None, offset: int) -> str:
+    """Resolve a target daily-note date string from explicit date or offset.
+
+    `date_str` (YYYY-MM-DD) takes precedence; otherwise today minus `offset` days.
+    Raises ValueError on bad date_str format or negative offset.
+    """
+    if date_str:
+        date.fromisoformat(date_str)
+        return date_str
+    if offset < 0:
+        raise ValueError(f"offset must be >= 0, got {offset}")
+    return (date.today() - timedelta(days=offset)).isoformat()
 
 
 def _get_subnotes(daily_dir: Path, date_str: str) -> list[Path]:
@@ -96,25 +110,47 @@ def _add_subnote_link(daily_path: Path, now: str, note_id: str) -> None:
 
 
 @click.group(invoke_without_command=True)
+@click.option(
+    "--offset",
+    "-o",
+    type=int,
+    default=0,
+    help="Days before today (0=today, 1=yesterday). Ignored if --date is given.",
+)
+@click.option(
+    "--date",
+    "date_str",
+    default=None,
+    help="Explicit date (YYYY-MM-DD). Takes precedence over --offset.",
+)
 @click.pass_context
-def daily(ctx: click.Context) -> None:
-    """Manage daily notes."""
+def daily(ctx: click.Context, offset: int, date_str: str | None) -> None:
+    """Manage daily notes. Pass --offset N or --date YYYY-MM-DD to view past notes."""
     if ctx.invoked_subcommand is not None:
         return
     vault = ctx.obj["vault"]
+    try:
+        target = resolve_target_date(date_str, offset)
+    except ValueError as e:
+        raise click.BadParameter(str(e))
     today = datetime.now().strftime("%Y-%m-%d")
-    note_path = vault.daily_dir / f"{today}.md"
+    is_today = target == today
+    note_path = vault.daily_dir / f"{target}.md"
+
     if note_path.exists():
         console.print(note_path.read_text(encoding="utf-8"), end="")
-    else:
+    elif is_today:
         vault.daily_dir.mkdir(parents=True, exist_ok=True)
-        content = DAILY_TEMPLATE.format(date=today)
+        content = DAILY_TEMPLATE.format(date=target)
         note_path.write_text(content, encoding="utf-8")
         console.print(content, end="")
+    else:
+        console.print(f"[yellow]No daily note for {target}[/yellow]")
+        return
 
-    subnotes = _get_subnotes(vault.daily_dir, today)
+    subnotes = _get_subnotes(vault.daily_dir, target)
     for subnote in subnotes:
-        title = subnote.stem[len(today) + 1 :]
+        title = subnote.stem[len(target) + 1 :]
         if not title:
             continue
         console.print(f"\n--- {title} ---")
@@ -122,19 +158,42 @@ def daily(ctx: click.Context) -> None:
 
 
 @daily.command()
+@click.option(
+    "--offset",
+    "-o",
+    type=int,
+    default=0,
+    help="Days before today (0=today, 1=yesterday). Ignored if --date is given.",
+)
+@click.option(
+    "--date",
+    "date_str",
+    default=None,
+    help="Explicit date (YYYY-MM-DD). Takes precedence over --offset.",
+)
 @click.pass_context
-def edit(ctx: click.Context) -> None:
-    """Open today's daily note in an editor."""
+def edit(ctx: click.Context, offset: int, date_str: str | None) -> None:
+    """Open a daily note in an editor (today by default; past notes must already exist)."""
     vault = ctx.obj["vault"]
+    try:
+        target = resolve_target_date(date_str, offset)
+    except ValueError as e:
+        raise click.BadParameter(str(e))
     today = datetime.now().strftime("%Y-%m-%d")
+    is_today = target == today
     vault.daily_dir.mkdir(parents=True, exist_ok=True)
 
     config_data = load_config()
     editor_cmd = get_editor(config_data)
 
-    note_path = vault.daily_dir / f"{today}.md"
+    note_path = vault.daily_dir / f"{target}.md"
     if not note_path.exists():
-        note_path.write_text(DAILY_TEMPLATE.format(date=today), encoding="utf-8")
+        if is_today:
+            note_path.write_text(DAILY_TEMPLATE.format(date=target), encoding="utf-8")
+        else:
+            raise click.ClickException(
+                f"No daily note for {target}; refusing to create past daily."
+            )
 
     result = subprocess.run([*shlex.split(editor_cmd), str(note_path)])
     if result.returncode != 0:

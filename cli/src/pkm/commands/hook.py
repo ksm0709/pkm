@@ -331,6 +331,7 @@ def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None
                 "## PKM",
                 "Use MCP tools for all PKM operations:",
                 "`mcp__pkm__daily_add` — log decisions, findings, code changes",
+                "`mcp__pkm__read_daily_log` — read past daily log (offset=1 yesterday, offset=N N days ago, or date_str=YYYY-MM-DD)",
                 "`mcp__pkm__search` — recall related notes",
                 "`mcp__pkm__note_add` — create atomic notes (importance: 1-3 trivial, 4-6 moderate, 7-8 important, 9-10 critical)",
                 "  - Bias importance 7+ for anything the next agent would need. Default 5 if unsure.",
@@ -343,6 +344,7 @@ def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None
             [
                 "## PKM",
                 '`pkm daily add "<text>"` — log decisions, findings, code changes',
+                "`pkm daily --offset N` — view a past daily note (1=yesterday, N=N days ago); use `--date YYYY-MM-DD` for explicit date",
                 '`pkm daily subnote "<title>"` — create linked sub-note + log [[wikilink]] in today\'s daily',
                 '`pkm search "<query>"` — recall related notes',
                 '`pkm note add --content "<insight>" --type semantic --importance 7 --tags tag1,tag2` — atomic note',
@@ -839,7 +841,7 @@ _PKM_HOOKS: dict[str, list[dict[str, Any]]] = {
                 },
                 {
                     "type": "agent",
-                    "prompt": "You are a PKM knowledge extractor. A Claude Code session just ended. The hook input JSON is: $ARGUMENTS\n\n1. Parse the JSON to extract the 'transcript_path' field\n2. Read the transcript file at that path using the Read tool\n3. Identify knowledge worth preserving (be selective — only non-obvious, reusable knowledge)\n4. Save findings using pkm commands. See the /pkm skill for available commands and workflows.\n5. Return {\"ok\": true} when done. If transcript_path is missing/unreadable or nothing is worth saving, return {\"ok\": true} immediately.\n\nIMPORTANT: Skip trivial facts, already-known information, and tool outputs. Quality over quantity.",
+                    "prompt": 'You are a PKM knowledge extractor. A Claude Code session just ended. The hook input JSON is: $ARGUMENTS\n\n1. Parse the JSON to extract the \'transcript_path\' field\n2. Read the transcript file at that path using the Read tool\n3. Identify knowledge worth preserving (be selective — only non-obvious, reusable knowledge)\n4. Save findings using pkm commands. See the /pkm skill for available commands and workflows.\n5. Return {"ok": true} when done. If transcript_path is missing/unreadable or nothing is worth saving, return {"ok": true} immediately.\n\nIMPORTANT: Skip trivial facts, already-known information, and tool outputs. Quality over quantity.',
                     "timeout": 120,
                 },
             ]

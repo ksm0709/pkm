@@ -95,6 +95,7 @@ Criteria for deciding when to promote from a daily note to an atomic note:
 
 ```
 mcp__pkm__daily_add(text="log decisions, findings, code changes")
+mcp__pkm__read_daily_log(offset=1)                  # read yesterday's daily (offset=N for N days ago)
 mcp__pkm__search(query="query string")
 mcp__pkm__note_add(content="insight", type="semantic", importance=7, tags=["tag1", "tag2"])
 mcp__pkm__create_daily_subnote(title="sub-note title")
@@ -114,6 +115,10 @@ Three-phase protocol for using PKM as an active knowledge partner throughout wor
    Repeat once more if a neighbor is also clearly relevant (max 2-depth total).
 3. If a specific question arises about prior decisions or user preferences:
    `mcp__pkm__pkm_ask(query=<question>)` — synthesized answer from vault
+4. If continuing yesterday's/last session's work, or the user references prior days
+   ("어제", "지난번", "yesterday"):
+   `mcp__pkm__read_daily_log(offset=1)` — read yesterday's full daily log
+   (use `offset=N` for N days ago, or `date_str="YYYY-MM-DD"` for an explicit date)
 
 Stop when: no relevant results found, or sufficient context collected.
 
@@ -152,10 +157,13 @@ export PKM_DEFAULT_VAULT=<vault-name>  # default vault (first discovered vault i
 ```bash
 # Daily notes
 pkm daily                          # Show/create today's daily note
+pkm daily --offset 1               # Show yesterday's note (read-only, no auto-create)
+pkm daily --date 2026-04-30        # Show explicit date (read-only, no auto-create)
 pkm daily --vault <name>           # Specific vault
-pkm daily add "learning content"   # Append [hh:mm:ss] timestamped entry to ## Logs
-pkm daily subnote "meeting" --content "# Notes" --tags "work"  # Create sub-note + log wikilink
-pkm daily edit                     # Open daily note in editor
+pkm daily add "learning content"   # Append [hh:mm:ss] timestamped entry to ## Logs (today only)
+pkm daily subnote "meeting" --content "# Notes" --tags "work"  # Create sub-note + log wikilink (today)
+pkm daily edit                     # Open today's daily note in editor
+pkm daily edit --offset 1          # Open yesterday's note (must already exist)
 
 # Note management
 pkm note add "Note Title" --tags t1,t2  # Create atomic note with frontmatter
