@@ -2,6 +2,24 @@
 
 <!-- version list -->
 
+## v2.70.0 (2026-05-01)
+
+### Chores
+
+- Add .worktrees to .gitignore
+  ([`9bafdbf`](https://github.com/ksm0709/pkm/commit/9bafdbfae4d58cd6da885435073e11bf8b6dc574))
+
+### Documentation
+
+- Add plan for replacing search graph_context with related_notes
+  ([`0a0dbcf`](https://github.com/ksm0709/pkm/commit/0a0dbcffa3380da78f47535875766e9a5f42c86a))
+
+### Features
+
+- **search**: Replace graph_context with related_notes via _get_note_neighbors_data
+  ([`c7ac497`](https://github.com/ksm0709/pkm/commit/c7ac49787eb4308d9d4b34cb8cd4a17bb9ec5ea3))
+
+
 ## v2.69.1 (2026-04-26)
 
 ### Bug Fixes
