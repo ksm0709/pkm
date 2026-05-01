@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v2.72.0 (2026-05-01)
+
+### Code Style
+
+- Apply ruff format to test_hook_new_features.py
+  ([`7b7fb8b`](https://github.com/ksm0709/pkm/commit/7b7fb8b4524e457940b2fe19d2402803c6f3ad3b))
+
+### Features
+
+- **daily**: Add --offset/--date to read past daily notes (CLI + tool + MCP)
+  ([`642ab3e`](https://github.com/ksm0709/pkm/commit/642ab3e23f5e392de0d4f615898d0292a25042f5))
+
+
 ## v2.71.2 (2026-05-01)
 
 ### Bug Fixes
