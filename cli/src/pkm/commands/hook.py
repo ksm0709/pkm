@@ -457,6 +457,7 @@ def _handle_turn_start(
     query = " ".join(query_parts).strip() or "important decision error finding pattern"
 
     # --- Relevant Notes first: highest priority, must survive any truncation ---
+    results: list = []
     try:
         from pkm.search_engine import (
             load_index,
@@ -497,10 +498,17 @@ def _handle_turn_start(
     if session_id:
         lines.append(f"Session: {session_id}")
     if _detect_pkm_mcp():
+        top_note_id = max(results, key=lambda r: r.importance).title if results else None
+        neighbor_hint = (
+            f'→ mcp__pkm__get_note_neighbors(note_id="{top_note_id}")'
+            " — deepen highest-relevance note (2-depth max)"
+            if top_note_id
+            else "→ mcp__pkm__get_note_neighbors(note_id=<slug>) — explore connections (2-depth max)"
+        )
         lines.append(
             "# PKM Context\n"
             "Relevant notes above are exploration starting points.\n"
-            "→ mcp__pkm__get_note_neighbors(note_id=<slug>) — explore connections (2-depth max)\n"
+            f"{neighbor_hint}\n"
             "→ mcp__pkm__pkm_ask(query=<question>) — synthesized answers from vault\n"
             "Before starting non-trivial work: mcp__pkm__search(query=<topic>)"
         )

@@ -245,3 +245,66 @@ def test_turn_end_exit2_behaviors(runner, vault_env, payload_dict, expected_exit
     )
     if has_transcript:
         assert result.output.strip() == ""
+
+
+# ---------------------------------------------------------------------------
+# turn-start footer: top_note_id injection
+# ---------------------------------------------------------------------------
+
+
+class _FakeNote:
+    """Minimal SearchResult stand-in."""
+
+    def __init__(self, title: str, importance: float, memory_type: str = "semantic"):
+        self.title = title
+        self.importance = importance
+        self.memory_type = memory_type
+
+
+def test_turn_start_footer_injects_top_note_id(runner, vault_env, monkeypatch):
+    """When search returns results, footer contains the highest-imp note_id (not <slug>)."""
+    notes = [
+        _FakeNote("low-note", 5.0),
+        _FakeNote("top-note-abc", 8.0),
+        _FakeNote("mid-note", 6.0),
+    ]
+    monkeypatch.setattr("pkm.search_engine.search_via_daemon", lambda *a, **kw: notes)
+    monkeypatch.setattr("pkm.commands.hook._detect_pkm_mcp", lambda: True)
+
+    payload = json.dumps({"user_prompt": "test topic", "session_id": "s1"})
+    result = runner.invoke(
+        main, ["hook", "run", "turn-start", "--format", "plain"], input=payload
+    )
+    assert result.exit_code == 0, result.output
+    assert 'note_id="top-note-abc"' in result.output
+    assert "<slug>" not in result.output
+
+
+def test_turn_start_footer_fallback_slug_when_no_results(runner, vault_env, monkeypatch):
+    """When search returns no results, footer keeps generic <slug> placeholder."""
+    monkeypatch.setattr("pkm.search_engine.search_via_daemon", lambda *a, **kw: [])
+    monkeypatch.setattr("pkm.commands.hook._detect_pkm_mcp", lambda: True)
+
+    payload = json.dumps({"user_prompt": "test topic", "session_id": "s1"})
+    result = runner.invoke(
+        main, ["hook", "run", "turn-start", "--format", "plain"], input=payload
+    )
+    assert result.exit_code == 0, result.output
+    assert "<slug>" in result.output
+
+
+def test_turn_start_footer_fallback_slug_when_search_fails(runner, vault_env, monkeypatch):
+    """When search raises an exception, footer falls back to generic <slug>."""
+
+    def _failing_search(*a, **kw):
+        raise RuntimeError("search unavailable")
+
+    monkeypatch.setattr("pkm.search_engine.search_via_daemon", _failing_search)
+    monkeypatch.setattr("pkm.commands.hook._detect_pkm_mcp", lambda: True)
+
+    payload = json.dumps({"user_prompt": "test topic", "session_id": "s1"})
+    result = runner.invoke(
+        main, ["hook", "run", "turn-start", "--format", "plain"], input=payload
+    )
+    assert result.exit_code == 0, result.output
+    assert "<slug>" in result.output
