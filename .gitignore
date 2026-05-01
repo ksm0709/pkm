@@ -50,3 +50,4 @@ CLAUDE.md
 !.context/config.jsonc
 !.context/memory
 !.context/memory/**
+.worktrees/
