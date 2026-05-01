@@ -1,0 +1,99 @@
+/* Design tokens — The Periodical aesthetic */
+/* Light theme (default) */
+:root {
+  /* Typography */
+  --font-display: "Newsreader", ui-serif, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  /* Type scale */
+  --type-h1-size:     28px;
+  --type-h1-lh:       1.20;
+  --type-h1-weight:   600;
+  --type-h2-size:     20px;
+  --type-h2-lh:       1.30;
+  --type-h2-weight:   600;
+  --type-h3-size:     17px;
+  --type-h3-lh:       1.35;
+  --type-h3-weight:   600;
+  --type-body-size:   15px;
+  --type-body-lh:     1.70;
+  --type-body-weight: 400;
+  --type-caption-size:   12px;
+  --type-caption-lh:     1.40;
+  --type-chrome-size:    13px;
+  --type-chrome-lh:      1.20;
+  --type-chrome-weight:  400;
+  --type-chrome-sm-size: 11px;
+  --type-chrome-sm-lh:   1.20;
+  --type-chrome-sm-weight: 500;
+
+  /* Color — light (paper) */
+  --bg:         #faf7f0;
+  --bg-elev:    #f4eee2;
+  --text:       #1a1815;
+  --text-muted: #5a554c;
+  --text-faint: #9a9285;
+  --border:     #d8cfb9;
+  --accent:     #2d4a6b;
+  --accent-bg:  #2d4a6b14;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  --reading-width: 70ch;
+  --gutter: var(--space-7);
+
+  /* Radius — strict, max 2px */
+  --radius-none: 0;
+  --radius-sm:   2px;
+
+  /* Motion */
+  --ease-out:    cubic-bezier(0.22, 0.61, 0.36, 1);
+  --dur-instant: 0ms;
+  --dur-fast:    120ms;
+  --dur-base:    200ms;
+  --dur-slow:    320ms;
+
+  /* Topbar */
+  --topbar-height: 44px;
+
+  /* Palette */
+  --palette-width:      560px;
+  --palette-max-height: 60vh;
+
+  /* File tree drawer */
+  --drawer-width: 280px;
+}
+
+/* Dark theme */
+[data-theme="dark"] {
+  --bg:         #14110d;
+  --bg-elev:    #1d1915;
+  --text:       #e8e1cf;
+  --text-muted: #948b78;
+  --text-faint: #5d564b;
+  --border:     #312b22;
+  --accent:     #8fb8d6;
+  --accent-bg:  #8fb8d614;
+}
+
+/* Auto theme: respect OS preference when no manual override */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:         #14110d;
+    --bg-elev:    #1d1915;
+    --text:       #e8e1cf;
+    --text-muted: #948b78;
+    --text-faint: #5d564b;
+    --border:     #312b22;
+    --accent:     #8fb8d6;
+    --accent-bg:  #8fb8d614;
+  }
+}

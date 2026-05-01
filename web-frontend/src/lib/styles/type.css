@@ -1,0 +1,64 @@
+/* Typography scale — The Periodical */
+
+/* Display headings — Newsreader */
+h1, .type-h1 {
+  font-family: var(--font-display);
+  font-size: var(--type-h1-size);
+  line-height: var(--type-h1-lh);
+  font-weight: var(--type-h1-weight);
+}
+
+h2, .type-h2 {
+  font-family: var(--font-display);
+  font-size: var(--type-h2-size);
+  line-height: var(--type-h2-lh);
+  font-weight: var(--type-h2-weight);
+}
+
+h3, .type-h3 {
+  font-family: var(--font-display);
+  font-size: var(--type-h3-size);
+  line-height: var(--type-h3-lh);
+  font-weight: var(--type-h3-weight);
+}
+
+/* Body — Plex Mono */
+.type-body {
+  font-family: var(--font-mono);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-lh);
+  font-weight: var(--type-body-weight);
+}
+
+/* Caption / italic — Newsreader Italic */
+.type-caption,
+.type-italic {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-lh);
+}
+
+/* Chrome — Plex Mono */
+.type-chrome {
+  font-family: var(--font-mono);
+  font-size: var(--type-chrome-size);
+  line-height: var(--type-chrome-lh);
+  font-weight: var(--type-chrome-weight);
+}
+
+/* Chrome small — Plex Mono uppercase group labels */
+.type-chrome-sm {
+  font-family: var(--font-mono);
+  font-size: var(--type-chrome-sm-size);
+  line-height: var(--type-chrome-sm-lh);
+  font-weight: var(--type-chrome-sm-weight);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+
+/* Utility color classes */
+.text-muted  { color: var(--text-muted); }
+.text-faint  { color: var(--text-faint); }
+.text-accent { color: var(--accent); }
