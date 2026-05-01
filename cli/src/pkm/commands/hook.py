@@ -599,8 +599,18 @@ Then stop."""
         )
         sys.exit(0)
     else:
-        print(instructions, file=sys.stderr)
-        sys.exit(2)
+        # Use JSON decision:block so reason is injected into Claude's context
+        # without surfacing as visible "Stop hook feedback" to the user.
+        print(
+            json.dumps(
+                {
+                    "decision": "block",
+                    "reason": instructions,
+                    "suppressOutput": True,
+                }
+            )
+        )
+        sys.exit(0)
 
 
 def _is_pkm_hook(hook_entry: dict[str, Any]) -> bool:

@@ -230,7 +230,7 @@ def test_setup_codex_prints_install_instructions(tmp_path, monkeypatch):
                 "transcript_path": "/tmp/session.jsonl",
                 "session_id": "abc",
             },
-            2,
+            0,
         ),
     ],
 )
@@ -239,6 +239,10 @@ def test_turn_end_exit2_behaviors(runner, vault_env, payload_dict, expected_exit
     payload = json.dumps(payload_dict)
     result = runner.invoke(main, ["hook", "run", "turn-end-exit2"], input=payload)
     assert result.exit_code == expected_exit
-    if expected_exit == 2:
-        assert "# Knowledge Extraction" in result.output
-        assert "mcp__pkm__daily_add" in result.output
+    has_transcript = payload_dict.get("transcript_path") and not payload_dict.get("stop_hook_active")
+    if has_transcript:
+        import json as _json
+        data = _json.loads(result.output)
+        assert data["decision"] == "block"
+        assert "# Knowledge Extraction" in data["reason"]
+        assert "mcp__pkm__daily_add" in data["reason"]
