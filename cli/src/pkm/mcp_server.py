@@ -43,12 +43,21 @@ def note_add(
     session_id: str | None = None,
     agent_id: str | None = None,
 ) -> dict[str, Any]:
-    """Create an atomic note in the PKM vault.
+    """Create a permanent atomic note for reusable knowledge.
+
+    Use for knowledge that will be referenced again: architectural decisions, bug root causes,
+    API behaviors, patterns, user preferences. Always search() first to avoid duplicates —
+    update an existing note if the topic already exists.
+    Do NOT use for ephemeral session logs — use daily_add() instead.
+
+    importance: 1-3 trivial · 4-6 moderate · 7-8 important (arch decisions, bug root causes)
+    · 9-10 critical (security, irreversible). Default 5 if unsure. Bias 7+ for anything the
+    next agent would need.
 
     Args:
         content: Note body text (required).
         title: Note title. Auto-generated from content if omitted.
-        type: Memory type — semantic, episodic, or procedural.
+        type: Memory type — semantic (concepts/facts), episodic (events), procedural (how-to).
         importance: Importance score 1-10 (default 5).
         tags: List of tags.
         meta: Arbitrary key-value metadata added to frontmatter.
@@ -79,10 +88,14 @@ def note_add(
 
 @mcp.tool()
 def daily_add(text: str) -> dict[str, Any]:
-    """Append a timestamped log entry to today's daily note.
+    """Append a timestamped log entry to today's daily note (ephemeral session log).
+
+    Use for work summaries, observations, and progress notes that don't need independent
+    future reference. This is the lightest PKM write and should be called at the END of
+    every session. Do NOT use for reusable knowledge — use note_add() instead.
 
     Args:
-        text: The text to add to today's daily note.
+        text: The text to log. Keep to 1-3 sentences summarizing what was done.
     """
     from pkm.commands.daily import add_daily_entry
 
@@ -103,10 +116,13 @@ def create_daily_subnote(
     tags: list[str] | None = None,
     aliases: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Create a dated subnote and link it from today's daily note.
+    """Create a dated subnote linked from today's daily note (medium-weight session record).
 
-    Creates YYYY-MM-DD-{title}.md in the vault daily directory and appends
-    a timestamped [[wikilink]] entry to today's daily note.
+    Use for session-scoped records larger than a daily_add() entry but not warranting
+    a standalone atomic note — meeting notes, investigation logs, design explorations.
+    Creates YYYY-MM-DD-{title}.md in the vault daily directory and appends a timestamped
+    [[wikilink]] entry to today's daily note.
+    For permanent reusable knowledge, use note_add() instead.
 
     Args:
         title: Subnote title slug (spaces become hyphens).
