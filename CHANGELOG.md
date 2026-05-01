@@ -2,6 +2,42 @@
 
 <!-- version list -->
 
+## v2.71.0 (2026-05-01)
+
+### Bug Fixes
+
+- Correct memory_type→type param in SKILL.md example, soften Always in note_add docstring
+  ([`da11caa`](https://github.com/ksm0709/pkm/commit/da11caad7757a26acb2084e440d6dd0f0386c4ce))
+
+- **hook**: Use JSON decision:block to hide stop hook output from user
+  ([`8927752`](https://github.com/ksm0709/pkm/commit/8927752f99c3ba71dfc578f91f0c06927a546a19))
+
+### Documentation
+
+- **plan**: Add PKM-Claude alignment implementation plan
+  ([`fae3236`](https://github.com/ksm0709/pkm/commit/fae323674a2a1e3f2b11546777c99564780e436b))
+
+### Features
+
+- **hook**: Reframe relevant notes as exploration starting points in turn-start footer
+  ([`100fd3d`](https://github.com/ksm0709/pkm/commit/100fd3d5dcde3cdd933bfb054b72ee20f6f46aca))
+
+- **hook**: Replace vague stop hook message with step-by-step knowledge extraction protocol
+  ([`5cb0923`](https://github.com/ksm0709/pkm/commit/5cb09231dae886bc89e9dc1e5ac6b645616bea5b))
+
+- **mcp**: Add trigger conditions and workflow position to search cluster tools
+  ([`9457411`](https://github.com/ksm0709/pkm/commit/945741196ab6ad377cea2ff6be195cc8ed35235a))
+
+- **mcp**: Add trigger conditions to maintenance and graph tools
+  ([`fc38ad9`](https://github.com/ksm0709/pkm/commit/fc38ad908748ad693400c586009173ab38c82fef))
+
+- **mcp**: Clarify note writing tool distinctions (note_add vs daily_add vs subnote)
+  ([`5b333a1`](https://github.com/ksm0709/pkm/commit/5b333a16678a3cdda4cb06dec6ad36f70ad24284))
+
+- **skill**: Add three-phase Knowledge Collection Protocol to pkm skill
+  ([`fe07332`](https://github.com/ksm0709/pkm/commit/fe0733297329aea5b95362ed640ecbbc12d7fe1e))
+
+
 ## v2.70.0 (2026-05-01)
 
 ### Chores
