@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.71.2 (2026-05-01)
+
+### Bug Fixes
+
+- **hook**: Add phase2 agent hook to _PKM_HOOKS for pkm hook setup
+  ([`73c6b9e`](https://github.com/ksm0709/pkm/commit/73c6b9efaf8c49dba6224df4b43a28a5e6004daf))
+
+
 ## v2.71.1 (2026-05-01)
 
 ### Bug Fixes
