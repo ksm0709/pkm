@@ -162,14 +162,19 @@ def search(
     memory_type: str | None = None,
     min_importance: float = 1.0,
 ) -> dict[str, Any]:
-    """Search notes semantically via the PKM daemon.
+    """Search vault notes by topic or concept (semantic similarity).
+
+    Use BEFORE starting any non-trivial task to recall prior knowledge, decisions,
+    and patterns. Also use before note_add() to check for duplicates.
+    Do NOT use when you already know the exact note slug — use get_note_neighbors() instead.
+    Typically followed by get_note_neighbors() on relevant results.
 
     Args:
-        query: Search query string.
-        top: Maximum number of results (default 10).
+        query: Free-text concept or topic to search for.
+        top: Maximum number of results (default 10, max 50).
         vault: Vault name for cross-vault search. Uses server vault if omitted.
         memory_type: Filter by type — semantic, episodic, or procedural.
-        min_importance: Minimum importance score filter (default 1.0).
+        min_importance: Minimum importance score filter (default 1.0). Use 5.0 to focus on non-trivial notes.
     """
     from pkm.search_engine import search_via_daemon
 
@@ -242,13 +247,18 @@ async def pkm_ask(
     model: str | None = None,
     timeout: int = 120,
 ) -> dict[str, Any]:
-    """Ask a natural language question about your vault.
+    """Ask a natural language question and get a synthesized answer from vault notes (RAG).
+
+    Use when you need an answer synthesized across multiple notes — prior decisions,
+    user preferences, patterns. Slower than search() but returns a direct answer.
+    Safe to run as a background task while other work continues.
+    Do NOT use as a substitute for search() — use search() for exploration, pkm_ask() for questions.
 
     Args:
         query: The natural language question to ask.
         vault: Vault name for cross-vault search. Uses server vault if omitted.
         model: Optional LLM model to use. Overrides config if provided.
-        timeout: Timeout in seconds to wait for the result.
+        timeout: Timeout in seconds to wait for the result (default 120).
     """
     import json
     import asyncio
@@ -407,13 +417,20 @@ def find_backlinks_for_note(note_id: str) -> dict[str, Any]:
 
 @mcp.tool()
 def get_note_neighbors(note_id: str, include_semantic: bool = False) -> dict[str, Any]:
-    """Get all neighbors of a note: outbound wikilinks, inbound backlinks, tags, ghost
-    nodes, and optionally semantic connections. Daemon-free (reads graph.json directly).
+    """Explore the connection graph around a specific note.
+
+    Use after search() when a result looks relevant — traverse its outbound links,
+    inbound backlinks, and optionally semantic connections for deeper context.
+    This is the second step in tree-traversal knowledge collection:
+    search() → get_note_neighbors() → get_note_neighbors() (one more level if needed, max 2-depth).
+    Do NOT use include_semantic=True unless embedding-based connections are specifically needed; it is slower.
 
     Returns {note_id, outbound:[{note_id,title,type}], inbound:[{note_id,title,type}],
-    semantic:[{note_id,title,type,confidence}]}. All node types included (note, tag,
-    note_or_unresolved). Filter by 'type' field as needed.
-    Requires pkm index to have been run to build graph.json.
+    semantic:[{note_id,title,type,confidence}]}. Requires pkm index to have been run.
+
+    Args:
+        note_id: Note slug without extension (e.g. "2026-04-05-my-note").
+        include_semantic: Include embedding-based semantic connections (default False).
     """
     from pkm.tools.links import _get_note_neighbors_data
 
