@@ -496,13 +496,17 @@ def _handle_turn_start(
         lines.append(f"Session: {session_id}")
     if _detect_pkm_mcp():
         lines.append(
-            "`mcp__pkm__search` — recall related notes if needed"
-            "\nFor full command reference see the `/pkm` skill or session-start context."
+            "# PKM Context\n"
+            "Relevant notes above are exploration starting points.\n"
+            "→ mcp__pkm__get_note_neighbors(note_id=<slug>) — explore connections (2-depth max)\n"
+            "→ mcp__pkm__pkm_ask(query=<question>) — synthesized answers from vault\n"
+            "Before starting non-trivial work: mcp__pkm__search(query=<topic>)"
         )
     else:
         lines.append(
-            '`pkm search "<query>"` — recall related notes if needed'
-            "\nFor full command reference see the `/pkm` skill or session-start context."
+            "# PKM Context\n"
+            "Relevant notes above are exploration starting points.\n"
+            'pkm search "<topic>" — recall prior knowledge before starting work'
         )
 
     content = "\n".join(lines)
