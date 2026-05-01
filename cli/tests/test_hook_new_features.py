@@ -280,7 +280,9 @@ def test_turn_start_footer_injects_top_note_id(runner, vault_env, monkeypatch):
     assert "<slug>" not in result.output
 
 
-def test_turn_start_footer_fallback_slug_when_no_results(runner, vault_env, monkeypatch):
+def test_turn_start_footer_fallback_slug_when_no_results(
+    runner, vault_env, monkeypatch
+):
     """When search returns no results, footer keeps generic <slug> placeholder."""
     monkeypatch.setattr("pkm.search_engine.search_via_daemon", lambda *a, **kw: [])
     monkeypatch.setattr("pkm.commands.hook._detect_pkm_mcp", lambda: True)
@@ -293,7 +295,9 @@ def test_turn_start_footer_fallback_slug_when_no_results(runner, vault_env, monk
     assert "<slug>" in result.output
 
 
-def test_turn_start_footer_fallback_slug_when_search_fails(runner, vault_env, monkeypatch):
+def test_turn_start_footer_fallback_slug_when_search_fails(
+    runner, vault_env, monkeypatch
+):
     """When search raises an exception, footer falls back to generic <slug>."""
 
     def _failing_search(*a, **kw):
