@@ -1,0 +1,13 @@
+/* Reading column — 70ch centered layout */
+.reading-column {
+  max-width: var(--reading-width, 70ch);
+  margin: 0 auto;
+  padding: 0 var(--gutter, 48px);
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .reading-column {
+    padding: 0 var(--space-4, 16px);
+  }
+}
