@@ -49,6 +49,17 @@ def format_search_results(
 ) -> None:
     """Shared helper to format and print search results as JSON or table."""
     if output_format == "json":
+        if vault is not None:
+            from pkm.tools.links import _get_note_neighbors_data
+
+            for r in results:
+                try:
+                    r.related_notes = _get_note_neighbors_data(
+                        vault, r.note_id, include_semantic=True
+                    )
+                except Exception:
+                    pass
+
         items = [
             {
                 "rank": r.rank,
@@ -59,7 +70,7 @@ def format_search_results(
                 "memory_type": getattr(r, "memory_type", None),
                 "tags": r.tags if r.tags else [],
                 "note_id": r.note_id,
-                "graph_context": getattr(r, "graph_context", None),
+                "related_notes": getattr(r, "related_notes", None),
             }
             for r in results
         ]
@@ -170,7 +181,6 @@ def index_cmd(ctx: click.Context) -> None:
     help="Weight for recency+importance scoring (0=pure semantic)",
 )
 @click.option("--session", "session_id", default=None, help="Filter by session ID")
-@click.option("--depth", type=int, default=1, help="Graph traversal depth")
 @click.pass_context
 def search_cmd(
     ctx: click.Context,
@@ -181,7 +191,6 @@ def search_cmd(
     min_importance: float,
     recency_weight: float,
     session_id: str | None,
-    depth: int,
 ) -> None:
     """Search vault notes semantically.
 
@@ -257,18 +266,6 @@ def search_cmd(
             except Exception:
                 pass
         results = filtered
-
-    # Append graph context
-    if output_format == "json":
-        try:
-            from pkm.search_engine import get_graph_context_via_daemon
-
-            for r in results:
-                graph_context = get_graph_context_via_daemon(r.note_id, vault, depth)
-                if graph_context:
-                    r.graph_context = graph_context
-        except Exception:
-            pass
 
     if not results and output_format != "json":
         console.print("[yellow]No results found.[/yellow]")

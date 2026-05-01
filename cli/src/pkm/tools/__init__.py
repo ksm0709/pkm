@@ -1,7 +1,6 @@
 from pkm.tools.notes import add_note, search_notes, read_note, update_note
 from pkm.tools.search import (
     semantic_search,
-    get_graph_context,
     find_surprising_connections,
     list_clusters,
     list_god_nodes,
@@ -27,7 +26,6 @@ def get_pkm_tools(scope: str = "all") -> list:
         read_note,
         update_note,
         semantic_search,
-        get_graph_context,
         find_surprising_connections,
         list_clusters,
         list_god_nodes,

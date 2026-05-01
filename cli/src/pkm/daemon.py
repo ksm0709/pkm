@@ -382,47 +382,6 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
             res_data = json.dumps(response_obj) + "\n"
             writer.write(res_data.encode("utf-8"))
 
-        elif action == "get_graph_context":
-            note_id = req.get("note_id")
-            depth = req.get("depth", 1)
-            vault_name = req.get("vault_name")
-
-            if not note_id:
-                writer.write(b'{"error": "missing note_id"}\n')
-                return
-
-            if not DaemonState.graph_ready:
-                writer.write(b'{"error": "graph not ready"}\n')
-                return
-
-            vaults = discover_vaults()
-            if vault_name and vault_name in vaults:
-                vault = vaults[vault_name]
-            else:
-                vault = next(iter(vaults.values())) if vaults else None
-
-            if not vault:
-                writer.write(b'{"error": "vault not found"}\n')
-                return
-
-            tier = req.get("tier", "enriched")
-            graph_path = _resolve_graph_path(vault, tier)
-            if not graph_path.exists():
-                writer.write(b'{"error": "graph not found"}\n')
-                return
-            graph_mtime = graph_path.stat().st_mtime
-
-            graph = get_cached_graph(str(graph_path), graph_mtime)
-            if not graph or note_id not in graph:
-                writer.write(b'{"error": "note not found in graph"}\n')
-                return
-
-            subgraph = nx.ego_graph(graph, note_id, radius=depth)
-            context = nx.node_link_data(subgraph)
-
-            res_data = json.dumps(context) + "\n"
-            writer.write(res_data.encode("utf-8"))
-
         elif action in ("update_index", "RELOAD_INDEX"):
             vault_name = req.get("vault_name")
 

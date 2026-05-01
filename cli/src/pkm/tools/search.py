@@ -8,7 +8,6 @@ from pkm.search_engine import (
     search_via_daemon,
     load_index,
     search as search_fn,
-    get_graph_context_via_daemon,
 )
 
 
@@ -84,32 +83,6 @@ def semantic_search(
         return "\n\n".join(items)
     except Exception as e:
         return f"Error performing semantic search: {str(e)}"
-
-
-@tool()
-def get_graph_context(note_id: str, depth: int = 1, tier: str = "enriched") -> str:
-    """Get graph connections for a note.
-
-    tier='enriched' (default) includes semantic_similar edges and community info
-    from graph_enriched.json when available. Falls back to structural graph.json.
-    tier='structural' forces structural (wikilink + has_tag only).
-
-    Args:
-        note_id: The ID of the note to query.
-        depth: The traversal depth (default 1).
-        tier: Graph tier to use ('enriched' or 'structural', default 'enriched').
-    """
-    v_dir = os.environ.get("PKM_VAULT_DIR", ".")
-    vault = _get_vault(v_dir)
-
-    try:
-        context = get_graph_context_via_daemon(note_id, vault, depth, tier=tier)
-        if not context:
-            return f"No graph context found for '{note_id}' (Daemon may be down or note missing)."
-
-        return json.dumps(context, indent=2, ensure_ascii=False)
-    except Exception as e:
-        return f"Error fetching graph context: {str(e)}"
 
 
 @tool()

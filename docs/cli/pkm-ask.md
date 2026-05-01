@@ -94,7 +94,7 @@ The agent has access to 17 typed tools for vault interaction:
 | `semantic_search(query, ...)` | Semantic similarity search |
 | `add_note(title, content, ...)` | Create a new atomic note |
 | `update_note(note_id, content, ...)` | Update an existing note |
-| `get_graph_context(note_id, depth)` | Wikilink graph via daemon (depth>1) |
+| `get_note_neighbors(note_id)` | Graph neighbors (outbound/inbound/semantic, daemon-free) |
 | `vault_stats()` | Vault health overview |
 | `list_stale_notes(days)` | Notes not modified in N days |
 | `list_orphans()` | Notes with no inbound or outbound links |

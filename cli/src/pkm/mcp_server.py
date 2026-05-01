@@ -187,6 +187,16 @@ def search(
                 "error": "Daemon unavailable. Start with: pkm daemon start",
                 "code": -32000,
             }
+        from pkm.tools.links import _get_note_neighbors_data
+
+        def _related(r):
+            try:
+                return _get_note_neighbors_data(
+                    target_vault, r.note_id, include_semantic=True
+                )
+            except Exception:
+                return None
+
         return {
             "results": [
                 {
@@ -198,6 +208,7 @@ def search(
                     "importance": r.importance,
                     "path": r.path,
                     "rank": r.rank,
+                    "related_notes": _related(r),
                 }
                 for r in results
             ],
