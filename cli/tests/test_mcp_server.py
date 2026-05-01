@@ -379,7 +379,7 @@ class TestMcpE2EProtocol:
         assert "mark_consolidated" in tool_names
         assert "read_recent_note_activity" in tool_names
         assert "read_daily_log" in tool_names
-        assert len(tools) == 22
+        assert len(tools) == 24
 
         # Verify inputSchema exists on each tool
         for tool in tools:

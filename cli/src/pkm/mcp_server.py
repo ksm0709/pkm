@@ -424,6 +424,84 @@ async def pkm_ask(
 
 
 @mcp.tool()
+def read_note(note_id: str, vault: str | None = None) -> dict[str, Any]:
+    """Read the full content and metadata of a note by ID.
+
+    Returns a structured dict with 8 keys: note_id, title, body, frontmatter,
+    created, updated, tags, importance.  Use after search() or list_notes() to
+    fetch the full note body before editing or linking.
+
+    Args:
+        note_id: The note slug without .md extension (e.g. "2026-04-05-my-note").
+        vault: Vault name. Uses server vault if omitted.
+    """
+    from pkm.frontmatter import parse
+
+    target_vault = _get_vault(vault)
+    for base_dir in [target_vault.notes_dir, target_vault.daily_dir]:
+        path = base_dir / f"{note_id}.md"
+        if path.exists():
+            try:
+                note = parse(path)
+                fm = note.meta if note.meta else {}
+                importance_raw = fm.get("importance")
+                importance = int(importance_raw) if importance_raw is not None else None
+                return {
+                    "note_id": note.id,
+                    "title": note.title,
+                    "body": note.body,
+                    "frontmatter": fm,
+                    "created": fm.get("created_at") or fm.get("source") or None,
+                    "updated": fm.get("updated_at") or None,
+                    "tags": note.tags,
+                    "importance": importance,
+                }
+            except Exception as e:
+                return {"error": str(e)}
+    return {"error": f"Note '{note_id}' not found."}
+
+
+@mcp.tool()
+def list_notes(filter: str | None = None, vault: str | None = None) -> dict[str, Any]:
+    """List notes in the vault, optionally filtered by title substring.
+
+    Returns {notes: [{note_id, title, path, tags, created_at}], count: N}.
+    Use to enumerate notes before bulk operations or when you don't have a
+    specific search query. For semantic lookup use search() instead.
+
+    Args:
+        filter: Optional case-insensitive title substring filter.
+        vault: Vault name. Uses server vault if omitted.
+    """
+    from pkm.frontmatter import parse
+
+    target_vault = _get_vault(vault)
+    results = []
+    if not target_vault.notes_dir.is_dir():
+        return {"notes": results, "count": 0}
+
+    filter_lower = filter.lower() if filter else None
+    for md_file in sorted(target_vault.notes_dir.glob("*.md")):
+        try:
+            note = parse(md_file)
+            if filter_lower and filter_lower not in note.title.lower():
+                continue
+            fm = note.meta if note.meta else {}
+            results.append(
+                {
+                    "note_id": note.id,
+                    "title": note.title,
+                    "path": str(md_file),
+                    "tags": note.tags,
+                    "created_at": fm.get("created_at") or fm.get("source") or None,
+                }
+            )
+        except Exception:
+            pass
+    return {"notes": results, "count": len(results)}
+
+
+@mcp.tool()
 def vault_stats() -> dict[str, Any]:
     """Get a snapshot of vault health: note count, orphan count, tag count, avg links, index status."""
     from pkm.commands.maintenance import compute_vault_stats

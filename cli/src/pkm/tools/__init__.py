@@ -1,4 +1,4 @@
-from pkm.tools.notes import add_note, search_notes, read_note, update_note
+from pkm.tools.notes import add_note, search_notes, read_note, update_note, list_notes
 from pkm.tools.search import (
     semantic_search,
     find_surprising_connections,
@@ -24,6 +24,7 @@ def get_pkm_tools(scope: str = "all") -> list:
         add_note,
         search_notes,
         read_note,
+        list_notes,
         update_note,
         semantic_search,
         find_surprising_connections,

@@ -487,3 +487,193 @@ def test_note_log_tail_option(cli_runner, tmp_vault):
         cli_runner("note", "add", "--content", f"note number {i}", "--no-dedup")
     result = cli_runner("note", "log", "--tail", "2")
     assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# read_note tool: 8-key JSON schema (tiny_agent path)
+# ---------------------------------------------------------------------------
+
+_REQUIRED_NOTE_KEYS = (
+    "note_id",
+    "title",
+    "body",
+    "frontmatter",
+    "created",
+    "updated",
+    "tags",
+    "importance",
+)
+
+
+class TestReadNoteTinyAgent:
+    """tiny_agent @tool()-wrapped read_note.
+
+    The @tool() wrapper ignores positional args (must call with kwargs) and
+    serialises dict/list results to a JSON string. _call() handles both.
+    """
+
+    def _call(self, fn, **kwargs):
+        import asyncio
+        import inspect
+        import json as _json
+
+        result = fn(**kwargs)
+        if inspect.isawaitable(result):
+            result = asyncio.run(result)
+        if isinstance(result, str):
+            try:
+                return _json.loads(result)
+            except (ValueError, TypeError):
+                return result
+        return result
+
+    def test_returns_all_8_keys(self, tmp_vault, monkeypatch):
+        """read_note returns all 8 required keys."""
+        monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
+        from pkm.tools.notes import read_note
+
+        result = self._call(read_note, note_id="2026-04-01-mvcc")
+        assert isinstance(result, dict)
+        for key in _REQUIRED_NOTE_KEYS:
+            assert key in result, f"Missing key: {key}"
+
+    def test_missing_frontmatter_returns_empty_dict(self, tmp_vault, monkeypatch):
+        """read_note returns {} for frontmatter when note has no YAML header."""
+        bare_note = tmp_vault.notes_dir / "bare-note.md"
+        bare_note.write_text("No frontmatter here\n", encoding="utf-8")
+        monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
+        from pkm.tools.notes import read_note
+
+        result = self._call(read_note, note_id="bare-note")
+        assert result["frontmatter"] == {}
+
+    def test_missing_tags_returns_empty_list(self, tmp_vault, monkeypatch):
+        """read_note returns [] for tags when not in frontmatter."""
+        note = tmp_vault.notes_dir / "no-tags-note.md"
+        note.write_text("---\nid: no-tags-note\n---\nBody text\n", encoding="utf-8")
+        monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
+        from pkm.tools.notes import read_note
+
+        result = self._call(read_note, note_id="no-tags-note")
+        assert result["tags"] == []
+
+    def test_missing_importance_returns_none(self, tmp_vault, monkeypatch):
+        """read_note returns None for importance when not in frontmatter."""
+        monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
+        from pkm.tools.notes import read_note
+
+        result = self._call(read_note, note_id="2026-04-01-mvcc")
+        assert result["importance"] is None
+
+    def test_importance_cast_to_int(self, tmp_vault, monkeypatch):
+        """read_note casts float importance to int."""
+        note = tmp_vault.notes_dir / "imp-note.md"
+        note.write_text(
+            "---\nid: imp-note\nimportance: 7.0\ntags: []\n---\nBody\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
+        from pkm.tools.notes import read_note
+
+        result = self._call(read_note, note_id="imp-note")
+        assert result["importance"] == 7
+        assert isinstance(result["importance"], int)
+
+    def test_not_found_returns_error_key(self, tmp_vault, monkeypatch):
+        """read_note returns dict with 'error' key when note not found."""
+        monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
+        from pkm.tools.notes import read_note
+
+        result = self._call(read_note, note_id="does-not-exist-xyz")
+        assert "error" in result
+
+
+# ---------------------------------------------------------------------------
+# read_note tool: 8-key JSON schema (MCP path)
+# ---------------------------------------------------------------------------
+
+
+class TestReadNoteMCP:
+    def test_returns_all_8_keys(self, tmp_vault):
+        """MCP read_note returns all 8 required keys."""
+        mcp_mod = pytest.importorskip("pkm.mcp_server")
+        mcp_mod._current_vault = tmp_vault
+        result = mcp_mod.read_note("2026-04-01-mvcc")
+        assert isinstance(result, dict)
+        for key in _REQUIRED_NOTE_KEYS:
+            assert key in result, f"Missing key: {key}"
+
+    def test_missing_frontmatter_returns_empty_dict(self, tmp_vault):
+        """MCP read_note returns {} for frontmatter when note has no YAML header."""
+        mcp_mod = pytest.importorskip("pkm.mcp_server")
+        mcp_mod._current_vault = tmp_vault
+        bare = tmp_vault.notes_dir / "bare-mcp.md"
+        bare.write_text("No frontmatter\n", encoding="utf-8")
+        result = mcp_mod.read_note("bare-mcp")
+        assert result["frontmatter"] == {}
+
+    def test_missing_tags_returns_empty_list(self, tmp_vault):
+        """MCP read_note returns [] for tags when missing."""
+        mcp_mod = pytest.importorskip("pkm.mcp_server")
+        mcp_mod._current_vault = tmp_vault
+        note = tmp_vault.notes_dir / "no-tags-mcp.md"
+        note.write_text("---\nid: no-tags-mcp\n---\nBody\n", encoding="utf-8")
+        result = mcp_mod.read_note("no-tags-mcp")
+        assert result["tags"] == []
+
+    def test_missing_importance_returns_none(self, tmp_vault):
+        """MCP read_note returns None for importance when missing."""
+        mcp_mod = pytest.importorskip("pkm.mcp_server")
+        mcp_mod._current_vault = tmp_vault
+        result = mcp_mod.read_note("2026-04-01-mvcc")
+        assert result["importance"] is None
+
+    def test_not_found_returns_error(self, tmp_vault):
+        """MCP read_note returns error dict for unknown note_id."""
+        mcp_mod = pytest.importorskip("pkm.mcp_server")
+        mcp_mod._current_vault = tmp_vault
+        result = mcp_mod.read_note("does-not-exist-xyz")
+        assert "error" in result
+
+
+# ---------------------------------------------------------------------------
+# list_notes tool (MCP path)
+# ---------------------------------------------------------------------------
+
+
+class TestListNotesMCP:
+    def test_returns_notes_and_count(self, tmp_vault):
+        """MCP list_notes returns dict with notes list and count."""
+        mcp_mod = pytest.importorskip("pkm.mcp_server")
+        mcp_mod._current_vault = tmp_vault
+        result = mcp_mod.list_notes()
+        assert "notes" in result
+        assert "count" in result
+        assert result["count"] >= 1
+        assert result["count"] == len(result["notes"])
+
+    def test_each_item_has_required_keys(self, tmp_vault):
+        """Each list_notes item has note_id, title, path, tags, created_at."""
+        mcp_mod = pytest.importorskip("pkm.mcp_server")
+        mcp_mod._current_vault = tmp_vault
+        result = mcp_mod.list_notes()
+        for item in result["notes"]:
+            for key in ("note_id", "title", "path", "tags", "created_at"):
+                assert key in item, f"Missing key '{key}' in list_notes item"
+
+    def test_filter_by_title(self, tmp_vault):
+        """list_notes(filter=...) returns only matching notes."""
+        mcp_mod = pytest.importorskip("pkm.mcp_server")
+        mcp_mod._current_vault = tmp_vault
+        result = mcp_mod.list_notes(filter="mvcc")
+        assert result["count"] >= 1
+        for item in result["notes"]:
+            assert "mvcc" in item["title"].lower()
+
+    def test_filter_no_match_returns_empty(self, tmp_vault):
+        """list_notes with non-matching filter returns empty list."""
+        mcp_mod = pytest.importorskip("pkm.mcp_server")
+        mcp_mod._current_vault = tmp_vault
+        result = mcp_mod.list_notes(filter="zzz-nonexistent-zzz")
+        assert result["count"] == 0
+        assert result["notes"] == []

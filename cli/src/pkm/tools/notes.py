@@ -66,8 +66,11 @@ def search_notes(query: str) -> str:
 
 
 @tool()
-def read_note(note_id: str) -> str:
+def read_note(note_id: str) -> dict:
     """Read the full content and metadata of a note.
+
+    Returns a dict with keys: note_id, title, body, frontmatter, created, updated,
+    tags, importance.
 
     Args:
         note_id: The ID of the note (typically the filename without .md).
@@ -81,9 +84,61 @@ def read_note(note_id: str) -> str:
             from pkm.frontmatter import parse
 
             note = parse(path)
-            return f"--- Note: {note.title} ---\nMetadata:\n{note.meta}\nContent:\n{note.body}"
+            fm = note.meta if note.meta else {}
+            importance_raw = fm.get("importance")
+            importance = int(importance_raw) if importance_raw is not None else None
+            return {
+                "note_id": note.id,
+                "title": note.title,
+                "body": note.body,
+                "frontmatter": fm,
+                "created": fm.get("created_at") or fm.get("source") or None,
+                "updated": fm.get("updated_at") or None,
+                "tags": note.tags,
+                "importance": importance,
+            }
 
-    return f"Error: Note '{note_id}' not found."
+    return {"error": f"Note '{note_id}' not found."}
+
+
+@tool()
+def list_notes(filter: str | None = None, vault: str | None = None) -> list:
+    """List notes in the vault, optionally filtered by title substring.
+
+    Returns a list of dicts with keys: note_id, title, path, tags, created_at.
+
+    Args:
+        filter: Optional case-insensitive title filter (partial match).
+        vault: Optional vault directory path (uses PKM_VAULT_DIR env if not provided).
+    """
+    v_dir = vault or os.environ.get("PKM_VAULT_DIR", ".")
+    vault_obj = _get_vault(v_dir)
+
+    from pkm.frontmatter import parse as _parse
+
+    results = []
+    if not vault_obj.notes_dir.is_dir():
+        return results
+
+    filter_lower = filter.lower() if filter else None
+    for md_file in sorted(vault_obj.notes_dir.glob("*.md")):
+        try:
+            note = _parse(md_file)
+            if filter_lower and filter_lower not in note.title.lower():
+                continue
+            fm = note.meta if note.meta else {}
+            results.append(
+                {
+                    "note_id": note.id,
+                    "title": note.title,
+                    "path": str(md_file),
+                    "tags": note.tags,
+                    "created_at": fm.get("created_at") or fm.get("source") or None,
+                }
+            )
+        except Exception:
+            pass
+    return results
 
 
 @tool()
