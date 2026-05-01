@@ -239,10 +239,7 @@ def test_turn_end_exit2_behaviors(runner, vault_env, payload_dict, expected_exit
     payload = json.dumps(payload_dict)
     result = runner.invoke(main, ["hook", "run", "turn-end-exit2"], input=payload)
     assert result.exit_code == expected_exit
+    # Claude Code with transcript: silently exits 0, no output (protocol in SKILL.md)
     has_transcript = payload_dict.get("transcript_path") and not payload_dict.get("stop_hook_active")
     if has_transcript:
-        import json as _json
-        data = _json.loads(result.output)
-        assert data["decision"] == "block"
-        assert "# Knowledge Extraction" in data["reason"]
-        assert "mcp__pkm__daily_add" in data["reason"]
+        assert result.output.strip() == ""

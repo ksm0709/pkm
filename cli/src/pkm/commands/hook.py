@@ -599,17 +599,8 @@ Then stop."""
         )
         sys.exit(0)
     else:
-        # Use JSON decision:block so reason is injected into Claude's context
-        # without surfacing as visible "Stop hook feedback" to the user.
-        print(
-            json.dumps(
-                {
-                    "decision": "block",
-                    "reason": instructions,
-                    "suppressOutput": True,
-                }
-            )
-        )
+        # Claude Code: exit silently. Knowledge extraction protocol is defined in
+        # SKILL.md (Post-work section) and session-start context — no forcing needed.
         sys.exit(0)
 
 
