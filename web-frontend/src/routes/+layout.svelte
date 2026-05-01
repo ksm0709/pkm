@@ -1,5 +1,6 @@
 <script lang="ts">
   import '../app.css';
+  import ThemeProvider from '$lib/components/ThemeProvider.svelte';
   import type { Snippet } from 'svelte';
 
   interface Props {
@@ -9,4 +10,6 @@
   let { children }: Props = $props();
 </script>
 
-{@render children()}
+<ThemeProvider>
+  {@render children()}
+</ThemeProvider>
