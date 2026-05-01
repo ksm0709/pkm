@@ -7,6 +7,7 @@ import signal
 import socket
 import subprocess
 import sys
+import time
 
 import click
 from rich.console import Console
@@ -122,6 +123,10 @@ def daemon_stop() -> None:
 def daemon_restart(ctx: click.Context) -> None:
     """Restart the daemon."""
     ctx.invoke(daemon_stop)
+    for _ in range(30):  # wait up to 3s for socket to close
+        if not _is_daemon_alive():
+            break
+        time.sleep(0.1)
     ctx.invoke(daemon_start)
 
 
