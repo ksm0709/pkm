@@ -9,11 +9,11 @@ import logging
 import os
 import sys
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from functools import lru_cache
 from pathlib import Path
 from pathlib import Path as _Path
-from typing import Dict, Any, Optional, cast
+from typing import Dict, Any, Optional
 
 import networkx as nx
 import yaml
@@ -106,31 +106,6 @@ def get_cached_index(index_path: str, index_mtime: float) -> VectorIndex:
     )
 
 
-class BudgetExhausted(Exception):
-    pass
-
-
-@dataclass
-class TokenBudget:
-    max_tokens: int
-    window_seconds: int
-    used_tokens: int = 0
-    window_start: float = time.time()
-
-    def check_and_consume(self, tokens: int):
-        now = time.time()
-        if now - self.window_start > self.window_seconds:
-            self.window_start = now
-            self.used_tokens = 0
-
-        if self.used_tokens + tokens > self.max_tokens:
-            raise BudgetExhausted(
-                f"Token budget exhausted. Used {self.used_tokens}/{self.max_tokens} in current window."
-            )
-
-        self.used_tokens += tokens
-
-
 class TaskQueue:
     def __init__(self, db_path: Path):
         self.db_path = db_path
@@ -203,12 +178,6 @@ class LLMWorkerProxy:
         if not self.process or not self.process.stdout:
             return
 
-        try:
-            import litellm
-        except ImportError:
-            logger.error("litellm not installed")
-            return
-
         while True:
             line = await self.process.stdout.readline()
             if not line:
@@ -216,68 +185,7 @@ class LLMWorkerProxy:
 
             try:
                 msg = json.loads(line.decode().strip())
-                if msg.get("type") == "llm_request":
-                    req_id = msg.get("id")
-                    messages = msg.get("messages", [])
-                    model = msg.get("model", "gpt-4o-mini")
-
-                    try:
-                        self.budget.check_and_consume(0)
-
-                        loop = asyncio.get_running_loop()
-                        response = await loop.run_in_executor(
-                            None,
-                            lambda: litellm.completion(model=model, messages=messages),
-                        )
-
-                        response_any = cast(Any, response)
-                        content = response_any.choices[0].message.content
-                        usage = getattr(response_any, "usage", None)
-
-                        if usage:
-                            self.budget.check_and_consume(usage.total_tokens)
-
-                        resp_msg = {
-                            "type": "llm_response",
-                            "id": req_id,
-                            "content": content,
-                        }
-                        if self.process and self.process.stdin:
-                            self.process.stdin.write(
-                                (json.dumps(resp_msg) + "\n").encode()
-                            )
-                            await self.process.stdin.drain()
-
-                    except BudgetExhausted as e:
-                        err_msg = {"type": "llm_error", "id": req_id, "message": str(e)}
-                        if self.process and self.process.stdin:
-                            self.process.stdin.write(
-                                (json.dumps(err_msg) + "\n").encode()
-                            )
-                            await self.process.stdin.drain()
-                    except Exception as e:
-                        logger.exception("LiteLLM call failed")
-                        err_msg = {"type": "llm_error", "id": req_id, "message": str(e)}
-                        if self.process and self.process.stdin:
-                            self.process.stdin.write(
-                                (json.dumps(err_msg) + "\n").encode()
-                            )
-                            await self.process.stdin.drain()
-
-                elif msg.get("type") == "token_usage":
-                    tokens = msg.get("tokens", 0)
-                    try:
-                        self.budget.check_and_consume(tokens)
-                    except BudgetExhausted as e:
-                        logger.warning(f"Budget exhausted: {e}")
-                        if self.process and self.process.stdin:
-                            abort_msg = {"type": "abort"}
-                            self.process.stdin.write(
-                                (json.dumps(abort_msg) + "\n").encode()
-                            )
-                            await self.process.stdin.drain()
-
-                elif msg.get("type") == "stream":
+                if msg.get("type") == "stream":
                     task_id = msg.get("id")
                     if task_id in self.stream_callbacks:
                         try:
@@ -588,18 +496,14 @@ async def process_background_tasks():
             task = task_queue.peek()
             if task:
                 try:
-                    worker_proxy.budget.check_and_consume(0)
-
                     task = task_queue.pop()
                     if task:
                         logger.info(f"Processing background task: {task.get('id')}")
                         await worker_proxy.send_task(task)
-                except BudgetExhausted:
-                    logger.info("Budget exhausted, pausing background tasks")
-                    await asyncio.sleep(60)
-                    continue
                 except Exception:
-                    logger.exception("Error processing background task")
+                    logger.exception(
+                        f"Error processing background task: {task.get('id') if task else 'unknown'}"
+                    )
 
         await asyncio.sleep(5)
 
