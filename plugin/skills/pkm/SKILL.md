@@ -102,6 +102,32 @@ mcp__pkm__create_daily_subnote(title="sub-note title")
 
 **importance scale**: 1-3 trivial · 4-6 moderate · 7-8 important (arch decisions, bug root causes) · 9-10 critical (security, irreversible). Bias 7+ for anything the next agent would need. Default 5 if unsure.
 
+## Knowledge Collection Protocol
+
+Three-phase protocol for using PKM as an active knowledge partner throughout work.
+
+### A. Pre-work: Context Recall (before starting any non-trivial task)
+
+1. `mcp__pkm__search(query=<task topic>, min_importance=5.0)` — find prior knowledge, decisions, patterns
+2. For any result with imp≥6 or obviously relevant title:
+   `mcp__pkm__get_note_neighbors(note_id=<slug>)` — explore connections
+   Repeat once more if a neighbor is also clearly relevant (max 2-depth total).
+3. If a specific question arises about prior decisions or user preferences:
+   `mcp__pkm__pkm_ask(query=<question>)` — synthesized answer from vault
+
+Stop when: no relevant results found, or sufficient context collected.
+
+### B. During Work: Background Queries
+
+When a question arises mid-task about prior decisions, patterns, or the user's preferences:
+`mcp__pkm__pkm_ask(query=<question>)` — safe to run as a background agent task; continue work while waiting.
+
+### C. Post-work: Knowledge Capture
+
+1. **Always:** `mcp__pkm__daily_add(text="<1-2 line summary of what was done>")`
+2. **If reusable:** `mcp__pkm__search(query=<topic>)` first (check duplicates), then `mcp__pkm__note_add(content=..., importance=7+)` for decisions or patterns the next agent would need
+3. **If obvious connection:** `mcp__pkm__add_wikilink(source_note_id=..., target_note_id=..., description="WHY — the conceptual bridge")`
+
 ## Interface: CLI
 
 > Use this interface when MCP tools are **not** available (no `mcp__pkm__*` in your tool list). All operations go through the `pkm` CLI.
