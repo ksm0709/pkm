@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.73.0 (2026-05-01)
+
+### Features
+
+- **pkm**: Add pkm:diagnosis skill + hook footer top_note_id injection
+  ([`39e67aa`](https://github.com/ksm0709/pkm/commit/39e67aa0713bb597be79d3ccc47149c6cece6077))
+
+
 ## v2.72.0 (2026-05-01)
 
 ### Code Style
