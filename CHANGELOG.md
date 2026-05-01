@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v2.73.2 (2026-05-01)
+
+### Bug Fixes
+
+- **daemon**: Remove dead budget code causing AttributeError in process_background_tasks
+  ([`9957517`](https://github.com/ksm0709/pkm/commit/9957517932ea28f3c3f84b190eb22dcc004621f7))
+
+### Code Style
+
+- Auto-format line length fixes in hook.py and tests
+  ([`a34633f`](https://github.com/ksm0709/pkm/commit/a34633fdfa5674057f9a46e88d768b16331f456e))
+
+
 ## v2.73.1 (2026-05-01)
 
 ### Bug Fixes
