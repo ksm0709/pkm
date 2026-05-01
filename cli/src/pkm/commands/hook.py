@@ -836,7 +836,12 @@ _PKM_HOOKS: dict[str, list[dict[str, Any]]] = {
                     "type": "command",
                     "command": "pkm hook run turn-end-exit2",
                     "timeout": 30,
-                }
+                },
+                {
+                    "type": "agent",
+                    "prompt": "You are a PKM knowledge extractor. A Claude Code session just ended. The hook input JSON is: $ARGUMENTS\n\n1. Parse the JSON to extract the 'transcript_path' field\n2. Read the transcript file at that path using the Read tool\n3. Identify knowledge worth preserving (be selective — only non-obvious, reusable knowledge)\n4. Save findings using pkm commands. See the /pkm skill for available commands and workflows.\n5. Return {\"ok\": true} when done. If transcript_path is missing/unreadable or nothing is worth saving, return {\"ok\": true} immediately.\n\nIMPORTANT: Skip trivial facts, already-known information, and tool outputs. Quality over quantity.",
+                    "timeout": 120,
+                },
             ]
         }
     ],
