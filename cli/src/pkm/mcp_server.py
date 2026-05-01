@@ -43,12 +43,21 @@ def note_add(
     session_id: str | None = None,
     agent_id: str | None = None,
 ) -> dict[str, Any]:
-    """Create an atomic note in the PKM vault.
+    """Create a permanent atomic note for reusable knowledge.
+
+    Use for knowledge that will be referenced again: architectural decisions, bug root causes,
+    API behaviors, patterns, user preferences. Search() first to avoid duplicates —
+    update an existing note if the topic already exists.
+    Do NOT use for ephemeral session logs — use daily_add() instead.
+
+    importance: 1-3 trivial · 4-6 moderate · 7-8 important (arch decisions, bug root causes)
+    · 9-10 critical (security, irreversible). Default 5 if unsure. Bias 7+ for anything the
+    next agent would need.
 
     Args:
         content: Note body text (required).
         title: Note title. Auto-generated from content if omitted.
-        type: Memory type — semantic, episodic, or procedural.
+        type: Memory type — semantic (concepts/facts), episodic (events), procedural (how-to).
         importance: Importance score 1-10 (default 5).
         tags: List of tags.
         meta: Arbitrary key-value metadata added to frontmatter.
@@ -79,10 +88,14 @@ def note_add(
 
 @mcp.tool()
 def daily_add(text: str) -> dict[str, Any]:
-    """Append a timestamped log entry to today's daily note.
+    """Append a timestamped log entry to today's daily note (ephemeral session log).
+
+    Use for work summaries, observations, and progress notes that don't need independent
+    future reference. This is the lightest PKM write and should be called at the END of
+    every session. Do NOT use for reusable knowledge — use note_add() instead.
 
     Args:
-        text: The text to add to today's daily note.
+        text: The text to log. Keep to 1-3 sentences summarizing what was done.
     """
     from pkm.commands.daily import add_daily_entry
 
@@ -103,10 +116,13 @@ def create_daily_subnote(
     tags: list[str] | None = None,
     aliases: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Create a dated subnote and link it from today's daily note.
+    """Create a dated subnote linked from today's daily note (medium-weight session record).
 
-    Creates YYYY-MM-DD-{title}.md in the vault daily directory and appends
-    a timestamped [[wikilink]] entry to today's daily note.
+    Use for session-scoped records larger than a daily_add() entry but not warranting
+    a standalone atomic note — meeting notes, investigation logs, design explorations.
+    Creates YYYY-MM-DD-{title}.md in the vault daily directory and appends a timestamped
+    [[wikilink]] entry to today's daily note.
+    For permanent reusable knowledge, use note_add() instead.
 
     Args:
         title: Subnote title slug (spaces become hyphens).
@@ -162,14 +178,19 @@ def search(
     memory_type: str | None = None,
     min_importance: float = 1.0,
 ) -> dict[str, Any]:
-    """Search notes semantically via the PKM daemon.
+    """Search vault notes by topic or concept (semantic similarity).
+
+    Use BEFORE starting any non-trivial task to recall prior knowledge, decisions,
+    and patterns. Also use before note_add() to check for duplicates.
+    Do NOT use when you already know the exact note slug — use get_note_neighbors() instead.
+    Typically followed by get_note_neighbors() on relevant results.
 
     Args:
-        query: Search query string.
-        top: Maximum number of results (default 10).
+        query: Free-text concept or topic to search for.
+        top: Maximum number of results (default 10, max 50).
         vault: Vault name for cross-vault search. Uses server vault if omitted.
         memory_type: Filter by type — semantic, episodic, or procedural.
-        min_importance: Minimum importance score filter (default 1.0).
+        min_importance: Minimum importance score filter (default 1.0). Use 5.0 to focus on non-trivial notes.
     """
     from pkm.search_engine import search_via_daemon
 
@@ -242,13 +263,18 @@ async def pkm_ask(
     model: str | None = None,
     timeout: int = 120,
 ) -> dict[str, Any]:
-    """Ask a natural language question about your vault.
+    """Ask a natural language question and get a synthesized answer from vault notes (RAG).
+
+    Use when you need an answer synthesized across multiple notes — prior decisions,
+    user preferences, patterns. Slower than search() but returns a direct answer.
+    Safe to run as a background task while other work continues.
+    Do NOT use as a substitute for search() — use search() for exploration, pkm_ask() for questions.
 
     Args:
         query: The natural language question to ask.
         vault: Vault name for cross-vault search. Uses server vault if omitted.
         model: Optional LLM model to use. Overrides config if provided.
-        timeout: Timeout in seconds to wait for the result.
+        timeout: Timeout in seconds to wait for the result (default 120).
     """
     import json
     import asyncio
@@ -363,7 +389,12 @@ def list_stale_notes(days: int = 30) -> dict[str, Any]:
 
 @mcp.tool()
 def list_orphans() -> dict[str, Any]:
-    """List all orphan notes — notes with zero inbound AND zero outbound wikilinks."""
+    """List all orphan notes — notes with zero inbound AND zero outbound wikilinks.
+
+    Use during vault maintenance to find disconnected knowledge that has become dead.
+    Orphan notes are candidates for deletion, consolidation, or connecting via add_wikilink().
+    Not needed in normal task workflows.
+    """
     from pkm.wikilinks import find_orphans
     from pkm.frontmatter import parse
 
@@ -407,13 +438,20 @@ def find_backlinks_for_note(note_id: str) -> dict[str, Any]:
 
 @mcp.tool()
 def get_note_neighbors(note_id: str, include_semantic: bool = False) -> dict[str, Any]:
-    """Get all neighbors of a note: outbound wikilinks, inbound backlinks, tags, ghost
-    nodes, and optionally semantic connections. Daemon-free (reads graph.json directly).
+    """Explore the connection graph around a specific note.
+
+    Use after search() when a result looks relevant — traverse its outbound links,
+    inbound backlinks, and optionally semantic connections for deeper context.
+    This is the second step in tree-traversal knowledge collection:
+    search() → get_note_neighbors() → get_note_neighbors() (one more level if needed, max 2-depth).
+    Do NOT use include_semantic=True unless embedding-based connections are specifically needed; it is slower.
 
     Returns {note_id, outbound:[{note_id,title,type}], inbound:[{note_id,title,type}],
-    semantic:[{note_id,title,type,confidence}]}. All node types included (note, tag,
-    note_or_unresolved). Filter by 'type' field as needed.
-    Requires pkm index to have been run to build graph.json.
+    semantic:[{note_id,title,type,confidence}]}. Requires pkm index to have been run.
+
+    Args:
+        note_id: Note slug without extension (e.g. "2026-04-05-my-note").
+        include_semantic: Include embedding-based semantic connections (default False).
     """
     from pkm.tools.links import _get_note_neighbors_data
 
@@ -489,7 +527,17 @@ def list_consolidation_candidates() -> dict[str, Any]:
 def mark_consolidated(
     date_str: str, distilled_note_ids: list[str] | None = None
 ) -> dict[str, Any]:
-    """Mark a daily note as consolidated. Requires distilled_note_ids for auditability."""
+    """Mark a daily note as consolidated after Zettelkasten distillation.
+
+    Call AFTER creating atomic notes from a daily note's content (note_add()), providing
+    the IDs of the notes created. Part of the zettel-loop workflow:
+    list_consolidation_candidates() → distill → note_add() → mark_consolidated().
+    Requires distilled_note_ids for auditability — cannot mark without them.
+
+    Args:
+        date_str: Date of the daily note to mark (format: YYYY-MM-DD).
+        distilled_note_ids: IDs of atomic notes created during distillation (required).
+    """
     from pkm.commands.consolidate import _parse_frontmatter, _set_frontmatter_field
     from datetime import date
 
@@ -549,7 +597,9 @@ def read_recent_note_activity(tail: int = 20) -> dict[str, Any]:
 def find_surprising_connections(top_n: int = 20) -> dict[str, Any]:
     """Find notes that semantically bridge two different topic clusters (hidden cross-cluster links).
 
-    Use when you want to discover non-obvious connections between different vault topic areas.
+    Use for on-demand cross-domain connection discovery. The daemon runs this periodically
+    in the background — call manually only when you suspect an important connection exists
+    or want an immediate scan. Results can then be linked with add_wikilink().
     Requires pkm index to have been run to build the enriched graph.
     """
     from pkm.tools.search import find_surprising_connections as _tool
@@ -617,8 +667,16 @@ def add_wikilink(
 ) -> dict[str, Any]:
     """Append a [[target|description]] entry to the '## Related' section of source note.
 
+    Use after note_add() when the new note has an obvious meaningful connection to an existing note.
     description MUST explain WHY the connection is meaningful — the conceptual bridge,
-    not a description of the target note. Use after find_surprising_connections().
+    not a description of the target. Example: "shares vault-scoped path resolution pattern"
+    not "another note about vault paths". The daemon discovers non-obvious links periodically;
+    manual use here is for connections you already know about.
+
+    Args:
+        source_note_id: Note slug to add the link to (without .md extension).
+        target_note_id: Note slug to link to (without .md extension).
+        description: WHY this connection is meaningful (required).
     """
     from pkm.tools.links import add_wikilink as _tool
 

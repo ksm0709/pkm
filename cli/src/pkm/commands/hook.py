@@ -496,13 +496,17 @@ def _handle_turn_start(
         lines.append(f"Session: {session_id}")
     if _detect_pkm_mcp():
         lines.append(
-            "`mcp__pkm__search` — recall related notes if needed"
-            "\nFor full command reference see the `/pkm` skill or session-start context."
+            "# PKM Context\n"
+            "Relevant notes above are exploration starting points.\n"
+            "→ mcp__pkm__get_note_neighbors(note_id=<slug>) — explore connections (2-depth max)\n"
+            "→ mcp__pkm__pkm_ask(query=<question>) — synthesized answers from vault\n"
+            "Before starting non-trivial work: mcp__pkm__search(query=<topic>)"
         )
     else:
         lines.append(
-            '`pkm search "<query>"` — recall related notes if needed'
-            "\nFor full command reference see the `/pkm` skill or session-start context."
+            "# PKM Context\n"
+            "Relevant notes above are exploration starting points.\n"
+            'pkm search "<topic>" — recall prior knowledge before starting work'
         )
 
     content = "\n".join(lines)
@@ -563,8 +567,16 @@ def _handle_turn_end_exit2(ctx, **_ignored) -> None:
         sys.exit(0)
 
     instructions = """\
-KNOWLEDGE EXTRACTION: Save key learnings from this session using pkm commands.
-Be selective — skip trivial facts. See /pkm skill for available commands. Then you may stop."""
+# Knowledge Extraction — complete these steps, then stop:
+1. mcp__pkm__daily_add(text="<1-2 line summary of what was done>")  ← always
+2. Reusable insight, decision, or pattern found?
+   → mcp__pkm__search(query=<topic>) first (check duplicates)
+   → mcp__pkm__note_add(content=..., importance=7+) if no duplicate exists
+   Skip step 2 if nothing non-obvious or reusable was learned.
+3. Obvious connection to an existing note?
+   → mcp__pkm__add_wikilink(source_note_id=..., target_note_id=..., description="WHY this connects")
+   Skip step 3 if no clear connection exists.
+Then stop."""
 
     hook_source = payload.get("hook_source", "")
 
@@ -587,8 +599,18 @@ Be selective — skip trivial facts. See /pkm skill for available commands. Then
         )
         sys.exit(0)
     else:
-        print(instructions, file=sys.stderr)
-        sys.exit(2)
+        # Use JSON decision:block so reason is injected into Claude's context
+        # without surfacing as visible "Stop hook feedback" to the user.
+        print(
+            json.dumps(
+                {
+                    "decision": "block",
+                    "reason": instructions,
+                    "suppressOutput": True,
+                }
+            )
+        )
+        sys.exit(0)
 
 
 def _is_pkm_hook(hook_entry: dict[str, Any]) -> bool:
