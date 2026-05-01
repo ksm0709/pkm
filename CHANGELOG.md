@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.73.1 (2026-05-01)
+
+### Bug Fixes
+
+- **daemon**: Wait for socket close before restarting
+  ([`e8eba9e`](https://github.com/ksm0709/pkm/commit/e8eba9e11638c18e93c077d081bf726936eb6dda))
+
+
 ## v2.73.0 (2026-05-01)
 
 ### Features
