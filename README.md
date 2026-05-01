@@ -84,6 +84,20 @@ We have extracted detailed documentation for each CLI command into the `docs/cli
 
 For a full guide on the memory layer for AI agents, see: [`docs/agent-memory-policy.md`](docs/agent-memory-policy.md)
 
+### Web App
+
+PKM includes a read-only web interface served by the daemon (`pkm daemon start`). It uses a token-based auth flow, renders notes in a 70ch reading column with *The Periodical* typography (Newsreader + IBM Plex Mono), and shows a hairline NeighborPanel (outbound links · semantic neighbors · backlinks) below every note.
+
+To develop the frontend:
+
+```bash
+cd web-frontend
+pnpm install --frozen-lockfile
+pnpm dev        # http://localhost:5173
+pnpm build      # static output → dist/
+pnpm bundle:check  # gzip budget check (≤ 220 KB JS+CSS)
+```
+
 ### MCP Server Integration
 
 PKM includes a built-in MCP (Model Context Protocol) server to expose your vault to AI coding assistants (like Claude Desktop, Cursor, or Cline). It includes tools like `pkm_ask` for safe, parameterized natural language queries against your vault.
@@ -144,13 +158,22 @@ Requirements:
 
 ```text
 pkm/
-├── cli/          # Python package and CLI implementation
+├── cli/           # Python package and CLI implementation
 │   ├── src/pkm/
 │   │   ├── commands/   # daily, note, search, vault, config, agent, update...
 │   │   └── ...
 │   └── tests/
-├── docs/         # usage and policy docs
-├── plugin/       # Claude Code plugin (hooks, skills)
+├── web-frontend/  # SvelteKit read-only webapp (served by daemon)
+│   ├── src/
+│   │   ├── lib/
+│   │   │   ├── api/        # fetch wrapper (client.js)
+│   │   │   ├── components/ # ThemeProvider, Topbar, Onboarding, NeighborPanel…
+│   │   │   └── styles/     # tokens.css, fonts.css, reset.css, type.css
+│   │   └── routes/         # SvelteKit file-based routes
+│   ├── package.json
+│   └── pnpm-lock.yaml
+├── docs/          # usage and policy docs
+├── plugin/        # Claude Code plugin (hooks, skills)
 └── README.md
 ```
 
