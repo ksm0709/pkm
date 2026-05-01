@@ -46,7 +46,7 @@ def note_add(
     """Create a permanent atomic note for reusable knowledge.
 
     Use for knowledge that will be referenced again: architectural decisions, bug root causes,
-    API behaviors, patterns, user preferences. Always search() first to avoid duplicates —
+    API behaviors, patterns, user preferences. Search() first to avoid duplicates —
     update an existing note if the topic already exists.
     Do NOT use for ephemeral session logs — use daily_add() instead.
 

@@ -96,7 +96,7 @@ Criteria for deciding when to promote from a daily note to an atomic note:
 ```
 mcp__pkm__daily_add(text="log decisions, findings, code changes")
 mcp__pkm__search(query="query string")
-mcp__pkm__note_add(content="insight", memory_type="semantic", importance=7, tags=["tag1", "tag2"])
+mcp__pkm__note_add(content="insight", type="semantic", importance=7, tags=["tag1", "tag2"])
 mcp__pkm__create_daily_subnote(title="sub-note title")
 ```
 
