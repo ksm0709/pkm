@@ -567,8 +567,16 @@ def _handle_turn_end_exit2(ctx, **_ignored) -> None:
         sys.exit(0)
 
     instructions = """\
-KNOWLEDGE EXTRACTION: Save key learnings from this session using pkm commands.
-Be selective — skip trivial facts. See /pkm skill for available commands. Then you may stop."""
+# Knowledge Extraction — complete these steps, then stop:
+1. mcp__pkm__daily_add(text="<1-2 line summary of what was done>")  ← always
+2. Reusable insight, decision, or pattern found?
+   → mcp__pkm__search(query=<topic>) first (check duplicates)
+   → mcp__pkm__note_add(content=..., importance=7+) if no duplicate exists
+   Skip step 2 if nothing non-obvious or reusable was learned.
+3. Obvious connection to an existing note?
+   → mcp__pkm__add_wikilink(source_note_id=..., target_note_id=..., description="WHY this connects")
+   Skip step 3 if no clear connection exists.
+Then stop."""
 
     hook_source = payload.get("hook_source", "")
 

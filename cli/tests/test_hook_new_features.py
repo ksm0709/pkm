@@ -240,5 +240,5 @@ def test_turn_end_exit2_behaviors(runner, vault_env, payload_dict, expected_exit
     result = runner.invoke(main, ["hook", "run", "turn-end-exit2"], input=payload)
     assert result.exit_code == expected_exit
     if expected_exit == 2:
-        assert "KNOWLEDGE EXTRACTION" in result.output
-        assert "/pkm" in result.output
+        assert "# Knowledge Extraction" in result.output
+        assert "mcp__pkm__daily_add" in result.output
