@@ -356,3 +356,44 @@ def get_vault_context(name: str | None = None) -> tuple[VaultConfig, str]:
 def get_vault(name: str | None = None) -> VaultConfig:
     """Get a vault by name following precedence rules."""
     return get_vault_context(name)[0]
+
+
+# ---------------------------------------------------------------------------
+# Web server config
+# ---------------------------------------------------------------------------
+
+_DEFAULT_WEB_PORT = 7420
+_DEFAULT_WEB_BIND = "0.0.0.0"
+_DEFAULT_WEB_TOKEN_PATH = Path.home() / ".config" / "pkm" / "web-token"
+
+
+@dataclass(frozen=True)
+class WebConfig:
+    port: int
+    bind: str
+    token_path: Path
+
+
+def get_web_config() -> WebConfig:
+    """Read [web] section from ~/.config/pkm/config, falling back to defaults.
+
+    Keys read (all optional):
+      port       — integer, default 7420
+      bind       — string,  default "0.0.0.0"
+      token_path — string path, default ~/.config/pkm/web-token
+    """
+    data = load_config()
+    web_section = data.get("web", {})
+
+    port_raw = web_section.get("port", _DEFAULT_WEB_PORT)
+    try:
+        port = int(port_raw)
+    except (TypeError, ValueError):
+        port = _DEFAULT_WEB_PORT
+
+    bind = str(web_section.get("bind", _DEFAULT_WEB_BIND))
+
+    token_path_raw = web_section.get("token_path", str(_DEFAULT_WEB_TOKEN_PATH))
+    token_path = Path(token_path_raw).expanduser()
+
+    return WebConfig(port=port, bind=bind, token_path=token_path)
