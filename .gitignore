@@ -51,3 +51,4 @@ CLAUDE.md
 !.context/memory
 !.context/memory/**
 .worktrees/
+.omx/
