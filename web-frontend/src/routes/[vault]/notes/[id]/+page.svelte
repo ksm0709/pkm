@@ -4,6 +4,7 @@
   import { marked } from 'marked';
   import { apiGet } from '$lib/api/client.js';
   import NeighborPanel from '$lib/components/NeighborPanel.svelte';
+  import CodeMirror from '$lib/editor/CodeMirror.svelte';
 
   interface Note {
     note_id: string;
@@ -29,6 +30,8 @@
   let loadingNeighbors = $state(true);
   let error = $state('');
   let renderedBody = $state('');
+  let editMode = $state(false);
+  let editorDoc = $state('');
 
   let vaultName = $derived($page.params.vault);
   let noteId = $derived($page.params.id);
@@ -42,6 +45,7 @@
 
     if (noteResult.status === 'fulfilled') {
       note = noteResult.value;
+      editorDoc = note.body ?? '';
       renderedBody = await marked.parse(note.body ?? '', { async: true });
     } else {
       error = 'Note not found.';
@@ -85,12 +89,25 @@
           {#if note.importance !== null}
             <span class="meta-item">imp {note.importance}</span>
           {/if}
+          <button
+            type="button"
+            class="mode-toggle"
+            onclick={() => (editMode = !editMode)}
+          >
+            {editMode ? 'read' : 'edit'}
+          </button>
         </div>
       </header>
 
-      <!-- Rendered markdown body -->
-      <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-      <div class="note-body prose">{@html renderedBody}</div>
+      {#if editMode}
+        <div class="note-editor">
+          <CodeMirror bind:doc={editorDoc} />
+        </div>
+      {:else}
+        <!-- Rendered markdown body -->
+        <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+        <div class="note-body prose">{@html renderedBody}</div>
+      {/if}
 
       <!-- Signature NeighborPanel -->
       <NeighborPanel
@@ -140,6 +157,30 @@
 
   .meta-item {
     color: var(--text-muted);
+  }
+
+  .mode-toggle {
+    margin-left: auto;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--type-chrome-sm-size, 11px);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 2px 8px;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+  }
+  .mode-toggle:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .note-editor {
+    min-height: 60vh;
+    border: 1px solid var(--border);
+    margin-bottom: var(--space-5, 24px);
   }
 
   /* Prose styles for rendered markdown */
