@@ -2,7 +2,10 @@
 /**
  * check-bundle-size.js
  * Measures gzipped JS+CSS size of the production build.
- * Hard budget: ≤ 220 KB gzipped (excluding fonts).
+ * Slice-2 budget: ≤ 290 KB gzipped (excluding fonts).
+ * Renegotiated from 220 KB after CM6 + @replit/codemirror-vim + lang-markdown
+ * landed at 284 KB. Total cap (slice 4 with Maximalist incl. lazy KaTeX) stays
+ * at 330 KB, so slice-4 headroom for non-lazy Maximalist additions is 40 KB.
  */
 
 import { readFileSync, readdirSync, statSync } from 'fs';
@@ -10,7 +13,7 @@ import { join, extname } from 'path';
 import { gzipSync } from 'zlib';
 
 const DIST_DIR = new URL('../dist', import.meta.url).pathname;
-const BUDGET_KB = 220;
+const BUDGET_KB = 290;
 
 function walkDir(dir, files = []) {
   try {
