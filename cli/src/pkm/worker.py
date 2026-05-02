@@ -19,11 +19,14 @@ def sync_task_api_keys(env_keys: Optional[Dict[str, str]]) -> None:
     if env_keys is None:
         return
 
-    requested_api_keys = {k for k in env_keys if k.endswith("_API_KEY")}
+    clean_env_keys = {
+        k: v for k, v in env_keys.items() if not k.endswith("_API_KEY") or v.strip()
+    }
+    requested_api_keys = {k for k in clean_env_keys if k.endswith("_API_KEY")}
     for key in list(os.environ):
         if key.endswith("_API_KEY") and key not in requested_api_keys:
             os.environ.pop(key, None)
-    os.environ.update(env_keys)
+    os.environ.update(clean_env_keys)
 
 
 def reasoning_kwargs(model: str, effort: str | None) -> dict[str, Any]:

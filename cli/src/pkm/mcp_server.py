@@ -329,7 +329,6 @@ async def pkm_ask(
     """
     import json
     import asyncio
-    import os
     from pathlib import Path
     from pkm.config import load_config
 
@@ -348,7 +347,9 @@ async def pkm_ask(
             model_candidates = [config_model]
     graph_depth = load_config().get("defaults", {}).get("graph-depth", 0)
 
-    env_keys = {k: v for k, v in os.environ.items() if k.endswith("_API_KEY")}
+    from pkm.models import collect_api_keys
+
+    env_keys = collect_api_keys()
 
     reader = None
     writer = None

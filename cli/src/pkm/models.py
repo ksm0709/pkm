@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass
 
 
@@ -79,6 +80,15 @@ def resolve_auto_models() -> list[str]:
     return [m.id for m in get_available_models() if _is_valid(m.id)]
 
 
+def collect_api_keys() -> dict[str, str]:
+    """Return non-empty API keys from the current environment."""
+    return {
+        k: v
+        for k, v in os.environ.items()
+        if k.endswith("_API_KEY") and v.strip()
+    }
+
+
 def resolve_model_candidates(preferred_model: str | None = None) -> list[str]:
     """Return runtime fallback candidates for configured/default model selection."""
     auto_models = resolve_auto_models()
@@ -92,9 +102,19 @@ def resolve_model_candidates(preferred_model: str | None = None) -> list[str]:
 
 
 def _is_valid(model_id: str) -> bool:
+    blank_api_keys = {
+        k: v
+        for k, v in os.environ.items()
+        if k.endswith("_API_KEY") and not v.strip()
+    }
     try:
+        for key in blank_api_keys:
+            os.environ.pop(key, None)
+
         import litellm
 
         return litellm.validate_environment(model_id).get("keys_in_environment", True)
     except Exception:
         return False
+    finally:
+        os.environ.update(blank_api_keys)

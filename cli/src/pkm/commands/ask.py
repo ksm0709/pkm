@@ -165,7 +165,9 @@ def ask_cmd(
         except Exception:
             pass
 
-    env_keys = {k: v for k, v in os.environ.items() if k.endswith("_API_KEY")}
+    from pkm.models import collect_api_keys
+
+    env_keys = collect_api_keys()
 
     sock_path = Path.home() / ".config" / "pkm" / "daemon.sock"
 

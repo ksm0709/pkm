@@ -19,6 +19,20 @@ def test_sync_task_api_keys_removes_stale_daemon_provider_keys(monkeypatch):
     assert os.environ["PKM_TEST_MOCK_LLM"] == "1"
 
 
+def test_sync_task_api_keys_treats_blank_request_keys_as_absent(monkeypatch):
+    from pkm.worker import sync_task_api_keys
+
+    monkeypatch.setenv("GEMINI_API_KEY", "stale-gemini")
+    monkeypatch.setenv("OPENAI_API_KEY", "old-openai")
+
+    sync_task_api_keys({"GEMINI_API_KEY": "", "OPENAI_API_KEY": "fresh-openai"})
+
+    import os
+
+    assert "GEMINI_API_KEY" not in os.environ
+    assert os.environ["OPENAI_API_KEY"] == "fresh-openai"
+
+
 def test_sync_task_api_keys_keeps_daemon_env_when_task_has_no_env_keys(monkeypatch):
     from pkm.worker import sync_task_api_keys
 
@@ -29,6 +43,38 @@ def test_sync_task_api_keys_keeps_daemon_env_when_task_has_no_env_keys(monkeypat
     import os
 
     assert os.environ["GEMINI_API_KEY"] == "daemon-gemini"
+
+
+def test_collect_api_keys_omits_blank_values(monkeypatch):
+    from pkm.models import collect_api_keys
+
+    monkeypatch.setenv("GEMINI_API_KEY", "")
+    monkeypatch.setenv("OPENAI_API_KEY", "openai")
+
+    assert collect_api_keys() == {"OPENAI_API_KEY": "openai"}
+
+
+def test_resolve_auto_models_treats_blank_provider_keys_as_missing(monkeypatch):
+    from pkm.models import resolve_auto_models
+
+    monkeypatch.setenv("GEMINI_API_KEY", "")
+    monkeypatch.setenv("OPENAI_API_KEY", "openai")
+
+    fake_litellm = ModuleType("litellm")
+
+    def validate_environment(model_id):
+        if model_id.startswith("gemini/"):
+            has_keys = bool(__import__("os").environ.get("GEMINI_API_KEY"))
+        elif model_id.startswith("gpt-"):
+            has_keys = bool(__import__("os").environ.get("OPENAI_API_KEY"))
+        else:
+            has_keys = False
+        return {"keys_in_environment": has_keys, "missing_keys": []}
+
+    fake_litellm.validate_environment = validate_environment
+    monkeypatch.setitem(sys.modules, "litellm", fake_litellm)
+
+    assert resolve_auto_models() == ["gpt-5.4-mini", "gpt-4o-mini"]
 
 
 def test_resolve_auto_models_includes_openai_when_openai_key_is_available(
