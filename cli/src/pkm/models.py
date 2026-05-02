@@ -76,14 +76,25 @@ def get_available_models() -> list[ModelInfo]:
 
 
 def resolve_auto_models() -> list[str]:
-    import litellm
-
-    def _is_valid(model_id: str) -> bool:
-        try:
-            return litellm.validate_environment(model_id).get(
-                "keys_in_environment", True
-            )
-        except Exception:
-            return False
-
     return [m.id for m in get_available_models() if _is_valid(m.id)]
+
+
+def resolve_model_candidates(preferred_model: str | None = None) -> list[str]:
+    """Return runtime fallback candidates for configured/default model selection."""
+    auto_models = resolve_auto_models()
+    if not preferred_model or preferred_model == "auto":
+        return auto_models
+
+    if not _is_valid(preferred_model):
+        return auto_models
+
+    return [preferred_model] + [m for m in auto_models if m != preferred_model]
+
+
+def _is_valid(model_id: str) -> bool:
+    try:
+        import litellm
+
+        return litellm.validate_environment(model_id).get("keys_in_environment", True)
+    except Exception:
+        return False

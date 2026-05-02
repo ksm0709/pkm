@@ -127,6 +127,14 @@ def ask_cmd(
     config_model = config_data.get("model")
     config_reasoning_effort = config_data.get("reasoning-effort")
     final_model = model or config_model or "auto"
+    model_candidates = None
+    if model is None and config_model and config_model != "auto":
+        try:
+            from pkm.models import resolve_model_candidates
+
+            model_candidates = resolve_model_candidates(config_model)
+        except Exception:
+            model_candidates = [config_model]
     graph_depth = config_data.get("graph-depth", 0)
 
     final_reasoning_effort = reasoning_effort or config_reasoning_effort
@@ -214,6 +222,7 @@ def ask_cmd(
                 "query": query_str,
                 "vault_name": vault.name,
                 "model": final_model,
+                "model_candidates": model_candidates,
                 "reasoning_effort": final_reasoning_effort,
                 "env_keys": env_keys,
                 "graph_depth": graph_depth,

@@ -104,6 +104,7 @@ async def _run_agent_task(
     system_prompt: str,
     vault_dir: str,
     model: Optional[str] = None,
+    model_candidates: Optional[List[str]] = None,
     env_keys: Optional[Dict[str, str]] = None,
     reasoning_effort: Optional[str] = None,
     cwd: Optional[str] = None,
@@ -134,7 +135,9 @@ async def _run_agent_task(
 
         ipc.abort_event.clear()
 
-        models_to_try = [model] if model and model != "auto" else []
+        models_to_try = [m for m in (model_candidates or []) if m]
+        if not models_to_try:
+            models_to_try = [model] if model and model != "auto" else []
         if not models_to_try:
             try:
                 from pkm.models import resolve_auto_models
@@ -145,8 +148,6 @@ async def _run_agent_task(
 
         if not models_to_try:
             raise RuntimeError("No API keys found for any supported models.")
-
-        resolved_model = models_to_try[0]
 
         tools = get_pkm_tools()
 
@@ -163,69 +164,85 @@ async def _run_agent_task(
                 }
             )
 
-        litellm_kwargs = reasoning_kwargs(resolved_model, reasoning_effort)
-
         instruction_dirs = [vault_dir]
         if cwd and cwd not in instruction_dirs:
             instruction_dirs.append(cwd)
 
-        agent = Agent(
-            session_id=f"{session_prefix}-{task_id}",
-            model=resolved_model,
-            system_prompt=system_prompt,
-            tools=tools,
-            skills_dirs=skills_dirs or [],
-            instruction_dirs=instruction_dirs,
-            max_iterations=1000,
-            hooks={"on_tool_start": on_tool_start},
-            litellm_kwargs=litellm_kwargs,
-            load_builtin_tools=False,
-        )
+        model_errors: list[str] = []
+        for resolved_model in models_to_try:
+            try:
+                litellm_kwargs = reasoning_kwargs(resolved_model, reasoning_effort)
 
-        response_chunks = []
-
-        async def run_agent():
-            async for chunk in agent.run(user_content):
-                await ipc.send_message(
-                    {"type": "stream", "id": task_id, "chunk": chunk}
+                agent = Agent(
+                    session_id=f"{session_prefix}-{task_id}",
+                    model=resolved_model,
+                    system_prompt=system_prompt,
+                    tools=tools,
+                    skills_dirs=skills_dirs or [],
+                    instruction_dirs=instruction_dirs,
+                    max_iterations=1000,
+                    hooks={"on_tool_start": on_tool_start},
+                    litellm_kwargs=litellm_kwargs,
+                    load_builtin_tools=False,
                 )
 
-                if chunk.get("type") == "content":
-                    content = chunk.get("content", "")
-                    response_chunks.append(content)
-                elif chunk.get("type") == "error":
-                    raise RuntimeError(chunk.get("content"))
+                response_chunks = []
 
-        agent_task = asyncio.create_task(run_agent())
-        abort_task = asyncio.create_task(ipc.abort_event.wait())
+                async def run_agent():
+                    async for chunk in agent.run(user_content):
+                        await ipc.send_message(
+                            {"type": "stream", "id": task_id, "chunk": chunk}
+                        )
 
-        done, pending = await asyncio.wait(
-            [agent_task, abort_task], return_when=asyncio.FIRST_COMPLETED
-        )
+                        if chunk.get("type") == "content":
+                            content = chunk.get("content", "")
+                            response_chunks.append(content)
+                        elif chunk.get("type") == "error":
+                            raise RuntimeError(chunk.get("content"))
 
-        if abort_task in done:
-            agent_task.cancel()
-            try:
-                await agent_task
-            except asyncio.CancelledError:
-                pass
-            raise RuntimeError("Task aborted by daemon")
+                agent_task = asyncio.create_task(run_agent())
+                abort_task = asyncio.create_task(ipc.abort_event.wait())
 
-        if agent_task in done:
-            abort_task.cancel()
-            exc = agent_task.exception()
-            if exc:
-                raise exc
+                done, pending = await asyncio.wait(
+                    [agent_task, abort_task], return_when=asyncio.FIRST_COMPLETED
+                )
 
-        full_response = "".join(response_chunks)
+                if abort_task in done:
+                    agent_task.cancel()
+                    try:
+                        await agent_task
+                    except asyncio.CancelledError:
+                        pass
+                    raise RuntimeError("Task aborted by daemon")
 
-        await ipc.send_message(
-            {
-                "type": "result",
-                "id": task_id,
-                "status": "success",
-                "data": {"response": full_response},
-            }
+                if agent_task in done:
+                    abort_task.cancel()
+                    exc = agent_task.exception()
+                    if exc:
+                        raise exc
+
+                full_response = "".join(response_chunks)
+
+                await ipc.send_message(
+                    {
+                        "type": "result",
+                        "id": task_id,
+                        "status": "success",
+                        "data": {"response": full_response},
+                    }
+                )
+                return
+            except Exception as e:
+                if str(e) == "Task aborted by daemon":
+                    raise
+                model_errors.append(f"{resolved_model}: {e}")
+                logger.warning(
+                    "Model %s failed; trying next configured candidate",
+                    resolved_model,
+                )
+
+        raise RuntimeError(
+            "All configured LLM model candidates failed: " + "; ".join(model_errors)
         )
     except Exception as e:
         await ipc.send_message({"type": "error", "id": task_id, "message": str(e)})
@@ -237,6 +254,7 @@ async def handle_ask(
     context: str,
     vault_dir: str,
     model: Optional[str] = None,
+    model_candidates: Optional[List[str]] = None,
     env_keys: Optional[Dict[str, str]] = None,
     reasoning_effort: Optional[str] = None,
     cwd: Optional[str] = None,
@@ -275,6 +293,7 @@ async def handle_ask(
         system_prompt=system_prompt,
         vault_dir=vault_dir,
         model=model,
+        model_candidates=model_candidates,
         env_keys=env_keys,
         reasoning_effort=reasoning_effort,
         cwd=cwd,
@@ -361,6 +380,7 @@ async def handle_task(msg: Dict[str, Any]):
             msg.get("context", ""),
             vault_dir,
             msg.get("model"),
+            msg.get("model_candidates"),
             msg.get("env_keys", {}),
             msg.get("reasoning_effort"),
             msg.get("cwd"),
