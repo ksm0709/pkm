@@ -2,67 +2,94 @@
 /**
  * check-bundle-size.js
  * Measures gzipped JS+CSS size of the production build.
- * Slice-3 budget: ≤ 296 KB gzipped (excluding fonts).
+ * Slice-4 budget: ≤ 330 KB gzipped (excludes fonts/woff2).
+ *
  * Lineage:
  *   220 → 290 KB (slice 2) after CM6 stack landed at 284 KB.
  *   290 → 296 KB (slice 3) after CmdK + AskTranscript landed at 291.4 KB.
- * Total cap (slice 4 with Maximalist incl. lazy KaTeX) stays at 330 KB,
- * so slice-4 headroom for non-lazy Maximalist additions is now 34 KB.
+ *   296 → 330 KB (slice 4) for Maximalist additions (lazy KaTeX etc.).
  */
 
-import { readFileSync, readdirSync, statSync } from 'fs';
-import { join, extname } from 'path';
-import { gzipSync } from 'zlib';
+import { readdir, readFile } from 'node:fs/promises';
+import { join, relative, sep } from 'node:path';
+import { gzip } from 'node:zlib';
+import { promisify } from 'node:util';
+
+const gzipAsync = promisify(gzip);
 
 const DIST_DIR = new URL('../dist', import.meta.url).pathname;
-const BUDGET_KB = 296;
+const BUDGET_KB = 330;
 
-function walkDir(dir, files = []) {
+/**
+ * Recursively list every file under {@link dir}.
+ */
+async function walk(dir /*: string */) /*: Promise<string[]> */ {
+  /** @type {string[]} */
+  const out = [];
+  let entries;
   try {
-    const entries = readdirSync(dir);
-    for (const entry of entries) {
-      const fullPath = join(dir, entry);
-      const stat = statSync(fullPath);
-      if (stat.isDirectory()) {
-        walkDir(fullPath, files);
-      } else {
-        files.push(fullPath);
-      }
-    }
+    entries = await readdir(dir, { withFileTypes: true });
   } catch {
-    // dist may not exist yet
+    return out;
   }
-  return files;
+  for (const entry of entries) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      const nested = await walk(full);
+      out.push(...nested);
+    } else if (entry.isFile()) {
+      out.push(full);
+    }
+  }
+  return out;
 }
 
-const allFiles = walkDir(DIST_DIR);
-const jsAndCss = allFiles.filter((f) => {
-  const ext = extname(f);
-  const isFont = f.includes('/fonts/') || f.endsWith('.woff2') || f.endsWith('.woff') || f.endsWith('.ttf');
-  return !isFont && (ext === '.js' || ext === '.css');
-});
-
-if (jsAndCss.length === 0) {
-  console.error('No JS/CSS files found in dist/. Run `pnpm build` first.');
-  process.exit(1);
+function isFontPath(file /*: string */) /*: boolean */ {
+  const norm = file.split(sep).join('/');
+  return norm.includes('/fonts/') || norm.endsWith('.woff2');
 }
 
-let totalGzipBytes = 0;
-for (const file of jsAndCss) {
-  const content = readFileSync(file);
-  const gzipped = gzipSync(content);
-  totalGzipBytes += gzipped.length;
-  const kb = (gzipped.length / 1024).toFixed(1);
-  console.log(`  ${kb.padStart(7)} KB  ${file.replace(DIST_DIR, 'dist')}`);
+function isJsOrCss(file /*: string */) /*: boolean */ {
+  return file.endsWith('.js') || file.endsWith('.css');
 }
 
-const totalKb = totalGzipBytes / 1024;
-console.log('');
-console.log(`Total gzipped JS+CSS: ${totalKb.toFixed(1)} KB (budget: ${BUDGET_KB} KB)`);
+async function main() {
+  const all = await walk(DIST_DIR);
+  const targets = all.filter((f) => isJsOrCss(f) && !isFontPath(f));
 
-if (totalKb > BUDGET_KB) {
-  console.error(`FAIL: ${totalKb.toFixed(1)} KB exceeds ${BUDGET_KB} KB budget`);
-  process.exit(1);
-} else {
+  if (targets.length === 0) {
+    console.error('No JS/CSS files found in dist/. Run `pnpm build` first.');
+    process.exit(1);
+  }
+
+  /** @type {{ rel: string, kb: number }[]} */
+  const rows = [];
+  let totalBytes = 0;
+  for (const file of targets) {
+    const buf = await readFile(file);
+    const gz = await gzipAsync(buf);
+    totalBytes += gz.length;
+    const rel = relative(DIST_DIR, file).split(sep).join('/');
+    rows.push({ rel, kb: gz.length / 1024 });
+  }
+
+  rows.sort((a, b) => b.kb - a.kb);
+  for (const row of rows) {
+    console.log(`${row.rel} ${row.kb.toFixed(1)}`);
+  }
+
+  const totalKb = totalBytes / 1024;
+  console.log('');
+  console.log(`Total gzipped JS+CSS: ${totalKb.toFixed(1)} KB (budget: ${BUDGET_KB} KB)`);
+
+  if (totalKb > BUDGET_KB) {
+    console.error(`FAIL: ${totalKb.toFixed(1)} KB exceeds ${BUDGET_KB} KB budget`);
+    process.exit(1);
+  }
   console.log(`PASS: ${(BUDGET_KB - totalKb).toFixed(1)} KB headroom remaining`);
 }
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
