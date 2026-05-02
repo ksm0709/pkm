@@ -122,7 +122,60 @@
     observer?.disconnect();
     observer = null;
   });
+
+  // Vim-ish two-char sequences on the timeline (no editor focused here):
+  //   gd → today's daily, gn/gp → next/prev neighbor, gx → external,
+  //   <leader>k (Space + k) → ⌘K palette. Mirrors the editor mappings
+  //   from F4-5 so the timeline page is reachable from itself.
+  let pending = '';
+  let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function isTypingTarget(t: EventTarget | null): boolean {
+    if (!(t instanceof HTMLElement)) return false;
+    const tag = t.tagName;
+    return (
+      tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable
+    );
+  }
+
+  function handleKeydown(e: KeyboardEvent): void {
+    if (isTypingTarget(e.target)) return;
+    const nav = (window as any).__pkmNav as Record<string, () => void> | undefined;
+    if (!nav) return;
+    const key = e.key;
+    if (pending === 'g') {
+      pending = '';
+      if (pendingTimer) clearTimeout(pendingTimer);
+      pendingTimer = null;
+      const map: Record<string, string> = {
+        d: 'gotoDaily', n: 'nextNeighbor', p: 'prevNeighbor', x: 'openExternal'
+      };
+      const action = map[key];
+      if (action && typeof nav[action] === 'function') {
+        e.preventDefault();
+        nav[action]();
+      }
+      return;
+    }
+    if (pending === ' ' && key === 'k') {
+      pending = '';
+      if (pendingTimer) clearTimeout(pendingTimer);
+      pendingTimer = null;
+      if (typeof nav.openPalette === 'function') {
+        e.preventDefault();
+        nav.openPalette();
+      }
+      return;
+    }
+    if (key === 'g' || key === ' ') {
+      pending = key;
+      if (pendingTimer) clearTimeout(pendingTimer);
+      pendingTimer = setTimeout(() => { pending = ''; pendingTimer = null; }, 800);
+    }
+  }
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <svelte:head>
   <title>Daily — {vaultName}</title>
