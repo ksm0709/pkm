@@ -3,6 +3,34 @@ import sys
 from types import ModuleType
 
 
+def test_sync_task_api_keys_removes_stale_daemon_provider_keys(monkeypatch):
+    from pkm.worker import sync_task_api_keys
+
+    monkeypatch.setenv("GEMINI_API_KEY", "stale-gemini")
+    monkeypatch.setenv("OPENAI_API_KEY", "old-openai")
+    monkeypatch.setenv("PKM_TEST_MOCK_LLM", "1")
+
+    sync_task_api_keys({"OPENAI_API_KEY": "fresh-openai"})
+
+    import os
+
+    assert "GEMINI_API_KEY" not in os.environ
+    assert os.environ["OPENAI_API_KEY"] == "fresh-openai"
+    assert os.environ["PKM_TEST_MOCK_LLM"] == "1"
+
+
+def test_sync_task_api_keys_keeps_daemon_env_when_task_has_no_env_keys(monkeypatch):
+    from pkm.worker import sync_task_api_keys
+
+    monkeypatch.setenv("GEMINI_API_KEY", "daemon-gemini")
+
+    sync_task_api_keys(None)
+
+    import os
+
+    assert os.environ["GEMINI_API_KEY"] == "daemon-gemini"
+
+
 def test_resolve_auto_models_includes_openai_when_openai_key_is_available(
     monkeypatch,
 ):

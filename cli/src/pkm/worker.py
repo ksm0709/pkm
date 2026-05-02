@@ -14,6 +14,18 @@ logging.basicConfig(
 logger = logging.getLogger("pkm.worker")
 
 
+def sync_task_api_keys(env_keys: Optional[Dict[str, str]]) -> None:
+    """Make LLM provider keys match the current task request, not daemon startup."""
+    if env_keys is None:
+        return
+
+    requested_api_keys = {k for k in env_keys if k.endswith("_API_KEY")}
+    for key in list(os.environ):
+        if key.endswith("_API_KEY") and key not in requested_api_keys:
+            os.environ.pop(key, None)
+    os.environ.update(env_keys)
+
+
 def reasoning_kwargs(model: str, effort: str | None) -> dict[str, Any]:
     """Translate reasoning_effort to model-compatible litellm kwargs.
 
@@ -111,8 +123,7 @@ async def _run_agent_task(
     skills_dirs: Optional[List[str]] = None,
     mock_response_prefix: str = "Mocked response for:",
 ):
-    if env_keys:
-        os.environ.update(env_keys)
+    sync_task_api_keys(env_keys)
 
     if os.environ.get("PKM_TEST_MOCK_LLM") == "1":
         if mock_response_prefix == "Mocked maintenance response":
@@ -381,7 +392,7 @@ async def handle_task(msg: Dict[str, Any]):
             vault_dir,
             msg.get("model"),
             msg.get("model_candidates"),
-            msg.get("env_keys", {}),
+            msg.get("env_keys"),
             msg.get("reasoning_effort"),
             msg.get("cwd"),
         )
@@ -391,7 +402,7 @@ async def handle_task(msg: Dict[str, Any]):
             msg.get("workflow_id", ""),
             vault_dir,
             msg.get("model"),
-            msg.get("env_keys", {}),
+            msg.get("env_keys"),
             msg.get("reasoning_effort"),
             msg.get("cwd"),
         )
