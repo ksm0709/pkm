@@ -45,6 +45,34 @@ def test_sync_task_api_keys_keeps_daemon_env_when_task_has_no_env_keys(monkeypat
     assert os.environ["GEMINI_API_KEY"] == "daemon-gemini"
 
 
+def test_reasoning_kwargs_skip_unsupported_openai_chat_model():
+    from pkm.worker import reasoning_kwargs
+
+    assert reasoning_kwargs("gpt-4o-mini", "high") == {}
+
+
+def test_reasoning_kwargs_keep_supported_openai_reasoning_model():
+    from pkm.worker import reasoning_kwargs
+
+    assert reasoning_kwargs("gpt-5.4-mini", "high") == {"reasoning_effort": "high"}
+
+
+def test_reasoning_kwargs_translate_gemini_3_thinking_level():
+    from pkm.worker import reasoning_kwargs
+
+    assert reasoning_kwargs("gemini/gemini-3-flash-preview", "high") == {
+        "thinking_level": "high"
+    }
+
+
+def test_reasoning_kwargs_keep_gemini_25_reasoning_effort():
+    from pkm.worker import reasoning_kwargs
+
+    assert reasoning_kwargs("gemini/gemini-2.5-pro", "medium") == {
+        "reasoning_effort": "medium"
+    }
+
+
 def test_collect_api_keys_omits_blank_values(monkeypatch):
     from pkm.models import collect_api_keys
 

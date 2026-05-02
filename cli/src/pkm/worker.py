@@ -37,13 +37,25 @@ def reasoning_kwargs(model: str, effort: str | None) -> dict[str, Any]:
     """
     if not effort:
         return {}
+
+    normalized_model = model.split("/", 1)[-1].lower()
+
     # Gemini 3+ uses thinking_level (low/high)
-    if "gemini-3" in model:
+    if "gemini-3" in normalized_model:
         level = "high" if effort in {"medium", "high", "xhigh"} else "low"
         return {"thinking_level": level}
-    # Gemini 2.5: litellm maps reasoning_effort → thinking budget_tokens natively
-    # Anthropic (claude-3-7+), OpenAI o-series: use reasoning_effort directly
-    return {"reasoning_effort": effort}
+
+    # Gemini 2.5: litellm maps reasoning_effort to thinking budget_tokens natively.
+    if "gemini-2.5" in normalized_model:
+        return {"reasoning_effort": effort}
+
+    # Anthropic Claude 3.7+/4+ and OpenAI reasoning models accept reasoning_effort.
+    if "claude-3-7" in normalized_model or "claude-4" in normalized_model:
+        return {"reasoning_effort": effort}
+    if normalized_model.startswith(("o1", "o3", "o4", "gpt-5")):
+        return {"reasoning_effort": effort}
+
+    return {}
 
 
 def redact(data: Any) -> Any:
