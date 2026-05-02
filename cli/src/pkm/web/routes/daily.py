@@ -64,9 +64,10 @@ def _daily_note_response(path: Path) -> dict:
     note = parse(path)
     fm = note.meta or {}
     importance_raw = fm.get("importance")
+    # note.id and note.title may be datetime.date when YAML parses YYYY-MM-DD ids
     return {
-        "note_id": note.id,
-        "title": note.title,
+        "note_id": str(note.id),
+        "title": str(note.title),
         "body": note.body,
         "frontmatter": _json_safe(fm),
         "created": _json_safe(fm.get("created_at") or fm.get("source") or None),
@@ -81,7 +82,7 @@ def _daily_summary(date_str: str, path: Path) -> dict:
     note = parse(path)
     return {
         "date": date_str,
-        "title": note.title,
+        "title": str(note.title),  # may be datetime.date for YYYY-MM-DD ids
         "todo_count": _count_todos(content),
         "snippet": _extract_snippet(content),
     }
