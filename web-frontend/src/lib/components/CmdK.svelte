@@ -126,7 +126,13 @@
         id: 'cmd:ask',
         label: 'Ask…',
         hint: 'ask',
-        run: () => goto(`/${vaultName}/ask`)
+        run: () => {
+          const q = query.trim();
+          const target = q
+            ? `/${vaultName}/ask?q=${encodeURIComponent(q)}`
+            : `/${vaultName}/ask`;
+          return goto(target);
+        }
       },
       {
         kind: 'command',
