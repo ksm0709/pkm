@@ -1,11 +1,11 @@
 """Slice-1 honesty test: long-poll vs idle_checker (B6a).
 
-xfail(strict=True): currently fails — last_activity is bumped only at request
-entry, so the idle_checker fires during the poll.
-
-Once B9 SSE keepalive lands in slice 3, the keepalive helper periodically
-refreshes last_activity, the assertion passes, and the xfail marker must be
-removed (strict=True causes a suite failure on unexpected pass, forcing cleanup).
+Originally xfail(strict=True): with only an entry-time bump on long polls,
+the idle_checker fires before the poll completes.  B9 (slice 3) introduced
+``pkm.web.keepalive.run_keepalive``, which periodically refreshes
+``last_activity`` for SSE / long-poll handlers — and this test now exercises
+that helper, so the xfail marker has been removed and the assertion must
+pass.
 
 Production mapping: _POLL_SLEEP ≈ 70 s, _IDLE_TIMEOUT ≈ 60 s.
 The test uses scaled-down values to keep CI fast while proving identical logic.
@@ -22,6 +22,7 @@ from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
 from pkm.config import VaultConfig, WebConfig
+from pkm.web.keepalive import run_keepalive
 from pkm.web.server import make_app
 
 TOKEN = "test-longpoll-b6a"
@@ -29,30 +30,24 @@ TOKEN = "test-longpoll-b6a"
 # Scaled-down stand-ins for production values.
 _POLL_SLEEP = 0.8  # production: 70 s — handler sleeps this long
 _IDLE_TIMEOUT = 0.5  # production: 60 s — idle_checker fires after this
+_KEEPALIVE_INTERVAL = 0.1  # production: 30 s — refresh well below idle_timeout
 
 
 @pytest.mark.anyio
-@pytest.mark.xfail(
-    strict=True,
-    reason="will pass after B9 SSE keepalive lands in slice 3",
-)
 async def test_long_poll_activity_stays_fresh(
     tmp_vault: VaultConfig,
     tmp_path,
     monkeypatch,
 ) -> None:
-    """last_activity must remain fresh throughout a long poll (requires B9 keepalive).
+    """last_activity must remain fresh throughout a long poll (B9 keepalive).
 
     The idle_checker fires when ``monotonic() - last_activity > idle_timeout``.
     With only an entry-time bump, last_activity becomes stale for the full poll
-    duration.  After B9, a keepalive helper periodically refreshes it so the
+    duration.  B9's ``run_keepalive`` helper periodically refreshes it so the
     idle_checker never fires during an active poll.
 
     Assertion: at the moment the idle_checker fires (after idle_timeout), the
     age of last_activity must be less than idle_timeout/2.
-
-    - Currently FAILS: age ≈ idle_timeout (bumped once at entry, never refreshed).
-    - After B9: keepalive refreshes last_activity → age << idle_timeout → PASSES.
     """
     # Gate: expose the test route only under PKM_TEST=1 (never in production).
     monkeypatch.setenv("PKM_TEST", "1")
@@ -66,9 +61,20 @@ async def test_long_poll_activity_stays_fresh(
     last_activity: list[float] = [time.monotonic()]
 
     async def long_poll_handler(request: web.Request) -> web.Response:
-        """Temporary test route: bump last_activity once at entry, then hold open."""
-        last_activity[0] = time.monotonic()  # entry-only bump (no keepalive yet)
-        await asyncio.sleep(_POLL_SLEEP)
+        """Long-poll handler with the B9 keepalive helper bumping last_activity."""
+        last_activity[0] = time.monotonic()  # entry bump
+
+        def _bump() -> None:
+            last_activity[0] = time.monotonic()
+
+        keepalive_task = asyncio.create_task(
+            run_keepalive(_bump, interval=_KEEPALIVE_INTERVAL)
+        )
+        try:
+            await asyncio.sleep(_POLL_SLEEP)
+        finally:
+            keepalive_task.cancel()
+            await asyncio.gather(keepalive_task, return_exceptions=True)
         return web.Response(text="ok")
 
     if os.environ.get("PKM_TEST") == "1":

@@ -17,7 +17,7 @@ from aiohttp import web
 # Routes where ?token= query param is accepted as a fallback (SSE only).
 # Matched against the request's matched-route *template* (resource canonical),
 # not the raw URL, so path variables do not interfere.
-SSE_ROUTES: frozenset[str] = frozenset({"/api/v1/vault/{vault}/ask"})
+SSE_ROUTES: frozenset[str] = frozenset({"/api/v1/vault/{name}/ask"})
 
 
 def _load_token(token_path: Path) -> str:
