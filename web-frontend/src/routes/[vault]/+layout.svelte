@@ -3,6 +3,7 @@
   import { page } from '$app/stores';
   import Topbar from '$lib/components/Topbar.svelte';
   import FileTreeDrawer from '$lib/components/FileTreeDrawer.svelte';
+  import CmdK from '$lib/components/CmdK.svelte';
   import type { Snippet } from 'svelte';
 
   interface Props {
@@ -49,6 +50,8 @@
     {@render children()}
   </div>
 </div>
+
+<CmdK {vaultName} />
 
 <style>
   .vault-shell {
