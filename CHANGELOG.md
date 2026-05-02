@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v2.74.0 (2026-05-02)
+
+### Bug Fixes
+
+- Preserve diagnosis skill metadata across installs
+  ([`ac58e32`](https://github.com/ksm0709/pkm/commit/ac58e32b4b1693e980c6f814f14528233738785b))
+
+### Features
+
+- Stop prompt-time PKM context injection
+  ([`488c536`](https://github.com/ksm0709/pkm/commit/488c5361e43a3ebd1a2210ba8a4a26403d5c5202))
+
+
 ## v2.73.7 (2026-05-02)
 
 ### Bug Fixes
