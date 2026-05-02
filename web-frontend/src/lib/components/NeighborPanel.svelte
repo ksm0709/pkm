@@ -1,4 +1,6 @@
 <script lang="ts">
+  import EgoConstellation from '$lib/components/EgoConstellation.svelte';
+
   interface Neighbor {
     note_id: string;
     title: string;
@@ -56,6 +58,9 @@
     </div>
 
     <div class="panel-body">
+      <!-- EgoConstellation: 2-hop radial SVG — above first group, unique to NeighborPanel -->
+      <EgoConstellation {vaultName} noteId={data.note_id} />
+
       {#each groups as group (group.label)}
         <section class="group">
           <p class="group-label">
