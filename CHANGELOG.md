@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v2.73.3 (2026-05-02)
+
+### Bug Fixes
+
+- **ask**: Trigger release for configured-model fallback
+  ([`6d32a34`](https://github.com/ksm0709/pkm/commit/6d32a34b0520e6740f1305ec0b3e2500d8178800))
+
+### Documentation
+
+- Require typed intent lines for project commits
+  ([`0d9812a`](https://github.com/ksm0709/pkm/commit/0d9812a8b57ff2ca17c914e5e69189823718b204))
+
+
 ## v2.73.2 (2026-05-01)
 
 ### Bug Fixes
