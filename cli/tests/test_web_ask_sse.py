@@ -73,9 +73,7 @@ class _FakeWorker:
         if stream_callback:
             self.stream_callbacks[task_id] = stream_callback
             for chunk in self.chunks:
-                await stream_callback(
-                    {"type": "stream", "id": task_id, "chunk": chunk}
-                )
+                await stream_callback({"type": "stream", "id": task_id, "chunk": chunk})
         if self.pre_result_delay:
             await asyncio.sleep(self.pre_result_delay)
         self.pending_tasks.pop(task_id, None)
@@ -273,9 +271,9 @@ async def test_drain_hook_cancels_stream_within_5s(
     events = _parse_sse(body)
     drain_events = [e for e in events if e["event"] == "error"]
     assert drain_events, f"no error event in body: {body!r}"
-    assert any(
-        e["data"].get("reason") == "draining" for e in drain_events
-    ), f"no draining event: {drain_events}"
+    assert any(e["data"].get("reason") == "draining" for e in drain_events), (
+        f"no draining event: {drain_events}"
+    )
     assert hanging.cancelled.is_set(), "hanging worker task was never cancelled"
 
 

@@ -65,9 +65,7 @@ async def test_ego_radius_2_includes_two_hop_neighbors(
 
 
 @pytest.mark.anyio
-async def test_ego_missing_note_returns_404(
-    app, vault_with_graph: VaultConfig
-) -> None:
+async def test_ego_missing_note_returns_404(app, vault_with_graph: VaultConfig) -> None:
     async with TestClient(TestServer(app)) as client:
         resp = await client.get(
             "/api/v1/vault/test-vault/graph/ego/no-such-note",

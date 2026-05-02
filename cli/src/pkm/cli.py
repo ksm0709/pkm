@@ -24,6 +24,7 @@ from pkm.commands.daemon import daemon_group
 from pkm.commands.mcp import mcp_cmd
 from pkm.commands.graph import graph_group
 from pkm.commands.workflow import workflow_group
+from pkm.commands.web import web_group
 from pkm.config import get_vault
 
 VAULT_FREE_COMMANDS = {
@@ -35,6 +36,7 @@ VAULT_FREE_COMMANDS = {
     "daemon",
     "mcp",
     "workflow",
+    "web",
 }
 
 _console = Console()
@@ -118,3 +120,4 @@ main.add_command(daemon_group, name="daemon")
 main.add_command(mcp_cmd)
 main.add_command(graph_group, name="graph")
 main.add_command(workflow_group, name="workflow")
+main.add_command(web_group, name="web")
