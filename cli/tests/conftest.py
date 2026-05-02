@@ -16,12 +16,6 @@ def anyio_backend() -> str:
 
 
 @pytest.fixture
-def anyio_backend() -> str:
-    """aiohttp.TestClient requires asyncio; restrict anyio to asyncio backend only."""
-    return "asyncio"
-
-
-@pytest.fixture
 def tmp_vault(tmp_path: Path) -> VaultConfig:
     """Create a temporary vault with standard structure and sample files."""
     vault_path = tmp_path / "test-vault"

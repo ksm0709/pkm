@@ -190,17 +190,25 @@ async def create_note_handler(request: web.Request) -> web.Response:
     from pkm.commands.notes import create_note
 
     try:
+        # Pass content=None so generate_frontmatter (not memory frontmatter) is used.
+        # Store title explicitly in frontmatter so note.title returns the human title.
         note_path = create_note(
             vault=vault,
             title=title,
-            content=body or None,
+            content=None,
             tags=tags,
             no_dedup=True,
+            meta={"title": title},
         )
     except FileExistsError as exc:
         raise web.HTTPConflict(reason=str(exc))
     except ValueError as exc:
         raise web.HTTPBadRequest(reason=str(exc))
+
+    # Write body after creation if provided (create_note used content=None)
+    if body:
+        note = parse(note_path)
+        note_path.write_text(render(dict(note.meta), body), encoding="utf-8")
 
     return web.json_response(_note_response(note_path), status=201)
 
