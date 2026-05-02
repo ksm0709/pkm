@@ -8,6 +8,7 @@ from aiohttp import web
 
 from pkm.config import WebConfig, get_web_config
 from pkm.web.auth import make_auth_middleware
+from pkm.web.routes import register_routes
 from pkm.web.shutdown import ShutdownGate
 
 
@@ -87,5 +88,6 @@ def make_app(
     )
 
     app.router.add_get("/api/v1/health", _health_handler)
+    register_routes(app)
 
     return app
