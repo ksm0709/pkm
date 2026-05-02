@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.73.4 (2026-05-02)
+
+### Bug Fixes
+
+- **ask**: Drop stale daemon API keys per request
+  ([`0f4d501`](https://github.com/ksm0709/pkm/commit/0f4d5017c531e5766eaa82cb06af567ba0b8c823))
+
+
 ## v2.73.3 (2026-05-02)
 
 ### Bug Fixes
