@@ -25,6 +25,7 @@
   import { checkboxes, checkboxesTheme } from './checkboxes.js';
   import { frontmatterByline, frontmatterBylineTheme } from './frontmatter-byline.js';
   import { tagPill, tagPillTheme } from './tag-pill.js';
+  import { wikilinkWidget, wikilinkWidgetTheme } from './wikilink-widget.js';
 
   interface Props {
     doc?: string;
@@ -75,6 +76,11 @@
       // F4-5: tag pill rendering.
       tagPillTheme,
       tagPill,
+      // F4-2: wikilink widget — placed AFTER live-styling AND
+      // frontmatter-byline so wikilink decorations layer correctly with
+      // the frontmatter outer block.
+      wikilinkWidgetTheme,
+      wikilinkWidget,
       EditorView.lineWrapping,
       EditorView.editable.of(!readOnly),
       EditorState.readOnly.of(readOnly),

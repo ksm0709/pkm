@@ -5,6 +5,7 @@
   import Topbar from '$lib/components/Topbar.svelte';
   import FileTreeDrawer from '$lib/components/FileTreeDrawer.svelte';
   import CmdK from '$lib/components/CmdK.svelte';
+  import WikilinkPreview from '$lib/components/WikilinkPreview.svelte';
   import type { Snippet } from 'svelte';
 
   interface Props {
@@ -27,6 +28,7 @@
     // Other actions are stubs here; F4-2/F4-4/F3 wire them in later.
     (window as any).__pkmNav = {
       gotoDaily: () => goto(`/${vaultName}/daily/today`),
+      gotoNote: (id: string) => goto(`/${vaultName}/notes/${id}`),
       nextNeighbor: () => false,
       prevNeighbor: () => false,
       followAtCursor: () => false,
@@ -74,6 +76,8 @@
 </div>
 
 <CmdK {vaultName} />
+
+<WikilinkPreview vault={vaultName} />
 
 <style>
   .vault-shell {
