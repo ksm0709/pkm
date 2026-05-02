@@ -11,6 +11,12 @@ from pkm.config import VaultConfig
 
 @pytest.fixture
 def anyio_backend() -> str:
+    """Restrict anyio tests to asyncio only — aiohttp.TestClient is asyncio-only."""
+    return "asyncio"
+
+
+@pytest.fixture
+def anyio_backend() -> str:
     """aiohttp.TestClient requires asyncio; restrict anyio to asyncio backend only."""
     return "asyncio"
 
