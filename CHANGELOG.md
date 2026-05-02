@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.73.6 (2026-05-02)
+
+### Bug Fixes
+
+- **ask**: Skip unsupported reasoning params
+  ([`3dc324d`](https://github.com/ksm0709/pkm/commit/3dc324d3ced23391ab5a75787bfac767d47d64a2))
+
+
 ## v2.73.5 (2026-05-02)
 
 ### Bug Fixes
