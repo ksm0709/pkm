@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.73.7 (2026-05-02)
+
+### Bug Fixes
+
+- **ask**: Prefer thinking models for PKM auto
+  ([`b2ed4ba`](https://github.com/ksm0709/pkm/commit/b2ed4ba5255beceb6630f0b66011b21d096e969d))
+
+
 ## v2.73.6 (2026-05-02)
 
 ### Bug Fixes
