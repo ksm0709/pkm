@@ -68,6 +68,8 @@ def redact(data: Any) -> Any:
 class DaemonState:
     last_activity = time.time()
     graph_ready = False
+    shutdown_gate = None  # ShutdownGate | None
+    web_runner = None  # aiohttp.web.AppRunner | None
 
 
 @lru_cache(maxsize=4)
@@ -712,6 +714,17 @@ async def version_checker(server: asyncio.Server):
                     startup_version,
                     current_version,
                 )
+                # Drain web requests before exec
+                gate = DaemonState.shutdown_gate
+                if gate is not None:
+                    gate.begin_drain()
+                    try:
+                        await asyncio.wait_for(gate.wait_idle(), 5.0)
+                    except asyncio.TimeoutError:
+                        logger.warning("Drain wait timed out — forcing restart")
+                    gate.cancel_all()
+                if DaemonState.web_runner is not None:
+                    await DaemonState.web_runner.cleanup()
                 server.close()
                 SOCKET_PATH.unlink(missing_ok=True)
                 os.execv(sys.executable, [sys.executable, "-m", "pkm.daemon"])
@@ -819,6 +832,31 @@ async def async_main():
     server = await asyncio.start_unix_server(handle_client, str(SOCKET_PATH))
     os.chmod(str(SOCKET_PATH), 0o600)
 
+    # Start aiohttp web server (requires [web] extra — skipped gracefully if absent)
+    try:
+        from pkm.config import get_web_config
+        from pkm.web.server import make_app
+        from pkm.web.shutdown import ShutdownGate
+        import aiohttp.web as _aiohttp_web
+
+        def _bump_activity() -> None:
+            DaemonState.last_activity = time.time()
+
+        web_cfg = get_web_config()
+        gate = ShutdownGate()
+        DaemonState.shutdown_gate = gate
+        web_app = make_app(gate=gate, web_config=web_cfg, on_activity=_bump_activity)
+        runner = _aiohttp_web.AppRunner(web_app)
+        await runner.setup()
+        site = _aiohttp_web.TCPSite(runner, web_cfg.bind, web_cfg.port)
+        await site.start()
+        DaemonState.web_runner = runner
+        logger.info("Web server started on %s:%d", web_cfg.bind, web_cfg.port)
+    except ImportError:
+        logger.info("aiohttp not installed — web server disabled (install [web] extra)")
+    except Exception:
+        logger.exception("Failed to start web server — continuing without it")
+
     checker_task = asyncio.create_task(idle_checker(server))
     workflows = load_workflows()
     workflow_tasks = [asyncio.create_task(workflow_checker(wf)) for wf in workflows]
@@ -841,6 +879,11 @@ async def async_main():
         version_task.cancel()
         if worker_proxy and worker_proxy.process:
             worker_proxy.process.terminate()
+        if DaemonState.web_runner is not None:
+            try:
+                await DaemonState.web_runner.cleanup()
+            except Exception:
+                pass
         _on_shutdown()
         if SOCKET_PATH.exists():
             try:
