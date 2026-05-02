@@ -4,6 +4,7 @@ Canonical auth for all routes: Authorization: Bearer <token> header.
 ?token= query param is only honoured on SSE routes (EventSource cannot
 send custom headers).
 """
+
 from __future__ import annotations
 
 import hmac
@@ -63,7 +64,7 @@ def make_auth_middleware(token_path: Path) -> web.middleware:
         # --- Bearer header (canonical, accepted everywhere) ---
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
-            provided = auth_header[len("Bearer "):]
+            provided = auth_header[len("Bearer ") :]
             if hmac.compare_digest(provided, expected):
                 return await handler(request)
             return web.Response(status=401, text="Invalid token")
