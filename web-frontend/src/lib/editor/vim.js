@@ -1,6 +1,12 @@
 /**
- * Basic vim mappings stub for slice 2.
- * Full mappings (leader-based, custom motions) land in slice 4.
+ * Vim mappings for pkm-webapp.
+ *
+ * Slice 2 stub: leader + jk-escape.
+ * Slice 4 (F4-5): ex commands + normal-mode mappings for navigation.
+ *
+ * The actual navigation is decoupled via `window.__pkmNav` hooks installed
+ * by the route layer. Each ex command calls into the global hook so this
+ * module stays free of route imports.
  *
  * Mappings are global on the Vim singleton, so install once.
  */
@@ -11,13 +17,37 @@ const Vim = cmvim.Vim;
 
 let installed = false;
 
+/** @param {string} key */
+function callNav(key) {
+  /** @type {any} */
+  const nav = (typeof window !== 'undefined' ? window : {}).__pkmNav;
+  const fn = nav?.[key];
+  if (typeof fn === 'function') fn();
+}
+
 export function installVimMappings() {
   if (installed) return;
   installed = true;
 
-  // Use Space as <leader> for future slice 4 leader-prefixed commands.
+  // Use Space as <leader> for leader-prefixed commands.
   Vim.map('<Space>', '<leader>', 'normal');
 
   // Ergonomic escape: `jk` in insert mode returns to normal mode.
   Vim.map('jk', '<Esc>', 'insert');
+
+  // ----- Ex commands (handler receives (cm, params)). -----
+  Vim.defineEx('gotoDaily', '', () => callNav('gotoDaily'));
+  Vim.defineEx('nextNeighbor', '', () => callNav('nextNeighbor'));
+  Vim.defineEx('prevNeighbor', '', () => callNav('prevNeighbor'));
+  Vim.defineEx('followAtCursor', '', () => callNav('followAtCursor'));
+  Vim.defineEx('openExternal', '', () => callNav('openExternal'));
+  Vim.defineEx('openPalette', '', () => callNav('openPalette'));
+
+  // ----- Normal-mode mappings -----
+  Vim.map('gd', ':gotoDaily<CR>', 'normal');
+  Vim.map('gn', ':nextNeighbor<CR>', 'normal');
+  Vim.map('gp', ':prevNeighbor<CR>', 'normal');
+  Vim.map('gf', ':followAtCursor<CR>', 'normal');
+  Vim.map('gx', ':openExternal<CR>', 'normal');
+  Vim.map('<leader>k', ':openPalette<CR>', 'normal');
 }
