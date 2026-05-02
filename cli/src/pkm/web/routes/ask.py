@@ -31,6 +31,9 @@ from pkm.web.routes.notes import _resolve_vault
 
 logger = logging.getLogger("pkm.web.ask")
 
+# Test-monkeypatchable keepalive cadence (seconds).  Production: 30 s.
+KEEPALIVE_INTERVAL: float = 30.0
+
 
 def _sse_event(event: str, data: Any) -> bytes:
     """Encode one SSE event line block."""
@@ -85,7 +88,9 @@ async def post_ask(request: web.Request) -> web.StreamResponse:
     def _bump() -> None:
         _daemon.DaemonState.last_activity = time.time()
 
-    keepalive_task = asyncio.create_task(run_keepalive(_bump, interval=30.0))
+    keepalive_task = asyncio.create_task(
+        run_keepalive(_bump, interval=KEEPALIVE_INTERVAL)
+    )
 
     # ── stream callback ───────────────────────────────────────────────────
     async def on_stream(msg: dict) -> None:
