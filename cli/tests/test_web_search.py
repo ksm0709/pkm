@@ -75,9 +75,7 @@ def patch_search(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_search_basic(
-    app, tmp_vault: VaultConfig, patch_search
-) -> None:
+async def test_search_basic(app, tmp_vault: VaultConfig, patch_search) -> None:
     """Basic query returns the expected envelope + non-empty results."""
     async with TestClient(TestServer(app)) as client:
         resp = await client.get(
@@ -96,9 +94,7 @@ async def test_search_basic(
 
 
 @pytest.mark.anyio
-async def test_search_empty_query_returns_400(
-    app, tmp_vault: VaultConfig
-) -> None:
+async def test_search_empty_query_returns_400(app, tmp_vault: VaultConfig) -> None:
     """Empty/absent ``q`` must return 400."""
     async with TestClient(TestServer(app)) as client:
         resp = await client.get(

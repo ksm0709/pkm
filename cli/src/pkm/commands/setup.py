@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import secrets
 import shutil
 import subprocess
 from pathlib import Path
@@ -103,9 +105,109 @@ def _save_config_merged(setup_choices: dict, default_vault: str) -> None:
     CONFIG_PATH.write_text("\n".join(lines), encoding="utf-8")
 
 
+SYSTEMD_UNIT_TEMPLATE = """\
+[Unit]
+Description=PKM Daemon (web + MCP + worker)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/pkm daemon start --foreground
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+"""
+
+
+def _check_linger() -> str:
+    """Return 'yes' or 'no' from `loginctl show-user --property=Linger $USER`."""
+    user = os.environ.get("USER") or os.environ.get("LOGNAME") or ""
+    result = subprocess.run(
+        ["loginctl", "show-user", "--property=Linger", user],
+        capture_output=True,
+        text=True,
+    )
+    out = (result.stdout or "").strip()
+    # Output looks like: "Linger=yes\n"
+    for line in out.splitlines():
+        if "=" in line:
+            key, _, value = line.partition("=")
+            if key.strip() == "Linger":
+                return value.strip().lower()
+    return "no"
+
+
+def _run_web_setup() -> None:
+    """`pkm setup --web` flow: Linger gate -> token + unit -> print token.
+
+    Fail-closed: if Linger is not enabled (and the user declines remediation),
+    exit non-zero with NO files written.
+    """
+    console.print("[bold]PKM Web Setup[/bold]")
+    console.print()
+
+    linger = _check_linger()
+    if linger != "yes":
+        console.print(
+            "[yellow]systemd user lingering is not enabled.[/yellow] "
+            "Without it, the user-scoped pkm-web service will not survive logout/reboot."
+        )
+        console.print("Remediation: [bold]sudo loginctl enable-linger $USER[/bold]")
+        confirmed = click.confirm(
+            "Have you run the remediation command above?", default=False
+        )
+        if not confirmed:
+            raise click.ClickException(
+                "Linger is not enabled — aborting without writing token or unit."
+            )
+        # Re-check after user confirmation.
+        if _check_linger() != "yes":
+            raise click.ClickException(
+                "Linger is still disabled — aborting without writing token or unit."
+            )
+
+    # Generate token and write at ~/.config/pkm/web-token (chmod 600).
+    home = Path.home()
+    token_dir = home / ".config" / "pkm"
+    token_dir.mkdir(parents=True, exist_ok=True)
+    token_path = token_dir / "web-token"
+    token = secrets.token_hex(32)
+    token_path.write_text(token, encoding="utf-8")
+    token_path.chmod(0o600)
+
+    # Write systemd user unit.
+    unit_dir = home / ".config" / "systemd" / "user"
+    unit_dir.mkdir(parents=True, exist_ok=True)
+    unit_path = unit_dir / "pkm-web.service"
+    unit_path.write_text(SYSTEMD_UNIT_TEMPLATE, encoding="utf-8")
+
+    console.print(f"[green]✓ Token written:[/green] {token_path} (mode 0600)")
+    console.print(f"[green]✓ Unit written:[/green] {unit_path}")
+    console.print()
+    console.print("Copy this token into your client / Authorization header:")
+    click.echo(f"PKM_WEB_TOKEN={token}")
+    console.print()
+    console.print("Next steps:")
+    console.print("  systemctl --user daemon-reload")
+    console.print("  systemctl --user enable --now pkm-web")
+
+
 @click.command("setup")
-def setup_cmd() -> None:
+@click.option(
+    "--web",
+    "web",
+    is_flag=True,
+    default=False,
+    help="Set up the systemd user unit + auth token for the web server.",
+)
+def setup_cmd(web: bool = False) -> None:
     """Interactive setup wizard: install dependencies, configure vaults."""
+    if web:
+        _run_web_setup()
+        return
+
     console.print("[bold]PKM Setup Wizard[/bold]")
     console.print()
 
