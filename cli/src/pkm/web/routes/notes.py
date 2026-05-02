@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import datetime
+import json
 from typing import Any
 
+import networkx as nx
 from aiohttp import web
 
 from pkm.config import VaultConfig, discover_vaults
 from pkm.frontmatter import parse
-from pkm.tools.links import _get_note_neighbors_data
 
 
 def _json_safe(obj: Any) -> Any:
@@ -29,6 +30,59 @@ def _resolve_vault(name: str) -> VaultConfig:
     if name not in vaults:
         raise web.HTTPNotFound(reason=f"Vault '{name}' not found")
     return vaults[name]
+
+
+def _neighbors_data(vault: VaultConfig, note_id: str) -> dict:
+    """Return neighbor graph data with semantic edges enabled.
+
+    Mirrors pkm.tools.links._get_note_neighbors_data with include_semantic=True,
+    inlined here to avoid the tiny_agent dependency in the tools package.
+    """
+    graph_path = vault.pkm_dir / "graph.json"
+    if not graph_path.exists():
+        raise FileNotFoundError("graph not found — run pkm index first")
+
+    G = nx.node_link_graph(json.loads(graph_path.read_text()))
+    if note_id not in G:
+        return {"note_id": note_id, "outbound": [], "inbound": [], "semantic": []}
+
+    def _node(n: str) -> dict:
+        return {
+            "note_id": n,
+            "title": G.nodes[n].get("title", n),
+            "type": G.nodes[n].get("type", "note"),
+        }
+
+    outbound = [_node(n) for n in G.successors(note_id)]
+    inbound = [_node(n) for n in G.predecessors(note_id)]
+
+    semantic: list[dict] = []
+    enriched_path = vault.pkm_dir / "graph_enriched.json"
+    if enriched_path.exists():
+        EG = nx.node_link_graph(json.loads(enriched_path.read_text()))
+        seen: set[str] = set()
+        for src, tgt, edata in EG.edges(data=True):
+            if edata.get("type") != "semantic_similar":
+                continue
+            neighbor = tgt if src == note_id else (src if tgt == note_id else None)
+            if neighbor is None or neighbor in seen:
+                continue
+            seen.add(neighbor)
+            semantic.append(
+                {
+                    "note_id": neighbor,
+                    "title": EG.nodes[neighbor].get("title", neighbor),
+                    "type": EG.nodes[neighbor].get("type", "note"),
+                    "confidence": edata.get("confidence", 0.0),
+                }
+            )
+
+    return {
+        "note_id": note_id,
+        "outbound": outbound,
+        "inbound": inbound,
+        "semantic": semantic,
+    }
 
 
 async def list_notes(request: web.Request) -> web.Response:
@@ -93,7 +147,7 @@ async def get_note_neighbors(request: web.Request) -> web.Response:
     note_id = request.match_info["id"]
 
     try:
-        data = _get_note_neighbors_data(vault, note_id, include_semantic=True)
+        data = _neighbors_data(vault, note_id)
     except FileNotFoundError as exc:
         raise web.HTTPNotFound(reason=str(exc))
     return web.json_response(data)
