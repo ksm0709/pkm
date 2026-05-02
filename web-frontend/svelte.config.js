@@ -4,8 +4,8 @@ import adapter from '@sveltejs/adapter-static';
 const config = {
   kit: {
     adapter: adapter({
-      pages: 'dist',
-      assets: 'dist',
+      pages: '../cli/src/pkm/web/static',
+      assets: '../cli/src/pkm/web/static',
       fallback: 'index.html',
       precompress: false,
       strict: false
