@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.73.5 (2026-05-02)
+
+### Bug Fixes
+
+- **ask**: Treat blank API keys as missing
+  ([`5f1f1db`](https://github.com/ksm0709/pkm/commit/5f1f1db7a36102b6c0020c73b876938a8596129c))
+
+
 ## v2.73.4 (2026-05-02)
 
 ### Bug Fixes
