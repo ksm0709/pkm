@@ -112,7 +112,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/pkm daemon start --foreground
+ExecStart=%h/.local/share/uv/tools/pkm/bin/python -m pkm.daemon
 Restart=on-failure
 RestartSec=5
 
