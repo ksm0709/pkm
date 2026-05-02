@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import logging
+from importlib.resources import files
+from pathlib import Path
 from typing import Callable
 
 from aiohttp import web
@@ -10,6 +13,44 @@ from pkm.config import WebConfig, get_web_config
 from pkm.web.auth import make_auth_middleware
 from pkm.web.routes import register_routes
 from pkm.web.shutdown import ShutdownGate
+
+_logger = logging.getLogger(__name__)
+
+
+def _resolve_static_dir() -> Path | None:
+    """Locate the bundled static asset directory inside the installed package.
+
+    Returns *None* if the directory does not exist (dev install without a
+    built frontend).
+    """
+    try:
+        resource = files("pkm.web") / "static"
+        path = Path(str(resource))
+        if path.is_dir() and (path / "index.html").exists():
+            return path
+    except (ModuleNotFoundError, FileNotFoundError, TypeError):
+        pass
+    return None
+
+
+def _make_spa_fallback(static_dir: Path) -> Callable:
+    """Catch-all GET handler that serves the SPA index.html for non-API paths."""
+    index_path = static_dir / "index.html"
+
+    async def spa_fallback(request: web.Request) -> web.StreamResponse:
+        rel = request.match_info.get("tail", "")
+        if rel.startswith("api/"):
+            raise web.HTTPNotFound()
+        candidate = (static_dir / rel).resolve()
+        try:
+            candidate.relative_to(static_dir.resolve())
+        except ValueError:
+            raise web.HTTPNotFound()
+        if candidate.is_file():
+            return web.FileResponse(candidate)
+        return web.FileResponse(index_path)
+
+    return spa_fallback
 
 
 async def _health_handler(request: web.Request) -> web.Response:
@@ -89,5 +130,18 @@ def make_app(
 
     app.router.add_get("/api/v1/health", _health_handler)
     register_routes(app)
+
+    # Static asset serving (must be added AFTER api routes so api wins matching).
+    static_dir = _resolve_static_dir()
+    if static_dir is not None:
+        app.router.add_get(
+            "/{tail:(?!api/).*}",
+            _make_spa_fallback(static_dir),
+        )
+    else:
+        _logger.warning(
+            "Static asset directory not found; frontend will not be served. "
+            "Run `pnpm build` in web-frontend/ to populate cli/src/pkm/web/static/."
+        )
 
     return app
