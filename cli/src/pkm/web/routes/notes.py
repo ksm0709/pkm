@@ -237,3 +237,41 @@ async def update_note(request: web.Request) -> web.Response:
             return web.json_response(_note_response(path))
 
     raise web.HTTPNotFound(reason=f"Note '{note_id}' not found in vault '{vault.name}'")
+
+
+async def batch_titles(request: web.Request) -> web.Response:
+    """POST /api/v1/vault/{name}/notes/batch-titles — resolve note IDs to titles.
+
+    Body: {"ids": [string]}
+    Response: {id: title} mapping; unresolved IDs map to "".
+    400 if ids is not a list or len(ids) > 200.
+    """
+    vault = _resolve_vault(request.match_info["name"])
+
+    try:
+        data = await request.json()
+    except Exception:
+        raise web.HTTPBadRequest(reason="Invalid JSON body")
+
+    ids = data.get("ids")
+    if not isinstance(ids, list):
+        raise web.HTTPBadRequest(reason="'ids' must be a list")
+    if len(ids) > 200:
+        raise web.HTTPBadRequest(reason="'ids' must contain at most 200 items")
+
+    result: dict[str, str] = {}
+    for note_id in ids:
+        note_id_str = str(note_id)
+        resolved = ""
+        for base_dir in (vault.notes_dir, vault.daily_dir):
+            path = base_dir / f"{note_id_str}.md"
+            if path.exists():
+                try:
+                    note = parse(path)
+                    resolved = str(note.title) if note.title else note_id_str
+                except Exception:
+                    pass
+                break
+        result[note_id_str] = resolved
+
+    return web.json_response(result)
