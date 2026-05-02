@@ -330,9 +330,21 @@ def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None
             [
                 "## PKM",
                 "Use MCP tools for all PKM operations:",
+                "",
+                "Knowledge collection protocol:",
+                "- Before non-trivial work: call `mcp__pkm__search(query=<topic>)` to recall related notes.",
+                "- If search returns an important result (importance >= 6): call `mcp__pkm__get_note_neighbors(note_id=<slug>)` to deepen context.",
+                "- If a prior decision or cross-note synthesis is needed: call `mcp__pkm__pkm_ask(query=<question>)`.",
+                "- If continuing prior work or the user references a previous session: call `mcp__pkm__read_daily_log(offset=1)` or an explicit `date_str`.",
+                "- At session end: always call `mcp__pkm__daily_add(text=<1-2 line summary>)`.",
+                "- For reusable insights: search for duplicates first, then call `mcp__pkm__note_add(...)` when the insight is worth keeping.",
+                "",
+                "Tool reference:",
                 "`mcp__pkm__daily_add` — log decisions, findings, code changes",
                 "`mcp__pkm__read_daily_log` — read past daily log (offset=1 yesterday, offset=N N days ago, or date_str=YYYY-MM-DD)",
                 "`mcp__pkm__search` — recall related notes",
+                "`mcp__pkm__get_note_neighbors` — inspect graph links around a relevant note",
+                "`mcp__pkm__pkm_ask` — synthesize answers from vault notes",
                 "`mcp__pkm__note_add` — create atomic notes (importance: 1-3 trivial, 4-6 moderate, 7-8 important, 9-10 critical)",
                 "  - Bias importance 7+ for anything the next agent would need. Default 5 if unsure.",
                 "`mcp__pkm__create_daily_subnote` — create linked sub-note + log [[wikilink]] in today's daily",
@@ -343,10 +355,21 @@ def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None
         lines.extend(
             [
                 "## PKM",
+                "Knowledge collection protocol:",
+                '- Before non-trivial work: run `pkm search "<topic>"` to recall related notes.',
+                "- If search returns an important result (importance >= 6): run `pkm graph neighbors <note-id>` to deepen context.",
+                '- If a prior decision or cross-note synthesis is needed: run `pkm ask "<question>"`.',
+                "- If continuing prior work or the user references a previous session: run `pkm daily --offset 1` or `pkm daily --date YYYY-MM-DD`.",
+                '- At session end: always run `pkm daily add "<1-2 line summary>"`.',
+                '- For reusable insights: search for duplicates first, then run `pkm note add --content "<insight>" ...` when worth keeping.',
+                "",
+                "Tool reference:",
                 '`pkm daily add "<text>"` — log decisions, findings, code changes',
                 "`pkm daily --offset N` — view a past daily note (1=yesterday, N=N days ago); use `--date YYYY-MM-DD` for explicit date",
                 '`pkm daily subnote "<title>"` — create linked sub-note + log [[wikilink]] in today\'s daily',
                 '`pkm search "<query>"` — recall related notes',
+                "`pkm graph neighbors <note-id>` — inspect graph links around a relevant note",
+                '`pkm ask "<question>"` — synthesize answers from vault notes',
                 '`pkm note add --content "<insight>" --type semantic --importance 7 --tags tag1,tag2` — atomic note',
                 "  - importance: 1-3 trivial, 4-6 moderate, 7-8 important (arch decisions, bug root causes), 9-10 critical (security, irreversible)",
                 "  - Bias 7+ for anything the next agent would need. Default 5 if unsure.",
@@ -627,6 +650,40 @@ def _is_pkm_hook(hook_entry: dict[str, Any]) -> bool:
     )
 
 
+def _is_pkm_prompt_submit_hook(hook_entry: dict[str, Any]) -> bool:
+    """Return True only for stale PKM UserPromptSubmit context-injection hooks."""
+    cmd = hook_entry.get("command", "")
+    prompt = hook_entry.get("prompt", "")
+    return (
+        "pkm hook run turn-start" in cmd
+        or "pkm agent hook turn-start" in cmd
+        or "PKM context injector" in prompt
+    )
+
+
+def _prune_pkm_user_prompt_submit_hooks(hooks: dict[str, Any]) -> int:
+    """Remove only PKM-owned UserPromptSubmit hooks from a hooks object."""
+    matchers = hooks.get("UserPromptSubmit")
+    if not isinstance(matchers, list):
+        return 0
+
+    removed = 0
+    filtered_matchers = []
+    for matcher in matchers:
+        matcher_hooks = matcher.get("hooks", [])
+        non_pkm = [h for h in matcher_hooks if not _is_pkm_prompt_submit_hook(h)]
+        removed += len(matcher_hooks) - len(non_pkm)
+        if non_pkm:
+            filtered_matchers.append({**matcher, "hooks": non_pkm})
+
+    if filtered_matchers:
+        hooks["UserPromptSubmit"] = filtered_matchers
+    else:
+        hooks.pop("UserPromptSubmit", None)
+
+    return removed
+
+
 def _handle_remove(dry_run: bool) -> None:
     """Remove PKM hooks from ~/.claude/settings.json, keep all other hooks."""
     settings_path = Path.home() / ".claude" / "settings.json"
@@ -830,17 +887,6 @@ _PKM_HOOKS: dict[str, list[dict[str, Any]]] = {
             ]
         }
     ],
-    "UserPromptSubmit": [
-        {
-            "hooks": [
-                {
-                    "type": "command",
-                    "command": "pkm hook run turn-start --format system-reminder",
-                    "timeout": 10,
-                }
-            ]
-        }
-    ],
     "Stop": [
         {
             "hooks": [
@@ -880,6 +926,7 @@ def _setup_claude_code_hooks(dry_run: bool) -> None:
         return
 
     hooks = existing.setdefault("hooks", {})
+    removed_prompt_submit = _prune_pkm_user_prompt_submit_hooks(hooks)
 
     added: list[str] = []
     skipped: list[str] = []
@@ -898,8 +945,12 @@ def _setup_claude_code_hooks(dry_run: bool) -> None:
         click.echo(f"  Added hook: {event}")
     for event in skipped:
         click.echo(f"  Already installed: {event} (skipped)")
+    if removed_prompt_submit:
+        click.echo(
+            f"  Removed {removed_prompt_submit} stale PKM hook(s) from UserPromptSubmit"
+        )
 
-    if not added:
+    if not added and not removed_prompt_submit:
         click.echo("All PKM hooks already present — nothing to do.")
         return
 
@@ -952,6 +1003,7 @@ def _setup_codex_hooks(dry_run: bool) -> None:
         return
 
     hooks = existing.setdefault("hooks", {})
+    removed_prompt_submit = _prune_pkm_user_prompt_submit_hooks(hooks)
 
     added: list[str] = []
     skipped: list[str] = []
@@ -969,8 +1021,12 @@ def _setup_codex_hooks(dry_run: bool) -> None:
         click.echo(f"  Added hook: {event}")
     for event in skipped:
         click.echo(f"  Already installed: {event} (skipped)")
+    if removed_prompt_submit:
+        click.echo(
+            f"  Removed {removed_prompt_submit} stale PKM hook(s) from UserPromptSubmit"
+        )
 
-    if not added:
+    if not added and not removed_prompt_submit:
         click.echo("All PKM hooks already present — nothing to do.")
         return
 

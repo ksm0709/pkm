@@ -48,8 +48,8 @@ def test_hook_run_session_start_formats(runner, vault_env, fmt, expected_prefix)
         assert len(result.output.strip()) > 0
 
 
-def test_hook_run_session_start_no_recent_work_context(runner, vault_env, tmp_vault):
-    """session-start no longer includes Recent Work Context (moved to turn-start)."""
+def test_hook_run_session_start_no_dynamic_context(runner, vault_env, tmp_vault):
+    """session-start provides retrieval guidance, not injected note/daily context."""
     yesterday = (date.today() - timedelta(days=1)).isoformat()
     (tmp_vault.daily_dir / f"{yesterday}.md").write_text(
         f"---\nid: {yesterday}\ntags: []\n---\nImportant context here.\n",
@@ -58,7 +58,16 @@ def test_hook_run_session_start_no_recent_work_context(runner, vault_env, tmp_va
     result = runner.invoke(main, ["hook", "run", "session-start"])
     assert result.exit_code == 0
     assert "Recent Work Context" not in result.output
+    assert "Recent Context" not in result.output
+    assert "Relevant Notes" not in result.output
+    assert "Important context here" not in result.output
     assert "PKM" in result.output  # still has usage guide
+    assert "Knowledge collection protocol" in result.output
+    assert "pkm search" in result.output
+    assert "pkm graph neighbors" in result.output
+    assert "pkm ask" in result.output
+    assert "pkm daily --offset 1" in result.output
+    assert "pkm daily add" in result.output
 
 
 def test_hook_run_session_start_ignores_irrelevant_options(runner, vault_env):
@@ -156,6 +165,7 @@ def test_hook_setup_dry_run_claude_code(runner, vault_env, tmp_path, monkeypatch
     assert "SessionStart" in result.output
     assert "Dry run" in result.output
     assert "pkm agent hook" not in result.output
+    assert "UserPromptSubmit" not in result.output
     # dry-run must not write settings.json
     assert not (tmp_path / ".claude" / "settings.json").exists()
 
@@ -173,6 +183,7 @@ def test_hook_setup_claude_code_writes_settings(
     assert settings.exists(), "setup must write settings.json"
     data = json.loads(settings.read_text())
     assert "SessionStart" in data["hooks"]
+    assert "UserPromptSubmit" not in data["hooks"]
     assert "pkm hook remove" in result.output
 
 

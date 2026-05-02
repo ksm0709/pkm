@@ -19,15 +19,16 @@ Or register the hooks manually by adding to `~/.claude/settings.json` or `~/.age
 {
   "hooks": {
     "SessionStart": [{"hooks": [{"type": "command", "command": "pkm hook run session-start --format system-reminder", "timeout": 10}]}],
-    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "pkm hook run turn-start --format system-reminder", "timeout": 10}]}],
-    "Stop": [{"hooks": [{"type": "command", "command": "pkm hook run turn-end --format system-reminder", "timeout": 30}]}]
+    "Stop": [{"hooks": [{"type": "command", "command": "pkm hook run turn-end-exit2", "timeout": 30}]}]
   }
 }
 ```
 
-**If you previously used `pkm hook setup --tool claude-code`**, remove old hooks:
+SessionStart provides retrieval guidance only. It does not inject relevant notes or daily context on every user prompt.
+
+**If you previously used prompt-submit PKM hooks**, rerun setup to prune stale `UserPromptSubmit` entries:
 ```bash
-pkm hook migrate
+pkm hook setup --tool claude-code
 ```
 
 ## Codex

@@ -122,20 +122,20 @@ Consolidation distills episodic logs into durable semantic memories and marks so
 
 ## Hook Setup
 
-Inject session context automatically at the start of each agent turn.
+Install session-start guidance so agents retrieve PKM context on demand. PKM no
+longer injects notes or daily context on every user prompt by default.
 
 ### Claude Code (`~/.claude/settings.json`)
 
 ```json
 {
   "hooks": {
-    "PreToolUse": [
+    "SessionStart": [
       {
-        "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "pkm agent hook turn-start --session $CLAUDE_SESSION_ID 2>/dev/null || true"
+            "command": "pkm hook run session-start --format system-reminder"
           }
         ]
       }
@@ -147,20 +147,19 @@ Inject session context automatically at the start of each agent turn.
 Or use the built-in setup command:
 
 ```bash
-pkm agent setup-hooks --agent claude-code
+pkm hook setup --tool claude-code
 ```
 
 ### Codex
 
 ```bash
-pkm agent setup-hooks --agent codex
+pkm hook setup --tool codex
 ```
 
 ### opencode
 
-```bash
-pkm agent setup-hooks --agent opencode
-```
+Install the PKM plugin; opencode reads `plugin/hooks/hooks.json` through the
+plugin bridge.
 
 ---
 
@@ -186,9 +185,8 @@ pkm daily add "note"         # append entry
 pkm consolidate              # list candidates
 pkm consolidate --run        # process
 
-# Hook injection
-pkm agent hook session-start --format system-reminder
-pkm agent hook turn-start --session my-session
+# Hook guidance
+pkm hook run session-start --format system-reminder
 ```
 
 ---
@@ -201,7 +199,7 @@ Add this section to your project `CLAUDE.md` to enable memory for Claude Code ag
 ## Memory Layer (PKM)
 
 Before starting work, load session context:
-  pkm agent hook session-start --format system-reminder
+  pkm hook run session-start --format system-reminder
 
 Store important findings during work:
   pkm note add --content "content" --type semantic --importance 7        # knowledge/decisions
@@ -228,19 +226,24 @@ Add this section to your project `AGENTS.md` to enforce memory protocol for all 
 
 All agents must follow this protocol for persistent memory:
 
-1. **Session start**: run `pkm agent hook session-start --format system-reminder`
-   and incorporate the output into your working context.
+1. **Session start**: run `pkm hook run session-start --format system-reminder`
+   and follow its retrieval guidance.
 
-2. **Search before storing**: run `pkm search "topic" --top 5` before
-   creating a new memory. Skip storing if an existing note covers the same ground.
+2. **Search before non-trivial work or storing**: run `pkm search "topic" --top 5`
+   to recall prior notes and avoid duplicates. If an important result appears,
+   inspect graph neighbors before proceeding.
 
-3. **Store decisions and errors** as `semantic` memories (importance 7+):
+3. **Read daily logs when continuity matters**: use `pkm daily --offset 1` or
+   `pkm daily --date YYYY-MM-DD` when continuing prior work or when the user
+   references a previous session.
+
+4. **Store decisions and errors** as `semantic` memories (importance 7+):
    `pkm note add --content "..." --type semantic --importance 8`
 
-4. **Store in-progress state** as `episodic` memories with a session ID:
+5. **Store in-progress state** as `episodic` memories with a session ID:
    `pkm note add --content "..." --type episodic --importance 5 --session SESSION`
 
-5. **Session end**: append key accomplishments and unresolved issues to the daily note:
+6. **Session end**: append key accomplishments and unresolved issues to the daily note:
    `pkm daily add "Completed X. Still pending: Y."`
 
 Memory types: episodic (daily events), semantic (facts/decisions), procedural (workflows).

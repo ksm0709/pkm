@@ -193,7 +193,82 @@ def test_setup_claude_code_writes_settings_json(tmp_path, monkeypatch):
     data = _json.loads(settings_path.read_text())
     assert "SessionStart" in data["hooks"]
     assert "pkm hook run session-start" in str(data["hooks"]["SessionStart"])
+    assert "UserPromptSubmit" not in data["hooks"]
     assert "pkm hook remove" in result.output
+
+
+def test_setup_claude_code_prunes_only_stale_prompt_submit(tmp_path, monkeypatch):
+    """setup removes old PKM prompt-submit hooks without touching other events."""
+    settings_path = tmp_path / ".claude" / "settings.json"
+    settings_path.parent.mkdir()
+    settings_path.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "SessionStart": [
+                        {
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": "pkm hook run session-start --format system-reminder",
+                                }
+                            ]
+                        }
+                    ],
+                    "UserPromptSubmit": [
+                        {
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": "pkm hook run turn-start --format system-reminder",
+                                },
+                                {
+                                    "type": "command",
+                                    "command": "pkm agent hook turn-start --format system-reminder",
+                                },
+                                {
+                                    "type": "prompt",
+                                    "prompt": "You are a PKM context injector. Return additionalContext.",
+                                },
+                                {
+                                    "type": "command",
+                                    "command": "/path/to/non-pkm-prompt-hook",
+                                },
+                                {
+                                    "type": "prompt",
+                                    "prompt": "Return additionalContext when the user asks about pkm workflows.",
+                                },
+                            ]
+                        }
+                    ],
+                    "Stop": [
+                        {
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": "pkm hook run turn-end-exit2",
+                                }
+                            ]
+                        }
+                    ],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+
+    result = CliRunner().invoke(main, ["hook", "setup", "--tool", "claude-code"])
+    assert result.exit_code == 0, result.output
+    assert "Removed 3 stale PKM hook(s) from UserPromptSubmit" in result.output
+
+    data = json.loads(settings_path.read_text())
+    assert "pkm hook run session-start" in str(data["hooks"]["SessionStart"])
+    assert "pkm hook run turn-end-exit2" in str(data["hooks"]["Stop"])
+    assert "/path/to/non-pkm-prompt-hook" in str(data["hooks"]["UserPromptSubmit"])
+    assert "asks about pkm workflows" in str(data["hooks"]["UserPromptSubmit"])
+    assert "turn-start" not in str(data["hooks"]["UserPromptSubmit"])
+    assert "PKM context injector" not in str(data["hooks"]["UserPromptSubmit"])
 
 
 def test_setup_codex_prints_install_instructions(tmp_path, monkeypatch):
@@ -205,6 +280,76 @@ def test_setup_codex_prints_install_instructions(tmp_path, monkeypatch):
     assert "codex" in result.output.lower()
     assert "hooks.json" in result.output
     assert "Written:" in result.output
+    data = json.loads((tmp_path / ".codex" / "hooks.json").read_text())
+    assert "UserPromptSubmit" not in data["hooks"]
+
+
+def test_setup_codex_prunes_only_stale_prompt_submit(tmp_path, monkeypatch):
+    """codex setup also reconciles old PKM prompt-submit hooks."""
+    hooks_path = tmp_path / ".codex" / "hooks.json"
+    hooks_path.parent.mkdir()
+    hooks_path.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "SessionStart": [
+                        {
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": "pkm hook run session-start --format system-reminder",
+                                }
+                            ]
+                        }
+                    ],
+                    "UserPromptSubmit": [
+                        {
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": "pkm hook run turn-start --format system-reminder",
+                                },
+                                {
+                                    "type": "command",
+                                    "command": "/path/to/non-pkm-prompt-hook",
+                                },
+                            ]
+                        }
+                    ],
+                    "Stop": [
+                        {
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": "bash /path/to/pkm/codex/hooks/stop.sh",
+                                }
+                            ]
+                        }
+                    ],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+
+    result = CliRunner().invoke(main, ["hook", "setup", "--tool", "codex"])
+    assert result.exit_code == 0, result.output
+    assert "Removed 1 stale PKM hook(s) from UserPromptSubmit" in result.output
+
+    data = json.loads(hooks_path.read_text())
+    assert "pkm hook run session-start" in str(data["hooks"]["SessionStart"])
+    assert "codex/hooks/stop.sh" in str(data["hooks"]["Stop"])
+    assert "/path/to/non-pkm-prompt-hook" in str(data["hooks"]["UserPromptSubmit"])
+    assert "turn-start" not in str(data["hooks"]["UserPromptSubmit"])
+
+
+def test_packaged_hook_configs_do_not_install_prompt_submit():
+    """Packaged hook artifacts should not reinstall prompt-submit context injection."""
+    repo_root = Path(__file__).resolve().parents[2]
+    for rel_path in ("plugin/hooks/hooks.json", "codex/hooks.json"):
+        data = json.loads((repo_root / rel_path).resolve().read_text())
+        assert "UserPromptSubmit" not in data["hooks"]
 
 
 # ---------------------------------------------------------------------------

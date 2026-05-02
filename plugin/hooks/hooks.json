@@ -13,17 +13,6 @@
         ]
       }
     ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "prompt",
-            "prompt": "You are a PKM context injector. The hook input JSON is: $ARGUMENTS\n\nExtract the 'prompt' field from the JSON to get the user's message.\n\nClassify the task type:\n- CODING: debugging, fixing bugs, writing/refactoring code, running tests\n- RESEARCH: learning, explaining concepts, summarizing, writing docs\n- KNOWLEDGE_WORK: planning, architecture, decision making, design\n- CHIT_CHAT: greetings, off-topic, very short questions\n\nIf CHIT_CHAT: return {\"ok\": true} with no additionalContext.\nOtherwise: return {\"ok\": true, \"additionalContext\": \"Use pkm to recall related notes and save findings. See /pkm skill for commands.\"}\n\nAlways return {\"ok\": true}. Never return {\"ok\": false}.",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
     "Stop": [
       {
         "hooks": [
