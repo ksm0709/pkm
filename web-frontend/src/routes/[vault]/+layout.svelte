@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
+  import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import Topbar from '$lib/components/Topbar.svelte';
   import FileTreeDrawer from '$lib/components/FileTreeDrawer.svelte';
@@ -20,6 +21,27 @@
       drawerOpen = localStorage.getItem('pkm.fileTreeOpen') === 'true';
     } catch {
       // ignore — SSR or private-browsing restriction
+    }
+
+    // Install global navigation hook used by vim mappings (F4-5).
+    // Other actions are stubs here; F4-2/F4-4/F3 wire them in later.
+    (window as any).__pkmNav = {
+      gotoDaily: () => goto(`/${vaultName}/daily/today`),
+      nextNeighbor: () => false,
+      prevNeighbor: () => false,
+      followAtCursor: () => false,
+      openExternal: () => false,
+      openPalette: () => false
+    };
+  });
+
+  onDestroy(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        delete (window as any).__pkmNav;
+      } catch {
+        (window as any).__pkmNav = undefined;
+      }
     }
   });
 

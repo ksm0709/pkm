@@ -13,12 +13,18 @@
   import { EditorState, type Extension } from '@codemirror/state';
   import { EditorView, keymap, lineNumbers, highlightActiveLine } from '@codemirror/view';
   import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
-  import { markdown } from '@codemirror/lang-markdown';
   import { vim } from '@replit/codemirror-vim';
   import { pkmTheme } from './theme.js';
   import { installVimMappings } from './vim.js';
   import { liveStyling, liveStylingTheme } from './live-styling.js';
   import { slashCommands } from './slash-commands.js';
+  import { markdownWithGfm } from './markdown-extensions.js';
+  import { katexLazy, katexLazyTheme } from './katex-lazy.js';
+  import { admonitions, admonitionsTheme } from './admonitions.js';
+  import { footnotes, footnotesTheme } from './footnotes.js';
+  import { checkboxes, checkboxesTheme } from './checkboxes.js';
+  import { frontmatterByline, frontmatterBylineTheme } from './frontmatter-byline.js';
+  import { tagPill, tagPillTheme } from './tag-pill.js';
 
   interface Props {
     doc?: string;
@@ -47,12 +53,28 @@
       history(),
       lineNumbers(),
       highlightActiveLine(),
-      markdown(),
+      markdownWithGfm,
       keymap.of([...defaultKeymap, ...historyKeymap]),
       pkmTheme,
       liveStylingTheme,
       liveStyling,
       ...slashCommands,
+      // F4-1: maximalist live styling. Themes first, then plugins.
+      katexLazyTheme,
+      admonitionsTheme,
+      footnotesTheme,
+      checkboxesTheme,
+      katexLazy,
+      admonitions,
+      footnotes,
+      checkboxes,
+      // F4-3: frontmatter byline — placed AFTER live-styling AND maximalist
+      // plugins so it has outer precedence on the YAML range.
+      frontmatterBylineTheme,
+      frontmatterByline,
+      // F4-5: tag pill rendering.
+      tagPillTheme,
+      tagPill,
       EditorView.lineWrapping,
       EditorView.editable.of(!readOnly),
       EditorState.readOnly.of(readOnly),
