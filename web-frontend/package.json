@@ -20,8 +20,10 @@
     "@codemirror/view": "^6.35.0",
     "@fontsource/ibm-plex-mono": "^5.1.0",
     "@fontsource/newsreader": "^5.1.0",
+    "@lezer/markdown": "^1.6.3",
     "@replit/codemirror-vim": "^6.2.1",
     "@sveltejs/kit": "^2.0.0",
+    "katex": "^0.16.45",
     "marked": "^15.0.12",
     "svelte": "^5.0.0"
   },
