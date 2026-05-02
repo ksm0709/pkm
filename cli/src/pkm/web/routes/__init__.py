@@ -13,6 +13,7 @@ from pkm.web.routes.daily import (
 )
 from pkm.web.routes.graph import get_ego_graph, get_graph
 from pkm.web.routes.notes import (
+    batch_titles,
     create_note_handler,
     get_note,
     get_note_neighbors,
@@ -37,6 +38,9 @@ def register_routes(app: web.Application) -> None:
     # Notes — write
     app.router.add_post("/api/v1/vault/{name}/notes", create_note_handler)
     app.router.add_put("/api/v1/vault/{name}/notes/{id}", update_note)
+
+    # Notes — batch operations (literal path must come before /{id} catch-all)
+    app.router.add_post("/api/v1/vault/{name}/notes/batch-titles", batch_titles)
 
     # Daily — /today must be registered before /{date} to win literal match
     app.router.add_get("/api/v1/vault/{name}/daily/today", get_daily_today)
