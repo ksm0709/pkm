@@ -41,20 +41,22 @@ export OPENAI_API_KEY="your-openai-api-key"
 pkm daemon start
 ```
 
+For OpenAI-only environments, `auto` prioritizes thinking-model price/performance: `gpt-5.4-nano` first for note extraction, ranking, summarization, and low-cost RAG; then GPT-5 reasoning fallbacks such as `gpt-5-mini`, `gpt-5-nano`, and `gpt-5.4-mini`.
+
 ### Changing the Model or Provider
 
 You can change the LLM model globally via configuration or per-command using the `--model` flag.
 
 **Method 1: Global Configuration**
 ```bash
-pkm config set model "claude-3-5-sonnet-20241022"
-export ANTHROPIC_API_KEY="..."
+pkm config set model "gpt-5.4-nano"
+export OPENAI_API_KEY="..."
 pkm daemon restart
 ```
 
 **Method 2: Per-Command Flag**
 ```bash
-pkm ask "what was that idea?" --model "gemini/gemini-1.5-pro"
+pkm ask "what was that idea?" --model "gpt-5.4-nano"
 ```
 
 To list all available models and providers from LiteLLM, run:

@@ -76,11 +76,11 @@ def ask_cmd(
 ) -> None:
     """Ask a natural language question about your vault."""
     if list_models:
-        from pkm.models import get_available_models
+        from pkm.models import get_available_models, validate_model_environment
         from rich.table import Table
 
         try:
-            import litellm
+            import litellm  # noqa: F401
 
             console.print("[bold cyan]PKM Recommended LLM Models:[/bold cyan]")
 
@@ -93,7 +93,7 @@ def ask_cmd(
             table.add_column("API Key Ready?")
 
             for m in get_available_models():
-                val = litellm.validate_environment(m.id)
+                val = validate_model_environment(m.id)
                 has_keys = val.get("keys_in_environment", True)
                 status = (
                     "[green]Yes[/green]"

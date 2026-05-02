@@ -33,22 +33,40 @@ BEST_MODELS: list[ModelInfo] = [
         "Huge context, great for large vaults.",
     ),
     ModelInfo(
+        "gpt-5.4-nano",
+        "OpenAI",
+        "400K",
+        "$0.20",
+        "$1.25",
+        96,
+        "Best OpenAI value for PKM: note extraction, ranking, summarization, and cheap RAG.",
+    ),
+    ModelInfo(
+        "gpt-5-mini",
+        "OpenAI",
+        "400K",
+        "$0.25",
+        "$2.00",
+        93,
+        "Higher-quality OpenAI fallback for well-defined note synthesis with strong cost control.",
+    ),
+    ModelInfo(
+        "gpt-5-nano",
+        "OpenAI",
+        "400K",
+        "$0.05",
+        "$0.40",
+        91,
+        "Cheapest OpenAI reasoning fallback for simple summaries, tagging, and classification.",
+    ),
+    ModelInfo(
         "gpt-5.4-mini",
         "OpenAI",
         "400K",
         "$0.75",
         "$4.50",
-        90,
-        "Current OpenAI default. Stable JSON and tool calling.",
-    ),
-    ModelInfo(
-        "gpt-4o-mini",
-        "OpenAI",
-        "128K",
-        "$0.15",
-        "$0.60",
-        85,
-        "Reliable fallback for OpenAI. Fast and cheapest OpenAI.",
+        89,
+        "Premium OpenAI mini for harder vault synthesis and tool-heavy workflows.",
     ),
     ModelInfo(
         "anthropic/claude-4.5-haiku-20251022",
@@ -58,15 +76,6 @@ BEST_MODELS: list[ModelInfo] = [
         "$5.00",
         80,
         "Premium Lite tier. Highest quality logic but more expensive.",
-    ),
-    ModelInfo(
-        "anthropic/claude-3-5-haiku-20241022",
-        "Anthropic",
-        "200K",
-        "$0.80",
-        "$4.00",
-        75,
-        "Fast legacy Anthropic model.",
     ),
 ]
 
@@ -101,7 +110,8 @@ def resolve_model_candidates(preferred_model: str | None = None) -> list[str]:
     return [preferred_model] + [m for m in auto_models if m != preferred_model]
 
 
-def _is_valid(model_id: str) -> bool:
+def validate_model_environment(model_id: str) -> dict:
+    """Validate model API keys while treating blank *_API_KEY values as absent."""
     blank_api_keys = {
         k: v
         for k, v in os.environ.items()
@@ -113,8 +123,15 @@ def _is_valid(model_id: str) -> bool:
 
         import litellm
 
-        return litellm.validate_environment(model_id).get("keys_in_environment", True)
+        return litellm.validate_environment(model_id)
     except Exception:
-        return False
+        return {"keys_in_environment": False, "missing_keys": []}
     finally:
         os.environ.update(blank_api_keys)
+
+
+def _is_valid(model_id: str) -> bool:
+    try:
+        return validate_model_environment(model_id).get("keys_in_environment", True)
+    except Exception:
+        return False

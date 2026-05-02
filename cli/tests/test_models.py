@@ -82,6 +82,23 @@ def test_collect_api_keys_omits_blank_values(monkeypatch):
     assert collect_api_keys() == {"OPENAI_API_KEY": "openai"}
 
 
+def test_openai_models_are_ranked_by_pkm_price_performance():
+    from pkm.models import get_available_models
+
+    openai_models = [
+        model.id
+        for model in get_available_models()
+        if model.provider == "OpenAI"
+    ]
+
+    assert openai_models == [
+        "gpt-5.4-nano",
+        "gpt-5-mini",
+        "gpt-5-nano",
+        "gpt-5.4-mini",
+    ]
+
+
 def test_resolve_auto_models_treats_blank_provider_keys_as_missing(monkeypatch):
     from pkm.models import resolve_auto_models
 
@@ -102,7 +119,36 @@ def test_resolve_auto_models_treats_blank_provider_keys_as_missing(monkeypatch):
     fake_litellm.validate_environment = validate_environment
     monkeypatch.setitem(sys.modules, "litellm", fake_litellm)
 
-    assert resolve_auto_models() == ["gpt-5.4-mini", "gpt-4o-mini"]
+    assert resolve_auto_models() == [
+        "gpt-5.4-nano",
+        "gpt-5-mini",
+        "gpt-5-nano",
+        "gpt-5.4-mini",
+    ]
+
+
+def test_validate_model_environment_treats_blank_provider_keys_as_missing(
+    monkeypatch,
+):
+    from pkm.models import validate_model_environment
+
+    monkeypatch.setenv("GEMINI_API_KEY", "")
+
+    fake_litellm = ModuleType("litellm")
+
+    def validate_environment(model_id):
+        return {
+            "keys_in_environment": bool(__import__("os").environ.get("GEMINI_API_KEY")),
+            "missing_keys": [] if __import__("os").environ.get("GEMINI_API_KEY") else ["GEMINI_API_KEY"],
+        }
+
+    fake_litellm.validate_environment = validate_environment
+    monkeypatch.setitem(sys.modules, "litellm", fake_litellm)
+
+    assert validate_model_environment("gemini/gemini-3-flash-preview") == {
+        "keys_in_environment": False,
+        "missing_keys": ["GEMINI_API_KEY"],
+    }
 
 
 def test_resolve_auto_models_includes_openai_when_openai_key_is_available(
@@ -122,7 +168,12 @@ def test_resolve_auto_models_includes_openai_when_openai_key_is_available(
     fake_litellm.validate_environment = validate_environment
     monkeypatch.setitem(sys.modules, "litellm", fake_litellm)
 
-    assert resolve_auto_models() == ["gpt-5.4-mini", "gpt-4o-mini"]
+    assert resolve_auto_models() == [
+        "gpt-5.4-nano",
+        "gpt-5-mini",
+        "gpt-5-nano",
+        "gpt-5.4-mini",
+    ]
 
 
 def test_resolve_model_candidates_prepends_valid_configured_model(monkeypatch):
