@@ -9,6 +9,7 @@ import logging
 import os
 import sys
 import time
+import uuid
 from dataclasses import asdict, dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -526,7 +527,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
 
                     context_str = "\n".join(context_parts)
 
-            task_id = f"ask_{time.time()}"
+            task_id = f"sock_ask_{uuid.uuid4().hex}"
             task = {
                 "type": "task",
                 "id": task_id,

@@ -35,7 +35,7 @@ def app(web_cfg: WebConfig) -> _web.Application:
         return _web.Response(text="ok")
 
     # Register with the same template that SSE_ROUTES lists so resource.canonical matches.
-    a.router.add_get("/api/v1/vault/{vault}/ask", _ask_stub)
+    a.router.add_get("/api/v1/vault/{name}/ask", _ask_stub)
     return a
 
 

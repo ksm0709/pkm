@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from aiohttp import web
 
+from pkm.web.routes.ask import post_ask
 from pkm.web.routes.daily import (
     get_daily_date,
     get_daily_today,
@@ -39,3 +40,6 @@ def register_routes(app: web.Application) -> None:
     app.router.add_post("/api/v1/vault/{name}/daily/today", post_daily_today)
     app.router.add_get("/api/v1/vault/{name}/daily/{date}", get_daily_date)
     app.router.add_get("/api/v1/vault/{name}/daily", list_daily)
+
+    # Ask — SSE
+    app.router.add_post("/api/v1/vault/{name}/ask", post_ask)
