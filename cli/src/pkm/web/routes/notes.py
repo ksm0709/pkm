@@ -10,7 +10,7 @@ import networkx as nx
 from aiohttp import web
 
 from pkm.config import VaultConfig, discover_vaults
-from pkm.frontmatter import parse
+from pkm.frontmatter import parse, render
 
 
 def _json_safe(obj: Any) -> Any:
@@ -151,3 +151,81 @@ async def get_note_neighbors(request: web.Request) -> web.Response:
     except FileNotFoundError as exc:
         raise web.HTTPNotFound(reason=str(exc))
     return web.json_response(data)
+
+
+def _note_response(path) -> dict:
+    """Build the 8-key note response dict from a file path."""
+    note = parse(path)
+    fm = note.meta or {}
+    importance_raw = fm.get("importance")
+    importance = int(importance_raw) if importance_raw is not None else None
+    return {
+        "note_id": note.id,
+        "title": note.title,
+        "body": note.body,
+        "frontmatter": _json_safe(fm),
+        "created": _json_safe(fm.get("created_at") or fm.get("source") or None),
+        "updated": _json_safe(fm.get("updated_at") or None),
+        "tags": note.tags,
+        "importance": importance,
+    }
+
+
+async def create_note_handler(request: web.Request) -> web.Response:
+    """POST /api/v1/vault/{name}/notes — create a new note."""
+    vault = _resolve_vault(request.match_info["name"])
+
+    try:
+        data = await request.json()
+    except Exception:
+        raise web.HTTPBadRequest(reason="Invalid JSON body")
+
+    title = data.get("title")
+    body = data.get("body", "")
+    tags = data.get("tags") or []
+
+    if not title:
+        raise web.HTTPBadRequest(reason="Field 'title' is required")
+
+    from pkm.commands.notes import create_note
+
+    try:
+        note_path = create_note(
+            vault=vault,
+            title=title,
+            content=body or None,
+            tags=tags,
+            no_dedup=True,
+        )
+    except FileExistsError as exc:
+        raise web.HTTPConflict(reason=str(exc))
+    except ValueError as exc:
+        raise web.HTTPBadRequest(reason=str(exc))
+
+    return web.json_response(_note_response(note_path), status=201)
+
+
+async def update_note(request: web.Request) -> web.Response:
+    """PUT /api/v1/vault/{name}/notes/{id} — update note body (and optionally title/tags)."""
+    vault = _resolve_vault(request.match_info["name"])
+    note_id = request.match_info["id"]
+
+    try:
+        data = await request.json()
+    except Exception:
+        raise web.HTTPBadRequest(reason="Invalid JSON body")
+
+    for base_dir in (vault.notes_dir, vault.daily_dir):
+        path = base_dir / f"{note_id}.md"
+        if path.exists():
+            note = parse(path)
+            new_body = data.get("body", note.body)
+            meta = dict(note.meta or {})
+            if "title" in data:
+                meta["title"] = data["title"]
+            if "tags" in data:
+                meta["tags"] = data["tags"]
+            path.write_text(render(meta, new_body), encoding="utf-8")
+            return web.json_response(_note_response(path))
+
+    raise web.HTTPNotFound(reason=f"Note '{note_id}' not found in vault '{vault.name}'")

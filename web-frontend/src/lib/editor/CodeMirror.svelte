@@ -17,6 +17,7 @@
   import { vim } from '@replit/codemirror-vim';
   import { pkmTheme } from './theme.js';
   import { installVimMappings } from './vim.js';
+  import { liveStyling, liveStylingTheme } from './live-styling.js';
 
   interface Props {
     doc?: string;
@@ -48,6 +49,8 @@
       markdown(),
       keymap.of([...defaultKeymap, ...historyKeymap]),
       pkmTheme,
+      liveStylingTheme,
+      liveStyling,
       EditorView.lineWrapping,
       EditorView.editable.of(!readOnly),
       EditorState.readOnly.of(readOnly),
