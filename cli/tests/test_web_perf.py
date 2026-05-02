@@ -21,7 +21,6 @@ import subprocess
 import time
 from typing import Any
 
-import aiohttp
 import pytest
 from aiohttp.test_utils import TestServer
 
@@ -158,29 +157,12 @@ async def test_p99_under_200ms_during_ask_stream(
             assert p99 is not None, f"could not parse P99 from hey output:\n{stdout}"
             assert p99 < 0.200, f"P99 {p99:.4f}s ≥ 0.200s\n{stdout}"
         else:
-            # Fallback: in-process aiohttp concurrent fetcher.
-            # Curl/xargs adds 50–100ms per-spawn overhead that dominates the
-            # P99 — using aiohttp directly measures the server, not the shell.
-            sem = asyncio.Semaphore(50)
-            samples: list[float] = []
-
-            async def _one(sess: aiohttp.ClientSession) -> None:
-                async with sem:
-                    t0 = time.perf_counter()
-                    async with sess.get(
-                        notes_url,
-                        headers={"Authorization": f"Bearer {TOKEN}"},
-                    ) as r:
-                        await r.read()
-                    samples.append(time.perf_counter() - t0)
-
-            async with aiohttp.ClientSession() as sess:
-                await asyncio.gather(*[_one(sess) for _ in range(200)])
-
-            samples.sort()
-            idx = max(0, int(round(0.99 * len(samples))) - 1)
-            p99 = samples[idx]
-            assert p99 < 0.200, f"in-process P99 {p99:.4f}s ≥ 0.200s"
+            # No hey on PATH — skip rather than run an in-process loop that
+            # shares the server's event loop (which trivially passes the
+            # threshold and provides no real signal). To measure P99 under
+            # real socket + concurrent-process load, install hey:
+            #   go install github.com/rakyll/hey@latest
+            pytest.skip("hey not on PATH; install it to run the meaningful P99 gate")
 
         ask_task.cancel()
         try:
