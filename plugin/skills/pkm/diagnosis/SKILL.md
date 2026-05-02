@@ -1,3 +1,8 @@
+---
+name: "pkm:diagnosis"
+description: "Self-diagnose PKM MCP tool usage for the current session and remediate missing post-work logging."
+---
+
 # PKM Diagnosis Workflow
 
 **Type**: Rigid — follow every step in order, no skipping.
