@@ -18,6 +18,7 @@
   import { pkmTheme } from './theme.js';
   import { installVimMappings } from './vim.js';
   import { liveStyling, liveStylingTheme } from './live-styling.js';
+  import { slashCommands } from './slash-commands.js';
 
   interface Props {
     doc?: string;
@@ -51,6 +52,7 @@
       pkmTheme,
       liveStylingTheme,
       liveStyling,
+      ...slashCommands,
       EditorView.lineWrapping,
       EditorView.editable.of(!readOnly),
       EditorState.readOnly.of(readOnly),
