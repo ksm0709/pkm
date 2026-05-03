@@ -11,8 +11,9 @@
 - **Playwright 1.49** for end-to-end + a11y gates.
 - **axe-core 4.10** + `@axe-core/playwright` for WCAG 2.1 AA assertions.
 
-The frontend is single-tenant: it holds one bearer token in `localStorage`
-and talks to the daemon at `/api/v1/*` on the same origin.
+The frontend is single-tenant: it logs in with the setup password, then relies
+on the daemon's HttpOnly `pkm_session` cookie for same-origin `/api/v1/*`
+requests. The compatibility bearer token is not stored in browser storage.
 
 ## Directory layout
 

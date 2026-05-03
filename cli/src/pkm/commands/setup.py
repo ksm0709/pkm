@@ -6,6 +6,7 @@ import os
 import secrets
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 import click
@@ -112,7 +113,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/share/uv/tools/pkm/bin/python -m pkm.daemon
+ExecStart=%h/.local/bin/pkm daemon start
 Restart=on-failure
 RestartSec=5
 
@@ -139,7 +140,24 @@ def _check_linger() -> str:
     return "no"
 
 
-def _run_web_setup() -> None:
+def _prompt_password() -> str:
+    password = click.prompt(
+        "Browser login password",
+        hide_input=True,
+        confirmation_prompt=True,
+    )
+    if not str(password).strip():
+        raise click.ClickException("Password cannot be empty.")
+    return str(password)
+
+
+def _write_private_file(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    path.chmod(0o600)
+
+
+def _run_web_setup(*, reset: bool = False) -> None:
     """`pkm setup --web` flow: Linger gate -> token + unit -> print token.
 
     Fail-closed: if Linger is not enabled (and the user declines remediation),
@@ -168,14 +186,29 @@ def _run_web_setup() -> None:
                 "Linger is still disabled — aborting without writing token or unit."
             )
 
-    # Generate token and write at ~/.config/pkm/web-token (chmod 600).
+    from pkm.web.auth import hash_password
+
+    password = _prompt_password()
+
+    # Generate token and write at ~/.config/pkm/web-token (chmod 600).  Preserve
+    # an existing bearer token unless the user explicitly requested reset.
     home = Path.home()
     token_dir = home / ".config" / "pkm"
     token_dir.mkdir(parents=True, exist_ok=True)
     token_path = token_dir / "web-token"
-    token = secrets.token_hex(32)
-    token_path.write_text(token, encoding="utf-8")
-    token_path.chmod(0o600)
+    if token_path.exists() and not reset:
+        token = token_path.read_text(encoding="utf-8").strip()
+        token_path.chmod(0o600)
+    else:
+        token = secrets.token_hex(32)
+        _write_private_file(token_path, token)
+
+    password_path = token_dir / "web-password"
+    _write_private_file(password_path, hash_password(password))
+
+    reset_path = token_dir / "web-session-reset"
+    if reset:
+        _write_private_file(reset_path, str(time.time_ns()))
 
     # Write systemd user unit.
     unit_dir = home / ".config" / "systemd" / "user"
@@ -184,6 +217,13 @@ def _run_web_setup() -> None:
     unit_path.write_text(SYSTEMD_UNIT_TEMPLATE, encoding="utf-8")
 
     console.print(f"[green]✓ Token written:[/green] {token_path} (mode 0600)")
+    console.print(
+        f"[green]✓ Password hash written:[/green] {password_path} (mode 0600)"
+    )
+    if reset:
+        console.print(
+            "[green]✓ Browser login password reset; sessions invalidated[/green]"
+        )
     console.print(f"[green]✓ Unit written:[/green] {unit_path}")
     console.print()
     console.print("Copy this token into your client / Authorization header:")
@@ -202,10 +242,16 @@ def _run_web_setup() -> None:
     default=False,
     help="Set up the systemd user unit + auth token for the web server.",
 )
-def setup_cmd(web: bool = False) -> None:
+@click.option(
+    "--reset",
+    is_flag=True,
+    default=False,
+    help="Reset the browser login password and invalidate existing sessions.",
+)
+def setup_cmd(web: bool = False, reset: bool = False) -> None:
     """Interactive setup wizard: install dependencies, configure vaults."""
     if web:
-        _run_web_setup()
+        _run_web_setup(reset=reset)
         return
 
     console.print("[bold]PKM Setup Wizard[/bold]")
