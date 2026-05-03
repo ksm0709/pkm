@@ -51,6 +51,16 @@
 
 <style>
   .topbar {
+    --bg: #090b0d;
+    --surface: #101419;
+    --text: #e8ecef;
+    --text-muted: #9aa6ad;
+    --text-faint: #5f6970;
+    --border: rgba(159, 177, 188, 0.20);
+    --accent: #ecaa4a;
+    --accent-bg: rgba(236, 170, 74, 0.12);
+    --signal: #ecaa4a;
+    --rail: rgba(236, 170, 74, 0.58);
     position: sticky;
     top: 0;
     z-index: 100;
@@ -154,11 +164,15 @@
 
   .station {
     min-width: 0;
-    display: grid;
-    gap: 2px;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2, 8px);
+    white-space: nowrap;
+    overflow: hidden;
   }
 
   .station-kicker {
+    flex: 0 0 auto;
     color: var(--text-faint, #5f6970);
     font-size: 10px;
     text-transform: uppercase;
