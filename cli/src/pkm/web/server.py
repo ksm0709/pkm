@@ -10,7 +10,7 @@ from typing import Callable
 from aiohttp import web
 
 from pkm.config import WebConfig, get_web_config
-from pkm.web.auth import make_auth_middleware
+from pkm.web.auth import logout, make_auth_middleware, make_login_handler
 from pkm.web.routes import register_routes
 from pkm.web.shutdown import ShutdownGate
 
@@ -117,7 +117,7 @@ def make_app(
         response.headers["Access-Control-Allow-Origin"] = origin
         return response
 
-    auth_mw = make_auth_middleware(cfg.token_path)
+    auth_mw = make_auth_middleware(cfg)
 
     app = web.Application(
         middlewares=[
@@ -129,6 +129,8 @@ def make_app(
     )
 
     app.router.add_get("/api/v1/health", _health_handler)
+    app.router.add_post("/api/v1/auth/login", make_login_handler(cfg))
+    app.router.add_post("/api/v1/auth/logout", logout)
     register_routes(app)
 
     # Static asset serving (must be added AFTER api routes so api wins matching).

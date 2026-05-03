@@ -365,6 +365,8 @@ def get_vault(name: str | None = None) -> VaultConfig:
 _DEFAULT_WEB_PORT = 7420
 _DEFAULT_WEB_BIND = "0.0.0.0"
 _DEFAULT_WEB_TOKEN_PATH = Path.home() / ".config" / "pkm" / "web-token"
+_DEFAULT_WEB_PASSWORD_PATH = Path.home() / ".config" / "pkm" / "web-password"
+_DEFAULT_WEB_SESSION_RESET_PATH = Path.home() / ".config" / "pkm" / "web-session-reset"
 
 
 @dataclass(frozen=True)
@@ -372,6 +374,8 @@ class WebConfig:
     port: int
     bind: str
     token_path: Path
+    password_path: Path = _DEFAULT_WEB_PASSWORD_PATH
+    session_reset_path: Path = _DEFAULT_WEB_SESSION_RESET_PATH
 
 
 def get_web_config() -> WebConfig:
@@ -381,6 +385,8 @@ def get_web_config() -> WebConfig:
       port       — integer, default 7420
       bind       — string,  default "0.0.0.0"
       token_path — string path, default ~/.config/pkm/web-token
+      password_path — string path, default ~/.config/pkm/web-password
+      session_reset_path — string path, default ~/.config/pkm/web-session-reset
     """
     data = load_config()
     web_section = data.get("web", {})
@@ -395,5 +401,19 @@ def get_web_config() -> WebConfig:
 
     token_path_raw = web_section.get("token_path", str(_DEFAULT_WEB_TOKEN_PATH))
     token_path = Path(token_path_raw).expanduser()
+    password_path_raw = web_section.get(
+        "password_path", str(_DEFAULT_WEB_PASSWORD_PATH)
+    )
+    password_path = Path(password_path_raw).expanduser()
+    session_reset_path_raw = web_section.get(
+        "session_reset_path", str(_DEFAULT_WEB_SESSION_RESET_PATH)
+    )
+    session_reset_path = Path(session_reset_path_raw).expanduser()
 
-    return WebConfig(port=port, bind=bind, token_path=token_path)
+    return WebConfig(
+        port=port,
+        bind=bind,
+        token_path=token_path,
+        password_path=password_path,
+        session_reset_path=session_reset_path,
+    )

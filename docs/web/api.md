@@ -1,13 +1,16 @@
 # pkm-webapp — HTTP API reference
 
 OpenAPI-style reference for `/api/v1/*` endpoints registered in
-`cli/src/pkm/web/routes/__init__.py`. All routes (except `/health`) require
-a bearer token; SSE routes additionally accept `?token=` for `EventSource`
-clients.
+`cli/src/pkm/web/routes/__init__.py`. Browser clients authenticate by
+password login and an HttpOnly session cookie. CLI/curl clients can still use
+the compatibility bearer token; SSE routes additionally accept `?token=` for
+`EventSource` clients.
 
 - **Base URL** — `http://<bind>:<port>` (default `127.0.0.1:7420`).
 - **Auth header** — `Authorization: Bearer <token>` from
   `~/.config/pkm/web-token`.
+- **Browser auth** — `POST /api/v1/auth/login` with the setup password sets
+  the `pkm_session` cookie.
 - **Content type** — `application/json` for both requests and responses
   unless noted (SSE routes return `text/event-stream`).
 
@@ -25,11 +28,30 @@ clients.
 
 ---
 
+## Auth
+
+### `POST /api/v1/auth/login`
+
+Public browser login endpoint.
+
+- **Request body** — `{"password": string, "remember"?: boolean}`
+- **Response 200** — `{"ok": true, "vaults": [{ "name": string, "path": string }, ...]}` plus an HttpOnly `pkm_session` cookie.
+- **401** — invalid password.
+- **503** — password login not configured.
+
+### `POST /api/v1/auth/logout`
+
+Clears the browser session cookie.
+
+- **Response 200** — `{"ok": true}`
+
+---
+
 ## Health
 
-### `GET /health`
+### `GET /api/v1/health`
 
-Liveness probe. No auth.
+Liveness probe.
 
 - **Response 200** — `{"status": "ok"}`
 

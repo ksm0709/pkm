@@ -1,46 +1,48 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { apiClient } from '$lib/api/client.js';
 
-  let token = $state('');
+  let password = $state('');
   let remember = $state(true);
   let error = $state('');
   let loading = $state(false);
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
-    if (!token.trim()) return;
+    if (!password) return;
 
     loading = true;
     error = '';
 
     try {
-      // Validate token against the API
-      const result = await apiClient('/api/v1/vaults', { token: token.trim() });
+      const result = await fetch('/api/v1/auth/login', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password, remember })
+      });
 
       if (result.ok) {
-        // Persist token
-        if (remember) {
-          localStorage.setItem('pkm.token', token.trim());
-        } else {
-          sessionStorage.setItem('pkm.token', token.trim());
-          localStorage.removeItem('pkm.token');
-        }
+        localStorage.removeItem('pkm.token');
+        sessionStorage.removeItem('pkm.token');
 
         // Navigate to last vault or first available
         const lastVault = localStorage.getItem('pkm.lastVault');
         if (lastVault) {
           await goto(`/${lastVault}`);
         } else {
-          const vaults: string[] = await result.json().catch(() => []);
-          if (Array.isArray(vaults) && vaults.length > 0) {
-            await goto(`/${vaults[0]}`);
+          const data = await result.json().catch(() => ({ vaults: [] }));
+          const vaults = Array.isArray(data?.vaults) ? data.vaults : [];
+          if (vaults.length > 0) {
+            await goto(`/${vaults[0].name}`);
           } else {
             await goto('/');
           }
         }
       } else {
-        error = result.status === 401 ? 'Invalid token.' : 'Connection failed.';
+        error =
+          result.status === 401
+            ? 'Invalid password.'
+            : 'Password login is not configured.';
       }
     } catch {
       error = 'Cannot reach daemon. Is pkm running?';
@@ -53,18 +55,17 @@
 <div class="onboarding">
   <div class="reading-column onboarding-inner">
     <h1 class="wordmark">pkm</h1>
-    <p class="tagline">Paste your access token to connect.</p>
+    <p class="tagline">Sign in to your local PKM.</p>
 
     <form onsubmit={handleSubmit} class="form">
       <div class="field">
-        <label class="field-label" for="token-input">Access token</label>
+        <label class="field-label" for="password-input">Password</label>
         <input
-          id="token-input"
-          class="token-input"
+          id="password-input"
+          class="password-input"
           type="password"
-          placeholder="pkm_…"
-          bind:value={token}
-          autocomplete="off"
+          bind:value={password}
+          autocomplete="current-password"
           spellcheck="false"
           disabled={loading}
         />
@@ -79,8 +80,8 @@
         <p class="error-msg" role="alert">{error}</p>
       {/if}
 
-      <button class="submit-btn" type="submit" disabled={loading || !token.trim()}>
-        {loading ? 'Connecting…' : 'Connect'}
+      <button class="submit-btn" type="submit" disabled={loading || !password}>
+        {loading ? 'Signing in…' : 'Sign in'}
       </button>
     </form>
   </div>
@@ -139,7 +140,7 @@
     color: var(--text-faint);
   }
 
-  .token-input {
+  .password-input {
     font-family: var(--font-mono);
     font-size: var(--type-body-size, 15px);
     color: var(--text);
@@ -153,12 +154,8 @@
     transition: border-color var(--dur-fast, 120ms) var(--ease-out);
   }
 
-  .token-input:focus {
+  .password-input:focus {
     border-color: var(--accent);
-  }
-
-  .token-input::placeholder {
-    color: var(--text-faint);
   }
 
   .remember-label {

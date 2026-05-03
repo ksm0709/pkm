@@ -3,10 +3,9 @@
   import { goto } from '$app/navigation';
   import Onboarding from '$lib/components/Onboarding.svelte';
 
-  let hasToken = $state(false);
   let checking = $state(true);
 
-  onMount(() => {
+  onMount(async () => {
     const token =
       localStorage.getItem('pkm.token') ||
       sessionStorage.getItem('pkm.token');
@@ -18,10 +17,24 @@
         goto(`/${lastVault}`);
         return;
       }
-      // No last vault yet; show onboarding to pick vault after auth
-      hasToken = false;
     } else {
-      hasToken = false;
+      try {
+        const res = await fetch('/api/v1/vaults', { credentials: 'same-origin' });
+        if (res.ok) {
+          const vaults = await res.json();
+          const lastVault = localStorage.getItem('pkm.lastVault');
+          if (lastVault) {
+            await goto(`/${lastVault}`);
+            return;
+          }
+          if (Array.isArray(vaults) && vaults.length > 0) {
+            await goto(`/${vaults[0].name}`);
+            return;
+          }
+        }
+      } catch {
+        // Fall through to login form.
+      }
     }
     checking = false;
   });

@@ -1,7 +1,7 @@
 /**
  * API client for pkm daemon.
- * Reads token from localStorage.pkm.token (or sessionStorage fallback).
- * Redirects to / on 401 (token expired or missing).
+ * Uses the browser session cookie by default.  A bearer token override is
+ * still supported for legacy/manual flows.
  */
 
 function getToken() {
@@ -33,10 +33,14 @@ export async function apiClient(path, opts = {}) {
     ...(token ? { Authorization: `Bearer ${token}` } : {})
   };
 
-  const response = await fetch(path, { ...fetchOpts, headers });
+  const response = await fetch(path, {
+    credentials: 'same-origin',
+    ...fetchOpts,
+    headers
+  });
 
   if (response.status === 401) {
-    // Clear stale token and redirect to onboarding
+    // Clear any legacy stale token and redirect to login.
     try {
       localStorage.removeItem('pkm.token');
       sessionStorage.removeItem('pkm.token');
