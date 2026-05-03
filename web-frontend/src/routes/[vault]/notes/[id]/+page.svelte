@@ -73,8 +73,38 @@
     <p class="status error">{error}</p>
   {:else if note}
     <article class="note-article">
-      <!-- Note metadata -->
       <header class="note-header">
+        <div class="meta-rail">
+          <span>NOTE</span>
+          <span>{note.note_id}</span>
+          {#if note.updated}
+            <span>updated {note.updated}</span>
+          {:else if note.created}
+            <span>created {note.created}</span>
+          {/if}
+          {#if note.importance !== null}
+            <span>imp {note.importance}</span>
+          {/if}
+        </div>
+        <div class="title-row">
+          <h1>{note.title || note.note_id}</h1>
+          <div class="mode-toggle" aria-label="Display mode">
+            <button
+              type="button"
+              class:active={!editMode}
+              onclick={() => (editMode = false)}
+            >
+              Read
+            </button>
+            <button
+              type="button"
+              class:active={editMode}
+              onclick={() => (editMode = true)}
+            >
+              Edit
+            </button>
+          </div>
+        </div>
         {#if note.tags?.length}
           <p class="note-tags">
             {#each note.tags as tag}
@@ -82,21 +112,6 @@
             {/each}
           </p>
         {/if}
-        <div class="note-meta-line">
-          {#if note.created}
-            <span class="meta-item">{note.created}</span>
-          {/if}
-          {#if note.importance !== null}
-            <span class="meta-item">imp {note.importance}</span>
-          {/if}
-          <button
-            type="button"
-            class="mode-toggle"
-            onclick={() => (editMode = !editMode)}
-          >
-            {editMode ? 'read' : 'edit'}
-          </button>
-        </div>
       </header>
 
       {#if editMode}
@@ -131,13 +146,43 @@
 
   .note-header {
     margin-bottom: var(--space-5, 24px);
+    border-left: 1px solid var(--accent);
+    padding-left: var(--space-4, 16px);
+  }
+
+  .meta-rail {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3, 12px);
+    font-family: var(--font-mono);
+    font-size: var(--type-chrome-sm-size, 11px);
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+
+  .title-row {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: var(--space-5, 24px);
+    margin-top: var(--space-2, 8px);
+  }
+
+  h1 {
+    font-family: var(--font-display);
+    font-size: clamp(34px, 6vw, 44px);
+    line-height: 1;
+    font-weight: var(--type-h1-weight, 600);
+    color: var(--text);
+    margin: 0;
   }
 
   .note-tags {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2, 8px);
-    margin-bottom: var(--space-2, 8px);
+    margin: var(--space-3, 12px) 0 0;
   }
 
   .tag {
@@ -146,40 +191,48 @@
     color: var(--text-muted);
   }
 
-  .note-meta-line {
+  .mode-toggle {
     display: flex;
     align-items: center;
-    gap: var(--space-3, 12px);
-    font-family: var(--font-mono);
-    font-size: 12px;
-    color: var(--text-muted);
-  }
-
-  .meta-item {
-    color: var(--text-muted);
-  }
-
-  .mode-toggle {
-    margin-left: auto;
-    background: none;
+    width: 124px;
+    flex-shrink: 0;
     border: 1px solid var(--border);
+  }
+
+  .mode-toggle button {
+    flex: 1;
+    background: none;
+    border: none;
     color: var(--text-muted);
     font-family: var(--font-mono);
     font-size: var(--type-chrome-sm-size, 11px);
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    padding: 2px 8px;
+    letter-spacing: 0.12em;
+    padding: 7px 8px;
     cursor: pointer;
-    border-radius: var(--radius-sm);
   }
-  .mode-toggle:hover {
-    color: var(--accent);
-    border-color: var(--accent);
+
+  .mode-toggle button + button {
+    border-left: 1px solid var(--border);
+  }
+
+  .mode-toggle button.active,
+  .mode-toggle button:hover {
+    color: var(--bg);
+    background: var(--accent);
   }
 
   .note-editor {
     min-height: 60vh;
     border: 1px solid var(--border);
+    margin-bottom: var(--space-5, 24px);
+    background: var(--surface-prose, var(--bg-elev));
+  }
+
+  .note-body {
+    background: var(--surface-prose, var(--bg-elev));
+    border: 1px solid var(--border);
+    padding: clamp(24px, 5vw, 48px);
     margin-bottom: var(--space-5, 24px);
   }
 
@@ -230,17 +283,18 @@
   .prose :global(code) {
     font-family: var(--font-mono);
     font-size: 0.9em;
-    background-color: var(--bg-elev);
+    background-color: var(--surface-raised, var(--bg));
     padding: 1px 4px;
   }
 
   .prose :global(pre) {
     font-family: var(--font-mono);
     font-size: 13px;
-    background-color: var(--bg-elev);
+    background-color: var(--surface-raised, var(--bg));
     padding: var(--space-4, 16px);
     overflow-x: auto;
     margin-bottom: var(--space-4, 16px);
+    border-left: 2px solid var(--border);
   }
 
   .prose :global(pre code) {
@@ -288,5 +342,19 @@
 
   .status.error {
     color: #c0392b;
+  }
+
+  @media (max-width: 640px) {
+    .title-row {
+      flex-direction: column;
+    }
+
+    .mode-toggle {
+      width: 100%;
+    }
+
+    .note-body {
+      padding: var(--space-4, 16px);
+    }
   }
 </style>

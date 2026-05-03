@@ -52,41 +52,36 @@
 
 {#if !loading && data && groups.length > 0}
   <aside class="neighbor-panel">
-    <!-- Hairline divider with centered Newsreader Italic · glyph -->
     <div class="divider" aria-hidden="true">
-      <span class="divider-dot">·</span>
+      <span class="divider-label">SIGNAL ANALYZER</span>
     </div>
 
     <div class="panel-body">
-      <!-- EgoConstellation: 2-hop radial SVG — above first group, unique to NeighborPanel -->
-      <EgoConstellation {vaultName} noteId={data.note_id} />
+      <div class="constellation-shell">
+        <EgoConstellation {vaultName} noteId={data.note_id} />
+      </div>
 
       {#each groups as group (group.label)}
         <section class="group">
-          <p class="group-label">
-            {group.label}
-          </p>
+          <p class="group-label">{group.label}</p>
           <ul class="neighbor-list">
             {#each group.items as neighbor (neighbor.note_id)}
               {@const date = parseDate(neighbor.note_id)}
               {@const filename = toFilename(neighbor.note_id)}
               <li class="neighbor-item">
-                <a
-                  href="/{vaultName}/notes/{neighbor.note_id}"
-                  class="neighbor-title"
-                >
-                  {neighbor.title || neighbor.note_id}
+                <a href="/{vaultName}/notes/{neighbor.note_id}" class="neighbor-link">
+                  <span class="neighbor-title">{neighbor.title || neighbor.note_id}</span>
+                  <span class="neighbor-meta">
+                    {#if date}
+                      {date} · {filename}
+                    {:else}
+                      {filename}
+                    {/if}
+                  </span>
                   {#if neighbor.confidence !== undefined}
                     <span class="confidence">{neighbor.confidence.toFixed(2)}</span>
                   {/if}
                 </a>
-                <p class="neighbor-meta">
-                  {#if date}
-                    {date} · {filename}
-                  {:else}
-                    {filename}
-                  {/if}
-                </p>
               </li>
             {/each}
           </ul>
@@ -99,92 +94,117 @@
 <style>
   .neighbor-panel {
     margin-top: var(--space-7, 48px);
-    /* No box, no border on the panel itself */
   }
 
-  /* Hairline divider: 1px var(--border) with centered Newsreader Italic · */
   .divider {
-    position: relative;
-    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3, 12px);
     margin-bottom: var(--space-6, 32px);
-    text-align: center;
-  }
-
-  .divider-dot {
-    display: inline-block;
-    position: relative;
-    top: -0.7em; /* negative margin-top equivalent — overlaps the hairline */
-    background-color: var(--bg);
-    padding: 0 var(--space-2, 8px);
-    font-family: var(--font-display);
-    font-style: italic;
-    font-size: 18px;
+    font-family: var(--font-mono);
+    font-size: var(--type-chrome-sm-size, 11px);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
     color: var(--text-faint);
-    line-height: 1;
   }
 
-  /* Panel body indented var(--space-7) from body — asymmetric rail */
+  .divider::after {
+    content: "";
+    height: 1px;
+    flex: 1;
+    background: linear-gradient(90deg, var(--accent), var(--border));
+  }
+
   .panel-body {
-    padding-left: var(--space-7, 48px);
     display: flex;
     flex-direction: column;
     gap: var(--space-5, 24px);
   }
 
-  .group {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2, 8px);
+  .constellation-shell {
+    border-left: 1px solid var(--border);
+    padding-left: var(--space-4, 16px);
   }
 
-  /* Group labels: Plex Mono 11px uppercase letter-spacing 0.08em --text-faint */
+  .group {
+    border-left: 1px solid var(--accent);
+    padding-left: var(--space-4, 16px);
+  }
+
   .group-label {
     font-family: var(--font-mono);
     font-size: var(--type-chrome-sm-size, 11px);
     font-weight: var(--type-chrome-sm-weight, 500);
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.12em;
     color: var(--text-faint);
-    margin: 0;
+    margin: 0 0 var(--space-2, 8px);
   }
 
   .neighbor-list {
     display: flex;
     flex-direction: column;
-    gap: var(--space-3, 12px);
+    list-style: none;
+    margin: 0;
+    padding: 0;
   }
 
   .neighbor-item {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+    border-top: 1px solid var(--border);
   }
 
-  /* Titles: Plex Mono 14px --text, linkified --accent on hover */
-  .neighbor-title {
+  .neighbor-link {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(120px, auto) auto;
+    gap: var(--space-3, 12px);
+    align-items: center;
+    min-height: 40px;
     font-family: var(--font-mono);
     font-size: 14px;
     color: var(--text);
     text-decoration: none;
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-2, 8px);
+    border-left: 2px solid transparent;
+    padding: 0 var(--space-2, 8px);
+    transition: color var(--dur-fast, 120ms) var(--ease-out), background-color var(--dur-fast, 120ms) var(--ease-out), border-color var(--dur-fast, 120ms) var(--ease-out);
   }
 
-  .neighbor-title:hover {
+  .neighbor-link:hover,
+  .neighbor-link:focus-visible {
     color: var(--accent);
+    background: var(--accent-bg);
+    border-left-color: var(--accent);
+    outline: none;
+  }
+
+  .neighbor-title,
+  .neighbor-meta {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .confidence {
-    font-size: 12px;
-    color: var(--text-faint);
+    font-size: 11px;
+    color: var(--accent);
+    border: 1px solid var(--border);
+    padding: 1px 5px;
   }
 
-  /* Date · filename: Plex Mono 12px --text-muted */
   .neighbor-meta {
-    font-family: var(--font-mono);
     font-size: 12px;
     color: var(--text-muted);
-    margin: 0;
+  }
+
+  @media (max-width: 640px) {
+    .neighbor-link {
+      grid-template-columns: 1fr auto;
+      min-height: 54px;
+      padding-block: var(--space-2, 8px);
+    }
+
+    .neighbor-meta {
+      grid-column: 1 / -1;
+    }
   }
 </style>
