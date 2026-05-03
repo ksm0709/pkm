@@ -101,7 +101,7 @@
     position: relative;
     display: flex;
     flex-direction: row;
-    min-height: calc(100vh - var(--topbar-height, 48px));
+    min-height: calc(100vh - 48px);
     background:
       linear-gradient(90deg, rgba(236, 170, 74, 0.08) 0 1px, transparent 1px 100%) left top / 24px 100% no-repeat,
       var(--bg, #090b0d);
@@ -139,7 +139,7 @@
 
   @media (max-width: 760px) {
     .vault-shell {
-      min-height: calc(100vh - var(--topbar-height, 48px));
+      min-height: calc(100vh - 48px);
     }
 
     .shell-rail {
@@ -148,7 +148,7 @@
 
     .drawer-scrim {
       position: fixed;
-      inset: var(--topbar-height, 48px) 0 0 0;
+      inset: 48px 0 0 0;
       z-index: 80;
       display: block;
       background: rgba(9, 11, 13, 0.58);

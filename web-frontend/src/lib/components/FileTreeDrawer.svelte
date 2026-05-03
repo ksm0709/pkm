@@ -114,7 +114,7 @@
   }
 
   .file-tree-drawer.open {
-    width: var(--drawer-width, 300px);
+    width: var(--phase2-drawer-width, 300px);
   }
 
   .file-tree-drawer::after {
@@ -134,10 +134,10 @@
   }
 
   .drawer-inner {
-    width: var(--drawer-width, 300px);
-    height: calc(100vh - var(--topbar-height, 48px));
+    width: var(--phase2-drawer-width, 300px);
+    height: calc(100vh - 48px);
     overflow-y: auto;
-    transform: translateX(calc(-1 * var(--drawer-width, 300px)));
+    transform: translateX(calc(-1 * var(--phase2-drawer-width, 300px)));
     transition: transform var(--dur-base, 200ms) var(--ease-out);
   }
 
@@ -298,22 +298,22 @@
   @media (max-width: 760px) {
     .file-tree-drawer {
       position: fixed;
-      top: var(--topbar-height, 48px);
+      top: 48px;
       left: 8px;
       bottom: 0;
-      width: min(var(--drawer-width, 300px), calc(100vw - 32px));
+      width: min(var(--phase2-drawer-width, 300px), calc(100vw - 32px));
       max-width: calc(100vw - 32px);
       transform: translateX(calc(-100% - 8px));
       transition: transform var(--dur-base, 200ms) var(--ease-out);
     }
 
     .file-tree-drawer.open {
-      width: min(var(--drawer-width, 300px), calc(100vw - 32px));
+      width: min(var(--phase2-drawer-width, 300px), calc(100vw - 32px));
       transform: translateX(0);
     }
 
     .drawer-inner {
-      width: min(var(--drawer-width, 300px), calc(100vw - 32px));
+      width: min(var(--phase2-drawer-width, 300px), calc(100vw - 32px));
       transform: none;
     }
   }
