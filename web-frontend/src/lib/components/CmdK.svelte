@@ -369,11 +369,13 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="cmdk-backdrop" onclick={onBackdropClick}>
     <div
-      class="cmdk-modal"
+      class="cmdk-modal cmdk command-palette"
+      data-cmdk
       role="dialog"
       aria-label="Command palette"
       aria-modal="true"
     >
+      <div class="console-label">COMMAND CONSOLE</div>
       <input
         bind:this={inputEl}
         class="cmdk-input"
@@ -416,7 +418,11 @@
   .cmdk-backdrop {
     position: fixed;
     inset: 0;
-    background-color: rgba(20, 17, 13, 0.40);
+    background:
+      linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+      rgba(9, 11, 13, 0.72);
+    background-size: 24px 24px, 24px 24px, auto;
     z-index: 1000;
     display: flex;
     align-items: flex-start;
@@ -425,15 +431,29 @@
   }
 
   .cmdk-modal {
-    width: var(--palette-width, 560px);
+    width: min(var(--palette-width, 560px), calc(100vw - 24px));
     max-height: var(--palette-max-height, 60vh);
-    background-color: var(--bg);
+    background-color: var(--surface, var(--bg));
     border: 1px solid var(--border);
     border-radius: var(--radius-sm, 2px);
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    /* No shadow */
+    border-top-color: var(--accent);
+    animation: cmdk-in var(--dur-fast, 120ms) var(--ease-out);
+  }
+
+  .console-label {
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    padding: 0 var(--space-4, 16px);
+    font-family: var(--font-mono);
+    font-size: var(--type-chrome-sm-size, 11px);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    border-bottom: 1px solid var(--border);
   }
 
   .cmdk-input {
@@ -442,11 +462,11 @@
     font-family: var(--font-mono);
     font-size: var(--type-body-size, 15px);
     color: var(--text);
-    background-color: var(--bg);
+    background-color: var(--surface-raised, var(--bg));
     border: none;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--accent);
     border-radius: 0;
-    padding: var(--space-3, 12px) var(--space-4, 16px);
+    padding: var(--space-3, 12px) var(--space-4, 16px) var(--space-3, 12px) var(--space-5, 24px);
     outline: none;
     caret-color: var(--accent);
   }
@@ -464,20 +484,24 @@
   }
 
   .cmdk-row {
+    position: relative;
     display: flex;
     align-items: center;
     gap: var(--space-2, 8px);
-    height: 32px;
-    padding: 0 var(--space-4, 16px);
+    min-height: 38px;
+    padding: 0 var(--space-4, 16px) 0 var(--space-5, 24px);
     font-family: var(--font-mono);
     font-size: var(--type-chrome-size, 13px);
     line-height: var(--type-chrome-lh, 1.20);
     color: var(--text);
     cursor: pointer;
+    border-left: 2px solid transparent;
+    transition: background-color var(--dur-fast, 120ms) var(--ease-out), border-color var(--dur-fast, 120ms) var(--ease-out), color var(--dur-fast, 120ms) var(--ease-out);
   }
 
   .cmdk-row.active {
     background-color: var(--accent-bg);
+    border-left-color: var(--accent);
   }
 
   .row-glyph {
@@ -509,5 +533,26 @@
     font-family: var(--font-mono);
     font-size: var(--type-chrome-size, 13px);
     color: var(--text-faint);
+  }
+
+  @keyframes cmdk-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cmdk-modal {
+      animation: none;
+    }
+
+    .cmdk-row {
+      transition: none;
+    }
   }
 </style>

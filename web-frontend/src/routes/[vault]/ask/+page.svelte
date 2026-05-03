@@ -105,7 +105,15 @@
 <div class="ask-page">
   <div bind:this={scrollEl} class="scroll-area">
     <div class="reading-column">
-      <AskTranscript {turns} />
+      <header class="ask-header">
+        <p>OPERATOR LOG</p>
+        <h1>Ask</h1>
+      </header>
+      {#if turns.length === 0}
+        <p class="empty-state">Enter a query packet below.</p>
+      {:else}
+        <AskTranscript {turns} />
+      {/if}
     </div>
   </div>
   <div class="reading-column">
@@ -123,5 +131,35 @@
   .scroll-area {
     flex: 1;
     overflow-y: auto;
+  }
+
+  .ask-header {
+    padding-top: var(--space-6, 32px);
+    border-left: 1px solid var(--accent);
+    padding-left: var(--space-4, 16px);
+  }
+
+  .ask-header p {
+    font-family: var(--font-mono);
+    font-size: var(--type-chrome-sm-size, 11px);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin: 0;
+  }
+
+  .ask-header h1 {
+    font-family: var(--font-display);
+    font-size: clamp(34px, 6vw, 44px);
+    line-height: 1;
+    color: var(--text);
+    margin: var(--space-2, 8px) 0 0;
+  }
+
+  .empty-state {
+    margin-top: var(--space-6, 32px);
+    font-family: var(--font-mono);
+    font-size: var(--type-chrome-size, 13px);
+    color: var(--text-faint);
   }
 </style>

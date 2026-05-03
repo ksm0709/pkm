@@ -28,12 +28,15 @@
 <div class="transcript">
   {#each turns as turn, ti (ti)}
     <article class="turn">
-      <p class="question">{turn.question}</p>
+      <div class="question">
+        <span class="packet-label">QUERY PACKET</span>
+        <p>{turn.question}</p>
+      </div>
 
       <div class="stream">
         {#each turn.items as item, ii (ii)}
           {#if item.kind === 'tool_call'}
-            <p class="tool-call">→ {item.tool} · {item.args}</p>
+            <p class="tool-call"><span>tool</span>{item.tool} · {item.args}</p>
           {:else if item.kind === 'reasoning'}
             {#if showReasoning[ti]}
               <pre class="reasoning">{item.text}</pre>
@@ -55,7 +58,7 @@
         {/if}
 
         {#if turn.answer}
-          <p class="answer">{turn.answer}</p>
+          <pre class="answer">{turn.answer}</pre>
         {/if}
       </div>
     </article>
@@ -75,15 +78,32 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-3, 12px);
+    border-left: 1px solid var(--accent);
+    padding-left: var(--space-4, 16px);
   }
 
   .question {
-    font-family: var(--font-display);
-    font-style: italic;
-    font-size: var(--type-h3-size, 17px);
-    line-height: var(--type-h3-lh, 1.35);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1, 4px);
+    margin: 0;
+  }
+
+  .packet-label {
+    font-family: var(--font-mono);
+    font-size: var(--type-chrome-sm-size, 11px);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+
+  .question p {
+    font-family: var(--font-mono);
+    font-size: var(--type-chrome-size, 13px);
+    line-height: 1.55;
     color: var(--text);
     margin: 0;
+    padding: var(--space-2, 8px) 0;
   }
 
   .stream {
@@ -99,21 +119,34 @@
     color: var(--text);
     margin: 0;
     white-space: pre-wrap;
+    background: var(--surface-prose, transparent);
+    border-top: 1px solid var(--border);
+    padding: var(--space-3, 12px) 0 0;
   }
 
   .tool-call {
+    display: flex;
+    gap: var(--space-2, 8px);
     font-family: var(--font-mono);
-    font-size: var(--type-chrome-size, 13px);
+    font-size: var(--type-chrome-sm-size, 11px);
     line-height: var(--type-chrome-lh, 1.20);
     color: var(--text-muted);
     margin: 0;
+    border-top: 1px solid var(--border);
+    padding-top: var(--space-2, 8px);
+  }
+
+  .tool-call span {
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
   }
 
   .reasoning {
     font-family: var(--font-mono);
     font-size: var(--type-chrome-sm-size, 11px);
     color: var(--text-faint);
-    background-color: var(--bg-elev);
+    background-color: var(--surface-raised, var(--bg-elev));
     padding: var(--space-2, 8px) var(--space-3, 12px);
     margin: 0;
     border-left: 1px solid var(--border);
@@ -141,7 +174,7 @@
   .error {
     font-family: var(--font-mono);
     font-size: var(--type-chrome-size, 13px);
-    color: #c0392b;
+    color: var(--signal-danger, #c0392b);
     margin: 0;
   }
 </style>
