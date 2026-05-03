@@ -57,7 +57,7 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(120px, 0.75fr) minmax(0, 1fr);
     align-items: center;
-    height: var(--topbar-height, 48px);
+    height: 48px;
     padding: 0 var(--space-4, 16px);
     background:
       linear-gradient(90deg, rgba(236, 170, 74, 0.08), transparent 34%, transparent 66%, rgba(112, 199, 216, 0.06)),
@@ -215,7 +215,7 @@
   @media (max-width: 760px) {
     .topbar {
       grid-template-columns: minmax(0, 1fr) auto;
-      height: var(--topbar-height, 48px);
+      height: 48px;
       padding: 0 var(--space-3, 12px);
       column-gap: var(--space-2, 8px);
     }
