@@ -182,7 +182,10 @@
 </svelte:head>
 
 <main class="reading-column daily-timeline">
-  <h1>Daily</h1>
+  <header class="timeline-header">
+    <p>EVENT LEDGER</p>
+    <h1>Daily</h1>
+  </header>
 
   {#if error}
     <p class="status-msg error">{error}</p>
@@ -238,12 +241,28 @@
     min-height: 60vh;
   }
 
+  .timeline-header {
+    border-left: 1px solid var(--accent);
+    padding-left: var(--space-4, 16px);
+    margin-bottom: var(--space-6, 32px);
+  }
+
+  .timeline-header p {
+    font-family: var(--font-mono);
+    font-size: var(--type-chrome-sm-size, 11px);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin: 0;
+  }
+
   h1 {
     font-family: var(--font-display);
-    font-size: var(--type-h1-size, 28px);
+    font-size: clamp(34px, 6vw, 44px);
+    line-height: 1;
     font-weight: var(--type-h1-weight, 600);
     color: var(--text);
-    margin-bottom: var(--space-5, 24px);
+    margin: var(--space-2, 8px) 0 0;
   }
 
   .month-block {
@@ -258,10 +277,10 @@
   }
 
   .month-label {
-    font-family: var(--font-display);
+    font-family: var(--font-mono);
     font-size: 11px;
     letter-spacing: 0.18em;
-    color: var(--text-muted);
+    color: var(--text-faint);
     text-transform: uppercase;
     flex-shrink: 0;
   }
@@ -275,16 +294,16 @@
   .entry-list {
     display: flex;
     flex-direction: column;
-    gap: var(--space-3, 12px);
     list-style: none;
     margin: 0;
     padding: 0;
+    border-top: 1px solid var(--border);
   }
 
   .entry {
-    min-height: 32px;
+    min-height: 40px;
     border-left: 2px solid transparent;
-    padding-left: var(--space-3, 12px);
+    border-bottom: 1px solid var(--border);
   }
 
   .entry.is-today {
@@ -292,14 +311,25 @@
   }
 
   .entry-link {
-    display: flex;
-    align-items: baseline;
+    display: grid;
+    grid-template-columns: 13ch minmax(0, 1fr) auto;
+    align-items: center;
     gap: var(--space-3, 12px);
+    min-height: 40px;
+    padding-left: var(--space-3, 12px);
     text-decoration: none;
     color: var(--text);
+    transition: background-color var(--dur-fast, 120ms) var(--ease-out), color var(--dur-fast, 120ms) var(--ease-out);
   }
 
-  .entry-link:hover .entry-snippet {
+  .entry-link:hover,
+  .entry-link:focus-visible {
+    background: var(--accent-bg);
+    outline: none;
+  }
+
+  .entry-link:hover .entry-snippet,
+  .entry-link:focus-visible .entry-snippet {
     color: var(--accent);
   }
 
@@ -307,15 +337,13 @@
     font-family: var(--font-mono);
     font-size: 12px;
     color: var(--text-muted);
-    width: 12ch;
-    flex-shrink: 0;
   }
 
   .entry-snippet {
-    font-family: var(--font-display);
+    font-family: var(--font-mono);
     font-size: var(--type-body-size, 15px);
     color: var(--text);
-    flex: 1;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -324,7 +352,9 @@
   .entry-todos {
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--accent);
+    border: 1px solid var(--border);
+    padding: 2px 6px;
     flex-shrink: 0;
   }
 
@@ -335,8 +365,8 @@
   }
 
   .skeleton-row {
-    height: 20px;
-    background: var(--surface-muted, rgba(0, 0, 0, 0.04));
+    height: 40px;
+    background: var(--accent-bg);
     border-radius: 2px;
     opacity: 0.6;
   }
@@ -361,5 +391,17 @@
 
   .status-msg.faint {
     color: var(--text-faint);
+  }
+
+  @media (max-width: 640px) {
+    .entry-link {
+      grid-template-columns: 1fr;
+      gap: 3px;
+      padding-block: var(--space-2, 8px);
+    }
+
+    .entry-todos {
+      justify-self: start;
+    }
   }
 </style>
