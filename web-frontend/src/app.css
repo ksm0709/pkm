@@ -4,3 +4,56 @@
 @import '$lib/styles/reset.css';
 @import '$lib/styles/type.css';
 @import '$lib/styles/reading-column.css';
+
+body {
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
+    radial-gradient(circle at 18% 0%, color-mix(in srgb, var(--rail) 24%, transparent), transparent 34rem);
+  background-size: 32px 32px, 32px 32px, auto;
+  background-attachment: fixed;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, transparent, color-mix(in srgb, var(--rail) 18%, transparent), transparent) top left / 100% 1px no-repeat,
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 72%, transparent), transparent 220px);
+}
+
+.prose,
+.note-editor,
+.cm-host,
+.reading-slab {
+  background-color: var(--surface-prose);
+  background-image: none;
+  color: var(--text);
+}
+
+.prose {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-5, 24px);
+  max-width: var(--reading-width, 70ch);
+}
+
+.prose :is(p, li) {
+  font-size: var(--type-body-size, 15px);
+  line-height: var(--type-body-lh, 1.72);
+}
+
+.prose :is(code, pre),
+.cm-editor .cm-line .cm-inline-code {
+  background-color: var(--code-bg);
+}
+
+.prose pre {
+  border: 1px solid var(--border);
+}
+
+.note-editor {
+  border-color: var(--border);
+}

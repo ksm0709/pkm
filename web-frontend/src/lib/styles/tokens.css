@@ -1,41 +1,55 @@
-/* Design tokens — The Periodical aesthetic */
-/* Light theme (default) */
+/* Design tokens — Signal Desk aesthetic */
+/* Dark graphite is the default; light mode keeps the same instrument-desk idea. */
 :root {
   /* Typography */
   --font-display: "Newsreader", ui-serif, serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
   /* Type scale */
-  --type-h1-size:     28px;
-  --type-h1-lh:       1.20;
+  --type-h1-size:     clamp(34px, 4vw, 44px);
+  --type-h1-lh:       1.05;
   --type-h1-weight:   600;
-  --type-h2-size:     20px;
-  --type-h2-lh:       1.30;
+  --type-h2-size:     22px;
+  --type-h2-lh:       1.22;
   --type-h2-weight:   600;
   --type-h3-size:     17px;
   --type-h3-lh:       1.35;
   --type-h3-weight:   600;
   --type-body-size:   15px;
-  --type-body-lh:     1.70;
+  --type-body-lh:     1.72;
   --type-body-weight: 400;
   --type-caption-size:   12px;
-  --type-caption-lh:     1.40;
+  --type-caption-lh:     1.45;
   --type-chrome-size:    13px;
-  --type-chrome-lh:      1.20;
+  --type-chrome-lh:      1.25;
   --type-chrome-weight:  400;
   --type-chrome-sm-size: 11px;
   --type-chrome-sm-lh:   1.20;
-  --type-chrome-sm-weight: 500;
+  --type-chrome-sm-weight: 600;
 
-  /* Color — light (paper) */
-  --bg:         #faf7f0;
-  --bg-elev:    #f4eee2;
-  --text:       #1a1815;
-  --text-muted: #5a554c;
-  --text-faint: #9a9285;
-  --border:     #d8cfb9;
-  --accent:     #2d4a6b;
-  --accent-bg:  #2d4a6b14;
+  /* Color — dark Signal Desk */
+  --bg:              #090b0d;
+  --surface:         #101419;
+  --surface-raised:  #161b21;
+  --surface-prose:   #12171c;
+  --text:            #e8ecef;
+  --text-muted:      #9aa6ad;
+  --text-faint:      #5f6970;
+  --border:          rgba(159, 177, 188, 0.20);
+  --rail:            rgba(236, 170, 74, 0.58);
+  --signal:          #ecaa4a;
+  --signal-cyan:     #70c7d8;
+  --signal-danger:   #ff6b5f;
+  --accent:          var(--signal);
+  --accent-bg:       rgba(236, 170, 74, 0.12);
+  --grid-line:       rgba(159, 177, 188, 0.055);
+  --focus-ring:      rgba(236, 170, 74, 0.34);
+  --selection-bg:    rgba(236, 170, 74, 0.24);
+  --code-bg:         rgba(4, 7, 10, 0.52);
+
+  /* Compatibility aliases for existing components. */
+  --bg-base: var(--bg);
+  --bg-elev: var(--surface-raised);
 
   /* Spacing */
   --space-1: 4px;
@@ -61,39 +75,61 @@
   --dur-base:    200ms;
   --dur-slow:    320ms;
 
-  /* Topbar */
-  --topbar-height: 44px;
-
-  /* Palette */
+  /* Shell */
+  --topbar-height: 48px;
   --palette-width:      560px;
   --palette-max-height: 60vh;
-
-  /* File tree drawer */
-  --drawer-width: 280px;
+  --drawer-width: 300px;
 }
 
-/* Dark theme */
-[data-theme="dark"] {
-  --bg:         #14110d;
-  --bg-elev:    #1d1915;
-  --text:       #e8e1cf;
-  --text-muted: #948b78;
-  --text-faint: #5d564b;
-  --border:     #312b22;
-  --accent:     #8fb8d6;
-  --accent-bg:  #8fb8d614;
+[data-theme="light"] {
+  --bg:              #eef1f2;
+  --surface:         #f8f8f4;
+  --surface-raised:  #ffffff;
+  --surface-prose:   #fbfaf5;
+  --text:            #111417;
+  --text-muted:      #53616a;
+  --text-faint:      #8a959b;
+  --border:          rgba(17, 20, 23, 0.16);
+  --rail:            rgba(173, 106, 22, 0.60);
+  --signal:          #ad6a16;
+  --signal-cyan:     #167d8d;
+  --signal-danger:   #b83d33;
+  --accent:          var(--signal);
+  --accent-bg:       rgba(173, 106, 22, 0.12);
+  --grid-line:       rgba(17, 20, 23, 0.045);
+  --focus-ring:      rgba(173, 106, 22, 0.30);
+  --selection-bg:    rgba(173, 106, 22, 0.20);
+  --code-bg:         rgba(17, 20, 23, 0.055);
 }
 
-/* Auto theme: respect OS preference when no manual override */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg:         #14110d;
-    --bg-elev:    #1d1915;
-    --text:       #e8e1cf;
-    --text-muted: #948b78;
-    --text-faint: #5d564b;
-    --border:     #312b22;
-    --accent:     #8fb8d6;
-    --accent-bg:  #8fb8d614;
+/* Auto theme: respect OS preference when no manual override. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg:              #eef1f2;
+    --surface:         #f8f8f4;
+    --surface-raised:  #ffffff;
+    --surface-prose:   #fbfaf5;
+    --text:            #111417;
+    --text-muted:      #53616a;
+    --text-faint:      #8a959b;
+    --border:          rgba(17, 20, 23, 0.16);
+    --rail:            rgba(173, 106, 22, 0.60);
+    --signal:          #ad6a16;
+    --signal-cyan:     #167d8d;
+    --signal-danger:   #b83d33;
+    --accent:          var(--signal);
+    --accent-bg:       rgba(173, 106, 22, 0.12);
+    --grid-line:       rgba(17, 20, 23, 0.045);
+    --focus-ring:      rgba(173, 106, 22, 0.30);
+    --selection-bg:    rgba(173, 106, 22, 0.20);
+    --code-bg:         rgba(17, 20, 23, 0.055);
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --type-h1-size: clamp(28px, 9vw, 34px);
+    --gutter: var(--space-4);
   }
 }

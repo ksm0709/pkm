@@ -1,11 +1,11 @@
-/* Typography scale — The Periodical */
+/* Typography scale — Signal Desk */
 
-/* Display headings — Newsreader */
 h1, .type-h1 {
   font-family: var(--font-display);
   font-size: var(--type-h1-size);
   line-height: var(--type-h1-lh);
   font-weight: var(--type-h1-weight);
+  letter-spacing: 0;
 }
 
 h2, .type-h2 {
@@ -13,6 +13,7 @@ h2, .type-h2 {
   font-size: var(--type-h2-size);
   line-height: var(--type-h2-lh);
   font-weight: var(--type-h2-weight);
+  letter-spacing: 0;
 }
 
 h3, .type-h3 {
@@ -20,17 +21,17 @@ h3, .type-h3 {
   font-size: var(--type-h3-size);
   line-height: var(--type-h3-lh);
   font-weight: var(--type-h3-weight);
+  letter-spacing: 0;
 }
 
-/* Body — Plex Mono */
 .type-body {
   font-family: var(--font-mono);
   font-size: var(--type-body-size);
   line-height: var(--type-body-lh);
   font-weight: var(--type-body-weight);
+  letter-spacing: 0;
 }
 
-/* Caption / italic — Newsreader Italic */
 .type-caption,
 .type-italic {
   font-family: var(--font-display);
@@ -39,26 +40,25 @@ h3, .type-h3 {
   line-height: var(--type-caption-lh);
 }
 
-/* Chrome — Plex Mono */
 .type-chrome {
   font-family: var(--font-mono);
   font-size: var(--type-chrome-size);
   line-height: var(--type-chrome-lh);
   font-weight: var(--type-chrome-weight);
+  letter-spacing: 0;
 }
 
-/* Chrome small — Plex Mono uppercase group labels */
 .type-chrome-sm {
   font-family: var(--font-mono);
   font-size: var(--type-chrome-sm-size);
   line-height: var(--type-chrome-sm-lh);
   font-weight: var(--type-chrome-sm-weight);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
   color: var(--text-faint);
 }
 
-/* Utility color classes */
 .text-muted  { color: var(--text-muted); }
 .text-faint  { color: var(--text-faint); }
 .text-accent { color: var(--accent); }
+.text-cyan   { color: var(--signal-cyan); }
