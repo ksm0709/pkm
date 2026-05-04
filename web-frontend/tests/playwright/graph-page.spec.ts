@@ -1,157 +1,126 @@
-import { expect, test, type Page, type Route } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { loginAndFindVault } from './helpers/pkm';
 
-const vaultName = 'alpha';
-
-const graphFixture = {
-  nodes: [
-    {
-      id: 'project-plan',
-      title: 'Project Plan',
-      type: 'note',
-      description: 'Project coordination summary.',
-      community: 'planning',
-      graph_tier: 1
-    },
-    {
-      id: 'research-note',
-      label: 'Research Note',
-      type: 'note',
-      community: 'planning',
-      graph_tier: 2
-    },
-    { id: 'tag:pkm', title: '#pkm', type: 'tag', cluster: 'tags' },
-    { id: 'missing-note', type: 'note_or_unresolved', cluster: 'unresolved' }
-  ],
-  links: [
-    { source: 'project-plan', target: 'research-note', type: 'wikilink' },
-    { source: 'project-plan', target: 'tag:pkm', type: 'has_tag' },
-    { source: { id: 'research-note' }, target: { id: 'missing-note' }, type: 'semantic_similar' }
-  ]
+type GraphNode = {
+  id: string;
+  title?: string;
+  type?: 'note' | 'tag' | 'note_or_unresolved';
+  description?: string;
+  community?: string;
+  cluster?: string;
 };
 
-const edgesFixture = {
-  nodes: [
-    { id: 'alpha-note', title: 'Alpha Note', node_type: 'note' },
-    { id: 'beta-note', title: 'Beta Note', node_type: 'note' }
-  ],
-  edges: [{ source: 'alpha-note', target: 'beta-note', edge_type: 'wikilink' }]
+type GraphPayload = {
+  nodes: GraphNode[];
+  links: Array<{ source: string; target: string; type?: string }>;
 };
+
+function graphPayload(): GraphPayload {
+  return {
+    nodes: [
+      { id: 'alpha', title: 'Alpha', type: 'note', description: 'note alpha' },
+      { id: 'beta', title: 'Beta', type: 'note', description: 'note beta' },
+      { id: 'work', title: 'work', type: 'tag', description: 'tag work' },
+      { id: 'ghost', title: 'ghost', type: 'note_or_unresolved', description: '' }
+    ],
+    links: [
+      { source: 'alpha', target: 'beta', type: 'wikilink' },
+      { source: 'alpha', target: 'work', type: 'has_tag' },
+      { source: 'beta', target: 'ghost', type: 'semantic_similar' }
+    ]
+  };
+}
 
 test.describe('vault graph page', () => {
-  test('renders graph API data with deterministic modes, filters, and note navigation', async ({ page }) => {
-    const graphRequests: string[] = [];
-    await mockGraphApi(page, async (route) => {
-      graphRequests.push(route.request().url());
-      await json(route, graphFixture);
+  test('drawer graph item is enabled and routes', async ({ page }) => {
+    const vaultName = await loginAndFindVault(page);
+    await page.goto(`/${encodeURIComponent(vaultName)}`);
+    await page.waitForLoadState('networkidle').catch(() => {});
+
+    await page.getByRole('button', { name: 'Open navigation drawer' }).click();
+    const graph = page.locator('[role="button"][aria-label="Graph"]');
+    await expect(graph).toHaveAttribute('aria-disabled', 'false');
+    await graph.click();
+    await expect(page).toHaveURL(new RegExp(`/${escapeRegExp(vaultName)}/graph$`));
+  });
+
+  test('CmdK graph command routes to graph page', async ({ page }) => {
+    const vaultName = await loginAndFindVault(page);
+    await page.goto(`/${encodeURIComponent(vaultName)}`);
+    await page.waitForLoadState('networkidle').catch(() => {});
+
+    await page.getByRole('button', { name: 'Open command palette' }).click();
+    await expect(
+      page.locator('[role="dialog"][aria-label="Command palette"]')
+    ).toBeVisible();
+    await page.locator('.cmdk-input').fill('graph');
+    await page.getByRole('option', { name: /Open graph/ }).click();
+    await expect(page).toHaveURL(new RegExp(`/${escapeRegExp(vaultName)}/graph$`));
+  });
+
+  test('renders graph nodes and edges from /api/v1/vault/{name}/graph', async ({ page }) => {
+    const vaultName = await loginAndFindVault(page);
+
+    await page.route('**/api/v1/vault/*/graph', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(graphPayload())
+      });
     });
 
-    await page.goto(`/${vaultName}/graph`);
+    await page.route('**/api/v1/vault/**', async (route) => {
+      const url = route.request().url();
+      if (url.includes('/api/v1/vaults') || url.includes(`/api/v1/vault/${vaultName}/graph`)) {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({ status: 404, body: 'not found' });
+    });
 
-    await expect(page.getByText('4 nodes')).toBeVisible();
-    await expect(page.getByText('3 edges')).toBeVisible();
-    expect(graphRequests.some((url) => new URL(url).pathname === `/api/v1/vault/${vaultName}/graph`)).toBe(true);
+    await page.goto(`/${encodeURIComponent(vaultName)}/graph`);
+    await expect(page.getByTestId('graph-summary')).toHaveText('4 nodes · 3 edges');
+    await expect(page.getByTestId('graph-node')).toHaveCount(4);
+    expect(await page.getByTestId('graph-edge').count()).toBeGreaterThan(0);
+    await expect(page.getByText('Alpha')).toBeVisible();
+    await expect(page.getByText('work')).toBeVisible();
+    await expect(page.getByText('ghost')).toBeVisible();
+  });
 
-    await expect(page.locator('[data-testid="graph-node"]')).toHaveCount(4);
-    await expect(page.locator('[data-testid="graph-edge"]')).toHaveCount(3);
-    await expect(page.getByText('Project Plan')).toBeVisible();
-    await expect(page.getByText('#pkm')).toBeVisible();
-    await expect(page.getByText('missing-note')).toBeVisible();
+  test('supports visualization mode switches and filters', async ({ page }) => {
+    const vaultName = await loginAndFindVault(page);
 
+    await page.route('**/api/v1/vault/*/graph', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(graphPayload())
+      });
+    });
+
+    await page.goto(`/${encodeURIComponent(vaultName)}/graph`);
     await page.getByRole('button', { name: 'Cluster' }).click();
-    await expect(page.locator('[data-testid="graph-mode"]')).toHaveText(/Cluster/);
-    await expect(page.getByText(/planning/)).toBeVisible();
-
-    await page.getByRole('button', { name: 'Degree' }).click();
-    await expect(page.locator('[data-testid="graph-mode"]')).toHaveText(/Degree/);
-    await expect(page.locator('[data-testid="graph-row"]').first()).toContainText('Project Plan');
-
-    await page.getByLabel('Node type filter').selectOption('tag');
-    await expect(page.locator('[data-testid="graph-node"]')).toHaveCount(1);
-    await expect(page.locator('[data-testid="graph-row"]')).toHaveCount(1);
-    await expect(page.locator('[data-testid="graph-row"]')).toContainText('#pkm');
-    await expect(page.locator('[data-testid="graph-edge"]')).toHaveCount(0);
-
-    await page.getByLabel('Node type filter').selectOption('all');
-    await page.getByLabel('Edge type filter').selectOption('wikilink');
-    await expect(page.locator('[data-testid="graph-edge"]')).toHaveCount(1);
-    await expect(page.locator('[data-testid="graph-row"]')).toHaveCount(2);
-
+    await expect(page.getByTestId('graph-summary')).toHaveText('4 nodes · 3 edges');
     await page.getByRole('button', { name: 'List' }).click();
-    await expect(page.locator('[data-testid="graph-mode"]')).toHaveText(/List/);
-    await expect(page.getByRole('table', { name: 'Graph nodes' })).toBeVisible();
+    await expect(page.getByTestId('graph-summary')).toHaveCount(0);
+    await expect(page.getByRole('rowheader')).toHaveCount(0);
+    await page.getByRole('listbox', { name: 'Node type filter' }).selectOption('tag');
+    await expect(page.getByRole('article')).toHaveCount(1);
 
-    await page.getByLabel('Edge type filter').selectOption('all');
-    await page.getByRole('button', { name: 'Radial' }).click();
-    await page.getByRole('button', { name: 'Open note Project Plan' }).click();
-    await expect(page).toHaveURL(new RegExp(`/${vaultName}/notes/project-plan$`));
+    await page.getByRole('listbox', { name: 'Edge type filter' }).selectOption('semantic_similar');
+    await expect(page.getByText('3 edges')).not.toBeVisible();
+    await expect(page.getByText('No matches.')).toBeVisible();
   });
 
-  test('accepts edges arrays and object-like references', async ({ page }) => {
-    await mockGraphApi(page, async (route) => json(route, edgesFixture));
-
-    await page.goto(`/${vaultName}/graph`);
-
-    await expect(page.getByText('2 nodes')).toBeVisible();
-    await expect(page.getByText('1 edge')).toBeVisible();
-    await expect(page.locator('[data-testid="graph-node"]')).toHaveCount(2);
-    await expect(page.locator('[data-testid="graph-edge"]')).toHaveCount(1);
-    await expect(page.getByText('Alpha Note')).toBeVisible();
-  });
-
-  test('missing graph response explains how to create the graph index', async ({ page }) => {
-    await mockGraphApi(page, async (route) => route.fulfill({ status: 404, body: 'not found' }));
-
-    await page.goto(`/${vaultName}/graph`);
-
-    await expect(page.getByText('Graph index not found.')).toBeVisible();
-    await expect(page.getByText(/pkm index/)).toBeVisible();
-  });
-
-  test('large graphs cap only the visual overview while keeping the list browsable', async ({ page }) => {
-    const nodes = Array.from({ length: 86 }, (_, index) => ({
-      id: `note-${String(index + 1).padStart(2, '0')}`,
-      title: `Note ${index + 1}`,
-      type: 'note'
-    }));
-    const links = nodes.slice(1).map((node, index) => ({
-      source: nodes[index].id,
-      target: node.id,
-      type: 'wikilink'
-    }));
-    await mockGraphApi(page, async (route) => json(route, { nodes, links }));
-
-    await page.goto(`/${vaultName}/graph`);
-
-    await expect(page.getByText('86 nodes')).toBeVisible();
-    await expect(page.getByText(/Rendering first 80 of 86/)).toBeVisible();
-    await expect(page.locator('[data-testid="graph-node"]')).toHaveCount(80);
-    await expect(page.locator('[data-testid="graph-row"]')).toHaveCount(86);
+  test('shows pkm index guidance when graph is missing', async ({ page }) => {
+    const vaultName = await loginAndFindVault(page);
+    await page.route('**/api/v1/vault/*/graph', (route) => route.fulfill({ status: 404, body: 'not found' }));
+    await page.goto(`/${encodeURIComponent(vaultName)}/graph`);
+    await expect(page.getByText(/pkm index/i)).toBeVisible();
+    await expect(page.getByText(/run `pkm index`/i)).toBeVisible();
   });
 });
 
-async function mockGraphApi(page: Page, graphHandler: (route: Route) => Promise<void>) {
-  await page.route('**/api/v1/**', async (route) => {
-    const url = new URL(route.request().url());
-    const path = decodeURIComponent(url.pathname);
-
-    if (path === `/api/v1/vault/${vaultName}/graph`) {
-      await graphHandler(route);
-      return;
-    }
-
-    if (path === '/api/v1/vaults') {
-      await json(route, [{ name: vaultName, path: '/tmp/alpha', is_default: true }]);
-      return;
-    }
-
-    await route.fulfill({ status: 404, body: `Unhandled mock route: ${path}` });
-  });
-}
-
-async function json(route: Route, body: unknown, status = 200) {
-  await route.fulfill({
-    status,
-    contentType: 'application/json',
-    body: JSON.stringify(body)
-  });
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
 }

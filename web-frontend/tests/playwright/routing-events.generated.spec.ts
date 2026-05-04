@@ -1192,9 +1192,16 @@ test.describe('generated routing and event contracts', () => {
     await expectNoMissingPage(page);
 
     await page.goto(`/${vaultName}`);
+    await page.getByRole('button', { name: 'Open navigation drawer' }).click();
+    await expect(page.locator('[role="button"][aria-label="Graph"]')).toHaveAttribute(
+      'aria-disabled',
+      'false'
+    );
+
     await openCommandPalette(page);
-    await page.getByRole('option', { name: /Graph unavailable/ }).click();
-    await expect(page).toHaveURL(new RegExp(`/${vaultName}$`));
+    await page.locator('.cmdk-input').fill('graph');
+    await page.getByRole('option', { name: /Open graph/ }).click();
+    await expect(page).toHaveURL(new RegExp(`/${vaultName}/graph$`));
     await expect(
       page.locator('[role="dialog"][aria-label="Command palette"]')
     ).toBeHidden();
@@ -1448,11 +1455,23 @@ async function mockPkmApi(page: Page) {
       }
     }
 
-    const graphMatch = path.match(
+    const graphMatch = path.match(/^\/api\/v1\/vault\/([^/]+)\/graph\/?(?:$|[?])?/);
+    if (graphMatch && !path.includes('/ego/')) {
+      await json(route, {
+        nodes: [
+          { id: 'seed', title: 'Seed Note', type: 'note' },
+          { id: 'tag:hub', title: 'hub', type: 'tag' }
+        ],
+        links: [{ source: 'seed', target: 'tag:hub', type: 'has_tag' }]
+      });
+      return;
+    }
+
+    const graphEgoMatch = path.match(
       /^\/api\/v1\/vault\/([^/]+)\/graph\/ego\/(.+)$/
     );
-    if (graphMatch) {
-      const id = graphMatch[2];
+    if (graphEgoMatch) {
+      const id = graphEgoMatch[2];
       await json(route, {
         nodes: [
           { id, title: String(id) },

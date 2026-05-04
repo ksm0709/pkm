@@ -49,7 +49,7 @@
       id: 'graph',
       label: 'Graph',
       meta: 'pending',
-      disabled: true
+      href: `/${vaultName}/graph`
     },
     {
       id: 'ask',
