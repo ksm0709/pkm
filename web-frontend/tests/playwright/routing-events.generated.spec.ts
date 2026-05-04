@@ -38,6 +38,19 @@ const notes = [
   }
 ];
 
+
+const graphFixture = {
+  nodes: [
+    { id: 'project-plan', title: 'Project Plan', type: 'note', community: 'planning', graph_tier: 1 },
+    { id: 'research-note', title: 'Research Note', type: 'note', community: 'planning', graph_tier: 2 },
+    { id: 'tag:pkm', title: '#pkm', type: 'tag', cluster: 'tags' }
+  ],
+  links: [
+    { source: 'project-plan', target: 'research-note', type: 'wikilink' },
+    { source: 'project-plan', target: 'tag:pkm', type: 'has_tag' }
+  ]
+};
+
 const betaNotes = [
   {
     note_id: 'beta-home',
@@ -479,10 +492,10 @@ test.describe('generated routing and event contracts', () => {
       .locator('[role="button"][aria-label="Tags"]')
       .evaluate((el) => (el as HTMLElement).click());
     await expect(page).toHaveURL(beforeDisabled);
-    await page
-      .locator('[role="button"][aria-label="Graph"]')
-      .evaluate((el) => (el as HTMLElement).click());
-    await expect(page).toHaveURL(beforeDisabled);
+    await page.getByRole('button', { name: 'Graph' }).click();
+    await expect(page).toHaveURL(new RegExp(`/${vaultName}/graph$`));
+    await expect(page.getByText('3 nodes')).toBeVisible();
+    await expect(page.locator('[data-testid="graph-node"]')).toHaveCount(3);
 
     await page.evaluate(() => {
       if (document.activeElement instanceof HTMLElement) {
@@ -1201,6 +1214,7 @@ test.describe('generated routing and event contracts', () => {
     await openCommandPalette(page);
     await page.getByRole('option', { name: /Open graph/ }).click();
     await expect(page).toHaveURL(new RegExp(`/${vaultName}/graph$`));
+    await expect(page.getByText('3 nodes')).toBeVisible();
     await expect(
       page.locator('[role="dialog"][aria-label="Command palette"]')
     ).toBeHidden();
@@ -1442,7 +1456,7 @@ async function mockPkmApi(page: Page) {
 
     const graphMatch = path.match(/^\/api\/v1\/vault\/([^/]+)\/graph$/);
     if (graphMatch) {
-      await json(route, { nodes: [], links: [] });
+      await json(route, graphFixture);
       return;
     }
 

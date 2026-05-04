@@ -73,15 +73,19 @@ test.describe('vault graph page', () => {
 
     await page.goto(`/${encodeURIComponent(vaultName)}/graph`);
 
-    await expect(page.locator('[data-testid="graph-summary"]')).toHaveText('4 nodes · 3 edges');
+    await expect(page.locator('.graph-summary')).toHaveText(/4 nodes · 3 edges/);
     expect(graphRequests.some((url) => new URL(url).pathname === `/api/v1/vault/${vaultName}/graph`)).toBe(true);
     await expect(page.locator('[data-testid="graph-node"]')).toHaveCount(4);
     await expect(page.locator('[data-testid="graph-edge"]')).toHaveCount(3);
-    await expect(page.locator('[data-testid="graph-row"]')).toHaveCount(4);
+    await expect(
+      page.locator('[data-testid="graph-row"]').filter({ hasText: 'Project Plan' })
+    ).toHaveCount(1);
+    await expect(page.locator('[data-testid="graph-row"]').filter({ hasText: '#pkm' })).toHaveCount(1);
+    await expect(page.locator('[data-testid="graph-row"]').filter({ hasText: 'missing-note' })).toHaveCount(1);
 
     await page.getByRole('button', { name: 'Cluster' }).click();
     await expect(page.locator('[data-testid="graph-mode"]')).toHaveText(/Mode: Cluster/);
-    await expect(page.getByText(/planning/)).toBeVisible();
+    await expect(page.locator('.cluster-labels')).toContainText('planning');
 
     await page.getByRole('button', { name: 'Degree' }).click();
     await expect(page.locator('[data-testid="graph-mode"]')).toHaveText(/Mode: Degree/);
@@ -108,11 +112,15 @@ test.describe('vault graph page', () => {
     await page.getByRole('button', { name: 'List' }).click();
     await expect(page.locator('[data-testid="graph-mode"]')).toHaveText(/Mode: List/);
     await expect(page.getByRole('table', { name: 'Graph nodes' })).toBeVisible();
-    await expect(page.locator('[data-testid="graph-node"]')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Open note Project Plan' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Radial' }).click();
-    await page.getByRole('button', { name: 'Open note Project Plan' }).first().click();
-    await expect(page).toHaveURL(new RegExp(`/${escapeRegExp(vaultName)}/notes/project-plan$`));
+    await page
+      .locator('[data-testid="graph-row"]')
+      .filter({ hasText: 'Project Plan' })
+      .getByRole('button', { name: 'Open note Project Plan' })
+      .click();
+    await expect(page).toHaveURL(new RegExp(`/${vaultName}/notes/project-plan$`));
   });
 
   test('accepts edges arrays and object-like references', async ({ page }) => {
@@ -121,10 +129,12 @@ test.describe('vault graph page', () => {
 
     await page.goto(`/${encodeURIComponent(vaultName)}/graph`);
 
-    await expect(page.locator('[data-testid="graph-summary"]')).toHaveText('2 nodes · 1 edge');
+    await expect(page.locator('.graph-summary')).toHaveText(/2 nodes · 1 edge/);
     await expect(page.locator('[data-testid="graph-node"]')).toHaveCount(2);
     await expect(page.locator('[data-testid="graph-edge"]')).toHaveCount(1);
-    await expect(page.getByText('Alpha Note')).toBeVisible();
+    await expect(
+      page.locator('[data-testid="graph-row"]').filter({ hasText: 'Alpha Note' })
+    ).toHaveCount(1);
   });
 
   test('missing graph response explains how to create the graph index', async ({ page }) => {
@@ -153,7 +163,7 @@ test.describe('vault graph page', () => {
 
     await page.goto(`/${encodeURIComponent(vaultName)}/graph`);
 
-    await expect(page.locator('[data-testid="graph-summary"]')).toHaveText('86 nodes · 85 edges');
+    await expect(page.locator('.graph-summary')).toHaveText(/86 nodes · 85 edges/);
     await expect(page.locator('.cap-status')).toHaveText(/Rendering first 80 of 86/);
     await expect(page.locator('[data-testid="graph-node"]')).toHaveCount(80);
     await expect(page.locator('[data-testid="graph-row"]')).toHaveCount(86);

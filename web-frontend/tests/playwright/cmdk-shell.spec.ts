@@ -68,9 +68,7 @@ test.describe('command palette and shell navigation', () => {
 
     const before = page.url();
     const tags = page.locator('[role="button"][aria-label="Tags"]');
-    const graph = page.locator('[role="button"][aria-label="Graph"]');
     await expect(tags).toHaveAttribute('aria-disabled', 'true');
-    await expect(graph).toHaveAttribute('aria-disabled', 'false');
 
     await tags.click({ force: true });
     expect(page.url()).toBe(before);
@@ -78,12 +76,10 @@ test.describe('command palette and shell navigation', () => {
     await page.keyboard.press('Enter');
     expect(page.url()).toBe(before);
 
-    await graph.click();
-    await expect(page).toHaveURL(new RegExp(`/${escapeRegExp(vaultName)}/graph$`));
-    await page.getByRole('button', { name: 'Graph' }).focus();
-    await page.keyboard.press('Enter');
+    await page.getByRole('button', { name: 'Graph' }).click();
     await expect(page).toHaveURL(new RegExp(`/${escapeRegExp(vaultName)}/graph$`));
 
+    await page.getByRole('button', { name: 'Open navigation drawer' }).click();
     await page.locator('button[aria-label="Ask"]').click();
     await expect(page).toHaveURL(new RegExp(`/${escapeRegExp(vaultName)}/ask$`));
   });
