@@ -2,6 +2,18 @@ import { apiGet } from './api/client.js';
 
 const MAX_ROWS = 8;
 
+/**
+ * @typedef {{ kind: 'note' | 'tag', query: string, from: number, to: number }} InlineTrigger
+ * @typedef {{ kind: 'note' | 'tag', label: string, title: string, detail: string, insert: string, score: number }} InlineSuggestion
+ * @typedef {{ note_id?: unknown, title?: unknown, snippet?: unknown, description?: unknown, path?: unknown }} NoteResult
+ * @typedef {{ tag?: unknown, count?: unknown }} TagResult
+ */
+
+/**
+ * @param {string} value
+ * @param {number} [cursor]
+ * @returns {InlineTrigger | null}
+ */
 export function detectInlineTrigger(value, cursor = value.length) {
   const before = value.slice(0, cursor);
   const wiki = before.match(/\[\[([^\]\[\n]*)$/);
@@ -29,6 +41,11 @@ export function detectInlineTrigger(value, cursor = value.length) {
   return null;
 }
 
+/**
+ * @param {string} vaultName
+ * @param {InlineTrigger | null} trigger
+ * @returns {Promise<InlineSuggestion[]>}
+ */
 export async function fetchInlineSuggestions(vaultName, trigger) {
   if (!trigger || !vaultName) return [];
   if (trigger.kind === 'note') {
@@ -40,7 +57,7 @@ export async function fetchInlineSuggestions(vaultName, trigger) {
       : await apiGet(`/api/v1/vault/${encodeURIComponent(vaultName)}/notes`);
     const results = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : [];
     return results
-      .map((note, index) => ({
+      .map((/** @type {NoteResult} */ note, /** @type {number} */ index) => ({
         kind: 'note',
         label: String(note.note_id ?? note.title ?? ''),
         title: String(note.title ?? note.note_id ?? ''),
@@ -52,7 +69,7 @@ export async function fetchInlineSuggestions(vaultName, trigger) {
           index
         )
       }))
-      .filter((item) => item.label)
+      .filter((/** @type {InlineSuggestion} */ item) => item.label)
       .sort(compareSuggestions)
       .slice(0, MAX_ROWS);
   }
@@ -60,7 +77,7 @@ export async function fetchInlineSuggestions(vaultName, trigger) {
   const data = await apiGet(`/api/v1/vault/${encodeURIComponent(vaultName)}/tags`);
   const tags = Array.isArray(data?.tags) ? data.tags : [];
   return tags
-    .map((item, index) => ({
+    .map((/** @type {TagResult} */ item, /** @type {number} */ index) => ({
       kind: 'tag',
       label: `#${String(item.tag ?? '')}`,
       title: `#${String(item.tag ?? '')}`,
@@ -68,21 +85,35 @@ export async function fetchInlineSuggestions(vaultName, trigger) {
       insert: `#${String(item.tag ?? '')}`,
       score: scoreCandidate([item.tag], trigger.query, index)
     }))
-    .filter((item) => item.label.length > 1 && Number.isFinite(item.score))
+    .filter((/** @type {InlineSuggestion} */ item) => item.label.length > 1 && Number.isFinite(item.score))
     .sort(compareSuggestions)
     .slice(0, MAX_ROWS);
 }
 
+/**
+ * @param {string} value
+ * @param {InlineTrigger} trigger
+ * @param {InlineSuggestion} suggestion
+ */
 export function applyInlineSuggestion(value, trigger, suggestion) {
   const next = `${value.slice(0, trigger.from)}${suggestion.insert}${value.slice(trigger.to)}`;
   const cursor = trigger.from + suggestion.insert.length;
   return { value: next, cursor };
 }
 
+/**
+ * @param {InlineSuggestion} a
+ * @param {InlineSuggestion} b
+ */
 function compareSuggestions(a, b) {
   return a.score - b.score || a.label.localeCompare(b.label);
 }
 
+/**
+ * @param {unknown[]} fields
+ * @param {string} query
+ * @param {number} index
+ */
 function scoreCandidate(fields, query, index) {
   const q = normalize(query);
   if (!q) return index / 100;
@@ -100,6 +131,7 @@ function scoreCandidate(fields, query, index) {
   return best + index / 100;
 }
 
+/** @param {unknown} text */
 function normalize(text) {
   return String(text).toLowerCase().replace(/[_/-]+/g, ' ').replace(/\s+/g, ' ').trim();
 }

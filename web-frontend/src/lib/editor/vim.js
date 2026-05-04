@@ -20,7 +20,7 @@ let installed = false;
 /** @param {string} key */
 function callNav(key) {
   /** @type {any} */
-  const nav = (typeof window !== 'undefined' ? window : {}).__pkmNav;
+  const nav = /** @type {any} */ (typeof window !== 'undefined' ? window : {}).__pkmNav;
   const fn = nav?.[key];
   if (typeof fn === 'function') fn();
 }

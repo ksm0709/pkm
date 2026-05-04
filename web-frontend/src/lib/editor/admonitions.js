@@ -23,12 +23,19 @@ const TYPES = {
   caution: { icon: '!', label: 'Caution' }
 };
 
+/** @typedef {keyof typeof TYPES} AdmonitionType */
+
 const MARKER_RE = /^>\s*\[!(\w+)\]\s*(.*)$/;
 const QUOTE_RE = /^>\s?(.*)$/;
 
+/** @param {string} value @returns {value is AdmonitionType} */
+function isAdmonitionType(value) {
+  return Object.prototype.hasOwnProperty.call(TYPES, value);
+}
+
 class AdmonitionLabelWidget extends WidgetType {
   /**
-   * @param {string} type
+   * @param {AdmonitionType} type
    * @param {string} title
    */
   constructor(type, title) {
@@ -36,6 +43,7 @@ class AdmonitionLabelWidget extends WidgetType {
     this.type = type;
     this.title = title;
   }
+  /** @param {AdmonitionLabelWidget} o */
   eq(o) {
     return o.type === this.type && o.title === this.title;
   }
@@ -73,7 +81,7 @@ function buildDecorations(view) {
     while (pos <= to) {
       const line = doc.lineAt(pos);
       const m = MARKER_RE.exec(line.text);
-      if (m && TYPES[m[1]]) {
+      if (m && isAdmonitionType(m[1])) {
         const type = m[1];
         const title = m[2];
         // Decorate marker line.

@@ -16,7 +16,15 @@
 import { ViewPlugin, Decoration, WidgetType, EditorView } from '@codemirror/view';
 import { RangeSetBuilder } from '@codemirror/state';
 
+/**
+ * @typedef {{
+ *   render(source: string, element: HTMLElement, options?: { throwOnError?: boolean, displayMode?: boolean }): void
+ * }} KatexRenderer
+ */
+
+/** @type {KatexRenderer | null} */
 let katexModule = null;
+/** @type {Promise<KatexRenderer> | null} */
 let katexLoading = null;
 let cssInjected = false;
 
@@ -46,7 +54,7 @@ function loadKatex() {
       }
       cssInjected = true;
     }
-    katexModule = mod.default ?? mod;
+    katexModule = /** @type {KatexRenderer} */ (mod.default ?? mod);
     return katexModule;
   })();
   return katexLoading;
@@ -62,6 +70,7 @@ class MathWidget extends WidgetType {
     this.source = source;
     this.display = display;
   }
+  /** @param {MathWidget} other */
   eq(other) {
     return other.source === this.source && other.display === this.display;
   }
@@ -165,6 +174,7 @@ export const katexLazy = ViewPlugin.fromClass(
         if (foundAny && !katexModule) this._kickLoad(update.view);
       }
     }
+    /** @param {import('@codemirror/view').EditorView} view */
     _kickLoad(view) {
       loadKatex().then(() => {
         // Re-render once katex is ready by dispatching a no-op effect.

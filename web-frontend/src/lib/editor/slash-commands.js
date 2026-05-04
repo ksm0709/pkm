@@ -220,7 +220,9 @@ const slashTheme = EditorView.baseTheme({
   }
 });
 
+/** @param {string} char */
 function insertAndStartCompletion(char) {
+  /** @param {import('@codemirror/view').EditorView} view */
   return (view) => {
     view.dispatch(view.state.replaceSelection(char));
     queueMicrotask(() => startCompletion(view));

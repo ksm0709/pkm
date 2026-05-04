@@ -26,6 +26,7 @@ class CheckboxWidget extends WidgetType {
     this.checked = checked;
     this.pos = pos;
   }
+  /** @param {CheckboxWidget} o */
   eq(o) {
     return o.checked === this.checked && o.pos === this.pos;
   }
