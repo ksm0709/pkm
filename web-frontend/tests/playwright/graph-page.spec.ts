@@ -74,14 +74,18 @@ test.describe('vault graph page', () => {
     await page.goto(`/${encodeURIComponent(vaultName)}/graph`);
 
     await expect(page.locator('.graph-summary')).toHaveText(/4 nodes · 3 edges/);
-    expect(graphRequests.some((url) => new URL(url).pathname === `/api/v1/vault/${vaultName}/graph`)).toBe(true);
+    expect(
+      graphRequests.some(
+        (url) => decodeURIComponent(new URL(url).pathname) === `/api/v1/vault/${vaultName}/graph`
+      )
+    ).toBe(true);
     await expect(page.locator('[data-testid="graph-node"]')).toHaveCount(4);
     await expect(page.locator('[data-testid="graph-edge"]')).toHaveCount(3);
     await expect(
       page.locator('[data-testid="graph-row"]').filter({ hasText: 'Project Plan' })
     ).toHaveCount(1);
     await expect(page.locator('[data-testid="graph-row"]').filter({ hasText: '#pkm' })).toHaveCount(1);
-    await expect(page.locator('[data-testid="graph-row"]').filter({ hasText: 'missing-note' })).toHaveCount(1);
+    await expect(page.locator('[data-testid="graph-row"]').filter({ hasText: 'Missing Roadmap' })).toHaveCount(1);
 
     await page.getByRole('button', { name: 'Cluster' }).click();
     await expect(page.locator('[data-testid="graph-mode"]')).toHaveText(/Mode: Cluster/);
@@ -125,7 +129,9 @@ test.describe('vault graph page', () => {
       .filter({ hasText: 'Project Plan' })
       .getByRole('button', { name: 'Open note Project Plan' })
       .click();
-    await expect(page).toHaveURL(new RegExp(`/${vaultName}/notes/project-plan$`));
+    await expect(page).toHaveURL(
+      new RegExp(`/${escapeRegExp(encodeURIComponent(vaultName))}/notes/project-plan$`)
+    );
   });
 
   test('accepts edges arrays and object-like references', async ({ page }) => {
@@ -150,6 +156,42 @@ test.describe('vault graph page', () => {
 
     await expect(page.getByText('Graph index not found.')).toBeVisible();
     await expect(page.getByText(/pkm index/)).toBeVisible();
+  });
+
+  test('empty or malformed graph payloads render an empty graph state', async ({ page }) => {
+    const vaultName = await loginAndFindVault(page);
+    await mockGraphApi(page, async (route) => json(route, { nodes: 'not-an-array', links: null }));
+
+    await page.goto(`/${encodeURIComponent(vaultName)}/graph`);
+
+    await expect(page.getByText('Graph is empty.')).toBeVisible();
+    await expect(page.getByText(/pkm index/)).toBeVisible();
+    await expect(page.locator('[data-testid="graph-node"]')).toHaveCount(0);
+  });
+
+  test('backend failures are shown without hiding the graph shell', async ({ page }) => {
+    const vaultName = await loginAndFindVault(page);
+    await mockGraphApi(page, async (route) => route.fulfill({ status: 500, body: 'boom' }));
+
+    await page.goto(`/${encodeURIComponent(vaultName)}/graph`);
+
+    await expect(page.locator('.graph-summary')).toHaveText('Graph unavailable');
+    await expect(page.getByText('GET graph → 500')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Radial' })).toBeVisible();
+  });
+
+  test('filter combinations with no matching nodes show clear feedback', async ({ page }) => {
+    const vaultName = await loginAndFindVault(page);
+    await mockGraphApi(page, async (route) => json(route, nodeLinkFixture));
+
+    await page.goto(`/${encodeURIComponent(vaultName)}/graph`);
+
+    await page.getByLabel('Node type filter').selectOption('tag');
+    await page.getByLabel('Edge type filter').selectOption('wikilink');
+
+    await expect(page.getByText('No graph matches for the current filters.')).toBeVisible();
+    await expect(page.locator('[data-testid="graph-node"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="graph-row"]')).toHaveCount(0);
   });
 
   test('large graphs cap only the visual overview while keeping the list browsable', async ({ page }) => {
