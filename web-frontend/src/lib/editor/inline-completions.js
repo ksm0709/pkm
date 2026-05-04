@@ -1,6 +1,8 @@
 import { EditorView } from '@codemirror/view';
 import { detectInlineTrigger, fetchInlineSuggestions } from '../inline-suggestions.js';
 
+/** @typedef {import('../inline-suggestions.js').InlineSuggestion} InlineSuggestion */
+
 /**
  * @param {import('@codemirror/autocomplete').CompletionContext} context
  */
@@ -19,7 +21,7 @@ export async function inlineCompletionSource(context) {
     from: trigger.from,
     to: context.pos,
     filter: false,
-    options: suggestions.map((suggestion) => ({
+    options: suggestions.map((/** @type {InlineSuggestion} */ suggestion) => ({
       label: suggestion.label,
       detail: suggestion.kind === 'note' ? suggestion.title : suggestion.detail,
       type: suggestion.kind === 'tag' ? 'keyword' : 'text',

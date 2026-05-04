@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { streamSse } from './sse.js';
 
+/** @param {string[]} chunks */
 function responseFromChunks(chunks) {
   const encoder = new TextEncoder();
   return new Response(
@@ -27,6 +28,7 @@ describe('streamSse', () => {
         ])
       )
     );
+    /** @type {Array<{ event: string, data: unknown }>} */
     const events = [];
 
     await streamSse('/api/v1/vault/test/ask', { query: 'hi' }, (event, data) => {

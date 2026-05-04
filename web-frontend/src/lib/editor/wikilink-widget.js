@@ -20,7 +20,7 @@
  * remounts) and would otherwise need to be passed through the host
  * configuration anyway.
  *
- * @see ./wikilink-widget.js — WikilinkResolver singleton (below).
+ * See WikilinkResolver singleton below.
  */
 import { EditorView, ViewPlugin, Decoration, WidgetType } from '@codemirror/view';
 import { RangeSetBuilder } from '@codemirror/state';
@@ -54,8 +54,9 @@ class WikilinkResolver {
 
   _installFocusInvalidator() {
     if (typeof window === 'undefined') return;
-    if (window.__pkmWikilinkFocusInstalled) return;
-    window.__pkmWikilinkFocusInstalled = true;
+    const win = /** @type {any} */ (window);
+    if (win.__pkmWikilinkFocusInstalled) return;
+    win.__pkmWikilinkFocusInstalled = true;
     window.addEventListener('focus', () => {
       // Drop all caches; pending in-flight batches still resolve their own
       // promises (callers waiting on them get the previous result).
