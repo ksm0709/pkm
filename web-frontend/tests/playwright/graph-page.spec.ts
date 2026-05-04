@@ -112,7 +112,12 @@ test.describe('vault graph page', () => {
     await page.getByRole('button', { name: 'List' }).click();
     await expect(page.locator('[data-testid="graph-mode"]')).toHaveText(/Mode: List/);
     await expect(page.getByRole('table', { name: 'Graph nodes' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Open note Project Plan' })).toBeVisible();
+    await expect(
+      page
+        .locator('[data-testid="graph-row"]')
+        .filter({ hasText: 'Project Plan' })
+        .getByRole('button', { name: 'Open note Project Plan' })
+    ).toBeVisible();
 
     await page.getByRole('button', { name: 'Radial' }).click();
     await page
