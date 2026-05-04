@@ -48,7 +48,7 @@
     {
       id: 'graph',
       label: 'Graph',
-      meta: 'pending',
+      meta: 'network',
       href: `/${vaultName}/graph`
     },
     {

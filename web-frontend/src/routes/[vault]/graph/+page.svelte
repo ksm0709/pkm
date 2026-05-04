@@ -1,495 +1,644 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import { apiGet } from '$lib/api/client.js';
+  import { page } from '$app/stores';
+  import { apiClient } from '$lib/api/client.js';
   import {
-    type NormalizedEdge,
-    type NormalizedGraph,
-    type NormalizedNode,
-    degreesByNode,
-    filterEdges,
-    filterNodes,
-    normalizeGraph
-  } from '$lib/graph/normalize';
+    normalizeGraph,
+    type NormalizedGraphEdge,
+    type NormalizedGraphNode
+  } from '$lib/graph/normalize.js';
 
-  type VizMode = 'Radial' | 'Cluster' | 'Degree' | 'List';
-  type NodeFilter = 'all' | 'note' | 'tag';
-  type EdgeFilter = 'all' | 'wikilink' | 'has_tag' | 'semantic_similar';
+  type GraphMode = 'Radial' | 'Cluster' | 'Degree' | 'List';
+  type PositionedNode = NormalizedGraphNode & { x: number; y: number; groupLabel: string };
+  type RenderedEdge = NormalizedGraphEdge & { x1: number; y1: number; x2: number; y2: number };
 
-  interface PositionedNode extends NormalizedNode {
-    x: number;
-    y: number;
-  }
-
-  interface PositionedEdge {
-    id: string;
-    source: string;
-    target: string;
-    x1: number;
-    y1: number;
-    x2: number;
-    y2: number;
-    type?: string;
-  }
-
-  const GRAPH_VISUAL_CAP = 120;
-  const VIEW_WIDTH = 1040;
-  const VIEW_HEIGHT = 540;
-  const MARGIN = 24;
-
-  let vaultName = $derived($page.params.vault);
+  let vaultName = $derived($page.params.vault ?? '');
   let loading = $state(true);
   let error = $state('');
-  let graph = $state<NormalizedGraph | null>(null);
-  let mode = $state<VizMode>('Radial');
-  let nodeFilter = $state<NodeFilter>('all');
-  let edgeFilter = $state<EdgeFilter>('all');
+  let missingGraph = $state(false);
+  let rawGraph = $state<unknown>(null);
   let loadToken = 0;
+  let mode = $state<GraphMode>('Radial');
+  let nodeTypeFilter = $state('all');
+  let edgeTypeFilter = $state('all');
 
-  let loadLabel = $derived(graph ? graph.nodes.length.toString() : '0');
+  const VISUAL_NODE_CAP = 80;
+  const W = 920;
+  const H = 520;
+  const CX = W / 2;
+  const CY = H / 2;
 
-  async function load(vault: string) {
-    const token = ++loadToken;
-    loading = true;
-    error = '';
-    graph = null;
-
-    try {
-      const payload = await apiGet(`/api/v1/vault/${encodeURIComponent(vault)}/graph`);
-      if (token !== loadToken) return;
-      graph = normalizeGraph(payload as unknown as Record<string, unknown>);
-    } catch (cause) {
-      if (token !== loadToken) return;
-      error =
-        cause instanceof Error && cause.message.includes('404')
-          ? 'Graph data unavailable. Run `pkm index` to generate graph data.'
-          : cause instanceof Error
-            ? cause.message
-            : 'Failed to load graph.';
-    } finally {
-      if (token !== loadToken) return;
-      loading = false;
+  const graph = $derived(normalizeGraph(rawGraph));
+  const filteredBaseNodes = $derived(
+    graph.nodes.filter((node) => nodeTypeFilter === 'all' || node.type === nodeTypeFilter)
+  );
+  const filteredBaseNodeIds = $derived(new Set(filteredBaseNodes.map((node) => node.id)));
+  const filteredEdges = $derived(
+    graph.edges.filter(
+      (edge) =>
+        filteredBaseNodeIds.has(edge.source) &&
+        filteredBaseNodeIds.has(edge.target) &&
+        (edgeTypeFilter === 'all' || edge.type === edgeTypeFilter)
+    )
+  );
+  const listNodes = $derived.by(() => {
+    let nodes = filteredBaseNodes;
+    if (edgeTypeFilter !== 'all') {
+      const endpointIds = new Set(filteredEdges.flatMap((edge) => [edge.source, edge.target]));
+      nodes = filteredBaseNodes.filter((node) => endpointIds.has(node.id));
     }
-  }
+    if (mode === 'Degree') return [...nodes].sort(compareDegreeThenLabel);
+    return [...nodes].sort(compareLabel);
+  });
+  const visibleNodes = $derived(positionNodes(listNodes.slice(0, VISUAL_NODE_CAP), mode));
+  const visibleNodeIds = $derived(new Set(visibleNodes.map((node) => node.id)));
+  const renderedEdges = $derived(renderEdges(filteredEdges, visibleNodes, visibleNodeIds));
+  const clusterLabels = $derived.by(() => {
+    const labels = new Set(visibleNodes.map((node) => node.groupLabel).filter(Boolean));
+    return [...labels].slice(0, 8);
+  });
+  const capStatus = $derived(
+    listNodes.length > VISUAL_NODE_CAP
+      ? `Rendering first ${VISUAL_NODE_CAP} of ${listNodes.length} filtered nodes in the visual overview.`
+      : ''
+  );
+  const noMatches = $derived(!loading && !error && graph.nodes.length > 0 && listNodes.length === 0);
 
   $effect(() => {
     if (!vaultName) return;
-    void load(vaultName);
+    void loadGraph(vaultName);
   });
 
-  const normalizedNodeFilters: NodeFilter[] = ['all', 'note', 'tag'];
-  const normalizedEdgeFilters: EdgeFilter[] = ['all', 'wikilink', 'has_tag', 'semantic_similar'];
+  async function loadGraph(vault: string) {
+    const token = ++loadToken;
+    loading = true;
+    error = '';
+    missingGraph = false;
+    rawGraph = null;
 
-  const vizModes: VizMode[] = ['Radial', 'Cluster', 'Degree', 'List'];
-
-  const modeTag = $derived(`mode:${mode}`);
-
-  const filteredNodes = $derived(filterNodes(graph?.nodes ?? [], nodeFilter));
-  const filteredEdges = $derived(filterEdges(graph?.edges ?? [], edgeFilter));
-
-  const withDegree = $derived(() => {
-    if (!graph) return new Map<string, number>();
-    return degreesByNode(filteredNodes, filteredEdges);
-  });
-
-  const nodeDegreePairs = $derived<PositionedNode[]>(() => {
-    if (!graph) return [];
-
-    const nodes = [...filteredNodes];
-    const countById = withDegree;
-
-    let ordered = nodes;
-    if (mode === 'Degree') {
-      ordered = [...nodes].sort((a, b) => {
-        const diff = countById.get(b.id)! - countById.get(a.id)!;
-        if (diff !== 0) return diff;
-        return a.id.localeCompare(b.id);
+    try {
+      const response = await apiClient(`/api/v1/vault/${encodeURIComponent(vault)}/graph`, {
+        method: 'GET'
       });
+      if (token !== loadToken) return;
+      if (response.status === 404) {
+        missingGraph = true;
+        return;
+      }
+      if (!response.ok) throw new Error(`GET graph → ${response.status}`);
+      rawGraph = await response.json();
+    } catch (e) {
+      if (token !== loadToken) return;
+      error = e instanceof Error ? e.message : 'Failed to load graph.';
+    } finally {
+      if (token === loadToken) loading = false;
     }
-
-    if (mode === 'Cluster') {
-      ordered = [...nodes].sort((a, b) => {
-        const ca = a.community || a.cluster || 'zz-other';
-        const cb = b.community || b.cluster || 'zz-other';
-        const diff = ca.localeCompare(cb);
-        return diff !== 0 ? diff : a.id.localeCompare(b.id);
-      });
-    }
-
-    if (mode === 'Radial' || mode === 'Cluster' || mode === 'Degree') {
-      return ordered.map((node, index) => {
-        const radius = Math.min(VIEW_WIDTH, VIEW_HEIGHT) / 2 - MARGIN;
-        const angle = (Math.PI * 2 * index) / Math.max(ordered.length, 1) - Math.PI / 2;
-        const r = radius;
-        const cx = VIEW_WIDTH / 2 + r * Math.cos(angle);
-        const cy = VIEW_HEIGHT / 2 + r * Math.sin(angle);
-        return { ...node, x: cx, y: cy };
-      });
-    }
-
-    return ordered.map((node) => ({
-      ...node,
-      x: VIEW_WIDTH / 2,
-      y: VIEW_HEIGHT / 2
-    }));
-  });
-
-  const filteredVisualNodes = $derived<PositionedNode[]>(
-    mode === 'List'
-      ? []
-      : nodeDegreePairs.slice(0, GRAPH_VISUAL_CAP)
-  );
-
-  const filteredVisualEdges = $derived<PositionedEdge[]>(() => {
-    if (!filteredVisualNodes.length) return [];
-
-    const nodeSet = new Set(filteredVisualNodes.map((node) => node.id));
-    const posMap = new Map(filteredVisualNodes.map((node) => [node.id, node] as const));
-
-    return filteredEdges
-      .map((edge) => {
-        const source = posMap.get(edge.source);
-        const target = posMap.get(edge.target);
-        if (!source || !target) return null;
-        return {
-          id: edge.id,
-          source: edge.source,
-          target: edge.target,
-          type: edge.type,
-          x1: source.x,
-          y1: source.y,
-          x2: target.x,
-          y2: target.y
-        } satisfies PositionedEdge;
-      })
-      .filter((edge): edge is PositionedEdge => edge !== null)
-      .slice(0, GRAPH_VISUAL_CAP);
-  });
-
-  const missingFiltered = $derived(
-    mode === 'List'
-      ? filteredNodes.length === 0
-      : filteredVisualNodes.length === 0
-  );
-
-  function goNode(node: NormalizedNode) {
-    if (node.type !== 'note') return;
-    void goto(`/${vaultName}/notes/${encodeURIComponent(node.id)}`);
   }
 
-  function nodeColor(node: NormalizedNode) {
-    if (node.type === 'tag') return 'var(--tag)';
-    if (node.type === 'note_or_unresolved') return 'var(--text-muted)';
-    return 'var(--text-primary)';
+  function setMode(nextMode: GraphMode) {
+    mode = nextMode;
+  }
+
+  function openNode(node: NormalizedGraphNode) {
+    if (node.type !== 'note') return;
+    void goto(`/${encodeURIComponent(vaultName)}/notes/${encodeURIComponent(node.id)}`);
+  }
+
+  function positionNodes(nodes: NormalizedGraphNode[], currentMode: GraphMode): PositionedNode[] {
+    if (nodes.length === 0) return [];
+    if (currentMode === 'Degree') return degreeLayout(nodes);
+    if (currentMode === 'Cluster') return clusterLayout(nodes);
+    return radialLayout(nodes);
+  }
+
+  function radialLayout(nodes: NormalizedGraphNode[]): PositionedNode[] {
+    const radius = Math.min(W, H) * 0.38;
+    return nodes.map((node, index) => {
+      const angle = nodes.length === 1 ? -Math.PI / 2 : (2 * Math.PI * index) / nodes.length - Math.PI / 2;
+      return {
+        ...node,
+        x: round(CX + radius * Math.cos(angle)),
+        y: round(CY + radius * Math.sin(angle)),
+        groupLabel: node.community || node.type
+      };
+    });
+  }
+
+  function clusterLayout(nodes: NormalizedGraphNode[]): PositionedNode[] {
+    const groups = new Map<string, NormalizedGraphNode[]>();
+    for (const node of nodes) {
+      const key = node.community || node.type || 'unknown';
+      groups.set(key, [...(groups.get(key) ?? []), node]);
+    }
+    const entries = [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    const centers = entries.map(([label], index) => {
+      const angle = entries.length === 1 ? -Math.PI / 2 : (2 * Math.PI * index) / entries.length - Math.PI / 2;
+      return {
+        label,
+        x: CX + 245 * Math.cos(angle),
+        y: CY + 150 * Math.sin(angle)
+      };
+    });
+    return entries.flatMap(([label, groupNodes], groupIndex) => {
+      const center = centers[groupIndex];
+      const radius = Math.min(84, 26 + groupNodes.length * 6);
+      return groupNodes.map((node, index) => {
+        const angle = groupNodes.length === 1 ? 0 : (2 * Math.PI * index) / groupNodes.length;
+        return {
+          ...node,
+          x: round(center.x + radius * Math.cos(angle)),
+          y: round(center.y + radius * Math.sin(angle)),
+          groupLabel: label
+        };
+      });
+    });
+  }
+
+  function degreeLayout(nodes: NormalizedGraphNode[]): PositionedNode[] {
+    const ordered = [...nodes].sort(compareDegreeThenLabel);
+    return ordered.map((node, index) => {
+      const row = Math.floor(index / 10);
+      const col = index % 10;
+      return {
+        ...node,
+        x: round(80 + col * 84),
+        y: round(80 + row * 56),
+        groupLabel: `${node.degree} degree`
+      };
+    });
+  }
+
+  function renderEdges(
+    edges: NormalizedGraphEdge[],
+    nodes: PositionedNode[],
+    nodeIds: Set<string>
+  ): RenderedEdge[] {
+    const positions = new Map(nodes.map((node) => [node.id, node]));
+    return edges
+      .filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target))
+      .flatMap((edge) => {
+        const source = positions.get(edge.source);
+        const target = positions.get(edge.target);
+        return source && target
+          ? [{ ...edge, x1: source.x, y1: source.y, x2: target.x, y2: target.y }]
+          : [];
+      });
+  }
+
+  function nodeRadius(node: NormalizedGraphNode) {
+    return Math.min(16, 5 + node.degree * 1.5);
+  }
+
+  function typeClass(value: string) {
+    return value.replace(/[^a-z0-9_-]/gi, '-').toLowerCase();
+  }
+
+  function round(value: number) {
+    return Math.round(value * 10) / 10;
+  }
+
+  function compareLabel(a: NormalizedGraphNode, b: NormalizedGraphNode) {
+    return a.label.localeCompare(b.label) || a.id.localeCompare(b.id);
+  }
+
+  function compareDegreeThenLabel(a: NormalizedGraphNode, b: NormalizedGraphNode) {
+    return b.degree - a.degree || compareLabel(a, b);
   }
 </script>
 
 <svelte:head>
-  <title>{vaultName} — graph — pkm</title>
+  <title>Graph — {vaultName} — pkm</title>
 </svelte:head>
 
 <main class="graph-page">
-  <header class="ops-header">
-    <div class="title-row">
-      <div>
-        <h1 class="page-title">Graph</h1>
-        <p class="vault-subtitle">Visual overviews with filter and navigation</p>
-      </div>
-      <div class="summary" aria-live="polite">{loadLabel} nodes</div>
+  <header class="graph-header">
+    <div>
+      <p class="eyebrow">VAULT GRAPH</p>
+      <p class="graph-summary">
+        {#if loading}
+          Loading graph…
+        {:else if missingGraph || error}
+          Graph unavailable
+        {:else}
+          <strong>{graph.nodes.length}</strong> {graph.nodes.length === 1 ? 'node' : 'nodes'} · <strong>{graph.edges.length}</strong> {graph.edges.length === 1 ? 'edge' : 'edges'}
+        {/if}
+      </p>
+    </div>
+    <div class="mode-switcher" aria-label="Graph mode">
+      {#each ['Radial', 'Cluster', 'Degree', 'List'] as option (option)}
+        <button
+          type="button"
+          class:active={mode === option}
+          aria-pressed={mode === option}
+          onclick={() => setMode(option as GraphMode)}
+        >
+          {option}
+        </button>
+      {/each}
     </div>
   </header>
 
   {#if loading}
-    <p class="status-msg">Loading graph…</p>
+    <p class="status-msg">Loading…</p>
+  {:else if missingGraph}
+    <section class="empty-state" aria-label="Missing graph index">
+      <p class="empty-title">Graph index not found.</p>
+      <p>Run <code>pkm index</code> for this vault, then reopen Graph to inspect the generated node-link map.</p>
+    </section>
   {:else if error}
-    <div class="empty-state">
-      <p>{error}</p>
-    </div>
+    <p class="status-msg error">{error}</p>
+  {:else if graph.nodes.length === 0}
+    <section class="empty-state" aria-label="Empty graph">
+      <p class="empty-title">Graph is empty.</p>
+      <p>Run <code>pkm index</code> after adding notes or links to populate the graph.</p>
+    </section>
   {:else}
-    <section class="controls" aria-label="Graph controls">
-      <label>
-        <span>Visualization</span>
-        <div class="segmented" role="group" aria-label="Visualization mode">
-          {#each vizModes as item (item)}
-            <button
-              type="button"
-              data-mode={item}
-              aria-pressed={item === mode}
-              class:active={item === mode}
-              onclick={() => (mode = item)}
-            >
-              {item}
-            </button>
-          {/each}
-        </div>
-      </label>
-
+    <section class="graph-toolbar" aria-label="Graph filters">
       <label>
         <span>Node type</span>
-        <select
-          aria-label="Node type filter"
-          bind:value={nodeFilter}
-        >
-          <option value="all">All</option>
-          <option value="note">Note</option>
-          <option value="tag">Tag</option>
-        </select>
-      </label>
-
-      <label>
-        <span>Edge type</span>
-        <select aria-label="Edge type filter" bind:value={edgeFilter}>
-          {#each normalizedEdgeFilters as item (item)}
-            <option value={item}>{item === 'all' ? 'All' : item}</option>
+        <select aria-label="Node type filter" bind:value={nodeTypeFilter}>
+          <option value="all">All node types</option>
+          {#each graph.nodeTypes as type (type)}
+            <option value={type}>{type}</option>
           {/each}
         </select>
       </label>
-
-      <p class="status-mini">mode: {modeTag}</p>
-      {#if mode !== 'List' && graph && graph.nodes.length > GRAPH_VISUAL_CAP}
-        <p class="status-mini" data-cap-status>
-          rendering first {GRAPH_VISUAL_CAP} of {graph.nodes.length} nodes
-        </p>
-      {/if}
+      <label>
+        <span>Edge type</span>
+        <select aria-label="Edge type filter" bind:value={edgeTypeFilter}>
+          <option value="all">All edge types</option>
+          {#each graph.edgeTypes as type (type)}
+            <option value={type}>{type}</option>
+          {/each}
+        </select>
+      </label>
+      <span class="mode-marker" data-testid="graph-mode">Mode: {mode}</span>
     </section>
 
-    {#if filteredEdges.length + filteredNodes.length === 0}
-      <p class="status-msg">No matches.</p>
-    {:else if nodeFilter === 'tag' && filteredNodes.length > 0}
-      {#if mode === 'List'}
-        <p class="status-mini">Showing tags only.</p>
-      {/if}
+    {#if noMatches}
+      <p class="status-msg faint">No graph matches for the current filters.</p>
     {/if}
 
-    {#if mode === 'List'}
-      <section class="graph-table" aria-label="Graph list">
-        <div class="list-head">
-          <span>Node</span>
-          <span>Type</span>
-          <span>Description</span>
-        </div>
-        {#each filteredNodes as item (item.id)}
-          <article class="list-row">
-            <a
-              class="node-link"
-              href={item.type === 'note' ? `/${vaultName}/notes/${encodeURIComponent(item.id)}` : '#'}
-              onclick={(event) => {
-                if (item.type !== 'note') event.preventDefault();
-              }}
-            >
-              {item.title}
-            </a>
-            <span>{item.type}</span>
-            <span class="muted">{item.description || '—'}</span>
-          </article>
-        {/each}
-      </section>
-    {:else if missingFiltered}
-      <p class="status-msg">No nodes visible under current filters.</p>
-    {:else}
-      <section>
-        <p class="status-mini" data-testid="graph-summary">
-          {filteredNodes.length} nodes · {filteredEdges.length} edges
-        </p>
-        <div class="graph-shell">
-          <svg
-            width={VIEW_WIDTH}
-            height={VIEW_HEIGHT}
-            viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
-            class="graph-canvas"
-            aria-label="graph overview"
-          >
-            {#each filteredVisualEdges as edge (edge.id)}
+    <div class="graph-grid" class:list-only={mode === 'List'}>
+      {#if mode !== 'List'}
+        <section class="graph-visual" aria-label="Graph visual overview">
+          {#if capStatus}
+            <p class="cap-status">{capStatus}</p>
+          {/if}
+          {#if mode === 'Cluster' && clusterLabels.length}
+            <p class="cluster-labels">Clusters: {clusterLabels.join(' · ')}</p>
+          {/if}
+          <svg viewBox="0 0 {W} {H}" role="img" aria-label="{mode} graph overview">
+            {#each renderedEdges as edge (edge.id)}
               <line
                 data-testid="graph-edge"
-                class="graph-edge"
+                class="graph-edge edge-{typeClass(edge.type)}"
                 x1={edge.x1}
                 y1={edge.y1}
                 x2={edge.x2}
                 y2={edge.y2}
-                stroke-width="1"
-                data-source={edge.source}
-                data-target={edge.target}
-                data-edge-type={edge.type}
               />
             {/each}
-
-            {#each filteredVisualNodes as node (node.id)}
+            {#each visibleNodes as node (node.id)}
               <g
-                class="graph-node"
-                role="button"
-                tabindex="0"
                 data-testid="graph-node"
-                data-node-id={node.id}
-                data-node-type={node.type}
-                onclick={() => goNode(node)}
+                class="graph-node node-{typeClass(node.type)}"
+                role={node.type === 'note' ? 'button' : 'img'}
+                tabindex={node.type === 'note' ? 0 : undefined}
+                aria-label={node.type === 'note' ? `Open note ${node.label}` : `${node.type} ${node.label}`}
+                onclick={() => openNode(node)}
                 onkeydown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault();
-                    goNode(node);
+                    openNode(node);
                   }
                 }}
               >
-                <circle cx={node.x} cy={node.y} r="4" fill={nodeColor(node)}></circle>
-                <text x={node.x + 8} y={node.y + 4} fill="var(--text-primary)">{node.title}</text>
+                <circle cx={node.x} cy={node.y} r={nodeRadius(node)} />
+                <text x={node.x + 10} y={node.y - 8}>{node.label}</text>
               </g>
             {/each}
           </svg>
-        </div>
+        </section>
+      {/if}
+
+      <section class="graph-list" aria-label="Graph list">
+        <table aria-label="Graph nodes">
+          <thead>
+            <tr>
+              <th>Node</th>
+              <th>Type</th>
+              <th>Degree</th>
+              <th>Cluster</th>
+              <th>Tier</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each listNodes as node (node.id)}
+              <tr data-testid="graph-row">
+                <td>
+                  {#if node.type === 'note'}
+                    <button
+                      type="button"
+                      class="node-link"
+                      aria-label="Open note {node.label}"
+                      onclick={() => openNode(node)}
+                    >
+                      {node.label}
+                    </button>
+                  {:else}
+                    <span>{node.label}</span>
+                  {/if}
+                  <small>{node.id}</small>
+                </td>
+                <td>{node.type}</td>
+                <td>{node.degree}</td>
+                <td>{node.community || '—'}</td>
+                <td>{node.tier || '—'}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
       </section>
-    {/if}
+    </div>
   {/if}
 </main>
 
 <style>
   .graph-page {
-    width: min(1200px, calc(100vw - 64px));
+    width: min(1180px, calc(100vw - 64px));
     margin: 0 auto;
     padding: var(--space-6, 32px) 0 var(--space-8, 64px);
   }
 
-  .ops-header {
-    margin-bottom: var(--space-5, 20px);
-  }
-
-  .title-row {
+  .graph-header {
     display: flex;
+    align-items: end;
     justify-content: space-between;
-    align-items: baseline;
-    gap: var(--space-4, 16px);
+    gap: var(--space-5, 24px);
+    margin-bottom: var(--space-5, 24px);
   }
 
-  .page-title {
+  .eyebrow,
+  .graph-summary,
+  .mode-switcher,
+  .graph-toolbar,
+  .status-msg,
+  .empty-state,
+  .cap-status,
+  .cluster-labels,
+  table {
+    font-family: var(--font-mono);
+  }
+
+  .eyebrow {
+    margin: 0 0 var(--space-2, 8px);
+    color: var(--text-faint);
+    font-size: var(--type-chrome-sm-size, 11px);
+    letter-spacing: 0.14em;
+  }
+
+  .graph-summary {
     margin: 0;
-    font-size: var(--type-title-size, 28px);
-  }
-
-  .vault-subtitle {
-    margin: 6px 0 0;
     color: var(--text-muted);
   }
 
-  .summary {
-    font-family: var(--font-mono);
-    color: var(--text-faint);
-    text-transform: uppercase;
-  }
-
-  .controls {
+  .mode-switcher,
+  .graph-toolbar {
     display: flex;
     flex-wrap: wrap;
-    gap: 18px;
-    align-items: end;
-    margin-bottom: 16px;
+    gap: var(--space-2, 8px);
   }
 
-  .controls label {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    font-family: var(--font-mono);
-    color: var(--text-faint);
-    font-size: 11px;
+  .mode-switcher button,
+  .node-link,
+  select {
+    font: inherit;
   }
 
-  .segmented {
-    display: inline-flex;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    overflow: hidden;
-  }
-
-  .segmented button {
-    border: 0;
-    background: transparent;
-    padding: 6px 10px;
+  .mode-switcher button {
+    min-height: 34px;
     color: var(--text-muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm, 2px);
+    padding: 0 var(--space-3, 12px);
     cursor: pointer;
   }
 
-  .segmented button.active {
-    background: var(--surface-2, var(--surface));
-    color: var(--text-primary);
+  .mode-switcher button.active {
+    color: var(--text);
+    border-color: var(--accent);
+    background: var(--accent-bg);
   }
 
-  .status-mini {
-    margin: 0;
+  .graph-toolbar {
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-3, 12px) 0;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    margin-bottom: var(--space-4, 16px);
+  }
+
+  .graph-toolbar label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2, 8px);
+    color: var(--text-faint);
+    font-size: var(--type-chrome-sm-size, 11px);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  select {
+    min-height: 32px;
+    color: var(--text);
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm, 2px);
+  }
+
+  .mode-marker {
     color: var(--text-muted);
+  }
+
+  .graph-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(340px, 0.75fr);
+    gap: var(--space-4, 16px);
+  }
+
+  .graph-grid.list-only {
+    grid-template-columns: 1fr;
+  }
+
+  .graph-visual,
+  .graph-list,
+  .empty-state {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top-color: var(--accent);
+  }
+
+  .graph-visual {
+    min-width: 0;
+    padding: var(--space-3, 12px);
+    overflow: auto;
+  }
+
+  svg {
+    display: block;
+    min-width: 640px;
+    width: 100%;
+    height: auto;
+  }
+
+  .graph-edge {
+    stroke: var(--border);
+    stroke-width: 1.2;
+  }
+
+  .edge-semantic_similar {
+    stroke: var(--signal-cyan);
+    stroke-dasharray: 4 4;
+  }
+
+  .graph-node circle {
+    fill: var(--surface-raised);
+    stroke: var(--text-muted);
+    stroke-width: 1.4;
+  }
+
+  .graph-node.node-note circle {
+    stroke: var(--accent);
+  }
+
+  .graph-node.node-tag circle {
+    stroke: var(--signal-cyan);
+  }
+
+  .graph-node text {
+    fill: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    paint-order: stroke;
+    stroke: var(--surface);
+    stroke-width: 3px;
+  }
+
+  .graph-node[role='button'] {
+    cursor: pointer;
+  }
+
+  .graph-node[role='button']:hover circle,
+  .graph-node[role='button']:focus circle {
+    fill: var(--accent-bg);
+  }
+
+  .cap-status,
+  .cluster-labels {
+    margin: 0 0 var(--space-2, 8px);
+    color: var(--text-muted);
+    font-size: var(--type-chrome-size, 13px);
+  }
+
+  .graph-list {
+    min-width: 0;
+    overflow: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--type-chrome-size, 13px);
+  }
+
+  th,
+  td {
+    padding: var(--space-2, 8px) var(--space-3, 12px);
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    vertical-align: top;
+  }
+
+  th {
+    color: var(--text-faint);
+    font-size: var(--type-chrome-sm-size, 11px);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+
+  td {
+    color: var(--text-muted);
+  }
+
+  td:first-child {
+    color: var(--text);
+  }
+
+  small {
+    display: block;
+    margin-top: 2px;
+    color: var(--text-faint);
+  }
+
+  .node-link {
+    color: var(--text);
+    background: transparent;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .node-link:hover,
+  .node-link:focus-visible {
+    color: var(--accent);
   }
 
   .status-msg {
     color: var(--text-muted);
   }
 
+  .status-msg.error {
+    color: var(--signal-danger);
+  }
+
+  .status-msg.faint {
+    color: var(--text-faint);
+  }
+
   .empty-state {
-    color: var(--text-faint);
-  }
-
-  .graph-shell {
-    overflow: auto;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px;
-  }
-
-  .graph-canvas {
-    display: block;
-    min-width: min(100%, 1040px);
-  }
-
-  .graph-edge {
-    stroke: var(--border);
-    stroke-opacity: 0.8;
-  }
-
-  .graph-node {
-    cursor: pointer;
-  }
-
-  .graph-node text {
-    font-size: 11px;
-    pointer-events: none;
-    fill: var(--text-muted);
-  }
-
-  .graph-table {
-    border-top: 1px solid var(--border);
-    display: grid;
-    grid-template-columns: minmax(0, 2fr) 160px minmax(0, 2fr);
-    gap: 0;
-    font-size: 14px;
-  }
-
-  .list-head {
-    display: contents;
-    font-family: var(--font-mono);
-    color: var(--text-faint);
-    text-transform: uppercase;
-    font-size: 11px;
-  }
-
-  .list-row {
-    display: contents;
-    border-bottom: 1px solid var(--border);
-    min-height: 32px;
-  }
-
-  .list-row span,
-  .list-row a {
-    padding: 10px 0;
-    border-bottom: 1px solid var(--border);
-    display: block;
-  }
-
-  .node-link {
-    color: var(--text-primary);
-  }
-
-  .muted {
+    padding: var(--space-5, 24px);
     color: var(--text-muted);
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+  }
+
+  .empty-title {
+    margin: 0 0 var(--space-2, 8px);
+    color: var(--text);
+    font-size: var(--type-body-size, 15px);
+  }
+
+  code {
+    color: var(--text);
+    background: var(--code-bg);
+    padding: 1px 4px;
+  }
+
+  @media (max-width: 900px) {
+    .graph-page {
+      width: min(100%, calc(100vw - 32px));
+    }
+
+    .graph-header {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .graph-grid {
+      grid-template-columns: 1fr;
+    }
   }
 </style>

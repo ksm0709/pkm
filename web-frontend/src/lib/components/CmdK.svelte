@@ -186,7 +186,7 @@
         kind: 'command',
         id: 'cmd:graph',
         label: 'Open graph',
-        hint: 'vault graph',
+        hint: 'graph overview',
         run: () => goto(`/${vaultName}/graph`)
       }
     ];
