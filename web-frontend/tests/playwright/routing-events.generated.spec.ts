@@ -1199,7 +1199,6 @@ test.describe('generated routing and event contracts', () => {
     );
 
     await openCommandPalette(page);
-    await page.locator('.cmdk-input').fill('graph');
     await page.getByRole('option', { name: /Open graph/ }).click();
     await expect(page).toHaveURL(new RegExp(`/${vaultName}/graph$`));
     await expect(
@@ -1441,6 +1440,12 @@ async function mockPkmApi(page: Page) {
       return;
     }
 
+    const graphMatch = path.match(/^\/api\/v1\/vault\/([^/]+)\/graph$/);
+    if (graphMatch) {
+      await json(route, { nodes: [], links: [] });
+      return;
+    }
+
     const dailyTodayMatch = path.match(/^\/api\/v1\/vault\/([^/]+)\/daily\/today$/);
     if (dailyTodayMatch) {
       if (route.request().method() === 'GET') {
@@ -1453,18 +1458,6 @@ async function mockPkmApi(page: Page) {
         await json(route, { entry: `- [16:45:12] ${content}\n` }, 201);
         return;
       }
-    }
-
-    const graphMatch = path.match(/^\/api\/v1\/vault\/([^/]+)\/graph\/?(?:$|[?])?/);
-    if (graphMatch && !path.includes('/ego/')) {
-      await json(route, {
-        nodes: [
-          { id: 'seed', title: 'Seed Note', type: 'note' },
-          { id: 'tag:hub', title: 'hub', type: 'tag' }
-        ],
-        links: [{ source: 'seed', target: 'tag:hub', type: 'has_tag' }]
-      });
-      return;
     }
 
     const graphEgoMatch = path.match(
