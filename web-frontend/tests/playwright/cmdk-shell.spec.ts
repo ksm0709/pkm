@@ -70,7 +70,7 @@ test.describe('command palette and shell navigation', () => {
     const tags = page.locator('[role="button"][aria-label="Tags"]');
     const graph = page.locator('[role="button"][aria-label="Graph"]');
     await expect(tags).toHaveAttribute('aria-disabled', 'true');
-    await expect(graph).toHaveAttribute('aria-disabled', 'true');
+    await expect(graph).toHaveAttribute('aria-disabled', 'false');
 
     await tags.click({ force: true });
     expect(page.url()).toBe(before);
@@ -79,10 +79,12 @@ test.describe('command palette and shell navigation', () => {
     expect(page.url()).toBe(before);
 
     await graph.click({ force: true });
-    expect(page.url()).toBe(before);
+    await expect(page).toHaveURL(new RegExp(`/${escapeRegExp(vaultName)}/graph$`));
+    await page.goto(`/${encodeURIComponent(vaultName)}`);
+    await page.waitForLoadState('networkidle').catch(() => {});
     await graph.focus();
     await page.keyboard.press('Enter');
-    expect(page.url()).toBe(before);
+    await expect(page).toHaveURL(new RegExp(`/${escapeRegExp(vaultName)}/graph$`));
 
     await page.locator('button[aria-label="Ask"]').click();
     await expect(page).toHaveURL(new RegExp(`/${escapeRegExp(vaultName)}/ask$`));

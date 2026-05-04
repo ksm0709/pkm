@@ -184,12 +184,10 @@
       },
       {
         kind: 'command',
-        id: 'cmd:graph-unavailable',
-        label: 'Graph unavailable',
-        hint: 'route not installed',
-        run: () => {
-          inputEl?.focus();
-        }
+        id: 'cmd:graph',
+        label: 'Open graph',
+        hint: 'vault graph',
+        run: () => goto(`/${vaultName}/graph`)
       }
     ];
     return list;
