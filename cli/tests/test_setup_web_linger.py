@@ -119,13 +119,38 @@ def test_web_setup_reset_rewrites_password_hash_and_invalidates_sessions(
 
 
 def test_web_command_group_registered(runner: CliRunner) -> None:
-    """`pkm web --help` should list start/stop/status."""
+    """`pkm web --help` should list service and tunnel commands."""
     result = runner.invoke(main, ["web", "--help"])
     assert result.exit_code == 0, result.output
     out = result.output.lower()
     assert "start" in out
     assert "stop" in out
     assert "status" in out
+    assert "tunnel" in out
+
+
+def test_web_tunnel_requires_cloudflared(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`pkm web tunnel` should fail closed when cloudflared is unavailable."""
+    monkeypatch.setattr("pkm.commands.web.shutil.which", lambda _name: None)
+
+    result = runner.invoke(main, ["web", "tunnel"])
+
+    assert result.exit_code != 0
+    assert "cloudflared is not installed" in result.output
+    assert "trycloudflare.com" in result.output
+
+
+def test_web_tunnel_builds_cloudflared_quick_tunnel_command() -> None:
+    """The quick tunnel target should point at the local daemon web server."""
+    from pkm.commands.web import _cloudflared_quick_tunnel_args
+
+    assert _cloudflared_quick_tunnel_args(7420) == [
+        "tunnel",
+        "--url",
+        "http://127.0.0.1:7420",
+    ]
 
 
 def test_web_in_vault_free_commands() -> None:

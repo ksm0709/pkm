@@ -75,3 +75,52 @@ def list_orphans() -> str:
         return json.dumps({"orphans": items, "count": len(items)}, indent=2)
     except Exception as e:
         return f"Error: {e}"
+
+
+@tool()
+def list_malformed_notes() -> str:
+    """List markdown notes with repairable malformed frontmatter.
+
+    Use when the user asks to find malformed notes, duplicated metadata, or notes that
+    may render YAML frontmatter as body content. Returns JSON with keys:
+    malformed_notes (list of {path, note_id, issue, repairable}) and count.
+    """
+    vault = _get_vault(os.environ.get("PKM_VAULT_DIR", "."))
+    malformed: list[dict[str, object]] = []
+
+    try:
+        from pkm.frontmatter import normalize_frontmatter_text, parse
+
+        for base_dir in (vault.notes_dir, vault.daily_dir, vault.tags_dir):
+            if not base_dir.is_dir():
+                continue
+            for path in sorted(base_dir.glob("*.md")):
+                try:
+                    text = path.read_text(encoding="utf-8")
+                    _, changed = normalize_frontmatter_text(text)
+                    if not changed:
+                        continue
+                    note = parse(path)
+                    malformed.append(
+                        {
+                            "path": str(path.relative_to(vault.path)),
+                            "note_id": str(note.id),
+                            "issue": "duplicate_leading_frontmatter",
+                            "repairable": True,
+                        }
+                    )
+                except Exception:
+                    malformed.append(
+                        {
+                            "path": str(path.relative_to(vault.path)),
+                            "note_id": path.stem,
+                            "issue": "frontmatter_parse_error",
+                            "repairable": False,
+                        }
+                    )
+
+        return json.dumps(
+            {"malformed_notes": malformed, "count": len(malformed)}, indent=2
+        )
+    except Exception as e:
+        return f"Error: {e}"

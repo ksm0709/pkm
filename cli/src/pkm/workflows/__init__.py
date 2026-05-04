@@ -20,6 +20,7 @@ class WorkflowConfig:
     system_prompt_template: str
     pre_hook: Optional[str] = None
     post_hook: Optional[str] = None
+    enabled: bool = True
 
 
 def _global_workflow_path() -> Path:
@@ -38,7 +39,8 @@ def _merge_from_file(path: Path, entries: dict[str, dict[str, Any]]) -> None:
         return
     try:
         for item in json.loads(path.read_text(encoding="utf-8")):
-            entries[item["id"]] = item
+            item_id = item["id"]
+            entries[item_id] = {**entries.get(item_id, {}), **item}
     except Exception:
         pass
 
@@ -63,6 +65,7 @@ def load_workflows(vault_path: str | Path | None = None) -> list[WorkflowConfig]
             system_prompt_template=e.get("system_prompt_template", ""),
             pre_hook=e.get("pre_hook") or None,
             post_hook=e.get("post_hook") or None,
+            enabled=bool(e.get("enabled", True)),
         )
         for e in entries.values()
     ]

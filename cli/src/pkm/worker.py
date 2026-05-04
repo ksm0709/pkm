@@ -3,6 +3,8 @@ import sys
 import json
 import os
 import logging
+import re
+from collections import OrderedDict
 from typing import Dict, Any, Optional, List
 
 # Configure logging to stderr so it doesn't interfere with stdout IPC
@@ -12,6 +14,10 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger("pkm.worker")
+
+_ASK_AGENT_CACHE_MAX = 16
+_ASK_AGENT_CACHE: OrderedDict[str, dict[str, Any]] = OrderedDict()
+_SESSION_ID_SAFE = re.compile(r"[^A-Za-z0-9_.-]+")
 
 
 def reasoning_kwargs(model: str, effort: str | None) -> dict[str, Any]:
@@ -44,6 +50,43 @@ def redact(data: Any) -> Any:
     elif isinstance(data, list):
         return [redact(i) for i in data]
     return data
+
+
+def _agent_session_id(
+    session_prefix: str, task_id: str, persistent_session_id: Optional[str] = None
+) -> str:
+    if not persistent_session_id:
+        return f"{session_prefix}-{task_id}"
+    suffix = _SESSION_ID_SAFE.sub("-", persistent_session_id).strip(".-")
+    if not suffix:
+        return f"{session_prefix}-{task_id}"
+    return f"{session_prefix}-{suffix[:160]}"
+
+
+def _cached_agent(cache_key: str, signature: tuple[Any, ...]) -> Any | None:
+    cached = _ASK_AGENT_CACHE.get(cache_key)
+    if not cached or cached.get("signature") != signature:
+        if cached:
+            _ASK_AGENT_CACHE.pop(cache_key, None)
+        return None
+    if hasattr(_ASK_AGENT_CACHE, "move_to_end"):
+        _ASK_AGENT_CACHE.move_to_end(cache_key)
+    return cached.get("agent")
+
+
+def _store_agent(cache_key: str, signature: tuple[Any, ...], agent: Any) -> None:
+    _ASK_AGENT_CACHE[cache_key] = {"signature": signature, "agent": agent}
+    if hasattr(_ASK_AGENT_CACHE, "move_to_end"):
+        _ASK_AGENT_CACHE.move_to_end(cache_key)
+    while len(_ASK_AGENT_CACHE) > _ASK_AGENT_CACHE_MAX:
+        if hasattr(_ASK_AGENT_CACHE, "popitem"):
+            try:
+                _ASK_AGENT_CACHE.popitem(last=False)
+                continue
+            except TypeError:
+                pass
+        oldest = next(iter(_ASK_AGENT_CACHE))
+        _ASK_AGENT_CACHE.pop(oldest, None)
 
 
 class IPCClient:
@@ -108,6 +151,7 @@ async def _run_agent_task(
     reasoning_effort: Optional[str] = None,
     cwd: Optional[str] = None,
     skills_dirs: Optional[List[str]] = None,
+    persistent_session_id: Optional[str] = None,
     mock_response_prefix: str = "Mocked response for:",
 ):
     if env_keys:
@@ -169,18 +213,43 @@ async def _run_agent_task(
         if cwd and cwd not in instruction_dirs:
             instruction_dirs.append(cwd)
 
-        agent = Agent(
-            session_id=f"{session_prefix}-{task_id}",
-            model=resolved_model,
-            system_prompt=system_prompt,
-            tools=tools,
-            skills_dirs=skills_dirs or [],
-            instruction_dirs=instruction_dirs,
-            max_iterations=1000,
-            hooks={"on_tool_start": on_tool_start},
-            litellm_kwargs=litellm_kwargs,
-            load_builtin_tools=False,
+        agent_session_id = _agent_session_id(
+            session_prefix, task_id, persistent_session_id
         )
+        agent_signature = (
+            resolved_model,
+            system_prompt,
+            vault_dir,
+            tuple(instruction_dirs),
+            tuple(skills_dirs or []),
+            json.dumps(litellm_kwargs, sort_keys=True, default=str),
+        )
+        agent = (
+            _cached_agent(agent_session_id, agent_signature)
+            if persistent_session_id
+            else None
+        )
+        if agent is None:
+            agent = Agent(
+                session_id=agent_session_id,
+                model=resolved_model,
+                system_prompt=system_prompt,
+                tools=tools,
+                skills_dirs=skills_dirs or [],
+                instruction_dirs=instruction_dirs,
+                max_iterations=1000,
+                hooks={"on_tool_start": on_tool_start},
+                litellm_kwargs=litellm_kwargs,
+                load_builtin_tools=False,
+            )
+            if persistent_session_id:
+                _store_agent(agent_session_id, agent_signature, agent)
+        else:
+            # The hook captures the current task id, so refresh it for reused sessions.
+            agent.hooks = {"on_tool_start": on_tool_start}
+        if persistent_session_id and hasattr(agent, "tasks"):
+            # Conversation memory should persist across web asks; per-turn plans should not.
+            agent.tasks = []
 
         response_chunks = []
 
@@ -240,6 +309,7 @@ async def handle_ask(
     env_keys: Optional[Dict[str, str]] = None,
     reasoning_effort: Optional[str] = None,
     cwd: Optional[str] = None,
+    ask_session_id: Optional[str] = None,
 ):
     system_prompt = (
         "You are an autonomous PKM agent with direct access to the user's vault via the following tools:\n"
@@ -250,10 +320,12 @@ async def handle_ask(
         "- semantic_search(query, top, memory_type, min_importance): semantic similarity search\n"
         "- add_note(title, content, tags, memory_type, importance): create a new atomic note\n"
         "- update_note(note_id, content, tags): update an existing note\n"
+        "- rename_note(old_note_id, new_note_id): rename a note and rewrite backlinks\n"
         "- get_graph_context(note_id, depth): get wikilink graph (requires daemon; depth>1 or outbound)\n"
         "- vault_stats(): vault health snapshot (note/orphan/tag counts, index status)\n"
         "- list_stale_notes(days): notes not modified in last N days\n"
         "- list_orphans(): notes with zero inbound AND outbound links\n"
+        "- list_malformed_notes(): notes with duplicated or invalid leading frontmatter\n"
         "- find_backlinks_for_note(note_id): inbound links to a note (daemon-free fallback)\n"
         "- list_tags(): all tags with counts; call before tag_search to discover tag names\n"
         "- tag_search(pattern): filter by tag (exact/glob/AND+/OR,) — NOT for content queries\n"
@@ -266,7 +338,14 @@ async def handle_ask(
         "to get full instructions, then execute every step by calling the vault tools listed above.\n"
         "Always complete the requested action — do not just describe what you would do."
     )
-    user_content = f"Context:\n{context}\n\nQuery: {query}" if context else query
+    user_content = (
+        "Conversation history supplied by the web ask client:\n"
+        f"{context}\n\n"
+        "Answer the current query using the conversation history above when relevant.\n"
+        f"Current query: {query}"
+        if context
+        else query
+    )
 
     await _run_agent_task(
         task_id=task_id,
@@ -279,6 +358,7 @@ async def handle_ask(
         reasoning_effort=reasoning_effort,
         cwd=cwd,
         skills_dirs=[os.path.expanduser("~/.agents/skills/pkm")],
+        persistent_session_id=ask_session_id,
         mock_response_prefix="Mocked response for:",
     )
 
@@ -364,6 +444,7 @@ async def handle_task(msg: Dict[str, Any]):
             msg.get("env_keys", {}),
             msg.get("reasoning_effort"),
             msg.get("cwd"),
+            msg.get("ask_session_id"),
         )
     elif task_type == "workflow":
         await _dispatch_workflow(

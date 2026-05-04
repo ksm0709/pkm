@@ -22,7 +22,8 @@ import yaml
 from pkm.config import discover_vaults, get_vault
 from pkm.workflows import WorkflowConfig, load_workflows, jitter_minutes
 from pkm.frontmatter import parse
-from pkm.search_engine import VectorIndex, IndexEntry, search, _require_transformers
+from pkm.search_engine import search, _require_transformers
+from pkm.search_service import get_cached_index, resolve_search_vault, run_in_process_search
 
 SOCKET_PATH = Path.home() / ".config" / "pkm" / "daemon.sock"
 LOCK_PATH = Path.home() / ".config" / "pkm" / "daemon.lock"
@@ -89,24 +90,6 @@ def get_cached_graph(graph_path: str, graph_mtime: float) -> nx.DiGraph | None:
             return None
     logger.error("Failed to load cached graph after retries")
     return None
-
-
-@lru_cache(maxsize=2)
-def get_cached_index(index_path: str, index_mtime: float) -> VectorIndex:
-    path = Path(index_path)
-    data = json.loads(path.read_text(encoding="utf-8"))
-    entries = [
-        IndexEntry(
-            **{k: v for k, v in e.items() if k in IndexEntry.__dataclass_fields__}
-        )
-        for e in data["entries"]
-    ]
-    return VectorIndex(
-        model=data["model"],
-        created_at=data["created_at"],
-        entries=entries,
-        schema_version=data.get("schema_version", 1),
-    )
 
 
 class BudgetExhausted(Exception):
@@ -218,7 +201,9 @@ class LLMWorkerProxy:
                 break
 
             try:
-                msg = json.loads(line.decode().strip())
+                msg = _decode_worker_stdout_line(line)
+                if msg is None:
+                    continue
                 if msg.get("type") == "llm_request":
                     req_id = msg.get("id")
                     messages = msg.get("messages", [])
@@ -321,6 +306,21 @@ worker_proxy: Optional[LLMWorkerProxy] = None
 task_queue: Optional[TaskQueue] = None
 
 
+def _decode_worker_stdout_line(line: bytes) -> dict[str, Any] | None:
+    text = line.decode(errors="replace").strip()
+    if not text:
+        return None
+    try:
+        decoded = json.loads(text)
+    except json.JSONDecodeError:
+        logger.debug("Ignoring non-JSON worker stdout: %s", text[:240])
+        return None
+    if not isinstance(decoded, dict):
+        logger.debug("Ignoring non-object worker stdout JSON: %s", text[:240])
+        return None
+    return decoded
+
+
 async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     DaemonState.last_activity = time.time()
     try:
@@ -344,38 +344,23 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                 writer.write(b"[]\n")
                 return
 
-            vaults = discover_vaults()
-            if vault_name and vault_name in vaults:
-                vault = vaults[vault_name]
-            else:
-                vault = next(iter(vaults.values())) if vaults else None
-
+            vault = resolve_search_vault(vault_name)
             if not vault:
                 writer.write(b"[]\n")
                 return
 
-            index_path = vault.pkm_dir / "index.json"
-            if not index_path.exists():
+            try:
+                results, _stale_warning = await run_in_process_search(
+                    query=query,
+                    vault=vault,
+                    top=top_n,
+                    min_importance=min_importance,
+                    memory_type=memory_type_filter,
+                    recency_weight=recency_weight,
+                )
+            except FileNotFoundError:
                 writer.write(b"[]\n")
                 return
-            index_mtime = index_path.stat().st_mtime
-
-            _require_transformers("all-MiniLM-L6-v2")
-
-            index = get_cached_index(str(index_path), index_mtime)
-
-            loop = asyncio.get_running_loop()
-            results = await loop.run_in_executor(
-                None,
-                lambda: search(
-                    query=query,
-                    index=index,
-                    top_n=top_n,
-                    min_importance=min_importance,
-                    memory_type_filter=memory_type_filter,
-                    recency_weight=recency_weight,
-                ),
-            )
 
             response_obj = {
                 "results": [asdict(r) for r in results],
@@ -534,7 +519,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                 "task_type": "ask",
                 "query": query,
                 "context": context_str,
-                "model": req.get("model", "gemini/gemini-3.1-flash-preview"),
+                "model": req.get("model") or "auto",
                 "reasoning_effort": req.get("reasoning_effort"),
                 "env_keys": env_keys,
                 "env": {"PKM_VAULT_DIR": str(vault.path)} if vault else {},
@@ -737,9 +722,8 @@ async def workflow_checker(config: WorkflowConfig):
     """Schedule and dispatch a workflow based on its WorkflowConfig."""
     import socket
 
-    last_run_date = None
+    last_run_dates: dict[str, datetime.date] = {}
     hostname = socket.gethostname()
-    jitter_min = jitter_minutes(config)
 
     while True:
         await asyncio.sleep(60)
@@ -747,53 +731,77 @@ async def workflow_checker(config: WorkflowConfig):
         now = datetime.datetime.now()
         current_date = now.date()
 
-        if (
-            now.hour == config.schedule_hour
-            and now.minute == jitter_min
-            and last_run_date != current_date
-        ):
-            if task_queue:
-                vaults = discover_vaults()
-                ts = int(now.timestamp())
-                for vault_name, vault in vaults.items():
-                    marker_path = vault.pkm_dir / config.marker_file
-                    if marker_path.exists():
-                        try:
-                            data = json.loads(marker_path.read_text())
-                            if data.get("date") == str(current_date):
-                                logger.info(
-                                    "Workflow '%s' already claimed by '%s' today, skipping vault '%s'",
-                                    config.id,
-                                    data.get("host", "unknown"),
-                                    vault_name,
-                                )
-                                continue
-                        except Exception:
-                            pass
+        if not task_queue:
+            continue
 
-                    vault.pkm_dir.mkdir(parents=True, exist_ok=True)
-                    marker_path.write_text(
-                        json.dumps({"date": str(current_date), "host": hostname})
-                    )
+        vaults = discover_vaults()
+        ts = int(now.timestamp())
+        for vault_name, vault in vaults.items():
+            latest_configs = {wf.id: wf for wf in load_workflows(vault_path=vault.path)}
+            latest_config = latest_configs.get(config.id)
+            if latest_config is None:
+                logger.info(
+                    "Workflow '%s' no longer configured for vault '%s'; skipping",
+                    config.id,
+                    vault_name,
+                )
+                continue
 
-                    task = {
-                        "type": "task",
-                        "id": f"{config.id}_{vault_name}_{ts}",
-                        "task_type": "workflow",
-                        "workflow_id": config.id,
-                        "env": {"PKM_VAULT_DIR": str(vault.path)},
-                    }
-                    task_queue.push(task)
-                    logger.info(
-                        "Scheduled workflow '%s' for vault '%s': %s (host=%s, slot=%d:%02d)",
-                        config.id,
-                        vault_name,
-                        task["id"],
-                        hostname,
-                        config.schedule_hour,
-                        jitter_min,
-                    )
-            last_run_date = current_date
+            jitter_min = jitter_minutes(latest_config)
+            if now.hour != latest_config.schedule_hour or now.minute != jitter_min:
+                continue
+
+            if last_run_dates.get(vault_name) == current_date:
+                continue
+
+            if not latest_config.enabled:
+                logger.info(
+                    "Workflow '%s' is disabled for vault '%s'; skipping scheduled run",
+                    latest_config.id,
+                    vault_name,
+                )
+                last_run_dates[vault_name] = current_date
+                continue
+
+            marker_path = vault.pkm_dir / latest_config.marker_file
+            if marker_path.exists():
+                try:
+                    data = json.loads(marker_path.read_text())
+                    if data.get("date") == str(current_date):
+                        logger.info(
+                            "Workflow '%s' already claimed by '%s' today, skipping vault '%s'",
+                            latest_config.id,
+                            data.get("host", "unknown"),
+                            vault_name,
+                        )
+                        last_run_dates[vault_name] = current_date
+                        continue
+                except Exception:
+                    pass
+
+            vault.pkm_dir.mkdir(parents=True, exist_ok=True)
+            marker_path.write_text(
+                json.dumps({"date": str(current_date), "host": hostname})
+            )
+
+            task = {
+                "type": "task",
+                "id": f"{latest_config.id}_{vault_name}_{ts}",
+                "task_type": "workflow",
+                "workflow_id": latest_config.id,
+                "env": {"PKM_VAULT_DIR": str(vault.path)},
+            }
+            task_queue.push(task)
+            last_run_dates[vault_name] = current_date
+            logger.info(
+                "Scheduled workflow '%s' for vault '%s': %s (host=%s, slot=%d:%02d)",
+                latest_config.id,
+                vault_name,
+                task["id"],
+                hostname,
+                latest_config.schedule_hour,
+                jitter_min,
+            )
 
 
 async def async_main():
@@ -846,7 +854,12 @@ async def async_main():
         web_cfg = get_web_config()
         gate = ShutdownGate()
         DaemonState.shutdown_gate = gate
-        web_app = make_app(gate=gate, web_config=web_cfg, on_activity=_bump_activity)
+        web_app = make_app(
+            gate=gate,
+            web_config=web_cfg,
+            on_activity=_bump_activity,
+            search_runner=run_in_process_search,
+        )
         runner = _aiohttp_web.AppRunner(web_app)
         await runner.setup()
         site = _aiohttp_web.TCPSite(runner, web_cfg.bind, web_cfg.port)

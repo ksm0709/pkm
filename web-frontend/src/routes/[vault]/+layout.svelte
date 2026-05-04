@@ -3,7 +3,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import Topbar from '$lib/components/Topbar.svelte';
-  import FileTreeDrawer from '$lib/components/FileTreeDrawer.svelte';
+  import AppNavDrawer from '$lib/components/AppNavDrawer.svelte';
   import CmdK from '$lib/components/CmdK.svelte';
   import WikilinkPreview from '$lib/components/WikilinkPreview.svelte';
   import type { Snippet } from 'svelte';
@@ -15,11 +15,16 @@
   let { children }: Props = $props();
 
   let vaultName = $derived($page.params.vault ?? '');
+  let pageName = $derived(pageNameFromPath($page.url.pathname, vaultName));
   let drawerOpen = $state(false);
+  let commandPaletteOpenToken = $state(0);
+  const drawerStorageKey = 'pkm.appNavOpen';
+  let pendingKey = '';
+  let pendingTimer: ReturnType<typeof setTimeout> | null = null;
 
   onMount(() => {
     try {
-      drawerOpen = localStorage.getItem('pkm.fileTreeOpen') === 'true';
+      drawerOpen = localStorage.getItem(drawerStorageKey) === 'true';
     } catch {
       // ignore — SSR or private-browsing restriction
     }
@@ -27,22 +32,29 @@
     // Install global navigation hook used by vim mappings (F4-5).
     // Other actions are stubs here; F4-2/F4-4/F3 wire them in later.
     (window as any).__pkmNav = {
-      gotoDaily: () => goto(`/${vaultName}/daily/today`),
+      gotoDaily: () => goto(`/${vaultName}/notes/${new Date().toISOString().slice(0, 10)}`),
       gotoNote: (id: string) => goto(`/${vaultName}/notes/${id}`),
       nextNeighbor: () => false,
       prevNeighbor: () => false,
       followAtCursor: () => false,
       openExternal: () => false,
-      openPalette: () => false
+      openPalette: () => openCommandPalette()
     };
+
+    window.addEventListener('keydown', handleKeydown);
   });
 
   onDestroy(() => {
     if (typeof window !== 'undefined') {
+      window.removeEventListener('keydown', handleKeydown);
       try {
         delete (window as any).__pkmNav;
       } catch {
         (window as any).__pkmNav = undefined;
+      }
+      if (pendingTimer) {
+        clearTimeout(pendingTimer);
+        pendingTimer = null;
       }
     }
   });
@@ -50,7 +62,7 @@
   function toggleDrawer() {
     drawerOpen = !drawerOpen;
     try {
-      localStorage.setItem('pkm.fileTreeOpen', String(drawerOpen));
+      localStorage.setItem(drawerStorageKey, String(drawerOpen));
     } catch {
       // ignore
     }
@@ -59,16 +71,74 @@
   function closeDrawer() {
     drawerOpen = false;
     try {
-      localStorage.setItem('pkm.fileTreeOpen', 'false');
+      localStorage.setItem(drawerStorageKey, 'false');
     } catch {
       // ignore
     }
   }
 
+  function openCommandPalette() {
+    commandPaletteOpenToken += 1;
+    return true;
+  }
+
+  function pageNameFromPath(pathname: string, vault: string) {
+    if (!vault) return 'pkm';
+    const parts = pathname.split('/').filter(Boolean);
+    if (parts[0] !== vault) return 'home';
+    if (parts.length === 1) return 'notes';
+    if (parts[1] === 'notes' && parts[2]) return decodeURIComponent(parts[2]);
+    if (parts[1] === 'daily') return 'daily';
+    if (parts[1] === 'logger') return 'logger';
+    if (parts[1] === 'workflows' && parts[2]) return `workflow:${decodeURIComponent(parts[2])}`;
+    if (parts[1] === 'workflows') return 'workflows';
+    if (parts[1] === 'ask') return 'ask';
+    return parts[1] || 'home';
+  }
+
   function handleKeydown(event: KeyboardEvent) {
-    if ((event.metaKey || event.ctrlKey) && event.key === 'b') {
+    const key = event.key.toLowerCase();
+    const target = event.target;
+    const isTypingTarget =
+      target instanceof HTMLElement &&
+      (target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable);
+
+    if (!isTypingTarget && pendingKey === 'g') {
+      pendingKey = '';
+      if (pendingTimer) {
+        clearTimeout(pendingTimer);
+        pendingTimer = null;
+      }
+      if (key === 'd') {
+        event.preventDefault();
+        goto(`/${vaultName}/notes/${new Date().toISOString().slice(0, 10)}`);
+        return;
+      }
+    }
+
+    if (!isTypingTarget && key === 'g') {
+      pendingKey = 'g';
+      if (pendingTimer) clearTimeout(pendingTimer);
+      pendingTimer = setTimeout(() => {
+        pendingKey = '';
+        pendingTimer = null;
+      }, 800);
+      return;
+    }
+
+    if ((event.metaKey || event.ctrlKey) && (key === 'b' || event.code === 'KeyB')) {
       event.preventDefault();
       toggleDrawer();
+    }
+
+    if (
+      event.key === 'Escape' &&
+      document.querySelector('[role="dialog"][aria-label="Command palette"]')
+    ) {
+      return;
     }
 
     if (event.key === 'Escape' && drawerOpen) {
@@ -77,60 +147,48 @@
   }
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
-
-<Topbar {vaultName} drawerOpen={drawerOpen} onToggleDrawer={toggleDrawer} />
+<Topbar
+  {vaultName}
+  {pageName}
+  drawerOpen={drawerOpen}
+  {toggleDrawer}
+  {openCommandPalette}
+/>
 
 <div class="vault-shell" class:drawer-open={drawerOpen}>
-  <div class="shell-rail" aria-hidden="true"></div>
-  <FileTreeDrawer {vaultName} open={drawerOpen} />
+  <AppNavDrawer {vaultName} open={drawerOpen} {openCommandPalette} {closeDrawer} />
   {#if drawerOpen}
-    <button class="drawer-scrim" type="button" aria-label="Close file drawer" onclick={closeDrawer}></button>
+    <button class="drawer-scrim" type="button" aria-label="Close navigation drawer" onclick={closeDrawer}></button>
   {/if}
   <div class="vault-content">
     {@render children()}
   </div>
 </div>
 
-<CmdK {vaultName} />
+<CmdK {vaultName} openToken={commandPaletteOpenToken} />
 
 <WikilinkPreview vault={vaultName} />
 
 <style>
   .vault-shell {
-    --bg: #090b0d;
-    --bg-elev: #101419;
-    --surface: #101419;
-    --text: #e8ecef;
-    --text-muted: #9aa6ad;
-    --text-faint: #5f6970;
-    --border: rgba(159, 177, 188, 0.20);
-    --accent: #ecaa4a;
-    --accent-bg: rgba(236, 170, 74, 0.12);
-    --signal: #ecaa4a;
-    --rail: rgba(236, 170, 74, 0.58);
     position: relative;
     display: flex;
     flex-direction: row;
-    min-height: calc(100vh - 48px);
-    background:
-      linear-gradient(90deg, rgba(236, 170, 74, 0.08) 0 1px, transparent 1px 100%) left top / 24px 100% no-repeat,
-      var(--bg, #090b0d);
+    height: calc(100vh - var(--topbar-height, 48px));
+    height: calc(100svh - var(--topbar-height, 48px));
+    height: calc(100dvh - var(--topbar-height, 48px));
+    min-height: 0;
+    overflow: hidden;
+    background: var(--bg);
     animation: shell-reveal var(--dur-base, 200ms) var(--ease-out) both;
-  }
-
-  .shell-rail {
-    flex: 0 0 12px;
-    border-right: 1px solid var(--border, rgba(159, 177, 188, 0.20));
-    background:
-      linear-gradient(180deg, var(--rail, rgba(236, 170, 74, 0.58)), transparent 180px),
-      rgba(159, 177, 188, 0.025);
   }
 
   .vault-content {
     flex: 1;
     min-width: 0;
-    overflow: hidden;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
 
   .drawer-scrim {
@@ -150,11 +208,9 @@
 
   @media (max-width: 760px) {
     .vault-shell {
-      min-height: calc(100vh - 48px);
-    }
-
-    .shell-rail {
-      flex-basis: 8px;
+      height: calc(100vh - var(--topbar-height, 48px));
+      height: calc(100svh - var(--topbar-height, 48px));
+      height: calc(100dvh - var(--topbar-height, 48px));
     }
 
     .drawer-scrim {

@@ -12,6 +12,7 @@ from click.testing import CliRunner
 
 from pkm.cli import main
 from pkm.config import VaultConfig
+from pkm.graph import build_ast_and_graph
 
 
 # ---------------------------------------------------------------------------
@@ -192,6 +193,53 @@ def test_get_note_neighbors_semantic(tmp_path, monkeypatch):
     sem_ids = [x["note_id"] for x in result["semantic"]]
     assert "note-b" in sem_ids
     assert all("confidence" in x for x in result["semantic"])
+
+
+def test_build_graph_links_inline_body_tags_to_tag_node(tmp_path, monkeypatch):
+    """Body hashtags like #TODO create has_tag edges and tag-page inbound neighbors."""
+    vault = _make_vault(tmp_path)
+    (vault.notes_dir / "task-note.md").write_text(
+        "---\nid: task-note\naliases: []\ntags: []\n---\n\n"
+        "This note has an inline #TODO marker in its body.\n",
+        encoding="utf-8",
+    )
+
+    build_ast_and_graph(vault)
+
+    data = json.loads(vault.graph_path.read_text(encoding="utf-8"))
+    graph = nx.node_link_graph(data)
+    assert graph.has_node("tag:TODO")
+    assert graph.has_edge("task-note", "tag:TODO")
+    assert graph.edges["task-note", "tag:TODO"]["type"] == "has_tag"
+
+    from pkm.tools.links import get_note_neighbors
+
+    monkeypatch.setenv("PKM_VAULT_DIR", str(vault.path))
+    result = json.loads(asyncio.run(get_note_neighbors(note_id="tag:TODO")))
+    inbound_ids = [x["note_id"] for x in result["inbound"]]
+    assert "task-note" in inbound_ids
+
+
+def test_build_graph_does_not_downgrade_existing_note_wikilink_targets(tmp_path):
+    """A wikilink to an existing note must not overwrite its node type."""
+    vault = _make_vault(tmp_path)
+    (vault.notes_dir / "aaa-source.md").write_text(
+        "---\nid: aaa-source\naliases: []\ntags: []\n---\n\n"
+        "Links to [[zzz-target]].\n",
+        encoding="utf-8",
+    )
+    (vault.notes_dir / "zzz-target.md").write_text(
+        "---\nid: zzz-target\naliases: []\ntags: []\n---\n\n"
+        "Real target note.\n",
+        encoding="utf-8",
+    )
+
+    build_ast_and_graph(vault)
+
+    graph = nx.node_link_graph(json.loads(vault.graph_path.read_text(encoding="utf-8")))
+    assert graph.nodes["zzz-target"]["type"] == "note"
+    assert graph.nodes["zzz-target"]["path"].endswith("zzz-target.md")
+    assert graph.has_edge("aaa-source", "zzz-target")
 
 
 # ---------------------------------------------------------------------------

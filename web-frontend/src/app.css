@@ -6,23 +6,12 @@
 @import '$lib/styles/reading-column.css';
 
 body {
-  background-image:
-    linear-gradient(var(--grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
-    radial-gradient(circle at 18% 0%, color-mix(in srgb, var(--rail) 24%, transparent), transparent 34rem);
-  background-size: 32px 32px, 32px 32px, auto;
-  background-attachment: fixed;
+  background-color: var(--bg);
+  background-image: none;
 }
 
 body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    linear-gradient(90deg, transparent, color-mix(in srgb, var(--rail) 18%, transparent), transparent) top left / 100% 1px no-repeat,
-    linear-gradient(180deg, color-mix(in srgb, var(--surface) 72%, transparent), transparent 220px);
+  content: none;
 }
 
 .prose,

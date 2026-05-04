@@ -16,6 +16,7 @@ import numpy as np
 
 from pkm.config import VaultConfig
 from pkm.frontmatter import parse as parse_note
+from pkm.note_summary import note_description
 
 
 def _cosine_distance(a: np.ndarray, b: np.ndarray) -> float:
@@ -355,7 +356,7 @@ def parse_file_ast(file_path: Path, note_id: str) -> ASTMetadata:
     )
 
 
-_AST_CACHE_VERSION = 2  # bump to invalidate cache after tag-parsing fixes
+_AST_CACHE_VERSION = 3  # bump to invalidate cache after inline tag parsing fixes
 
 
 class ASTCache:
@@ -452,12 +453,9 @@ def build_ast_and_graph(vault: VaultConfig) -> None:
             cache.set(metadata)
 
         meta = dict(note.meta)
-        if not meta.get("description") and note.body:
-            body_text = note.body.strip()
-            if body_text:
-                meta["description"] = body_text[:200].replace("\n", " ").strip() + (
-                    "..." if len(body_text) > 200 else ""
-                )
+        description = note_description(meta, note.body)
+        if description:
+            meta["description"] = description
 
         graph.add_node(
             note_id,
@@ -483,7 +481,8 @@ def build_ast_and_graph(vault: VaultConfig) -> None:
             graph.add_edge(note_id, tag_id, type="tag_note")
 
         for link in metadata.links:
-            graph.add_node(link, type="note_or_unresolved", title=link)
+            if not graph.has_node(link):
+                graph.add_node(link, type="note_or_unresolved", title=link)
             graph.add_edge(note_id, link, type="wikilink")
 
     # Post-process: link tag notes directly to all notes that use that tag.

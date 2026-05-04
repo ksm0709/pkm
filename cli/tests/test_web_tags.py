@@ -81,6 +81,62 @@ async def test_search_tags_glob(app, tmp_vault: VaultConfig) -> None:
 
 
 @pytest.mark.anyio
+async def test_tags_routes_include_inline_body_tags(
+    app, tmp_vault: VaultConfig
+) -> None:
+    """Body hashtags are first-class tags for tag lists and tag search."""
+    (tmp_vault.notes_dir / "inline-todo.md").write_text(
+        "---\nid: inline-todo\naliases: []\ntags: []\n---\n\n"
+        "This note is tracked with #TODO in the content.\n",
+        encoding="utf-8",
+    )
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/tags",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 200
+        data = await resp.json()
+        tag_counts = {item["tag"]: item["count"] for item in data["tags"]}
+        assert tag_counts["TODO"] == 1
+
+        resp = await client.get(
+            "/api/v1/vault/test-vault/tags/search",
+            params={"pattern": "TODO"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 200
+        data = await resp.json()
+        ids = {r["note_id"] for r in data["results"]}
+        assert "inline-todo" in ids
+
+
+@pytest.mark.anyio
+async def test_search_tags_serializes_daily_note_date_titles(
+    app, tmp_vault: VaultConfig
+) -> None:
+    """Daily-note date titles must not make tag search return HTTP 500."""
+    (tmp_vault.daily_dir / "2026-04-30.md").write_text(
+        "---\nid: 2026-04-30\naliases: []\ntags: []\n---\n\n"
+        "- #TODO Follow up.\n",
+        encoding="utf-8",
+    )
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/tags/search",
+            params={"pattern": "TODO"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 200
+        data = await resp.json()
+        first = data["results"][0]
+        assert first["note_id"] == "2026-04-30"
+        assert first["title"] == "2026-04-30"
+
+
+@pytest.mark.anyio
 async def test_search_tags_empty_pattern_returns_400(
     app, tmp_vault: VaultConfig
 ) -> None:

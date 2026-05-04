@@ -14,9 +14,11 @@
  * Returns CM6 extensions: a configured autocompletion + a baseTheme
  * for the menu look. Wire into CodeMirror.svelte's extensions array.
  */
-import { autocompletion } from '@codemirror/autocomplete';
-import { EditorView } from '@codemirror/view';
+import { acceptCompletion, autocompletion, startCompletion } from '@codemirror/autocomplete';
+import { Prec } from '@codemirror/state';
+import { EditorView, keymap } from '@codemirror/view';
 import { apiClient } from '../api/client.js';
+import { inlineCompletionSource, inlineCompletionTheme } from './inline-completions.js';
 
 /** Resolve the current vault from the route path: /{vault}/notes/... */
 function currentVault() {
@@ -218,12 +220,28 @@ const slashTheme = EditorView.baseTheme({
   }
 });
 
+function insertAndStartCompletion(char) {
+  return (view) => {
+    view.dispatch(view.state.replaceSelection(char));
+    queueMicrotask(() => startCompletion(view));
+    return true;
+  };
+}
+
+const inlineTriggerKeymap = keymap.of([
+  { key: '[', run: insertAndStartCompletion('[') },
+  { key: '#', run: insertAndStartCompletion('#') }
+]);
+
 export const slashCommands = [
+  Prec.highest(keymap.of([{ key: 'Enter', run: acceptCompletion }])),
+  inlineTriggerKeymap,
   autocompletion({
-    override: [slashSource],
+    override: [inlineCompletionSource, slashSource],
     activateOnTyping: true,
     icons: false,
     defaultKeymap: true
   }),
+  inlineCompletionTheme,
   slashTheme
 ];

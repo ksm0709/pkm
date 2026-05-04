@@ -1,17 +1,26 @@
 <script lang="ts">
+  import { goto } from '$app/navigation';
+
   interface Props {
     vaultName?: string;
-    vimMode?: string;
+    pageName?: string;
     drawerOpen?: boolean;
-    onToggleDrawer?: () => void;
+    toggleDrawer?: () => void;
+    openCommandPalette?: () => void;
   }
 
   let {
     vaultName = '',
-    vimMode = 'NORMAL',
+    pageName = 'home',
     drawerOpen = false,
-    onToggleDrawer = () => {}
+    toggleDrawer = () => {},
+    openCommandPalette = () => {}
   }: Props = $props();
+
+  function openVaultLogger() {
+    if (!vaultName) return;
+    void goto(`/${vaultName}/logger`);
+  }
 </script>
 
 <header class="topbar" aria-label="Vault status rail">
@@ -19,33 +28,40 @@
     <button
       class="drawer-toggle"
       type="button"
-      aria-label={drawerOpen ? 'Close file drawer' : 'Open file drawer'}
+      aria-label={drawerOpen ? 'Close navigation drawer' : 'Open navigation drawer'}
       aria-pressed={drawerOpen}
-      onclick={onToggleDrawer}
+      onclick={toggleDrawer}
     >
       <span class="toggle-mark" aria-hidden="true"></span>
-      <span class="toggle-text">FILES</span>
+      <span class="toggle-text">NAV</span>
     </button>
 
-    <div class="station" aria-label="Active vault">
-      <span class="station-kicker">station</span>
+    <button
+      class="breadcrumb"
+      type="button"
+      aria-label="Open vault logger"
+      disabled={!vaultName}
+      onclick={openVaultLogger}
+    >
       {#if vaultName}
         <span class="vault-name">{vaultName}</span>
+        <span class="breadcrumb-separator" aria-hidden="true">&gt;</span>
+        <span class="page-name">{pageName}</span>
       {:else}
         <span class="vault-name faint">pkm</span>
       {/if}
-    </div>
-  </div>
-
-  <div class="topbar-center" aria-hidden="true">
-    <span class="rail-line"></span>
-    <span class="mode-label">signal desk</span>
-    <span class="rail-line"></span>
+    </button>
   </div>
 
   <div class="topbar-right">
-    <span class="vim-mode">vim:{vimMode}</span>
-    <span class="kbd-hint">⌘K</span>
+    <button
+      class="command-button"
+      type="button"
+      aria-label="Open command palette"
+      onclick={openCommandPalette}
+    >
+      ⌘K
+    </button>
   </div>
 </header>
 
@@ -65,13 +81,11 @@
     top: 0;
     z-index: 100;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(120px, 0.75fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     height: 48px;
     padding: 0 var(--space-4, 16px);
-    background:
-      linear-gradient(90deg, rgba(236, 170, 74, 0.08), transparent 34%, transparent 66%, rgba(112, 199, 216, 0.06)),
-      var(--bg, #090b0d);
+    background: var(--bg, #090b0d);
     border-bottom: 1px solid var(--border, rgba(159, 177, 188, 0.20));
     font-family: var(--font-mono);
     font-size: var(--type-chrome-size, 13px);
@@ -91,8 +105,7 @@
   }
 
   .topbar-left,
-  .topbar-right,
-  .topbar-center {
+  .topbar-right {
     min-width: 0;
     display: flex;
     align-items: center;
@@ -101,16 +114,6 @@
   .topbar-left {
     justify-content: flex-start;
     gap: var(--space-3, 12px);
-  }
-
-  .topbar-center {
-    justify-content: center;
-    gap: var(--space-2, 8px);
-    color: var(--text-faint, #5f6970);
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    font-size: var(--type-chrome-sm-size, 11px);
-    white-space: nowrap;
   }
 
   .topbar-right {
@@ -162,25 +165,44 @@
     transform: rotate(-45deg);
   }
 
-  .station {
+  .breadcrumb {
     min-width: 0;
     display: flex;
     align-items: center;
     gap: var(--space-2, 8px);
     white-space: nowrap;
     overflow: hidden;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    cursor: pointer;
   }
 
-  .station-kicker {
+  .breadcrumb:disabled {
+    cursor: default;
+  }
+
+  .breadcrumb:not(:disabled):hover .vault-name,
+  .breadcrumb:not(:disabled):focus-visible .vault-name,
+  .breadcrumb:not(:disabled):hover .page-name,
+  .breadcrumb:not(:disabled):focus-visible .page-name {
+    color: var(--signal, var(--accent, #ecaa4a));
+  }
+
+  .breadcrumb:focus-visible {
+    outline: 1px solid var(--rail, rgba(236, 170, 74, 0.58));
+    outline-offset: 3px;
+  }
+
+  .breadcrumb-separator {
     flex: 0 0 auto;
     color: var(--text-faint, #5f6970);
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
     white-space: nowrap;
   }
 
-  .vault-name {
+  .vault-name,
+  .page-name {
     min-width: 0;
     color: var(--text, #e8ecef);
     white-space: nowrap;
@@ -192,15 +214,11 @@
     color: var(--text-faint, #5f6970);
   }
 
-  .rail-line {
-    display: block;
-    width: min(9vw, 96px);
-    height: 1px;
-    background: linear-gradient(90deg, transparent, var(--border, rgba(159, 177, 188, 0.20)), transparent);
+  .page-name {
+    color: var(--text-muted, #9aa6ad);
   }
 
-  .vim-mode,
-  .kbd-hint {
+  .command-button {
     display: inline-flex;
     align-items: center;
     height: 28px;
@@ -208,22 +226,27 @@
     padding: 0 var(--space-2, 8px);
     border: 1px solid var(--border, rgba(159, 177, 188, 0.20));
     color: var(--text-muted, #9aa6ad);
+    background: transparent;
+    font: inherit;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  .kbd-hint {
+  .command-button {
     color: var(--signal, var(--accent, #ecaa4a));
     border-color: rgba(236, 170, 74, 0.32);
+    cursor: pointer;
     transition:
       border-color var(--dur-fast, 120ms) var(--ease-out),
       background-color var(--dur-fast, 120ms) var(--ease-out);
   }
 
-  .kbd-hint:hover {
+  .command-button:hover,
+  .command-button:focus-visible {
     background: var(--accent-bg, rgba(236, 170, 74, 0.12));
     border-color: var(--rail, rgba(236, 170, 74, 0.58));
+    outline: none;
   }
 
   @media (max-width: 760px) {
@@ -234,16 +257,8 @@
       column-gap: var(--space-2, 8px);
     }
 
-    .topbar-center {
-      display: none;
-    }
-
     .topbar-right {
       gap: var(--space-1, 4px);
-    }
-
-    .vim-mode {
-      display: none;
     }
 
     .toggle-text {
@@ -260,7 +275,7 @@
   @media (prefers-reduced-motion: reduce) {
     .drawer-toggle,
     .toggle-mark,
-    .kbd-hint {
+    .command-button {
       transition: none;
     }
   }

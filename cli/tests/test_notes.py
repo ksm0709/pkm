@@ -136,6 +136,61 @@ def test_new_generates_source(tmp_vault):
     assert meta["source"] == today
 
 
+def test_rename_note_id_updates_file_frontmatter_and_wikilinks(tmp_vault):
+    """Shared lifecycle rename rewrites links across notes and daily files."""
+    from pkm.frontmatter import parse
+    from pkm.note_lifecycle import rename_note_id
+
+    source = tmp_vault.notes_dir / "old-note.md"
+    source.write_text(
+        "---\nid: old-note\ntitle: Old Note\ntags: []\n---\n\nBody\n",
+        encoding="utf-8",
+    )
+    linked = tmp_vault.notes_dir / "linking-note.md"
+    linked.write_text(
+        "---\nid: linking-note\ntags: []\n---\n\n"
+        "See [[old-note]] and [[old-note|kept alias]].\n",
+        encoding="utf-8",
+    )
+    daily = tmp_vault.daily_dir / "2026-05-04.md"
+    daily.write_text(
+        "---\nid: 2026-05-04\ntags: []\n---\n\nLogged [[old-note.md]].\n",
+        encoding="utf-8",
+    )
+
+    result = rename_note_id(tmp_vault, "old-note", "new-note")
+
+    assert not source.exists()
+    renamed = tmp_vault.notes_dir / "new-note.md"
+    assert renamed.exists()
+    assert parse(renamed).id == "new-note"
+    assert result.wikilinks.replacements == 3
+    assert "[[new-note]]" in linked.read_text(encoding="utf-8")
+    assert "[[new-note|kept alias]]" in linked.read_text(encoding="utf-8")
+    assert "[[new-note]]" in daily.read_text(encoding="utf-8")
+
+
+def test_note_rename_command_updates_wikilinks(cli_runner, tmp_vault):
+    source = tmp_vault.notes_dir / "old-cli-note.md"
+    source.write_text(
+        "---\nid: old-cli-note\ntags: []\n---\n\nBody\n",
+        encoding="utf-8",
+    )
+    linked = tmp_vault.notes_dir / "cli-linking-note.md"
+    linked.write_text(
+        "---\nid: cli-linking-note\ntags: []\n---\n\n[[old-cli-note]]\n",
+        encoding="utf-8",
+    )
+
+    result = cli_runner("note", "rename", "old-cli-note", "new-cli-note")
+
+    assert result.exit_code == 0
+    assert "Renamed" in result.output
+    assert not source.exists()
+    assert (tmp_vault.notes_dir / "new-cli-note.md").exists()
+    assert "[[new-cli-note]]" in linked.read_text(encoding="utf-8")
+
+
 # ---------------------------------------------------------------------------
 # _search_notes unit tests
 # ---------------------------------------------------------------------------
@@ -588,6 +643,35 @@ class TestReadNoteTinyAgent:
         assert "error" in result
 
 
+class TestRenameNoteTinyAgent:
+    def test_rename_note_tool_updates_wikilinks(self, tmp_vault, monkeypatch):
+        monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
+        source = tmp_vault.notes_dir / "old-tool-note.md"
+        source.write_text(
+            "---\nid: old-tool-note\ntags: []\n---\n\nBody\n",
+            encoding="utf-8",
+        )
+        linked = tmp_vault.notes_dir / "tool-linking-note.md"
+        linked.write_text(
+            "---\nid: tool-linking-note\ntags: []\n---\n\n[[old-tool-note]]\n",
+            encoding="utf-8",
+        )
+
+        from pkm.tools.notes import rename_note
+
+        result = TestReadNoteTinyAgent()._call(
+            rename_note,
+            old_note_id="old-tool-note",
+            new_note_id="new-tool-note",
+        )
+
+        assert result["status"] == "renamed"
+        assert result["wikilinks_updated"] == 1
+        assert not source.exists()
+        assert (tmp_vault.notes_dir / "new-tool-note.md").exists()
+        assert "[[new-tool-note]]" in linked.read_text(encoding="utf-8")
+
+
 # ---------------------------------------------------------------------------
 # read_note tool: 8-key JSON schema (MCP path)
 # ---------------------------------------------------------------------------
@@ -634,6 +718,30 @@ class TestReadNoteMCP:
         mcp_mod._current_vault = tmp_vault
         result = mcp_mod.read_note("does-not-exist-xyz")
         assert "error" in result
+
+
+class TestRenameNoteMCP:
+    def test_rename_note_mcp_updates_wikilinks(self, tmp_vault):
+        mcp_mod = pytest.importorskip("pkm.mcp_server")
+        mcp_mod._current_vault = tmp_vault
+        source = tmp_vault.notes_dir / "old-mcp-note.md"
+        source.write_text(
+            "---\nid: old-mcp-note\ntags: []\n---\n\nBody\n",
+            encoding="utf-8",
+        )
+        linked = tmp_vault.daily_dir / "2026-05-04.md"
+        linked.write_text(
+            "---\nid: 2026-05-04\ntags: []\n---\n\n[[old-mcp-note]]\n",
+            encoding="utf-8",
+        )
+
+        result = mcp_mod.rename_note("old-mcp-note", "new-mcp-note")
+
+        assert result["status"] == "renamed"
+        assert result["wikilinks_updated"] == 1
+        assert not source.exists()
+        assert (tmp_vault.notes_dir / "new-mcp-note.md").exists()
+        assert "[[new-mcp-note]]" in linked.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

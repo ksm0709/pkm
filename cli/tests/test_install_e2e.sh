@@ -54,6 +54,56 @@ assert_install() {
   "$pkm_bin" --help >/dev/null
 }
 
+assert_cloudflared_install() {
+  local root="$1"
+  local fake_bin="$root/fake-bin"
+  local install_bin="$root/install-bin"
+  mkdir -p "$fake_bin" "$install_bin"
+
+  cat > "$fake_bin/curl" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o)
+      out="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+if [[ -z "$out" ]]; then
+  echo "fake curl expected -o <path>" >&2
+  exit 1
+fi
+cat > "$out" <<'BIN'
+#!/usr/bin/env bash
+echo "cloudflared version test-double"
+BIN
+SH
+  chmod +x "$fake_bin/curl"
+
+  env \
+    PATH="$fake_bin:/usr/bin:/bin" \
+    HOME="$root/home" \
+    PKM_INSTALL_ONLY_CLOUDFLARED=1 \
+    PKM_CLOUDFLARED_OS=Linux \
+    PKM_CLOUDFLARED_ARCH=x86_64 \
+    PKM_CLOUDFLARED_BIN_DIR="$install_bin" \
+    PKM_CLOUDFLARED_URL="https://example.invalid/cloudflared" \
+    bash "$INSTALL_SCRIPT" 2>&1 | sed 's/^/    /'
+
+  local cloudflared_bin="$install_bin/cloudflared"
+  if [[ ! -x "$cloudflared_bin" ]]; then
+    echo "  cloudflared binary not found at $cloudflared_bin" >&2
+    return 1
+  fi
+  "$cloudflared_bin" --version | grep -q "test-double"
+}
+
 # ── setup ─────────────────────────────────────────────────────────────────────
 
 TMP="$(mktemp -d)"
@@ -62,6 +112,11 @@ trap 'rm -rf "$TMP"' EXIT
 # Copy the cli/ tree into tmp so the "local file" test runs from an isolated dir
 TMP_CLI="$TMP/cli"
 cp -r "$REPO_ROOT/cli/." "$TMP_CLI"
+
+# ── test 0: cloudflared helper install ────────────────────────────────────────
+
+run_test "cloudflared helper install (fake download)" \
+  assert_cloudflared_install "$TMP/cloudflared"
 
 # ── test 1: local file mode ───────────────────────────────────────────────────
 # BASH_SOURCE[0] resolves to the script path → uses the adjacent pyproject.toml

@@ -5,11 +5,13 @@
 
   interface Props {
     vaultName: string;
+    openToken?: number;
   }
 
-  let { vaultName }: Props = $props();
+  let { vaultName, openToken = 0 }: Props = $props();
 
   type Theme = 'light' | 'dark' | 'auto';
+  type PaletteMode = 'commands' | 'vaults';
 
   type CommandRow = {
     kind: 'command';
@@ -56,8 +58,13 @@
     count: number;
   }
 
+  interface VaultResponseItem {
+    name?: string;
+  }
+
   let open = $state(false);
   let query = $state('');
+  let mode = $state<PaletteMode>('commands');
   let activeIndex = $state(0);
   let inputEl: HTMLInputElement | null = $state(null);
 
@@ -95,8 +102,12 @@
   async function loadVaults() {
     if (vaultsList.length > 0) return;
     try {
-      const v = await apiGet<string[]>('/api/v1/vaults');
-      vaultsList = Array.isArray(v) ? v : [];
+      const v = await apiGet<Array<string | VaultResponseItem>>('/api/v1/vaults');
+      vaultsList = Array.isArray(v)
+        ? v
+            .map((item) => (typeof item === 'string' ? item : item.name))
+            .filter((name): name is string => !!name)
+        : [];
     } catch {
       vaultsList = [];
     }
@@ -119,7 +130,7 @@
         id: 'cmd:daily',
         label: "Open today's daily note",
         hint: 'daily',
-        run: () => goto(`/${vaultName}/daily`)
+        run: () => goto(`/${vaultName}/notes/${new Date().toISOString().slice(0, 10)}`)
       },
       {
         kind: 'command',
@@ -136,17 +147,29 @@
       },
       {
         kind: 'command',
+        id: 'cmd:logger',
+        label: 'Open logger',
+        hint: 'daily log',
+        run: () => goto(`/${vaultName}/logger`)
+      },
+      {
+        kind: 'command',
+        id: 'cmd:workflows',
+        label: 'Open workflows',
+        hint: 'automation',
+        run: () => goto(`/${vaultName}/workflows`)
+      },
+      {
+        kind: 'command',
         id: 'cmd:switch',
         label: 'Switch vault…',
         hint: 'switch',
         run: async () => {
           await loadVaults();
-          const others = vaultsList.filter((v) => v !== vaultName);
-          if (others.length === 0) return;
-          // First non-current vault — for full picker behavior the user can
-          // start typing the vault name once vaults are listed below.
-          await goto(`/${others[0]}`);
-          close();
+          mode = 'vaults';
+          query = '';
+          activeIndex = 0;
+          inputEl?.focus();
         }
       },
       {
@@ -161,10 +184,12 @@
       },
       {
         kind: 'command',
-        id: 'cmd:graph',
-        label: 'Open graph',
-        hint: 'graph',
-        run: () => goto(`/${vaultName}/graph`)
+        id: 'cmd:graph-unavailable',
+        label: 'Graph unavailable',
+        hint: 'route not installed',
+        run: () => {
+          inputEl?.focus();
+        }
       }
     ];
     return list;
@@ -172,13 +197,19 @@
 
   function vaultSwitchRows(): CommandRow[] {
     return vaultsList
-      .filter((v) => v !== vaultName)
+      .filter((v) => v.toLowerCase().includes(query.trim().toLowerCase()))
       .map((v) => ({
         kind: 'command' as const,
         id: `vault:${v}`,
-        label: `Switch to ${v}`,
-        hint: 'vault',
-        run: () => goto(`/${v}`)
+        label: v,
+        hint: v === vaultName ? 'current vault' : 'vault',
+        run: () => {
+          if (v === vaultName) {
+            inputEl?.focus();
+            return;
+          }
+          return goto(`/${v}/logger`);
+        }
       }));
   }
 
@@ -188,19 +219,25 @@
     const lower = q.toLowerCase();
     return all.filter(
       (c) =>
+        c.id === 'cmd:ask' ||
         c.label.toLowerCase().includes(lower) ||
         (c.hint?.toLowerCase().includes(lower) ?? false)
     );
   }
 
-  let rows = $derived<Row[]>(buildRows(query, notes, tagNotes));
+  let rows = $derived<Row[]>(buildRows(query, notes, tagNotes, mode));
 
   function buildRows(
     q: string,
     notesList: SearchResult[],
-    tagNotesList: TagSearchNote[]
+    tagNotesList: TagSearchNote[],
+    currentMode: PaletteMode
   ): Row[] {
     const trimmed = q.trim();
+    if (currentMode === 'vaults') {
+      return vaultSwitchRows();
+    }
+
     if (!trimmed) {
       return staticCommands();
     }
@@ -278,12 +315,14 @@
     const target = e.target as HTMLInputElement;
     query = target.value;
     activeIndex = 0;
+    if (mode === 'vaults') return;
     scheduleSearch(query);
   }
 
   function openPalette() {
     open = true;
     query = '';
+    mode = 'commands';
     activeIndex = 0;
     notes = [];
     tagNotes = [];
@@ -295,6 +334,7 @@
 
   function close() {
     open = false;
+    mode = 'commands';
     if (debounceTimer) {
       clearTimeout(debounceTimer);
       debounceTimer = null;
@@ -305,8 +345,10 @@
     if (row.kind === 'command') {
       await row.run();
       // Most commands navigate; some (theme) keep palette open. Close by default
-      // unless the command was the no-op "jump" one.
-      if (row.id !== 'cmd:jump') close();
+      // unless the command opens an in-palette chooser or selects the current vault.
+      if (row.id !== 'cmd:jump' && row.id !== 'cmd:switch' && row.id !== `vault:${vaultName}`) {
+        close();
+      }
       return;
     }
     if (row.kind === 'note') {
@@ -316,9 +358,15 @@
   }
 
   function onKeydown(event: KeyboardEvent) {
+    function consume() {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    }
+
     // Global ⌘K toggle
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-      event.preventDefault();
+      consume();
       if (open) close();
       else openPalette();
       return;
@@ -327,27 +375,27 @@
     if (!open) return;
 
     if (event.key === 'Escape') {
-      event.preventDefault();
+      consume();
       close();
       return;
     }
 
     if (event.key === 'ArrowDown') {
-      event.preventDefault();
+      consume();
       if (rows.length === 0) return;
       activeIndex = (activeIndex + 1) % rows.length;
       return;
     }
 
     if (event.key === 'ArrowUp') {
-      event.preventDefault();
+      consume();
       if (rows.length === 0) return;
       activeIndex = (activeIndex - 1 + rows.length) % rows.length;
       return;
     }
 
     if (event.key === 'Enter') {
-      event.preventDefault();
+      consume();
       const row = rows[activeIndex];
       if (row) void execute(row);
     }
@@ -357,8 +405,14 @@
     if (event.target === event.currentTarget) close();
   }
 
+  $effect(() => {
+    if (openToken > 0) openPalette();
+  });
+
   onMount(() => {
-    // No-op; ⌘K binding lives on svelte:window for global capture.
+    const handler = () => openPalette();
+    window.addEventListener('pkm:open-command-palette', handler);
+    return () => window.removeEventListener('pkm:open-command-palette', handler);
   });
 </script>
 
@@ -375,12 +429,12 @@
       aria-label="Command palette"
       aria-modal="true"
     >
-      <div class="console-label">COMMAND CONSOLE</div>
+      <div class="console-label">{mode === 'vaults' ? 'VAULT SWITCHER' : 'COMMAND CONSOLE'}</div>
       <input
         bind:this={inputEl}
         class="cmdk-input"
         type="text"
-        placeholder="Search notes, run commands, #tag…"
+        placeholder={mode === 'vaults' ? 'Choose vault…' : 'Search notes, run commands, #tag…'}
         value={query}
         oninput={onInput}
         autocomplete="off"
@@ -392,6 +446,8 @@
           <li
             class="cmdk-row"
             class:active={i === activeIndex}
+            data-kind={row.kind}
+            data-note-id={row.kind === 'note' ? row.note_id : undefined}
             role="option"
             aria-selected={i === activeIndex}
             onmousemove={() => (activeIndex = i)}
@@ -418,11 +474,7 @@
   .cmdk-backdrop {
     position: fixed;
     inset: 0;
-    background:
-      linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-      rgba(9, 11, 13, 0.72);
-    background-size: 24px 24px, 24px 24px, auto;
+    background: rgba(9, 11, 13, 0.72);
     z-index: 1000;
     display: flex;
     align-items: flex-start;

@@ -10,6 +10,28 @@ if TYPE_CHECKING:
     from pkm.config import VaultConfig
 
 
+def repair_malformed_notes(vault: "VaultConfig", today: str | None = None) -> dict:
+    """Post-hook that collapses duplicated leading frontmatter in vault notes."""
+    from pkm.frontmatter import normalize_frontmatter_text
+
+    repaired: list[str] = []
+    for base_dir in (vault.notes_dir, vault.daily_dir, vault.tags_dir):
+        if not base_dir.is_dir():
+            continue
+        for path in sorted(base_dir.glob("*.md")):
+            try:
+                text = path.read_text(encoding="utf-8")
+                normalized, changed = normalize_frontmatter_text(text)
+                if not changed:
+                    continue
+                path.write_text(normalized, encoding="utf-8")
+                repaired.append(str(path.relative_to(vault.path)))
+            except Exception:
+                continue
+
+    return {"repaired_count": len(repaired), "repaired_notes": repaired}
+
+
 def build_daily_summary(vault: "VaultConfig", today: str) -> dict:
     """Pre-hook for daily_task_summary workflow.
 

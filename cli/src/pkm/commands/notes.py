@@ -26,6 +26,7 @@ from pkm.frontmatter import (
     parse,
     render,
 )
+from pkm.note_lifecycle import rename_note_id
 from pkm.wikilinks import find_backlinks
 from pkm.commands.maintenance import stale
 from pkm.commands.links import orphans
@@ -293,6 +294,27 @@ def edit(ctx: click.Context, query: str) -> None:
     result = subprocess.run([*shlex.split(editor_cmd), str(selected.path)])
     if result.returncode != 0:
         console.print(f"[yellow]Editor exited with code {result.returncode}[/yellow]")
+
+
+@note.command(name="rename")
+@click.argument("old_note_id")
+@click.argument("new_note_id")
+@click.pass_context
+def rename(ctx: click.Context, old_note_id: str, new_note_id: str) -> None:
+    """Rename a note ID and update all wikilinks to it."""
+    vault = ctx.obj["vault"]
+    try:
+        result = rename_note_id(vault, old_note_id, new_note_id)
+    except (ValueError, FileNotFoundError, FileExistsError) as e:
+        raise click.ClickException(str(e))
+
+    console.print(f"[green]Renamed[/green] {old_note_id} -> {new_note_id}")
+    console.print(
+        "[dim]"
+        f"Updated {result.wikilinks.replacements} wikilink(s) "
+        f"in {result.wikilinks.changed_files} file(s)"
+        "[/dim]"
+    )
 
 
 @note.command()

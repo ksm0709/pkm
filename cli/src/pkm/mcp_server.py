@@ -452,6 +452,39 @@ def read_note(note_id: str, vault: str | None = None) -> dict[str, Any]:
 
 
 @mcp.tool()
+def rename_note(
+    old_note_id: str,
+    new_note_id: str,
+    vault: str | None = None,
+) -> dict[str, Any]:
+    """Rename a note ID and update every wikilink that points to it.
+
+    Args:
+        old_note_id: Current note ID, without .md.
+        new_note_id: New note ID, without .md.
+        vault: Vault name. Uses server vault if omitted.
+    """
+    from pkm.note_lifecycle import rename_note_id
+
+    target_vault = _get_vault(vault)
+    try:
+        result = rename_note_id(target_vault, old_note_id, new_note_id)
+        return {
+            "status": "renamed",
+            "old_note_id": result.old_note_id,
+            "new_note_id": result.new_note_id,
+            "old_path": result.old_path,
+            "new_path": result.new_path,
+            "wikilinks_updated": result.wikilinks.replacements,
+            "files_updated": result.wikilinks.changed_files,
+        }
+    except (ValueError, FileNotFoundError, FileExistsError) as e:
+        return {"error": str(e)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
 def list_notes(filter: str | None = None, vault: str | None = None) -> dict[str, Any]:
     """List notes in the vault, optionally filtered by title substring.
 

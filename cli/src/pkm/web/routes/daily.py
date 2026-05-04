@@ -13,6 +13,7 @@ from pkm.frontmatter import parse
 from pkm.web.routes.notes import _json_safe, _resolve_vault
 
 _DATE_ONLY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_DATED_DAILY_FILE_RE = re.compile(r"^(?P<date>\d{4}-\d{2}-\d{2})(?:-.+)?$")
 
 _DAILY_TEMPLATE = """\
 ---
@@ -77,11 +78,14 @@ def _daily_note_response(path: Path) -> dict:
     }
 
 
-def _daily_summary(date_str: str, path: Path) -> dict:
+def _daily_summary(date_str: str, path: Path, *, note_id: str | None = None) -> dict:
     content = path.read_text(encoding="utf-8")
     note = parse(path)
+    resolved_note_id = note_id or date_str
     return {
+        "note_id": resolved_note_id,
         "date": date_str,
+        "kind": "daily" if resolved_note_id == date_str else "subnote",
         "title": str(note.title),  # may be datetime.date for YYYY-MM-DD ids
         "todo_count": _count_todos(content),
         "snippet": _extract_snippet(content),
@@ -189,14 +193,17 @@ async def list_daily(request: web.Request) -> web.Response:
     summaries = []
     for path in vault.daily_dir.glob("*.md"):
         stem = path.stem
-        if not _DATE_ONLY_RE.match(stem):
-            continue  # skip subnotes like YYYY-MM-DD-title.md
-        if before and stem >= before:
+        match = _DATED_DAILY_FILE_RE.match(stem)
+        if not match:
+            continue
+        date_str = match.group("date")
+        if before and date_str >= before:
             continue  # exclusive: skip dates >= before
         try:
-            summaries.append(_daily_summary(stem, path))
+            summaries.append(_daily_summary(date_str, path, note_id=stem))
         except Exception:
             pass
 
+    summaries.sort(key=lambda s: (s["kind"] != "daily", s["note_id"]))
     summaries.sort(key=lambda s: s["date"], reverse=True)
     return web.json_response(summaries[:limit])

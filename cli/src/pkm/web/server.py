@@ -11,6 +11,7 @@ from aiohttp import web
 
 from pkm.config import WebConfig, get_web_config
 from pkm.web.auth import logout, make_auth_middleware, make_login_handler
+from pkm.web.app_keys import SEARCH_RUNNER_KEY
 from pkm.web.routes import register_routes
 from pkm.web.shutdown import ShutdownGate
 
@@ -61,6 +62,7 @@ def make_app(
     gate: ShutdownGate | None = None,
     web_config: WebConfig | None = None,
     on_activity: Callable[[], None] | None = None,
+    search_runner: Callable | None = None,
 ) -> web.Application:
     """Create and configure the aiohttp Application.
 
@@ -69,6 +71,7 @@ def make_app(
         web_config: Web configuration; defaults to ``get_web_config()``.
         on_activity: Called on every authenticated request; use this to bump
             ``DaemonState.last_activity`` without creating a circular import.
+        search_runner: Optional in-process semantic search callable for daemon-hosted web.
     """
     cfg = web_config or get_web_config()
 
@@ -108,7 +111,7 @@ def make_app(
                 status=204,
                 headers={
                     "Access-Control-Allow-Origin": origin,
-                    "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
+                    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, OPTIONS",
                     "Access-Control-Allow-Headers": "Authorization, Content-Type",
                     "Access-Control-Max-Age": "86400",
                 },
@@ -131,6 +134,8 @@ def make_app(
     app.router.add_get("/api/v1/health", _health_handler)
     app.router.add_post("/api/v1/auth/login", make_login_handler(cfg))
     app.router.add_post("/api/v1/auth/logout", logout)
+    if search_runner is not None:
+        app[SEARCH_RUNNER_KEY] = search_runner
     register_routes(app)
 
     # Static asset serving (must be added AFTER api routes so api wins matching).

@@ -3,6 +3,7 @@ from pathlib import Path
 from tiny_agent.tools import tool
 from pkm.config import VaultConfig
 from pkm.commands.notes import create_note, _search_notes
+from pkm.note_lifecycle import rename_note_id
 
 
 def _get_vault(vault_dir: str) -> VaultConfig:
@@ -169,3 +170,28 @@ def update_note(note_id: str, content: str, tags: list[str] | None = None) -> st
             return f"Successfully updated note '{note_id}'"
 
     return f"Error: Note '{note_id}' not found."
+
+
+@tool()
+def rename_note(old_note_id: str, new_note_id: str) -> dict:
+    """Rename a note ID and update every wikilink that points to it.
+
+    Args:
+        old_note_id: Current note ID, without .md.
+        new_note_id: New note ID, without .md.
+    """
+    v_dir = os.environ.get("PKM_VAULT_DIR", ".")
+    vault = _get_vault(v_dir)
+    try:
+        result = rename_note_id(vault, old_note_id, new_note_id)
+        return {
+            "status": "renamed",
+            "old_note_id": result.old_note_id,
+            "new_note_id": result.new_note_id,
+            "old_path": result.old_path,
+            "new_path": result.new_path,
+            "wikilinks_updated": result.wikilinks.replacements,
+            "files_updated": result.wikilinks.changed_files,
+        }
+    except Exception as e:
+        return {"error": str(e)}

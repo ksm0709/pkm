@@ -13,7 +13,9 @@
   import { EditorState, type Extension } from '@codemirror/state';
   import { EditorView, keymap, lineNumbers, highlightActiveLine } from '@codemirror/view';
   import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+  import { startCompletion } from '@codemirror/autocomplete';
   import { vim } from '@replit/codemirror-vim';
+  import { detectInlineTrigger } from '$lib/inline-suggestions.js';
   import { pkmTheme } from './theme.js';
   import { installVimMappings } from './vim.js';
   import { liveStyling, liveStylingTheme } from './live-styling.js';
@@ -90,6 +92,12 @@
         if (next === doc) return;
         suppressNext = true;
         doc = next;
+        const cursor = update.state.selection.main.head;
+        if (detectInlineTrigger(next, cursor)) {
+          queueMicrotask(() => {
+            if (view) startCompletion(view);
+          });
+        }
       }),
       ...extensions
     ];

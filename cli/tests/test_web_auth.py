@@ -17,6 +17,7 @@ from pkm.web.auth import (
     SESSION_COOKIE_NAME,
     SSE_ROUTES,
     hash_password,
+    make_auth_middleware,
 )
 from pkm.web.server import make_app
 
@@ -99,6 +100,32 @@ async def test_wrong_token_returns_401(app: _web.Application) -> None:
             "/api/v1/health", headers={"Authorization": "Bearer wrong-token"}
         )
         assert resp.status == 401
+
+
+@pytest.mark.anyio
+async def test_pwa_install_assets_are_public_without_auth(
+    web_cfg: WebConfig,
+) -> None:
+    """Browser install checks fetch PWA assets without app auth headers."""
+    app = _web.Application(middlewares=[make_auth_middleware(web_cfg)])
+
+    async def _asset_stub(request: _web.Request) -> _web.Response:
+        return _web.Response(text="asset-ok")
+
+    app.router.add_get("/manifest.webmanifest", _asset_stub)
+    app.router.add_get("/service-worker.js", _asset_stub)
+    app.router.add_get("/icons/{name}", _asset_stub)
+
+    async with TestClient(TestServer(app)) as client:
+        for path in (
+            "/manifest.webmanifest",
+            "/service-worker.js",
+            "/icons/pwa-192.png",
+            "/icons/pwa-512.png",
+        ):
+            resp = await client.get(path)
+            assert resp.status == 200, path
+            assert await resp.text() == "asset-ok"
 
 
 @pytest.mark.anyio

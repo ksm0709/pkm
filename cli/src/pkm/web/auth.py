@@ -27,6 +27,8 @@ PUBLIC_PATHS: frozenset[str] = frozenset(
     {
         "/",
         "/login",
+        "/manifest.webmanifest",
+        "/service-worker.js",
         "/api/v1/auth/login",
         "/api/v1/auth/logout",
     }
@@ -34,6 +36,7 @@ PUBLIC_PATHS: frozenset[str] = frozenset(
 PUBLIC_PREFIXES: tuple[str, ...] = (
     "/_app/",
     "/favicon",
+    "/icons/",
 )
 SESSION_COOKIE_NAME = "pkm_session"
 SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
