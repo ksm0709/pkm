@@ -59,4 +59,44 @@ describe('graph force layout helpers', () => {
 
     expect(high).toBeLessThan(low);
   });
+
+  it('uses stronger repulsion and collision padding to increase crowded node spacing', () => {
+    const crowded = normalizeGraph({
+      nodes: Array.from({ length: 10 }, (_, index) => ({
+        id: `node-${index}`,
+        type: 'note',
+        community: 'same'
+      })),
+      links: []
+    });
+
+    const compact = settleGraphLayout(crowded, {
+      width: 420,
+      height: 300,
+      ticks: 90,
+      seed: 'crowded',
+      repulsion: 0.2,
+      collisionPadding: 4
+    });
+    const spaced = settleGraphLayout(crowded, {
+      width: 420,
+      height: 300,
+      ticks: 90,
+      seed: 'crowded',
+      repulsion: 3,
+      collisionPadding: 18
+    });
+
+    expect(minimumPairDistance(spaced)).toBeGreaterThan(minimumPairDistance(compact));
+  });
 });
+
+function minimumPairDistance(nodes: Array<{ x: number; y: number }>) {
+  let minimum = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < nodes.length; i += 1) {
+    for (let j = i + 1; j < nodes.length; j += 1) {
+      minimum = Math.min(minimum, Math.hypot(nodes[i].x - nodes[j].x, nodes[i].y - nodes[j].y));
+    }
+  }
+  return minimum;
+}

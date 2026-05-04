@@ -12,6 +12,9 @@ export interface GraphLayoutOptions {
   height?: number;
   ticks?: number;
   seed?: string;
+  attraction?: number;
+  repulsion?: number;
+  collisionPadding?: number;
 }
 
 export interface GraphLayout {
@@ -31,6 +34,9 @@ export function createGraphLayout(graph: NormalizedGraph, options: GraphLayoutOp
   const width = options.width ?? DEFAULT_WIDTH;
   const height = options.height ?? DEFAULT_HEIGHT;
   const seed = options.seed ?? 'graph';
+  const attraction = clamp(options.attraction ?? 1, 0.2, 3);
+  const repulsion = clamp(options.repulsion ?? 1, 0, 4);
+  const collisionPadding = clamp(options.collisionPadding ?? 8, 2, 32);
   const nodes = graph.nodes.map((node) => seedNode(node, width, height, seed));
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const edges = graph.edges
@@ -43,9 +49,10 @@ export function createGraphLayout(graph: NormalizedGraph, options: GraphLayoutOp
   return {
     tick(ticks = 1) {
       for (let i = 0; i < ticks; i += 1) {
-        applyEdgeForces(edges);
-        applyClusterGravity(nodes, centers);
-        applyCollision(nodes);
+        applyEdgeForces(edges, attraction);
+        applyRepulsion(nodes, repulsion);
+        applyClusterGravity(nodes, centers, attraction);
+        applyCollision(nodes, collisionPadding);
         integrate(nodes, width, height);
       }
     },
@@ -103,14 +110,18 @@ function communityCenters(nodes: PositionedGraphNode[], width: number, height: n
 }
 
 function applyEdgeForces(
-  edges: Array<{ edge: NormalizedGraphEdge; source: PositionedGraphNode; target: PositionedGraphNode }>
+  edges: Array<{ edge: NormalizedGraphEdge; source: PositionedGraphNode; target: PositionedGraphNode }>,
+  attraction: number
 ) {
   for (const { edge, source, target } of edges) {
     const dx = target.x - source.x || 0.01;
     const dy = target.y - source.y || 0.01;
     const distance = Math.hypot(dx, dy);
     const desired = semanticEdgeDistance(edge);
-    const strength = (0.012 + edge.weight * 0.01 + edge.confidence * 0.01) * (edge.type.includes('semantic') ? 1.8 : 1);
+    const strength =
+      (0.012 + edge.weight * 0.01 + edge.confidence * 0.01) *
+      (edge.type.includes('semantic') ? 1.8 : 1) *
+      attraction;
     const force = (distance - desired) * strength;
     const fx = (dx / distance) * force;
     const fy = (dy / distance) * force;
@@ -122,16 +133,45 @@ function applyEdgeForces(
   }
 }
 
-function applyClusterGravity(nodes: PositionedGraphNode[], centers: Map<string, { x: number; y: number }>) {
-  for (const node of nodes) {
-    const center = centers.get(node.community || 'unknown');
-    if (!center) continue;
-    node.vx += (center.x - node.x) * 0.006;
-    node.vy += (center.y - node.y) * 0.006;
+function applyRepulsion(nodes: PositionedGraphNode[], repulsion: number) {
+  if (repulsion <= 0) return;
+
+  for (let i = 0; i < nodes.length; i += 1) {
+    for (let j = i + 1; j < nodes.length; j += 1) {
+      const a = nodes[i];
+      const b = nodes[j];
+      const dx = b.x - a.x || 0.01;
+      const dy = b.y - a.y || 0.01;
+      const distance = Math.max(8, Math.hypot(dx, dy));
+      const target = Math.max(32, a.radius + b.radius + 18);
+      const falloff = Math.max(0, 1 - distance / (target * 5));
+      if (falloff <= 0) continue;
+
+      const force = (falloff * repulsion * 0.9 * target) / distance;
+      const fx = dx * force;
+      const fy = dy * force;
+      a.vx -= fx;
+      a.vy -= fy;
+      b.vx += fx;
+      b.vy += fy;
+    }
   }
 }
 
-function applyCollision(nodes: PositionedGraphNode[]) {
+function applyClusterGravity(
+  nodes: PositionedGraphNode[],
+  centers: Map<string, { x: number; y: number }>,
+  attraction: number
+) {
+  for (const node of nodes) {
+    const center = centers.get(node.community || 'unknown');
+    if (!center) continue;
+    node.vx += (center.x - node.x) * 0.004 * attraction;
+    node.vy += (center.y - node.y) * 0.004 * attraction;
+  }
+}
+
+function applyCollision(nodes: PositionedGraphNode[], collisionPadding: number) {
   for (let i = 0; i < nodes.length; i += 1) {
     for (let j = i + 1; j < nodes.length; j += 1) {
       const a = nodes[i];
@@ -139,7 +179,7 @@ function applyCollision(nodes: PositionedGraphNode[]) {
       const dx = b.x - a.x || 0.01;
       const dy = b.y - a.y || 0.01;
       const distance = Math.hypot(dx, dy);
-      const minimum = a.radius + b.radius + 4;
+      const minimum = a.radius + b.radius + collisionPadding;
       if (distance >= minimum) continue;
 
       const push = ((minimum - distance) / distance) * 0.08;
