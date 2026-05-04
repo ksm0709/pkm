@@ -214,7 +214,7 @@
   <header class="graph-header">
     <div>
       <p class="eyebrow">VAULT GRAPH</p>
-      <p class="graph-summary">
+      <p class="graph-summary" data-testid="graph-summary">
         {#if loading}
           Loading graph…
         {:else if missingGraph || error}

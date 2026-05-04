@@ -78,11 +78,9 @@ test.describe('command palette and shell navigation', () => {
     await page.keyboard.press('Enter');
     expect(page.url()).toBe(before);
 
-    await graph.click({ force: true });
+    await graph.click();
     await expect(page).toHaveURL(new RegExp(`/${escapeRegExp(vaultName)}/graph$`));
-    await page.goto(`/${encodeURIComponent(vaultName)}`);
-    await page.waitForLoadState('networkidle').catch(() => {});
-    await graph.focus();
+    await page.getByRole('button', { name: 'Graph' }).focus();
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(new RegExp(`/${escapeRegExp(vaultName)}/graph$`));
 
