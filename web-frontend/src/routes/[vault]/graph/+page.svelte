@@ -44,6 +44,9 @@
   const GRAPH_HEIGHT = 640;
   const INTERACTIVE_NODE_CAP = 300;
   const LONG_PRESS_MS = 500;
+  const DEFAULT_ATTRACTION = 1;
+  const DEFAULT_REPULSION = 1.6;
+  const DEFAULT_ZOOM = 1;
 
   let vaultName = $derived($page.params.vault ?? '');
   let loading = $state(true);
@@ -55,6 +58,9 @@
   let hoveredId = $state<string | null>(null);
   let preview = $state<PreviewState | null>(null);
   let pointerStart = $state<{ id: string; startedAt: number; button: number } | null>(null);
+  let attractionStrength = $state(DEFAULT_ATTRACTION);
+  let repulsionStrength = $state(DEFAULT_REPULSION);
+  let zoomLevel = $state(DEFAULT_ZOOM);
 
   const graph = $derived(normalizeGraph(rawGraph));
   const interactiveGraph = $derived(selectInteractiveGraph(graph));
@@ -63,7 +69,10 @@
       width: GRAPH_WIDTH,
       height: GRAPH_HEIGHT,
       ticks: layoutTickCount(interactiveGraph.nodes.length),
-      seed: 'pkm-reactive-graph'
+      seed: 'pkm-reactive-graph',
+      attraction: attractionStrength,
+      repulsion: repulsionStrength,
+      collisionPadding: 8 + repulsionStrength * 4
     })
   );
   const renderedEdges = $derived(renderEdges(interactiveGraph.edges, positionedNodes));
@@ -84,6 +93,7 @@
       ? `Rendering first ${INTERACTIVE_NODE_CAP} of ${graph.nodes.length} nodes by graph importance.`
       : ''
   );
+  const graphTransformStyle = $derived(`transform: scale(${zoomLevel});`);
 
   $effect(() => {
     if (!vaultName) return;
@@ -261,6 +271,28 @@
     focusNode(node);
   }
 
+  function setAttraction(event: Event) {
+    attractionStrength = numberInputValue(event, DEFAULT_ATTRACTION);
+  }
+
+  function setRepulsion(event: Event) {
+    repulsionStrength = numberInputValue(event, DEFAULT_REPULSION);
+  }
+
+  function setZoom(event: Event) {
+    zoomLevel = numberInputValue(event, DEFAULT_ZOOM);
+  }
+
+  function zoomBy(delta: number) {
+    zoomLevel = roundControl(clampControl(zoomLevel + delta, 0.6, 1.8));
+  }
+
+  function resetGraphControls() {
+    attractionStrength = DEFAULT_ATTRACTION;
+    repulsionStrength = DEFAULT_REPULSION;
+    zoomLevel = DEFAULT_ZOOM;
+  }
+
   function nodeColor(node: NormalizedGraphNode) {
     if (node.hub) return '#2563eb';
     if (node.type === 'tag') return '#0f766e';
@@ -301,6 +333,21 @@
 
   function positionPercent(value: number, size: number) {
     return (value / size) * 100;
+  }
+
+  function numberInputValue(event: Event, fallback: number) {
+    const target = event.currentTarget;
+    if (!(target instanceof HTMLInputElement)) return fallback;
+    const parsed = Number(target.value);
+    return Number.isFinite(parsed) ? roundControl(parsed) : fallback;
+  }
+
+  function clampControl(value: number, min: number, max: number) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function roundControl(value: number) {
+    return Math.round(value * 10) / 10;
   }
 
   function formatNumber(value: number) {
@@ -381,13 +428,60 @@
           <p class="cap-status" data-testid="graph-cap-status">{capStatus}</p>
         {/if}
 
+        <div class="graph-controls" data-testid="graph-controls" aria-label="Graph force controls">
+          <label>
+            <span>Attraction <output aria-hidden="true">{formatNumber(attractionStrength)}</output></span>
+            <input
+              aria-label="Attraction"
+              type="range"
+              min="0.4"
+              max="2.2"
+              step="0.1"
+              value={attractionStrength}
+              oninput={setAttraction}
+            />
+          </label>
+          <label>
+            <span>Repulsion <output aria-hidden="true">{formatNumber(repulsionStrength)}</output></span>
+            <input
+              aria-label="Repulsion"
+              type="range"
+              min="0.4"
+              max="3"
+              step="0.1"
+              value={repulsionStrength}
+              oninput={setRepulsion}
+            />
+          </label>
+          <label>
+            <span>Zoom <output aria-hidden="true">{formatNumber(zoomLevel)}</output></span>
+            <input
+              aria-label="Zoom"
+              type="range"
+              min="0.6"
+              max="1.8"
+              step="0.1"
+              value={zoomLevel}
+              oninput={setZoom}
+            />
+          </label>
+          <div class="zoom-buttons" aria-label="Zoom buttons">
+            <button type="button" aria-label="Zoom out" onclick={() => zoomBy(-0.1)}>−</button>
+            <button type="button" aria-label="Zoom in" onclick={() => zoomBy(0.1)}>+</button>
+            <button type="button" aria-label="Reset graph controls" onclick={resetGraphControls}>Reset</button>
+          </div>
+        </div>
+
         <div
           class="force-surface"
           data-testid="graph-force-surface"
+          data-attraction={formatNumber(attractionStrength)}
+          data-repulsion={formatNumber(repulsionStrength)}
+          data-zoom={formatNumber(zoomLevel)}
           role="application"
           aria-label="Vault graph"
         >
-          <svg class="edge-surface" viewBox={`0 0 ${GRAPH_WIDTH} ${GRAPH_HEIGHT}`} aria-hidden="true">
+          <svg class="edge-surface" style={graphTransformStyle} viewBox={`0 0 ${GRAPH_WIDTH} ${GRAPH_HEIGHT}`} aria-hidden="true">
             <g class="edges">
               {#each renderedEdges as edge (edge.id)}
                 <line
@@ -408,7 +502,7 @@
             </g>
           </svg>
 
-          <div class="node-layer">
+          <div class="node-layer" style={graphTransformStyle}>
             {#each positionedNodes as node, nodeIndex (node.id)}
               {@const state = focusStates.get(node.id) ?? 'normal'}
               <button
@@ -490,24 +584,24 @@
   .graph-page {
     min-height: 100%;
     padding: 0;
-    color: var(--color-text, #111827);
-    background: var(--color-bg, #f8fafc);
+    color: var(--text);
+    background: var(--bg);
   }
 
   .status-msg,
   .empty-state {
     margin: 24px;
-    color: #475569;
+    color: var(--text-muted);
   }
 
   .status-msg.error,
   .preview-status.error {
-    color: #b91c1c;
+    color: var(--signal-danger);
   }
 
   .empty-title {
     margin: 0 0 8px;
-    color: #111827;
+    color: var(--text);
     font-size: 16px;
     font-weight: 700;
   }
@@ -516,7 +610,7 @@
     display: grid;
     min-height: calc(100vh - 58px);
     grid-template-columns: minmax(0, 1fr);
-    background: #f8fafc;
+    background: var(--bg);
   }
 
   .graph-layout.preview-open {
@@ -542,17 +636,71 @@
   .graph-focus-status,
   .cap-status {
     margin: 0;
-    color: #475569;
+    color: var(--text-muted);
     font-size: 13px;
     line-height: 1.45;
   }
 
   .graph-summary strong {
-    color: #111827;
+    color: var(--text);
   }
 
   .cap-status {
     margin-bottom: 8px;
+  }
+
+  .graph-controls {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(140px, 1fr)) auto;
+    align-items: end;
+    gap: 10px;
+    margin-bottom: 10px;
+    padding: 10px 0;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .graph-controls label {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--type-chrome-sm-size, 11px);
+    line-height: var(--type-chrome-sm-lh, 1.2);
+    text-transform: uppercase;
+  }
+
+  .graph-controls label span {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .graph-controls output {
+    color: var(--text);
+  }
+
+  .graph-controls input[type='range'] {
+    width: 100%;
+    accent-color: var(--accent);
+  }
+
+  .zoom-buttons {
+    display: flex;
+    gap: 6px;
+  }
+
+  .zoom-buttons button {
+    min-width: 34px;
+    min-height: 30px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm, 2px);
+    color: var(--text);
+    background: var(--surface-raised);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: var(--type-chrome-size, 13px);
   }
 
   .force-surface {
@@ -560,8 +708,8 @@
     min-height: 0;
     flex: 1;
     width: 100%;
-    border: 1px solid #dbe3ef;
-    background: #ffffff;
+    border: 1px solid var(--border);
+    background: var(--surface);
     overflow: hidden;
   }
 
@@ -570,10 +718,11 @@
     inset: 0;
     width: 100%;
     height: 100%;
+    transform-origin: 50% 50%;
   }
 
   .graph-edge {
-    stroke: #cbd5e1;
+    stroke: var(--border);
     stroke-linecap: round;
     stroke-width: 1.1;
   }
@@ -623,6 +772,7 @@
   .node-layer {
     position: absolute;
     inset: 0;
+    transform-origin: 50% 50%;
   }
 
   .graph-label {
@@ -630,15 +780,15 @@
     z-index: 1200;
     max-width: min(220px, 28vw);
     overflow: hidden;
-    color: #1f2937;
+    color: var(--text);
     font-size: 13px;
     pointer-events: none;
     text-overflow: ellipsis;
     text-shadow:
-      0 1px 0 #ffffff,
-      1px 0 0 #ffffff,
-      -1px 0 0 #ffffff,
-      0 -1px 0 #ffffff;
+      0 1px 0 var(--surface),
+      1px 0 0 var(--surface),
+      -1px 0 0 var(--surface),
+      0 -1px 0 var(--surface);
     transform: translateY(-50%);
     white-space: nowrap;
   }
@@ -652,7 +802,7 @@
     flex-wrap: wrap;
     gap: 12px;
     margin-top: 10px;
-    color: #64748b;
+    color: var(--text-muted);
     font-size: 12px;
   }
 
@@ -686,9 +836,9 @@
     display: flex;
     min-height: 0;
     flex-direction: column;
-    border-left: 1px solid #dbe3ef;
-    background: #ffffff;
-    box-shadow: -10px 0 24px rgb(15 23 42 / 0.08);
+    border-left: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: -10px 0 24px rgb(0 0 0 / 0.18);
   }
 
   .preview-head {
@@ -697,12 +847,12 @@
     justify-content: space-between;
     gap: 12px;
     padding: 18px 18px 12px;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--border);
   }
 
   .preview-kicker {
     margin: 0 0 4px;
-    color: #64748b;
+    color: var(--text-muted);
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.08em;
@@ -711,7 +861,7 @@
 
   .preview-head h2 {
     margin: 0;
-    color: #111827;
+    color: var(--text);
     font-size: 18px;
     line-height: 1.25;
   }
@@ -719,10 +869,10 @@
   .open-note {
     width: 34px;
     height: 34px;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--border);
     border-radius: 6px;
-    color: #111827;
-    background: #ffffff;
+    color: var(--text);
+    background: var(--surface-raised);
     cursor: pointer;
     font-size: 18px;
     line-height: 1;
@@ -730,7 +880,7 @@
 
   .preview-status {
     margin: 18px;
-    color: #64748b;
+    color: var(--text-muted);
   }
 
   .preview-body {
@@ -738,7 +888,7 @@
     margin: 0;
     overflow: auto;
     padding: 18px;
-    color: #334155;
+    color: var(--text-muted);
     font: inherit;
     line-height: 1.6;
     white-space: pre-wrap;
@@ -761,14 +911,28 @@
       gap: 4px;
     }
 
+    .graph-controls {
+      grid-template-columns: 1fr;
+      align-items: stretch;
+      gap: 8px;
+    }
+
+    .zoom-buttons {
+      justify-content: stretch;
+    }
+
+    .zoom-buttons button {
+      flex: 1;
+    }
+
     .force-surface {
       min-height: 360px;
     }
 
     .preview-sheet {
-      border-top: 1px solid #dbe3ef;
+      border-top: 1px solid var(--border);
       border-left: 0;
-      box-shadow: 0 -10px 22px rgb(15 23 42 / 0.08);
+      box-shadow: 0 -10px 22px rgb(0 0 0 / 0.18);
     }
   }
 </style>

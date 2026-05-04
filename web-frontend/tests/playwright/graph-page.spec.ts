@@ -1,4 +1,5 @@
 import { expect, type Page, type Route, test } from '@playwright/test';
+import { applyTheme } from './fixtures/theme';
 import { loginAndFindVault } from './helpers/pkm';
 
 type GraphNode = {
@@ -353,6 +354,71 @@ test.describe('vault graph page', () => {
     await expect(page.getByTestId('graph-node')).toHaveCount(300);
     await expect(page.getByTestId('graph-cap-status')).toContainText('Rendering first 300 of 331');
     await expect(page.getByTestId('graph-summary')).toContainText('331 nodes');
+  });
+
+  test('adjusts attraction, repulsion, and zoom from graph controls', async ({ page }) => {
+    const vaultName = await loginAndFindVault(page);
+    await mockGraphApi(page, async (route) => json(route, enrichedGraphFixture));
+
+    await page.goto(graphPath(vaultName));
+    await settleGraph(page);
+    const before = await nodePosition(page, 'journal');
+
+    await page.getByRole('slider', { name: 'Repulsion' }).fill('2.4');
+    await page.getByRole('slider', { name: 'Attraction' }).fill('0.7');
+    await settleGraph(page);
+    const after = await nodePosition(page, 'journal');
+
+    await expect(page.getByTestId('graph-force-surface')).toHaveAttribute('data-repulsion', '2.4');
+    await expect(page.getByTestId('graph-force-surface')).toHaveAttribute('data-attraction', '0.7');
+    expect(distance(before, after)).toBeGreaterThan(1);
+
+    await page.getByRole('button', { name: 'Zoom in' }).click();
+    await expect(page.getByTestId('graph-force-surface')).toHaveAttribute('data-zoom', '1.1');
+
+    await page.getByRole('button', { name: 'Reset graph controls' }).click();
+    await expect(page.getByTestId('graph-force-surface')).toHaveAttribute('data-zoom', '1');
+    await expect(page.getByTestId('graph-force-surface')).toHaveAttribute('data-repulsion', '1.6');
+    await expect(page.getByTestId('graph-force-surface')).toHaveAttribute('data-attraction', '1');
+  });
+
+  test('keeps zoom controls usable on mobile viewports', async ({ page }) => {
+    const vaultName = await loginAndFindVault(page);
+    await page.setViewportSize({ width: 390, height: 740 });
+    await mockGraphApi(page, async (route) => json(route, enrichedGraphFixture));
+
+    await page.goto(graphPath(vaultName));
+    await settleGraph(page);
+
+    await expect(page.getByTestId('graph-controls')).toBeVisible();
+    await page.getByRole('button', { name: 'Zoom out' }).click();
+    await expect(page.getByTestId('graph-force-surface')).toHaveAttribute('data-zoom', '0.9');
+    await page.getByRole('slider', { name: 'Zoom' }).fill('1.4');
+    await expect(page.getByTestId('graph-force-surface')).toHaveAttribute('data-zoom', '1.4');
+  });
+
+  test('uses dark theme graph surfaces instead of hard-coded white', async ({ page }, testInfo) => {
+    test.skip(!testInfo.project.name.includes('dark'), 'dark theme contract only');
+    const vaultName = await loginAndFindVault(page);
+    await page.addInitScript(() => {
+      localStorage.setItem('pkm.theme', 'dark');
+    });
+    await applyTheme(page, 'dark');
+    await mockGraphApi(page, async (route) => json(route, enrichedGraphFixture));
+
+    await page.goto(graphPath(vaultName));
+    await settleGraph(page);
+
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    const surfaceBackground = await page.getByTestId('graph-force-surface').evaluate((element) => {
+      return window.getComputedStyle(element).backgroundColor;
+    });
+    const pageBackground = await page.locator('.graph-page').evaluate((element) => {
+      return window.getComputedStyle(element).backgroundColor;
+    });
+
+    expect(surfaceBackground).not.toBe('rgb(255, 255, 255)');
+    expect(pageBackground).not.toBe('rgb(255, 255, 255)');
   });
 });
 
