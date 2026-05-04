@@ -59,6 +59,20 @@ def test_build_index(tmp_vault: VaultConfig, mock_model):
         assert len(entry.embedding) == 384
 
 
+def test_build_index_includes_inline_body_tags(tmp_vault: VaultConfig, mock_model):
+    """Index entries include content hashtags, not only frontmatter tags."""
+    (tmp_vault.notes_dir / "inline-todo-index.md").write_text(
+        "---\nid: inline-todo-index\naliases: []\ntags: []\n---\n\n"
+        "Remember to handle #TODO from note content.\n",
+        encoding="utf-8",
+    )
+
+    index = build_index(tmp_vault)
+
+    entry = next(e for e in index.entries if e.note_id == "inline-todo-index")
+    assert "TODO" in entry.tags
+
+
 def test_load_index(tmp_vault: VaultConfig, mock_model):
     """load_index returns a VectorIndex matching what was saved."""
     original = build_index(tmp_vault)

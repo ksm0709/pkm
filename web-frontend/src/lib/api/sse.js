@@ -21,11 +21,18 @@ import { apiClient } from './client.js';
  * @param {AbortSignal} [signal]
  */
 export async function streamSse(path, body, onEvent, signal) {
-  const res = await apiClient(path, {
-    method: 'POST',
-    body: JSON.stringify(body ?? {}),
-    signal
-  });
+  let res;
+  try {
+    res = await apiClient(path, {
+      method: 'POST',
+      body: JSON.stringify(body ?? {}),
+      signal
+    });
+  } catch (error) {
+    throw new Error(
+      `Ask stream interrupted before it opened: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
   if (!res.ok || !res.body) {
     throw new Error(`POST ${path} → ${res.status}`);
   }
@@ -35,7 +42,15 @@ export async function streamSse(path, body, onEvent, signal) {
   let buffer = '';
 
   while (true) {
-    const { value, done } = await reader.read();
+    let value;
+    let done;
+    try {
+      ({ value, done } = await reader.read());
+    } catch (error) {
+      throw new Error(
+        `Ask stream interrupted: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
 

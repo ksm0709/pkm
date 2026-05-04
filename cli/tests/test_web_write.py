@@ -109,6 +109,45 @@ async def test_create_note_no_auth_returns_401(app, tmp_vault: VaultConfig) -> N
 
 
 @pytest.mark.anyio
+async def test_ensure_note_creates_blank_note_with_exact_id(
+    app, tmp_vault: VaultConfig
+) -> None:
+    """POST /notes/{id}/ensure creates unresolved wikilink targets in place."""
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post(
+            "/api/v1/vault/test-vault/notes/new-unresolved-note/ensure",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 201
+        data = await resp.json()
+
+    note_path = tmp_vault.notes_dir / "new-unresolved-note.md"
+    assert note_path.exists()
+    assert data["note_id"] == "new-unresolved-note"
+    assert data["title"] == "new unresolved note"
+    assert data["body"] == ""
+
+
+@pytest.mark.anyio
+async def test_ensure_note_rejects_tag_and_path_escape(
+    app, tmp_vault: VaultConfig
+) -> None:
+    """Only normal note ids can be auto-created from app wikilinks."""
+    async with TestClient(TestServer(app)) as client:
+        tag_resp = await client.post(
+            "/api/v1/vault/test-vault/notes/tag:TODO/ensure",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        escape_resp = await client.post(
+            "/api/v1/vault/test-vault/notes/..%2Fescape/ensure",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+
+    assert tag_resp.status == 400
+    assert escape_resp.status == 400
+
+
+@pytest.mark.anyio
 async def test_update_note_returns_updated_body(app, tmp_vault: VaultConfig) -> None:
     """PUT /notes/{id} updates body and returns the updated 8-key schema."""
     async with TestClient(TestServer(app)) as client:

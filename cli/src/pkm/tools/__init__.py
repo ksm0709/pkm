@@ -1,4 +1,11 @@
-from pkm.tools.notes import add_note, search_notes, read_note, update_note, list_notes
+from pkm.tools.notes import (
+    add_note,
+    search_notes,
+    read_note,
+    update_note,
+    rename_note,
+    list_notes,
+)
 from pkm.tools.search import (
     semantic_search,
     find_surprising_connections,
@@ -7,7 +14,12 @@ from pkm.tools.search import (
     create_hub_note,
 )
 from pkm.tools.daily import add_daily_log, read_daily_log, create_daily_subnote
-from pkm.tools.maintenance import vault_stats, list_stale_notes, list_orphans
+from pkm.tools.maintenance import (
+    vault_stats,
+    list_stale_notes,
+    list_orphans,
+    list_malformed_notes,
+)
 from pkm.tools.links import find_backlinks_for_note, add_wikilink
 from pkm.tools.tags import list_tags, tag_search
 from pkm.tools.consolidate import list_consolidation_candidates, mark_consolidated
@@ -26,6 +38,7 @@ def get_pkm_tools(scope: str = "all") -> list:
         read_note,
         list_notes,
         update_note,
+        rename_note,
         semantic_search,
         find_surprising_connections,
         list_clusters,
@@ -37,6 +50,7 @@ def get_pkm_tools(scope: str = "all") -> list:
         vault_stats,
         list_stale_notes,
         list_orphans,
+        list_malformed_notes,
         find_backlinks_for_note,
         add_wikilink,
         list_tags,

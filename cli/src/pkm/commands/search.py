@@ -24,6 +24,42 @@ from pkm.search_engine import (
 console = Console()
 
 
+def run_search_pipeline(
+    query: str,
+    vault,
+    top: int = 10,
+    memory_type: str | None = None,
+    min_importance: float = 1.0,
+    recency_weight: float = 0.0,
+) -> tuple[list, str | None]:
+    """Run the same daemon-first search path used by ``pkm search``."""
+    stale_warning: str | None = None
+    if is_index_stale(vault):
+        stale_warning = "Index may be out of date. Run 'pkm index' to rebuild."
+
+    results = search_via_daemon(
+        query,
+        vault,
+        top_n=top,
+        min_importance=min_importance,
+        memory_type_filter=memory_type,
+        recency_weight=recency_weight,
+    )
+
+    if results is None:
+        vector_index = load_index(vault)
+        results = search_fn(
+            query,
+            vector_index,
+            top_n=top,
+            memory_type_filter=memory_type,
+            min_importance=min_importance,
+            recency_weight=recency_weight,
+        )
+
+    return results, stale_warning
+
+
 def _get_description(result) -> str | None:
     """Extract description from frontmatter or first 200 chars of body."""
     try:
@@ -203,50 +239,35 @@ def search_cmd(
     """
     vault = ctx.obj["vault"]
 
-    stale_warning: str | None = None
-    if is_index_stale(vault):
-        stale_warning = "Index may be out of date. Run 'pkm index' to rebuild."
-
-    # Try daemon first (model already loaded in memory → fast path)
-    results = search_via_daemon(
-        query,
-        vault,
-        top_n=top,
-        min_importance=min_importance,
-        memory_type_filter=memory_type,
-        recency_weight=recency_weight,
-    )
-
-    if results is None:
-        # Daemon unavailable — fall back to in-process search
-        if output_format == "json":
-            logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
-            logging.getLogger("transformers").setLevel(logging.ERROR)
-            logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
-            os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-        elif stale_warning:
-            console.print(f"[yellow]Warning:[/yellow] {stale_warning}")
-            stale_warning = None
-
-        def _run_search():
-            vector_index = load_index(vault)
-            return search_fn(
+    if output_format == "json":
+        logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
+        logging.getLogger("transformers").setLevel(logging.ERROR)
+        logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+        os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+        with (
+            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            results, stale_warning = run_search_pipeline(
                 query,
-                vector_index,
-                top_n=top,
-                memory_type_filter=memory_type,
+                vault,
+                top=top,
+                memory_type=memory_type,
                 min_importance=min_importance,
                 recency_weight=recency_weight,
             )
-
-        if output_format == "json":
-            with (
-                contextlib.redirect_stdout(io.StringIO()),
-                contextlib.redirect_stderr(io.StringIO()),
-            ):
-                results = _run_search()
-        else:
-            results = _run_search()
+    else:
+        results, stale_warning = run_search_pipeline(
+            query,
+            vault,
+            top=top,
+            memory_type=memory_type,
+            min_importance=min_importance,
+            recency_weight=recency_weight,
+        )
+        if stale_warning:
+            console.print(f"[yellow]Warning:[/yellow] {stale_warning}")
+            stale_warning = None
 
     if session_id:
         import yaml

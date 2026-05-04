@@ -12,6 +12,70 @@ import yaml
 
 
 _FM_PATTERN = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
+_INLINE_TAG_PATTERN = re.compile(r"(?<![\w/])#([\w][\w/-]*)", re.UNICODE)
+
+
+def _split_leading_frontmatter_blocks(text: str) -> tuple[list[dict[str, Any]], str]:
+    """Return consecutive leading YAML blocks and the remaining markdown body."""
+    blocks: list[dict[str, Any]] = []
+    remaining = text
+
+    while True:
+        candidate = remaining.lstrip() if blocks else remaining
+        match = _FM_PATTERN.match(candidate)
+        if not match:
+            return blocks, candidate if blocks else remaining
+
+        meta = yaml.safe_load(match.group(1)) or {}
+        blocks.append(meta if isinstance(meta, dict) else {})
+        remaining = candidate[match.end() :]
+
+
+def _as_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item)]
+    return [str(value)]
+
+
+def _merge_frontmatter_blocks(blocks: list[dict[str, Any]]) -> dict[str, Any]:
+    merged = dict(blocks[0]) if blocks else {}
+    for block in blocks[1:]:
+        for key, value in block.items():
+            if key in {"tags", "aliases"}:
+                existing = _as_list(merged.get(key))
+                for item in _as_list(value):
+                    if item not in existing:
+                        existing.append(item)
+                merged[key] = existing
+            elif key not in merged or merged[key] in (None, "", [], {}):
+                merged[key] = value
+    return merged
+
+
+def normalize_frontmatter_text(text: str) -> tuple[str, bool]:
+    """Collapse accidental consecutive YAML blocks into one merged frontmatter."""
+    blocks, body = _split_leading_frontmatter_blocks(text)
+    if len(blocks) <= 1:
+        return text, False
+    return render(_merge_frontmatter_blocks(blocks), body), True
+
+
+def extract_inline_tags(body: str) -> list[str]:
+    """Extract Obsidian-style inline tags from markdown body text."""
+    body_without_code = re.sub(r"```.*?```", "", body, flags=re.DOTALL)
+    tags: list[str] = []
+    seen: set[str] = set()
+    for match in _INLINE_TAG_PATTERN.finditer(body_without_code):
+        tag = match.group(1).rstrip("/-")
+        if not tag or tag.isdigit() or tag in seen:
+            continue
+        seen.add(tag)
+        tags.append(tag)
+    return tags
 
 
 @dataclass
@@ -28,8 +92,17 @@ class Note:
     def tags(self) -> list[str]:
         raw = self.meta.get("tags", [])
         if isinstance(raw, str):
-            return [t.strip() for t in raw.split(",") if t.strip()]
-        return list(raw) if raw else []
+            frontmatter_tags = [t.strip() for t in raw.split(",") if t.strip()]
+        else:
+            frontmatter_tags = [str(t) for t in raw] if raw else []
+
+        tags: list[str] = []
+        seen: set[str] = set()
+        for tag in [*frontmatter_tags, *extract_inline_tags(self.body)]:
+            if tag and tag not in seen:
+                seen.add(tag)
+                tags.append(tag)
+        return tags
 
     @property
     def aliases(self) -> list[str]:
@@ -46,10 +119,9 @@ class Note:
 
 def parse(path: Path) -> Note:
     text = path.read_text(encoding="utf-8")
-    m = _FM_PATTERN.match(text)
-    if m:
-        meta = yaml.safe_load(m.group(1)) or {}
-        body = text[m.end() :]
+    blocks, body = _split_leading_frontmatter_blocks(text)
+    if blocks:
+        meta = blocks[0]
     else:
         meta = {}
         body = text

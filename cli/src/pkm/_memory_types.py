@@ -33,5 +33,5 @@ MEMORY_FIELD_DEFAULTS = {
     "consolidated": False,
 }
 
-# Schema version for VectorIndex — bump when IndexEntry fields change
-CURRENT_SCHEMA_VERSION = 2
+# Schema version for VectorIndex — bump when IndexEntry fields or extraction semantics change
+CURRENT_SCHEMA_VERSION = 3

@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
-from aiohttp import web
+from pathlib import Path
 
+from aiohttp import web
+from click import ClickException
+
+from pkm.frontmatter import parse as parse_note
+from pkm.web.app_keys import SEARCH_RUNNER_KEY
 from pkm.web.routes.notes import _resolve_vault
 
 
@@ -32,16 +37,16 @@ async def search_notes(request: web.Request) -> web.Response:
         raise web.HTTPBadRequest(reason="'n' must be an integer")
     top_n = min(max(1, top_n), 100)
 
-    from pkm.search_engine import load_index, search as search_fn
-    from pkm.frontmatter import parse as parse_note
-    from pathlib import Path
-
     try:
-        index = load_index(vault)
-    except FileNotFoundError:
-        raise web.HTTPNotFound(reason="Search index not found — run 'pkm index' first")
+        search_runner = request.app.get(SEARCH_RUNNER_KEY)
+        if search_runner is not None:
+            results, stale_warning = await search_runner(query, vault, top=top_n)
+        else:
+            from pkm.commands.search import run_search_pipeline
 
-    results = search_fn(query, index, top_n=top_n)
+            results, stale_warning = run_search_pipeline(query, vault, top=top_n)
+    except (FileNotFoundError, ClickException):
+        raise web.HTTPNotFound(reason="Search index not found — run 'pkm index' first")
 
     items = []
     for r in results:
@@ -53,17 +58,18 @@ async def search_notes(request: web.Request) -> web.Response:
             pass
         items.append(
             {
-                "note_id": r.note_id,
-                "title": r.title,
+                "note_id": str(r.note_id),
+                "title": str(r.title),
                 "snippet": snippet,
                 "score": round(r.score, 6),
             }
         )
 
-    return web.json_response(
-        {
-            "query": query,
-            "count": len(items),
-            "results": items,
-        }
-    )
+    payload = {
+        "query": query,
+        "count": len(items),
+        "results": items,
+    }
+    if stale_warning:
+        payload["warning"] = stale_warning
+    return web.json_response(payload)

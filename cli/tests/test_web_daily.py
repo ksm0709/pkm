@@ -104,6 +104,38 @@ async def test_list_daily_before_excludes_boundary(
         assert "2026-04-01" in dates
 
 
+@pytest.mark.anyio
+async def test_list_daily_includes_dated_subnotes(
+    app, tmp_vault: VaultConfig
+) -> None:
+    """Daily listing includes main daily notes and YYYY-MM-DD-* subnotes from daily/."""
+    main = tmp_vault.daily_dir / "2026-04-10.md"
+    main.write_text(
+        "---\nid: 2026-04-10\ntags:\n- daily-notes\n---\n\n## Main day\n",
+        encoding="utf-8",
+    )
+    subnote = tmp_vault.daily_dir / "2026-04-10-standup.md"
+    subnote.write_text(
+        "---\nid: 2026-04-10-standup\ntitle: Standup Notes\ntags:\n- meeting\n---\n\n## Standup\n",
+        encoding="utf-8",
+    )
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/daily",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 200
+        data = await resp.json()
+
+    rows = {item["note_id"]: item for item in data}
+    assert rows["2026-04-10"]["kind"] == "daily"
+    assert rows["2026-04-10"]["date"] == "2026-04-10"
+    assert rows["2026-04-10-standup"]["kind"] == "subnote"
+    assert rows["2026-04-10-standup"]["date"] == "2026-04-10"
+    assert rows["2026-04-10-standup"]["title"] == "Standup Notes"
+
+
 # ---------------------------------------------------------------------------
 # (c) snippet — first non-empty markdown line, not frontmatter, not blank
 # ---------------------------------------------------------------------------

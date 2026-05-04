@@ -6,7 +6,12 @@ import asyncio
 import json
 
 
-from pkm.tools.maintenance import list_orphans, list_stale_notes, vault_stats
+from pkm.tools.maintenance import (
+    list_malformed_notes,
+    list_orphans,
+    list_stale_notes,
+    vault_stats,
+)
 
 
 def _run(coro):
@@ -68,6 +73,49 @@ def test_list_orphans_has_tags_field(tmp_vault, monkeypatch):
     for o in result["orphans"]:
         assert "tags" in o
         assert isinstance(o["tags"], list)
+
+
+def test_list_malformed_notes_finds_duplicate_frontmatter(tmp_vault, monkeypatch):
+    malformed = tmp_vault.notes_dir / "duplicate-frontmatter.md"
+    malformed.write_text(
+        "---\n"
+        "id: duplicate-frontmatter\n"
+        "tags: pkm-webapp\n"
+        "---\n\n"
+        "---\n"
+        "aliases: [duplicate]\n"
+        "tags: [logging]\n"
+        "---\n\n"
+        "# Duplicate metadata\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
+
+    result = json.loads(_run(list_malformed_notes()))
+
+    assert result["count"] == 1
+    assert result["malformed_notes"][0] == {
+        "path": "notes/duplicate-frontmatter.md",
+        "note_id": "duplicate-frontmatter",
+        "issue": "duplicate_leading_frontmatter",
+        "repairable": True,
+    }
+
+
+def test_list_malformed_notes_empty_when_clean(tmp_vault, monkeypatch):
+    monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
+
+    result = json.loads(_run(list_malformed_notes()))
+
+    assert result == {"malformed_notes": [], "count": 0}
+
+
+def test_get_pkm_tools_exposes_list_malformed_notes_to_ask_agent():
+    from pkm.tools import get_pkm_tools
+
+    tool_names = {tool.__name__ for tool in get_pkm_tools()}
+
+    assert "list_malformed_notes" in tool_names
 
 
 def test_list_stale_notes_days_zero_returns_all(tmp_vault, monkeypatch):

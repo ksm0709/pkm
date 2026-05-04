@@ -12,6 +12,46 @@ echo ""
 GITHUB_REPO="ksm0709/pkm"
 CLEANUP_TMP=false
 
+install_cloudflared() {
+  if command -v cloudflared &>/dev/null; then
+    echo "✓ cloudflared $(cloudflared --version | awk '{print $3}')"
+    return 0
+  fi
+
+  local os arch asset bin_dir target tmp_file
+  os="${PKM_CLOUDFLARED_OS:-$(uname -s)}"
+  arch="${PKM_CLOUDFLARED_ARCH:-$(uname -m)}"
+
+  case "$os:$arch" in
+    Linux:x86_64|Linux:amd64) asset="cloudflared-linux-amd64" ;;
+    Linux:aarch64|Linux:arm64) asset="cloudflared-linux-arm64" ;;
+    Linux:armv7l|Linux:arm) asset="cloudflared-linux-arm" ;;
+    *)
+      echo "Warning: automatic cloudflared install is not supported for $os/$arch." >&2
+      echo "Install it manually from: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/" >&2
+      return 0
+      ;;
+  esac
+
+  bin_dir="${PKM_CLOUDFLARED_BIN_DIR:-$HOME/.local/bin}"
+  target="$bin_dir/cloudflared"
+  mkdir -p "$bin_dir"
+
+  tmp_file="$(mktemp)"
+  echo "cloudflared not found — installing to $target..."
+  curl -fsSL -o "$tmp_file" "${PKM_CLOUDFLARED_URL:-https://github.com/cloudflare/cloudflared/releases/latest/download/$asset}"
+  chmod +x "$tmp_file"
+  mv "$tmp_file" "$target"
+  export PATH="$bin_dir:$PATH"
+
+  echo "✓ cloudflared installed: $("$target" --version)"
+}
+
+if [[ "${PKM_INSTALL_ONLY_CLOUDFLARED:-}" == "1" ]]; then
+  install_cloudflared
+  exit 0
+fi
+
 if [[ -n "${BASH_SOURCE[0]+x}" && "${BASH_SOURCE[0]}" != "" && "${BASH_SOURCE[0]}" != "bash" ]]; then
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   # Walk up to find the cli/ directory containing pyproject.toml
@@ -58,6 +98,12 @@ if ! command -v uv &>/dev/null; then
 fi
 
 echo "✓ uv $(uv --version)"
+
+if [[ "${PKM_INSTALL_CLOUDFLARED:-}" == "1" ]]; then
+  install_cloudflared
+else
+  echo "cloudflared is optional. Install later with: PKM_INSTALL_CLOUDFLARED=1 bash install.sh"
+fi
 
 # Install pkm as a uv-managed tool so no pre-existing virtualenv is required.
 echo ""

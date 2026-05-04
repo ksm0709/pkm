@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from aiohttp import web
 
-from pkm.web.routes.ask import post_ask
+from pkm.web.routes.ask import get_ask_options, get_ask_run, post_ask
 from pkm.web.routes.daily import (
     get_daily_date,
     get_daily_today,
@@ -15,6 +15,7 @@ from pkm.web.routes.graph import get_ego_graph, get_graph
 from pkm.web.routes.notes import (
     batch_titles,
     create_note_handler,
+    ensure_note_handler,
     get_note,
     get_note_neighbors,
     list_notes,
@@ -23,6 +24,7 @@ from pkm.web.routes.notes import (
 from pkm.web.routes.search import search_notes
 from pkm.web.routes.tags import list_tags, search_tags
 from pkm.web.routes.vault import get_vaults
+from pkm.web.routes.workflows import get_workflow, list_workflows, update_workflow
 
 
 def register_routes(app: web.Application) -> None:
@@ -37,6 +39,7 @@ def register_routes(app: web.Application) -> None:
 
     # Notes — write
     app.router.add_post("/api/v1/vault/{name}/notes", create_note_handler)
+    app.router.add_post("/api/v1/vault/{name}/notes/{id}/ensure", ensure_note_handler)
     app.router.add_put("/api/v1/vault/{name}/notes/{id}", update_note)
 
     # Notes — batch operations (literal path must come before /{id} catch-all)
@@ -60,4 +63,11 @@ def register_routes(app: web.Application) -> None:
     app.router.add_get("/api/v1/vault/{name}/graph", get_graph)
 
     # Ask — SSE
+    app.router.add_get("/api/v1/vault/{name}/ask/options", get_ask_options)
+    app.router.add_get("/api/v1/vault/{name}/ask/runs/{run_id}", get_ask_run)
     app.router.add_post("/api/v1/vault/{name}/ask", post_ask)
+
+    # Workflows
+    app.router.add_get("/api/v1/vault/{name}/workflows", list_workflows)
+    app.router.add_get("/api/v1/vault/{name}/workflows/{id}", get_workflow)
+    app.router.add_patch("/api/v1/vault/{name}/workflows/{id}", update_workflow)

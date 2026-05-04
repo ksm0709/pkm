@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from aiohttp import web
 
+from pkm.web.routes.notes import _json_safe
 from pkm.web.routes.notes import _resolve_vault
 
 
@@ -33,9 +34,9 @@ async def search_tags(request: web.Request) -> web.Response:
     mode, matched = search_by_tag_pattern(vault, pattern)
     items = [
         {
-            "note_id": getattr(n, "id", None) or n.path.stem,
-            "title": n.title,
-            "tags": n.tags,
+            "note_id": str(getattr(n, "id", None) or n.path.stem),
+            "title": str(n.title),
+            "tags": _json_safe(n.tags),
             "path": n.path.name,
         }
         for n in matched

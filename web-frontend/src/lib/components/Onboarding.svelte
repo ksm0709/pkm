@@ -28,12 +28,12 @@
         // Navigate to last vault or first available
         const lastVault = localStorage.getItem('pkm.lastVault');
         if (lastVault) {
-          await goto(`/${lastVault}`);
+          await goto(`/${lastVault}/logger`);
         } else {
           const data = await result.json().catch(() => ({ vaults: [] }));
           const vaults = Array.isArray(data?.vaults) ? data.vaults : [];
           if (vaults.length > 0) {
-            await goto(`/${vaults[0].name}`);
+            await goto(`/${vaults[0].name}/logger`);
           } else {
             await goto('/');
           }
@@ -127,12 +127,7 @@
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    background:
-      radial-gradient(circle at 50% 0%, rgba(236, 170, 74, 0.16), transparent 34rem),
-      linear-gradient(var(--grid-line, rgba(159, 177, 188, 0.055)) 1px, transparent 1px),
-      linear-gradient(90deg, var(--grid-line, rgba(159, 177, 188, 0.055)) 1px, transparent 1px),
-      var(--bg, #090b0d);
-    background-size: auto, 28px 28px, 28px 28px, auto;
+    background: var(--bg, #090b0d);
     padding: var(--space-7, 48px) var(--space-4, 16px);
   }
 
@@ -232,9 +227,7 @@
     gap: var(--space-4, 16px);
     width: 100%;
     padding: var(--space-5, 24px);
-    background:
-      linear-gradient(180deg, rgba(236, 170, 74, 0.08), transparent 84px),
-      var(--surface, var(--bg-elev, #101419));
+    background: var(--surface, var(--bg-elev, #101419));
     border: 1px solid var(--border, rgba(159, 177, 188, 0.20));
     border-top-color: var(--rail, rgba(236, 170, 74, 0.58));
   }
@@ -245,7 +238,7 @@
     top: -1px;
     right: -1px;
     height: 2px;
-    background: linear-gradient(90deg, var(--signal, var(--accent, #ecaa4a)), transparent 72%);
+    background: var(--signal, var(--accent, #ecaa4a));
   }
 
   .form-header {

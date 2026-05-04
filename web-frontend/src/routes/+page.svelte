@@ -5,37 +5,48 @@
 
   let checking = $state(true);
 
+  type VaultEntry = {
+    name: string;
+    is_default?: boolean;
+    active?: boolean;
+  };
+
+  function chooseVault(vaults: VaultEntry[], fallback: string | null) {
+    return (
+      vaults.find((vault) => vault.is_default || vault.active)?.name ||
+      (fallback && vaults.some((vault) => vault.name === fallback) ? fallback : null) ||
+      vaults[0]?.name ||
+      null
+    );
+  }
+
   onMount(async () => {
     const token =
       localStorage.getItem('pkm.token') ||
       sessionStorage.getItem('pkm.token');
+    const lastVault = localStorage.getItem('pkm.lastVault');
 
-    if (token) {
-      // Token present — redirect to last vault or /[vault] placeholder
-      const lastVault = localStorage.getItem('pkm.lastVault');
-      if (lastVault) {
-        goto(`/${lastVault}`);
-        return;
-      }
-    } else {
-      try {
-        const res = await fetch('/api/v1/vaults', { credentials: 'same-origin' });
-        if (res.ok) {
-          const vaults = await res.json();
-          const lastVault = localStorage.getItem('pkm.lastVault');
-          if (lastVault) {
-            await goto(`/${lastVault}`);
-            return;
-          }
-          if (Array.isArray(vaults) && vaults.length > 0) {
-            await goto(`/${vaults[0].name}`);
+    try {
+      const res = await fetch('/api/v1/vaults', { credentials: 'same-origin' });
+      if (res.ok) {
+        const vaults = await res.json();
+        if (Array.isArray(vaults)) {
+          const target = chooseVault(vaults, lastVault);
+          if (target) {
+            await goto(`/${target}/logger`);
             return;
           }
         }
-      } catch {
-        // Fall through to login form.
       }
+    } catch {
+      // Fall through to local fallback or login form.
     }
+
+    if (token && lastVault) {
+      goto(`/${lastVault}/logger`);
+      return;
+    }
+
     checking = false;
   });
 </script>

@@ -167,6 +167,16 @@ def test_resolve_hook_returns_callable():
     assert callable(fn)
 
 
+def test_zettelkasten_default_repairs_malformed_notes_at_end(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    configs = load_workflows()
+    by_id = {c.id: c for c in configs}
+
+    assert by_id["zettelkasten_maintenance"].post_hook == (
+        "pkm.workflows.hooks:repair_malformed_notes"
+    )
+
+
 # ---------------------------------------------------------------------------
 # build_daily_summary hook
 # ---------------------------------------------------------------------------
@@ -214,3 +224,43 @@ def test_build_daily_summary_rollover(tmp_path):
     if today_note.exists():
         content = today_note.read_text()
         assert "buy milk" in content or "write tests" in content
+
+
+def test_repair_malformed_notes_merges_duplicate_frontmatter(tmp_path):
+    from pkm.config import VaultConfig
+    from pkm.frontmatter import parse
+    from pkm.workflows.hooks import repair_malformed_notes
+
+    vault = VaultConfig(name="test", path=tmp_path)
+    vault.notes_dir.mkdir(parents=True)
+    note_path = vault.notes_dir / "logger.md"
+    note_path.write_text(
+        "---\n"
+        "id: logger\n"
+        "tags: pkm-webapp, logging\n"
+        "aliases: []\n"
+        "---\n"
+        "\n"
+        "---\n"
+        "id: logger-copy\n"
+        "tags: [daily-notes, logging]\n"
+        "aliases: [pkm-webapp-logger]\n"
+        "---\n"
+        "\n"
+        "# Logger\n"
+        "\n"
+        "Actual content.\n",
+        encoding="utf-8",
+    )
+
+    result = repair_malformed_notes(vault, None)
+    repaired_text = note_path.read_text(encoding="utf-8")
+    repaired_note = parse(note_path)
+
+    assert result["repaired_count"] == 1
+    assert result["repaired_notes"] == ["notes/logger.md"]
+    assert repaired_text.count("---") == 2
+    assert repaired_note.id == "logger"
+    assert repaired_note.tags == ["pkm-webapp", "logging", "daily-notes"]
+    assert repaired_note.aliases == ["pkm-webapp-logger"]
+    assert repaired_note.body.startswith("# Logger")

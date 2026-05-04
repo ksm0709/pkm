@@ -12,10 +12,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 import time
+import types
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from aiohttp.client_exceptions import ClientConnectionResetError
 from aiohttp.test_utils import TestClient, TestServer
 
 from pkm import daemon as _daemon
@@ -65,10 +69,12 @@ class _FakeWorker:
         }
         self.pre_result_delay = pre_result_delay
         self.task_ids_seen: list[str] = []
+        self.tasks_seen: list[dict[str, Any]] = []
 
     async def send_task(self, task: dict, stream_callback=None) -> dict:
         task_id = task["id"]
         self.task_ids_seen.append(task_id)
+        self.tasks_seen.append(task)
         self.pending_tasks[task_id] = asyncio.get_event_loop().create_future()
         if stream_callback:
             self.stream_callbacks[task_id] = stream_callback
@@ -114,7 +120,9 @@ def patch_daemon(monkeypatch):
 
     monkeypatch.setattr(_daemon, "DaemonState", _State)
     monkeypatch.setattr(_daemon, "worker_proxy", None)
+    ask_route._ASK_RUN_STORE.runs.clear()
     yield _State
+    ask_route._ASK_RUN_STORE.runs.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +152,41 @@ def _parse_sse(text: str) -> list[dict]:
             data = {"_raw": "\n".join(data_lines)}
         events.append({"event": evt, "data": data})
     return events
+
+
+class _ClosingResponse:
+    async def write(self, _data: bytes) -> None:
+        raise ClientConnectionResetError("Cannot write to closing transport")
+
+
+@pytest.mark.anyio
+async def test_safe_sse_write_treats_client_disconnect_as_closed() -> None:
+    """Mobile/browser disconnects should not be logged as ask handler failures."""
+    wrote = await ask_route._safe_write_sse(
+        _ClosingResponse(), "result", {"response": "late"}
+    )
+
+    assert wrote is False
+
+
+@pytest.mark.anyio
+async def test_stream_client_disconnect_does_not_cancel_background_ask_run() -> None:
+    """A backgrounded mobile tab can drop SSE while the agent should continue."""
+    run = ask_route.AskRun(
+        run_id="web-run-disconnect",
+        task_id="http_ask_disconnect",
+        created_at=time.time(),
+        updated_at=time.time(),
+    )
+    await run.append_chunk("content", {"type": "content", "content": "still running"})
+    run.task = asyncio.create_task(asyncio.Event().wait())
+
+    await ask_route._stream_ask_run(_ClosingResponse(), run, asyncio.Event())
+
+    assert run.task is not None
+    assert not run.task.done()
+    run.task.cancel()
+    await asyncio.gather(run.task, return_exceptions=True)
 
 
 # ---------------------------------------------------------------------------
@@ -180,6 +223,105 @@ async def test_task_ids_unique_across_concurrent_requests(
     assert len(set(fake.task_ids_seen)) == 50, "task_ids collided"
     for tid in fake.task_ids_seen:
         assert tid.startswith("http_ask_"), tid
+
+
+@pytest.mark.anyio
+async def test_post_ask_forwards_body_context_to_worker_task(
+    app, tmp_vault: VaultConfig, patch_daemon, monkeypatch
+) -> None:
+    """HTTP ask must pass frontend session identity and transcript to the worker."""
+    fake = _FakeWorker(result={"type": "result", "data": {"response": "ok"}})
+    monkeypatch.setattr(_daemon, "worker_proxy", fake)
+
+    context = "Previous ask session transcript:\n\nUser: first\nAssistant: answer"
+    ask_session_id = "web-alpha-test-session"
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post(
+            "/api/v1/vault/test-vault/ask",
+            json={
+                "query": "follow up",
+                "context": context,
+                "ask_session_id": ask_session_id,
+            },
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        await resp.text()
+
+    assert resp.status == 200
+    assert fake.tasks_seen
+    assert fake.tasks_seen[0]["query"] == "follow up"
+    assert fake.tasks_seen[0]["context"] == context
+    assert fake.tasks_seen[0]["ask_session_id"] == ask_session_id
+
+
+@pytest.mark.anyio
+async def test_ask_run_status_returns_cached_chunks_and_result(
+    app, tmp_vault: VaultConfig, patch_daemon, monkeypatch
+) -> None:
+    """A completed ask run should be recoverable after the browser stream dies."""
+    fake = _FakeWorker(
+        chunks=[
+            {"type": "reasoning", "content": "thinking"},
+            {"type": "content", "content": "answer"},
+        ],
+        result={"type": "result", "data": {"response": "answer"}},
+    )
+    monkeypatch.setattr(_daemon, "worker_proxy", fake)
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post(
+            "/api/v1/vault/test-vault/ask",
+            json={"query": "recover me", "ask_run_id": "web-run-recover"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        await resp.text()
+
+        status_resp = await client.get(
+            "/api/v1/vault/test-vault/ask/runs/web-run-recover",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        status = await status_resp.json()
+
+    assert status_resp.status == 200
+    assert status["run_id"] == "web-run-recover"
+    assert status["status"] == "done"
+    assert status["result"] == {"response": "answer"}
+    assert [chunk["event"] for chunk in status["chunks"]] == ["reasoning", "content"]
+    assert status["chunks"][1]["data"]["content"] == "answer"
+
+
+@pytest.mark.anyio
+async def test_reusing_ask_run_id_does_not_start_duplicate_worker_task(
+    app, tmp_vault: VaultConfig, patch_daemon, monkeypatch
+) -> None:
+    """A reconnect with the same ask_run_id must attach to the existing run."""
+    fake = _FakeWorker(
+        chunks=[{"type": "content", "content": "cached"}],
+        result={"type": "result", "data": {"response": "cached"}},
+    )
+    monkeypatch.setattr(_daemon, "worker_proxy", fake)
+
+    async with TestClient(TestServer(app)) as client:
+        first = await client.post(
+            "/api/v1/vault/test-vault/ask",
+            json={"query": "one", "ask_run_id": "web-run-dedupe"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        await first.text()
+
+        second = await client.post(
+            "/api/v1/vault/test-vault/ask",
+            json={"query": "one", "ask_run_id": "web-run-dedupe"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        second_body = await second.text()
+
+    assert first.status == 200
+    assert second.status == 200
+    assert len(fake.tasks_seen) == 1
+    events = _parse_sse(second_body)
+    assert events[-1] == {"event": "result", "data": {"response": "cached"}}
 
 
 # ---------------------------------------------------------------------------
@@ -220,6 +362,33 @@ async def test_keepalive_bumps_last_activity(
         f"keepalive never fired — last_activity {patch_daemon.last_activity} "
         f"≤ baseline {baseline}"
     )
+
+
+@pytest.mark.anyio
+async def test_ask_stream_sends_browser_heartbeat_while_worker_is_silent(
+    app, tmp_vault: VaultConfig, patch_daemon, monkeypatch
+) -> None:
+    """Long silent agent turns must still send bytes to the browser/proxy."""
+    monkeypatch.setattr(ask_route, "KEEPALIVE_INTERVAL", 0.05)
+    fake = _FakeWorker(
+        chunks=[],
+        result={"type": "result", "data": {"response": "slow done"}},
+        pre_result_delay=0.18,
+    )
+    monkeypatch.setattr(_daemon, "worker_proxy", fake)
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post(
+            "/api/v1/vault/test-vault/ask",
+            json={"query": "silent slow ask"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        body = await resp.text()
+
+    assert resp.status == 200
+    assert ": heartbeat" in body
+    events = _parse_sse(body)
+    assert events[-1] == {"event": "result", "data": {"response": "slow done"}}
 
 
 # ---------------------------------------------------------------------------
@@ -377,6 +546,109 @@ async def test_worker_unavailable_returns_503(
             headers={"Authorization": f"Bearer {TOKEN}"},
         )
         assert resp.status == 503
+
+
+@pytest.mark.anyio
+async def test_ask_uses_main_module_worker_when_daemon_runs_with_dash_m(
+    app, tmp_vault: VaultConfig, patch_daemon, monkeypatch
+) -> None:
+    """When started as ``python -m pkm.daemon``, runtime globals live on
+    ``__main__``.  The web route must use that module instead of importing a
+    second ``pkm.daemon`` module whose worker_proxy is still None."""
+    monkeypatch.setattr(_daemon, "worker_proxy", None)
+
+    main_mod = types.ModuleType("__main__")
+    main_mod.__spec__ = SimpleNamespace(name="pkm.daemon")
+    main_mod.worker_proxy = _FakeWorker(
+        chunks=[{"type": "content", "content": "main worker answer"}],
+        result={"type": "result", "data": {"response": "main worker answer"}},
+    )
+    main_mod.DaemonState = patch_daemon
+    monkeypatch.setitem(sys.modules, "__main__", main_mod)
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post(
+            "/api/v1/vault/test-vault/ask",
+            json={"query": "anything"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        body = await resp.text()
+
+    assert resp.status == 200
+    events = _parse_sse(body)
+    assert events[-1]["event"] == "result"
+    assert events[-1]["data"] == {"response": "main worker answer"}
+
+
+@pytest.mark.anyio
+async def test_ask_defaults_to_auto_model_when_request_has_no_model(
+    app, tmp_vault: VaultConfig, patch_daemon, monkeypatch
+) -> None:
+    """The web ask route must match CLI/MCP defaults and avoid stale preview
+    model ids when the UI does not explicitly send a model."""
+    fake = _FakeWorker()
+    monkeypatch.setattr(_daemon, "worker_proxy", fake)
+    monkeypatch.setattr(ask_route, "load_config", lambda: {"defaults": {}})
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post(
+            "/api/v1/vault/test-vault/ask",
+            json={"query": "anything"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        await resp.text()
+
+    assert resp.status == 200
+    assert fake.tasks_seen[-1]["model"] == "auto"
+
+
+@pytest.mark.anyio
+async def test_ask_uses_configured_default_model_and_reasoning_effort(
+    app, tmp_vault: VaultConfig, patch_daemon, monkeypatch
+) -> None:
+    """The web ask route should honor the same default model settings as the
+    CLI ask command when the request body omits them."""
+    fake = _FakeWorker()
+    monkeypatch.setattr(_daemon, "worker_proxy", fake)
+    monkeypatch.setattr(
+        ask_route,
+        "load_config",
+        lambda: {"defaults": {"model": "test/default-model", "reasoning-effort": "high"}},
+    )
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post(
+            "/api/v1/vault/test-vault/ask",
+            json={"query": "anything"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        await resp.text()
+
+    assert resp.status == 200
+    assert fake.tasks_seen[-1]["model"] == "test/default-model"
+    assert fake.tasks_seen[-1]["reasoning_effort"] == "high"
+
+
+@pytest.mark.anyio
+async def test_get_ask_options_returns_configured_default_model(
+    app, tmp_vault: VaultConfig, monkeypatch
+) -> None:
+    """The web UI needs the same resolved ask defaults that POST /ask uses."""
+    monkeypatch.setattr(
+        ask_route,
+        "load_config",
+        lambda: {"defaults": {"model": "test/default-model", "reasoning-effort": "medium"}},
+    )
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/ask/options",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        body = await resp.json()
+
+    assert resp.status == 200
+    assert body == {"model": "test/default-model", "reasoning_effort": "medium"}
 
 
 # ---------------------------------------------------------------------------

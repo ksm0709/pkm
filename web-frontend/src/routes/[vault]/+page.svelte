@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { apiGet } from '$lib/api/client.js';
 
@@ -7,8 +6,11 @@
     note_id: string;
     title: string;
     path: string;
+    description?: string | null;
     tags: string[];
     created_at: string | null;
+    updated_at?: string | null;
+    modified_at?: string | null;
   }
 
   let notes = $state<NoteEntry[]>([]);
@@ -17,6 +19,7 @@
   let loadedAt = $state<string | null>(null);
 
   let vaultName = $derived($page.params.vault);
+  let loadToken = 0;
   const topTags = $derived.by(() => {
     const counts = new Map<string, number>();
     for (const note of notes) {
@@ -29,21 +32,51 @@
       .slice(0, 8);
   });
 
-  onMount(async () => {
+  async function loadNotes(vault: string) {
+    const token = ++loadToken;
+    notes = [];
+    loading = true;
+    error = '';
+    loadedAt = null;
+
     try {
-      notes = await apiGet<NoteEntry[]>(`/api/v1/vault/${vaultName}/notes`);
+      const loadedNotes = await apiGet<NoteEntry[]>(`/api/v1/vault/${vault}/notes`);
+      if (token !== loadToken) return;
+      notes = sortNotesByRecentModification(loadedNotes);
       loadedAt = new Intl.DateTimeFormat(undefined, {
         hour: '2-digit',
         minute: '2-digit'
       }).format(new Date());
       // Store last visited vault
-      localStorage.setItem('pkm.lastVault', vaultName);
+      localStorage.setItem('pkm.lastVault', vault);
     } catch (e) {
+      if (token !== loadToken) return;
       error = e instanceof Error ? e.message : 'Failed to load notes.';
     } finally {
+      if (token !== loadToken) return;
       loading = false;
     }
+  }
+
+  $effect(() => {
+    if (!vaultName) return;
+    void loadNotes(vaultName);
   });
+
+  function sortNotesByRecentModification(entries: NoteEntry[]) {
+    return [...entries].sort((a, b) => noteTime(b) - noteTime(a) || noteLabel(a).localeCompare(noteLabel(b)));
+  }
+
+  function noteTime(note: NoteEntry) {
+    const raw = note.modified_at ?? note.updated_at ?? note.created_at;
+    if (!raw) return 0;
+    const time = Date.parse(raw);
+    return Number.isFinite(time) ? time : 0;
+  }
+
+  function noteLabel(note: NoteEntry) {
+    return note.title || note.note_id || '';
+  }
 </script>
 
 <svelte:head>
@@ -52,9 +85,7 @@
 
 <main class="vault-home">
   <header class="ops-header">
-    <p class="eyebrow">VAULT OPERATIONS</p>
     <div class="title-row">
-      <h1>{vaultName}</h1>
       <div class="status-stack" aria-label="Vault status">
         <span>{notes.length} notes</span>
         {#if loadedAt}
@@ -75,7 +106,7 @@
       <section class="ledger" aria-label="Notes ledger">
         <div class="ledger-head">
           <span>NOTE</span>
-          <span>PATH</span>
+          <span>DESCRIPTION</span>
           <span>TAGS</span>
         </div>
         <ul class="note-list">
@@ -83,7 +114,7 @@
             <li class="note-entry">
               <a href="/{vaultName}/notes/{note.note_id}" class="note-link">
                 <span class="note-title">{note.title || note.note_id}</span>
-                <span class="note-path">{note.path || note.note_id}</span>
+                <span class="note-description">{note.description || '—'}</span>
                 <span class="note-tags">
                   {note.tags?.length ? note.tags.map((t) => `#${t}`).join(' ') : '—'}
                 </span>
@@ -118,12 +149,9 @@
   }
 
   .ops-header {
-    border-left: 1px solid var(--accent);
-    padding-left: var(--space-4, 16px);
     margin-bottom: var(--space-6, 32px);
   }
 
-  .eyebrow,
   .ledger-head,
   .lane-label {
     font-family: var(--font-mono);
@@ -139,15 +167,6 @@
     align-items: end;
     justify-content: space-between;
     gap: var(--space-5, 24px);
-    margin-top: var(--space-2, 8px);
-  }
-
-  h1 {
-    font-family: var(--font-display);
-    font-size: clamp(34px, 5vw, 44px);
-    line-height: 1;
-    font-weight: var(--type-h1-weight, 600);
-    color: var(--text);
     margin: 0;
   }
 
@@ -219,7 +238,7 @@
   }
 
   .note-title,
-  .note-path,
+  .note-description,
   .note-tags {
     min-width: 0;
     overflow: hidden;
@@ -227,7 +246,7 @@
     white-space: nowrap;
   }
 
-  .note-path {
+  .note-description {
     font-size: var(--type-chrome-sm-size, 11px);
     color: var(--text-muted);
   }

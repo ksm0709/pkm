@@ -5,6 +5,7 @@
     note_id: string;
     title: string;
     type: string;
+    description?: string;
     confidence?: number;
   }
 
@@ -23,15 +24,11 @@
 
   let { vaultName, data, loading = false }: Props = $props();
 
-  /** Parse YYYY-MM-DD prefix from note_id if present. */
-  function parseDate(note_id: string): string | null {
-    const m = note_id.match(/^(\d{4}-\d{2}-\d{2})/);
-    return m ? m[1] : null;
-  }
-
-  /** Derive a short filename from note_id. */
-  function toFilename(note_id: string): string {
-    return `${note_id}.md`;
+  function neighborSummary(neighbor: Neighbor): string {
+    const description = neighbor.description?.trim();
+    if (description) return description;
+    const date = neighbor.note_id.match(/^(\d{4}-\d{2}-\d{2})/)?.[1];
+    return date ?? neighbor.type;
   }
 
   interface Group {
@@ -66,20 +63,15 @@
           <p class="group-label">{group.label}</p>
           <ul class="neighbor-list">
             {#each group.items as neighbor (neighbor.note_id)}
-              {@const date = parseDate(neighbor.note_id)}
-              {@const filename = toFilename(neighbor.note_id)}
+              {@const summary = neighborSummary(neighbor)}
               <li class="neighbor-item">
                 <a href="/{vaultName}/notes/{neighbor.note_id}" class="neighbor-link">
                   <span class="neighbor-title">{neighbor.title || neighbor.note_id}</span>
-                  <span class="neighbor-meta">
-                    {#if date}
-                      {date} · {filename}
-                    {:else}
-                      {filename}
-                    {/if}
-                  </span>
                   {#if neighbor.confidence !== undefined}
                     <span class="confidence">{neighbor.confidence.toFixed(2)}</span>
+                  {/if}
+                  {#if summary}
+                    <span class="neighbor-description">{summary}</span>
                   {/if}
                 </a>
               </li>
@@ -112,7 +104,7 @@
     content: "";
     height: 1px;
     flex: 1;
-    background: linear-gradient(90deg, var(--accent), var(--border));
+    background: var(--border);
   }
 
   .panel-body {
@@ -155,16 +147,17 @@
 
   .neighbor-link {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(120px, auto) auto;
-    gap: var(--space-3, 12px);
-    align-items: center;
-    min-height: 40px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: var(--space-3, 12px);
+    row-gap: var(--space-1, 4px);
+    align-items: start;
+    min-height: 48px;
     font-family: var(--font-mono);
     font-size: 14px;
     color: var(--text);
     text-decoration: none;
     border-left: 2px solid transparent;
-    padding: 0 var(--space-2, 8px);
+    padding: var(--space-2, 8px);
     transition: color var(--dur-fast, 120ms) var(--ease-out), background-color var(--dur-fast, 120ms) var(--ease-out), border-color var(--dur-fast, 120ms) var(--ease-out);
   }
 
@@ -176,8 +169,7 @@
     outline: none;
   }
 
-  .neighbor-title,
-  .neighbor-meta {
+  .neighbor-title {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -191,20 +183,22 @@
     padding: 1px 5px;
   }
 
-  .neighbor-meta {
+  .neighbor-description {
+    grid-column: 1 / -1;
+    min-width: 0;
     font-size: 12px;
     color: var(--text-muted);
+    line-height: 1.45;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
 
   @media (max-width: 640px) {
     .neighbor-link {
       grid-template-columns: 1fr auto;
-      min-height: 54px;
-      padding-block: var(--space-2, 8px);
-    }
-
-    .neighbor-meta {
-      grid-column: 1 / -1;
     }
   }
 </style>

@@ -4,7 +4,9 @@
   import { apiGet } from '$lib/api/client.js';
 
   interface DailyEntry {
+    note_id?: string;
     date: string; // YYYY-MM-DD
+    kind?: 'daily' | 'subnote';
     title: string;
     todo_count: number;
     snippet: string;
@@ -23,47 +25,6 @@
 
   let sentinel: HTMLDivElement | null = $state(null);
   let observer: IntersectionObserver | null = null;
-
-  const monthFormatter = new Intl.DateTimeFormat('en-US', {
-    month: 'long',
-    year: 'numeric'
-  });
-  const dayFormatter = new Intl.DateTimeFormat('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric'
-  });
-
-  function monthKey(date: string): string {
-    return date.slice(0, 7); // YYYY-MM
-  }
-
-  function monthLabel(date: string): string {
-    // Parse as local-date-only (avoid TZ shift): construct via parts.
-    const [y, m] = date.split('-').map(Number);
-    const d = new Date(y, m - 1, 1);
-    return monthFormatter.format(d).toUpperCase();
-  }
-
-  function formatDay(date: string): string {
-    const [y, m, d] = date.split('-').map(Number);
-    return dayFormatter.format(new Date(y, m - 1, d));
-  }
-
-  // Group entries by month, preserving the descending order they arrive in.
-  const grouped = $derived.by(() => {
-    const groups: { key: string; label: string; items: DailyEntry[] }[] = [];
-    let current: { key: string; label: string; items: DailyEntry[] } | null = null;
-    for (const entry of entries) {
-      const key = monthKey(entry.date);
-      if (!current || current.key !== key) {
-        current = { key, label: monthLabel(entry.date), items: [] };
-        groups.push(current);
-      }
-      current.items.push(entry);
-    }
-    return groups;
-  });
 
   async function loadPage(beforeCursor: string) {
     if (loading || !hasMore) return;
@@ -98,6 +59,22 @@
       const oldest = entries[entries.length - 1].date;
       loadPage(oldest);
     }
+  }
+
+  function noteIdFor(entry: DailyEntry) {
+    return entry.note_id || entry.date;
+  }
+
+  function isSubnote(entry: DailyEntry) {
+    return entry.kind === 'subnote' || noteIdFor(entry) !== entry.date;
+  }
+
+  function subnoteLabel(entry: DailyEntry) {
+    const noteId = noteIdFor(entry);
+    const fallback = noteId.startsWith(`${entry.date}-`)
+      ? noteId.slice(entry.date.length + 1)
+      : noteId;
+    return entry.title && entry.title !== noteId ? entry.title : fallback;
   }
 
   $effect(() => {
@@ -182,11 +159,6 @@
 </svelte:head>
 
 <main class="reading-column daily-timeline">
-  <header class="timeline-header">
-    <p>EVENT LEDGER</p>
-    <h1>Daily</h1>
-  </header>
-
   {#if error}
     <p class="status-msg error">{error}</p>
   {/if}
@@ -200,29 +172,24 @@
   {:else if entries.length === 0 && !error}
     <p class="status-msg faint">No daily notes yet.</p>
   {:else}
-    {#each grouped as group (group.key)}
-      <section class="month-block">
-        <div class="month-rule">
-          <span class="month-label">{group.label}</span>
-          <span class="month-line" aria-hidden="true"></span>
-        </div>
-        <ul class="entry-list">
-          {#each group.items as entry (entry.date)}
-            <li class="entry" class:is-today={entry.date === today}>
-              <a class="entry-link" href="/{vaultName}/notes/{entry.date}">
-                <span class="entry-date">{formatDay(entry.date)}</span>
-                <span class="entry-snippet">{entry.snippet || entry.title}</span>
-                {#if entry.todo_count > 0}
-                  <span class="entry-todos"
-                    >{entry.todo_count} todo{entry.todo_count === 1 ? '' : 's'} open</span
-                  >
-                {/if}
-              </a>
-            </li>
-          {/each}
-        </ul>
-      </section>
-    {/each}
+    <ul class="entry-list" aria-label="Daily notes">
+      {#each entries as entry (noteIdFor(entry))}
+        <li
+          class="entry"
+          class:is-today={entry.date === today && !isSubnote(entry)}
+          class:is-subnote={isSubnote(entry)}
+        >
+          <a class="entry-link" href="/{vaultName}/notes/{noteIdFor(entry)}">
+            {#if isSubnote(entry)}
+              <span class="entry-title">{subnoteLabel(entry)}</span>
+              <span class="entry-meta" aria-hidden="true">{entry.date}</span>
+            {:else}
+              {entry.date}
+            {/if}
+          </a>
+        </li>
+      {/each}
+    </ul>
   {/if}
 
   <div bind:this={sentinel} class="sentinel">
@@ -239,56 +206,6 @@
     padding-top: var(--space-6, 32px);
     padding-bottom: var(--space-8, 64px);
     min-height: 60vh;
-  }
-
-  .timeline-header {
-    border-left: 1px solid var(--accent);
-    padding-left: var(--space-4, 16px);
-    margin-bottom: var(--space-6, 32px);
-  }
-
-  .timeline-header p {
-    font-family: var(--font-mono);
-    font-size: var(--type-chrome-sm-size, 11px);
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--text-faint);
-    margin: 0;
-  }
-
-  h1 {
-    font-family: var(--font-display);
-    font-size: clamp(34px, 6vw, 44px);
-    line-height: 1;
-    font-weight: var(--type-h1-weight, 600);
-    color: var(--text);
-    margin: var(--space-2, 8px) 0 0;
-  }
-
-  .month-block {
-    margin-bottom: var(--space-6, 32px);
-  }
-
-  .month-rule {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3, 12px);
-    margin-bottom: var(--space-4, 16px);
-  }
-
-  .month-label {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    letter-spacing: 0.18em;
-    color: var(--text-faint);
-    text-transform: uppercase;
-    flex-shrink: 0;
-  }
-
-  .month-line {
-    flex: 1;
-    height: 1px;
-    background: var(--border, rgba(0, 0, 0, 0.08));
   }
 
   .entry-list {
@@ -310,16 +227,43 @@
     border-left-color: var(--accent, #3a7);
   }
 
+  .entry.is-subnote {
+    min-height: 38px;
+  }
+
   .entry-link {
-    display: grid;
-    grid-template-columns: 13ch minmax(0, 1fr) auto;
+    display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: var(--space-3, 12px);
     min-height: 40px;
     padding-left: var(--space-3, 12px);
+    padding-right: var(--space-3, 12px);
+    font-family: var(--font-mono);
+    font-size: var(--type-body-size, 15px);
     text-decoration: none;
     color: var(--text);
     transition: background-color var(--dur-fast, 120ms) var(--ease-out), color var(--dur-fast, 120ms) var(--ease-out);
+  }
+
+  .entry.is-subnote .entry-link {
+    min-height: 38px;
+    padding-left: var(--space-6, 32px);
+    color: var(--text-muted);
+    font-size: var(--type-chrome-size, 13px);
+  }
+
+  .entry-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .entry-meta {
+    flex-shrink: 0;
+    color: var(--text-faint);
+    font-size: var(--type-chrome-sm-size, 11px);
   }
 
   .entry-link:hover,
@@ -328,34 +272,9 @@
     outline: none;
   }
 
-  .entry-link:hover .entry-snippet,
-  .entry-link:focus-visible .entry-snippet {
+  .entry-link:hover,
+  .entry-link:focus-visible {
     color: var(--accent);
-  }
-
-  .entry-date {
-    font-family: var(--font-mono);
-    font-size: 12px;
-    color: var(--text-muted);
-  }
-
-  .entry-snippet {
-    font-family: var(--font-mono);
-    font-size: var(--type-body-size, 15px);
-    color: var(--text);
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .entry-todos {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    color: var(--accent);
-    border: 1px solid var(--border);
-    padding: 2px 6px;
-    flex-shrink: 0;
   }
 
   .skeleton-list {
@@ -395,13 +314,7 @@
 
   @media (max-width: 640px) {
     .entry-link {
-      grid-template-columns: 1fr;
-      gap: 3px;
       padding-block: var(--space-2, 8px);
-    }
-
-    .entry-todos {
-      justify-self: start;
     }
   }
 </style>
