@@ -302,30 +302,25 @@
               />
             {/each}
             {#each visibleNodes as node (node.id)}
-              {#if graphNodeIsInteractive(node)}
-                <g
+              {#if node.type === 'note'}
+                <a
                   data-testid="graph-node"
                   class="graph-node node-{typeClass(node.type)}"
-                  role="button"
-                  tabindex="0"
-                  aria-label={`Open note ${node.label}`}
-                  onclick={() => openNode(node)}
-                  onkeydown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      openNode(node);
-                    }
+                  href={`/${encodeURIComponent(vaultName)}/notes/${encodeURIComponent(node.id)}`}
+                  aria-label="Open note {node.label}"
+                  onclick={(event) => {
+                    event.preventDefault();
+                    openNode(node);
                   }}
                 >
                   <circle cx={node.x} cy={node.y} r={nodeRadius(node)} />
                   <text x={node.x + 10} y={node.y - 8}>{node.label}</text>
-                </g>
+                </a>
               {:else}
                 <g
                   data-testid="graph-node"
                   class="graph-node node-{typeClass(node.type)}"
-                  role="img"
-                  aria-label={`${node.type} ${node.label}`}
+                  aria-label="{node.type} {node.label}"
                 >
                   <circle cx={node.x} cy={node.y} r={nodeRadius(node)} />
                   <text x={node.x + 10} y={node.y - 8}>{node.label}</text>
@@ -541,12 +536,12 @@
     stroke-width: 3px;
   }
 
-  .graph-node[role='button'] {
+  .graph-node[href] {
     cursor: pointer;
   }
 
-  .graph-node[role='button']:hover circle,
-  .graph-node[role='button']:focus circle {
+  .graph-node[href]:hover circle,
+  .graph-node[href]:focus circle {
     fill: var(--accent-bg);
   }
 
