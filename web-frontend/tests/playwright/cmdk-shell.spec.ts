@@ -65,6 +65,10 @@ test.describe('command palette and shell navigation', () => {
     await page.getByRole('button', { name: /Search/ }).click();
     await expectCommandPaletteFocused(page);
     await page.locator('.cmdk-input').press('Escape');
+    await expect(
+      page.locator('[role="dialog"][aria-label="Command palette"]')
+    ).toBeHidden();
+    await expect(page.locator('.cmdk-backdrop')).toBeHidden();
     await page.getByRole('button', { name: 'Open navigation drawer' }).click();
     await expect(page.locator('aside[aria-label="App navigation"]')).toHaveAttribute(
       'aria-hidden',
@@ -74,6 +78,7 @@ test.describe('command palette and shell navigation', () => {
     const before = page.url();
     const tags = page.locator('[role="button"][aria-label="Tags"]');
     const graph = page.getByRole('button', { name: 'Graph' });
+    const vaultPath = vaultPathPattern(vaultName);
     await expect(tags).toHaveAttribute('aria-disabled', 'true');
     await expect(graph).toBeVisible();
 
@@ -83,7 +88,7 @@ test.describe('command palette and shell navigation', () => {
     await page
       .locator('button[aria-label="Graph"]')
       .evaluate((el) => (el as HTMLElement).click());
-    await expect(page).toHaveURL(new RegExp(`/${escapeRegExp(vaultName)}/graph$`));
+    await expect(page).toHaveURL(new RegExp(`/${vaultPath}/graph$`));
 
     await page.getByRole('button', { name: 'Open navigation drawer' }).click();
     await expect(page.locator('aside[aria-label="App navigation"]')).toHaveAttribute(
