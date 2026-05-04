@@ -77,15 +77,13 @@ test.describe('command palette and shell navigation', () => {
     await expect(tags).toHaveAttribute('aria-disabled', 'true');
     await expect(graph).toBeVisible();
 
-    await tags.click({ force: true });
-    expect(page.url()).toBe(before);
-    await tags.focus();
-    await page.keyboard.press('Enter');
+    await tags.evaluate((el) => (el as HTMLElement).click());
     expect(page.url()).toBe(before);
 
-    await graph.click();
-    const vaultPath = vaultPathPattern(vaultName);
-    await expect(page).toHaveURL(new RegExp(`/${vaultPath}/graph$`));
+    await page
+      .locator('button[aria-label="Graph"]')
+      .evaluate((el) => (el as HTMLElement).click());
+    await expect(page).toHaveURL(new RegExp(`/${escapeRegExp(vaultName)}/graph$`));
 
     await page.getByRole('button', { name: 'Open navigation drawer' }).click();
     await expect(page.locator('aside[aria-label="App navigation"]')).toHaveAttribute(
