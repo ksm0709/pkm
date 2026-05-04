@@ -9,6 +9,9 @@ export interface NormalizedGraphNode {
   tier: string;
   raw: Record<string, unknown>;
   degree: number;
+  hub: boolean;
+  importance: number;
+  radius: number;
 }
 
 export interface NormalizedGraphEdge {
@@ -18,6 +21,8 @@ export interface NormalizedGraphEdge {
   type: string;
   label: string;
   raw: Record<string, unknown>;
+  confidence: number;
+  weight: number;
 }
 
 export interface NormalizedGraph {
@@ -54,10 +59,22 @@ export function normalizeGraph(raw: unknown): NormalizedGraph {
     degree.set(edge.target, (degree.get(edge.target) ?? 0) + 1);
   }
 
-  const nodesWithDegree = nodes.map((node) => ({
-    ...node,
-    degree: degree.get(node.id) ?? 0
-  }));
+  const maxDegree = Math.max(1, ...nodes.map((node) => degree.get(node.id) ?? 0));
+  const nodesWithDegree = nodes.map((node) => {
+    const nodeDegree = degree.get(node.id) ?? 0;
+    const normalizedDegree = nodeDegree / maxDegree;
+    const hub = node.tier === 'hub' || (nodeDegree >= 3 && normalizedDegree >= 0.75);
+    const importance = clamp01(hub ? 1 : normalizedDegree);
+    const radius = nodeRadius(node.type, importance, hub);
+
+    return {
+      ...node,
+      degree: nodeDegree,
+      hub,
+      importance,
+      radius
+    };
+  });
 
   return {
     nodes: nodesWithDegree,
@@ -73,7 +90,13 @@ function normalizeNode(entry: unknown): NormalizedGraphNode | null {
   if (!id) return null;
   const type = stringFrom(entry.type) || stringFrom(entry.node_type) || stringFrom(entry.kind) || 'note';
   const label = stringFrom(entry.title) || stringFrom(entry.label) || stringFrom(entry.name) || id;
-  const cluster = stringFrom(entry.community) || stringFrom(entry.cluster) || stringFrom(entry.group) || type;
+  const cluster =
+    stringFrom(entry.community) ||
+    stringFrom(entry.cluster) ||
+    firstString(entry.clusters) ||
+    firstString(entry.top_tags) ||
+    stringFrom(entry.group) ||
+    type;
   const tier = stringFrom(entry.graph_tier) || stringFrom(entry.tier) || '';
 
   return {
@@ -84,7 +107,10 @@ function normalizeNode(entry: unknown): NormalizedGraphNode | null {
     community: cluster,
     tier,
     raw: entry,
-    degree: 0
+    degree: 0,
+    hub: false,
+    importance: 0,
+    radius: nodeRadius(type, 0, false)
   };
 }
 
@@ -100,7 +126,9 @@ function normalizeEdge(entry: unknown, index: number): NormalizedGraphEdge | nul
     target,
     type,
     label: stringFrom(entry.label) || type,
-    raw: entry
+    raw: entry,
+    confidence: confidenceFrom(entry),
+    weight: weightFrom(entry, type)
   };
 }
 
@@ -114,6 +142,48 @@ function stringFrom(value: unknown): string {
   if (typeof value === 'string') return value.trim();
   if (typeof value === 'number') return String(value);
   return '';
+}
+
+function firstString(value: unknown): string {
+  if (!Array.isArray(value)) return '';
+  for (const entry of value) {
+    const text = stringFrom(entry);
+    if (text) return text;
+  }
+  return '';
+}
+
+function numberFrom(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function confidenceFrom(entry: Record<string, unknown>): number {
+  return clamp01(numberFrom(entry.confidence) ?? numberFrom(entry.score) ?? numberFrom(entry.similarity) ?? 0.5);
+}
+
+function weightFrom(entry: Record<string, unknown>, type: string): number {
+  const explicit = numberFrom(entry.weight) ?? numberFrom(entry.strength);
+  if (explicit !== null) return Math.max(0, explicit);
+
+  if (type === 'semantic_similar' || type === 'semantic_similarity') return 1.4;
+  if (type === 'has_tag' || type === 'tagged_by' || type === 'tag_note') return 0.9;
+  if (type === 'wikilink') return 1.2;
+  return 1;
+}
+
+function nodeRadius(type: string, importance: number, hub: boolean): number {
+  const base = type === 'tag' ? 7 : type === 'note_or_unresolved' ? 5 : 6;
+  const bonus = hub ? 6 : 0;
+  return Math.round((base + importance * 8 + bonus) * 10) / 10;
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
 }
 
 function uniqueSorted(values: string[]) {
