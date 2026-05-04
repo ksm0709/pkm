@@ -1,154 +1,129 @@
-export type RawGraphNodeKind = 'note' | 'tag' | 'note_or_unresolved';
+export type GraphNodeType = 'note' | 'tag' | 'note_or_unresolved' | string;
 
-export interface RawGraphNode {
-  id?: unknown;
-  title?: unknown;
-  name?: unknown;
-  label?: unknown;
-  description?: unknown;
-  type?: unknown;
-  community?: unknown;
-  cluster?: unknown;
-  graph_tier?: unknown;
-}
-
-export interface RawGraphEdge {
-  source?: unknown;
-  target?: unknown;
-  type?: unknown;
-}
-
-export interface RawGraphPayload {
-  nodes?: unknown;
-  links?: unknown;
-  edges?: unknown;
-}
-
-export interface NormalizedNode {
+export interface NormalizedGraphNode {
   id: string;
-  title: string;
+  label: string;
+  type: GraphNodeType;
   description: string;
-  type: RawGraphNodeKind;
-  community?: string;
-  cluster?: string;
-  graph_tier?: string;
+  community: string;
+  tier: string;
+  raw: Record<string, unknown>;
+  degree: number;
 }
 
-export interface NormalizedEdge {
+export interface NormalizedGraphEdge {
   id: string;
   source: string;
   target: string;
-  type?: string;
+  type: string;
+  label: string;
+  raw: Record<string, unknown>;
 }
 
 export interface NormalizedGraph {
-  nodes: NormalizedNode[];
-  edges: NormalizedEdge[];
+  nodes: NormalizedGraphNode[];
+  edges: NormalizedGraphEdge[];
+  nodeTypes: string[];
+  edgeTypes: string[];
 }
 
-function nodeIdFromRef(value: unknown): string | null {
-  if (typeof value === 'string' || typeof value === 'number') {
-    const raw = String(value).trim();
-    return raw.length ? raw : null;
+export function normalizeGraph(raw: unknown): NormalizedGraph {
+  const graph = isRecord(raw) ? raw : {};
+  const rawNodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+  const rawEdges = Array.isArray(graph.links)
+    ? graph.links
+    : Array.isArray(graph.edges)
+      ? graph.edges
+      : [];
+
+  const nodes = rawNodes
+    .map((entry) => normalizeNode(entry))
+    .filter((node): node is NormalizedGraphNode => node !== null)
+    .sort(compareNode);
+  const nodeIds = new Set(nodes.map((node) => node.id));
+
+  const edges = rawEdges
+    .map((entry, index) => normalizeEdge(entry, index))
+    .filter((edge): edge is NormalizedGraphEdge => edge !== null)
+    .filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target))
+    .sort((a, b) => a.source.localeCompare(b.source) || a.target.localeCompare(b.target) || a.type.localeCompare(b.type));
+
+  const degree = new Map<string, number>();
+  for (const edge of edges) {
+    degree.set(edge.source, (degree.get(edge.source) ?? 0) + 1);
+    degree.set(edge.target, (degree.get(edge.target) ?? 0) + 1);
   }
 
-  if (!value || typeof value !== 'object') return null;
-
-  const rec = value as { id?: unknown; node_id?: unknown };
-  const raw =
-    (rec as { id?: unknown }).id ??
-    (rec as { node_id?: unknown }).node_id ??
-    (value as { source?: unknown }).source ??
-    null;
-
-  if (typeof raw === 'string' || typeof raw === 'number') {
-    const text = String(raw).trim();
-    return text.length ? text : null;
-  }
-
-  return null;
-}
-
-function toText(value: unknown): string | undefined {
-  if (typeof value === 'string' && value.trim()) return value.trim();
-  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
-  return undefined;
-}
-
-function normalizeNodeKind(value: unknown): RawGraphNodeKind {
-  if (value === 'tag') return 'tag';
-  if (value === 'note_or_unresolved') return 'note_or_unresolved';
-  return 'note';
-}
-
-function normalizeEdges(rawEdges: unknown): NormalizedEdge[] {
-  if (!Array.isArray(rawEdges)) return [];
-
-  const edges: NormalizedEdge[] = [];
-
-  rawEdges.forEach((entry, index) => {
-    if (!entry || typeof entry !== 'object') return;
-    const raw = entry as RawGraphEdge;
-
-    const source = nodeIdFromRef(raw.source);
-    const target = nodeIdFromRef(raw.target);
-    if (!source || !target) return;
-
-    edges.push({
-      id: `${source}->${target}::${index}`,
-      source,
-      target,
-      type: toText((entry as RawGraphEdge).type)
-    });
-  });
-
-  return edges;
-}
-
-export function normalizeGraph(raw: RawGraphPayload): NormalizedGraph {
-  const rawNodes = Array.isArray(raw?.nodes) ? raw.nodes : [];
-
-  const normalizedNodes = rawNodes
-    .filter((entry): entry is RawGraphNode => !!entry && typeof entry === 'object')
-    .map((entry) => {
-      const id = nodeIdFromRef(entry);
-      if (!id) return null;
-
-      return {
-        id,
-        title: toText(entry.title) ?? toText(entry.name) ?? toText(entry.label) ?? id,
-        description: toText(entry.description) ?? '',
-        type: normalizeNodeKind(entry.type),
-        community: toText(entry.community),
-        cluster: toText(entry.cluster),
-        graph_tier: toText(entry.graph_tier)
-      } satisfies NormalizedNode;
-    })
-    .filter((node): node is NormalizedNode => !!node);
-
-  const edges = normalizeEdges(raw?.links ?? raw?.edges);
+  const nodesWithDegree = nodes.map((node) => ({
+    ...node,
+    degree: degree.get(node.id) ?? 0
+  }));
 
   return {
-    nodes: normalizedNodes,
-    edges
+    nodes: nodesWithDegree,
+    edges,
+    nodeTypes: uniqueSorted(nodesWithDegree.map((node) => node.type || 'unknown')),
+    edgeTypes: uniqueSorted(edges.map((edge) => edge.type || 'unknown'))
   };
 }
 
-export function degreesByNode(nodes: NormalizedNode[], edges: NormalizedEdge[]) {
-  const counts = new Map<string, number>(nodes.map((node) => [node.id, 0]));
+function normalizeNode(entry: unknown): NormalizedGraphNode | null {
+  if (!isRecord(entry)) return null;
+  const id = stringFrom(entry.id) || stringFrom(entry.key) || stringFrom(entry.name) || stringFrom(entry.label);
+  if (!id) return null;
+  const type = stringFrom(entry.type) || stringFrom(entry.node_type) || stringFrom(entry.kind) || 'note';
+  const label = stringFrom(entry.title) || stringFrom(entry.label) || stringFrom(entry.name) || id;
+  const cluster = stringFrom(entry.community) || stringFrom(entry.cluster) || stringFrom(entry.group) || type;
+  const tier = stringFrom(entry.graph_tier) || stringFrom(entry.tier) || '';
 
-  for (const edge of edges) {
-    counts.set(edge.source, (counts.get(edge.source) ?? 0) + 1);
-    counts.set(edge.target, (counts.get(edge.target) ?? 0) + 1);
-  }
-
-  return (nodeId: string) => counts.get(nodeId) ?? 0;
+  return {
+    id,
+    label,
+    type,
+    description: stringFrom(entry.description) || stringFrom(entry.summary) || '',
+    community: cluster,
+    tier,
+    raw: entry,
+    degree: 0
+  };
 }
 
-export function filterNodes(nodes: NormalizedNode[], nodeType: string | 'all') {
-  return nodeType === 'all' ? nodes : nodes.filter((node) => node.type === nodeType);
+function normalizeEdge(entry: unknown, index: number): NormalizedGraphEdge | null {
+  if (!isRecord(entry)) return null;
+  const source = endpointId(entry.source);
+  const target = endpointId(entry.target);
+  if (!source || !target) return null;
+  const type = stringFrom(entry.type) || stringFrom(entry.edge_type) || stringFrom(entry.relation) || stringFrom(entry.kind) || 'link';
+  return {
+    id: `${source}->${target}:${type}:${index}`,
+    source,
+    target,
+    type,
+    label: stringFrom(entry.label) || type,
+    raw: entry
+  };
 }
 
-export function filterEdges(edges: NormalizedEdge[], edgeType: string | 'all') {
-  return edgeType === 'all' ? edges : edges.filter((edge) => edge.type === edgeType);
+function endpointId(value: unknown): string {
+  if (typeof value === 'string' || typeof value === 'number') return String(value);
+  if (!isRecord(value)) return '';
+  return stringFrom(value.id) || stringFrom(value.key) || stringFrom(value.name) || stringFrom(value.label);
+}
+
+function stringFrom(value: unknown): string {
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number') return String(value);
+  return '';
+}
+
+function uniqueSorted(values: string[]) {
+  return [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b));
+}
+
+function compareNode(a: NormalizedGraphNode, b: NormalizedGraphNode) {
+  return a.label.localeCompare(b.label) || a.id.localeCompare(b.id);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
 }
