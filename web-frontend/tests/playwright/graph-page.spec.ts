@@ -68,6 +68,12 @@ const malformedPayload = {
   links: [{ source: 'ghost', target: 'nope', type: 'wikilink' }]
 };
 
+const malformedPayload = {
+  nonsense: true,
+  nodes: [12, null, { nope: 'yes' }],
+  links: [{ source: 'ghost', target: 'nope', type: 'wikilink' }]
+};
+
 test.describe('vault graph page', () => {
   test('renders graph API data with modes, filters, and note-only navigation', async ({ page }) => {
     const vaultName = await loginAndFindVault(page);
