@@ -68,12 +68,6 @@ const malformedPayload = {
   links: [{ source: 'ghost', target: 'nope', type: 'wikilink' }]
 };
 
-const malformedPayload = {
-  nonsense: true,
-  nodes: [12, null, { nope: 'yes' }],
-  links: [{ source: 'ghost', target: 'nope', type: 'wikilink' }]
-};
-
 test.describe('vault graph page', () => {
   test('renders graph API data with modes, filters, and note-only navigation', async ({ page }) => {
     const vaultName = await loginAndFindVault(page);
@@ -161,20 +155,25 @@ test.describe('vault graph page', () => {
   });
 
   test('treats malformed payloads as empty graph data', async ({ page }) => {
+    const vaultName = await loginAndFindVault(page);
     await mockGraphApi(page, async (route) => json(route, malformedPayload));
 
-    await page.goto(`/${vaultName}/graph`);
+    await page.goto(`/${encodeURIComponent(vaultName)}/graph`);
 
     await expect(page.getByText('Graph is empty.')).toBeVisible();
+    await expect(page.getByText(/pkm index/)).toBeVisible();
+    await expect(page.locator('[data-testid="graph-node"]')).toHaveCount(0);
   });
 
   test('shows unavailable state for backend failures', async ({ page }) => {
+    const vaultName = await loginAndFindVault(page);
     await mockGraphApi(page, async (route) => route.fulfill({ status: 500, body: 'boom' }));
 
-    await page.goto(`/${vaultName}/graph`);
+    await page.goto(`/${encodeURIComponent(vaultName)}/graph`);
 
     await expect(page.locator('.graph-summary')).toHaveText('Graph unavailable');
     await expect(page.getByText('GET graph → 500')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Radial' })).toBeVisible();
   });
 
   test('missing graph response explains how to create the graph index', async ({ page }) => {
@@ -188,9 +187,10 @@ test.describe('vault graph page', () => {
   });
 
   test('shows no-match guidance when filters eliminate all rows', async ({ page }) => {
-    await mockGraphApi(page, async (route) => json(route, graphFixture));
+    const vaultName = await loginAndFindVault(page);
+    await mockGraphApi(page, async (route) => json(route, nodeLinkFixture));
 
-    await page.goto(`/${vaultName}/graph`);
+    await page.goto(`/${encodeURIComponent(vaultName)}/graph`);
     await expect(page.locator('.graph-summary')).toHaveText(/4 nodes · 3 edges/);
 
     await page.getByLabel('Node type filter').selectOption('tag');
