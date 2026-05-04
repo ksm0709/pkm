@@ -7,6 +7,7 @@
     type NormalizedGraphEdge,
     type NormalizedGraphNode
   } from '$lib/graph/normalize.js';
+  import { graphNodeIsInteractive, graphNoteHref } from '$lib/graph/navigation.js';
 
   type GraphMode = 'Radial' | 'Cluster' | 'Degree' | 'List';
   type PositionedNode = NormalizedGraphNode & { x: number; y: number; groupLabel: string };
@@ -100,8 +101,9 @@
   }
 
   function openNode(node: NormalizedGraphNode) {
-    if (node.type !== 'note') return;
-    void goto(`/${encodeURIComponent(vaultName)}/notes/${encodeURIComponent(node.id)}`);
+    const href = graphNoteHref(vaultName, node);
+    if (!href) return;
+    void goto(href);
   }
 
   function positionNodes(nodes: NormalizedGraphNode[], currentMode: GraphMode): PositionedNode[] {
@@ -300,23 +302,35 @@
               />
             {/each}
             {#each visibleNodes as node (node.id)}
-              <g
-                data-testid="graph-node"
-                class="graph-node node-{typeClass(node.type)}"
-                role={node.type === 'note' ? 'button' : 'img'}
-                tabindex={node.type === 'note' ? 0 : undefined}
-                aria-label={node.type === 'note' ? `Open note ${node.label}` : `${node.type} ${node.label}`}
-                onclick={() => openNode(node)}
-                onkeydown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    openNode(node);
-                  }
-                }}
-              >
-                <circle cx={node.x} cy={node.y} r={nodeRadius(node)} />
-                <text x={node.x + 10} y={node.y - 8}>{node.label}</text>
-              </g>
+              {#if graphNodeIsInteractive(node)}
+                <g
+                  data-testid="graph-node"
+                  class="graph-node node-{typeClass(node.type)}"
+                  role="button"
+                  tabindex="0"
+                  aria-label={`Open note ${node.label}`}
+                  onclick={() => openNode(node)}
+                  onkeydown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      openNode(node);
+                    }
+                  }}
+                >
+                  <circle cx={node.x} cy={node.y} r={nodeRadius(node)} />
+                  <text x={node.x + 10} y={node.y - 8}>{node.label}</text>
+                </g>
+              {:else}
+                <g
+                  data-testid="graph-node"
+                  class="graph-node node-{typeClass(node.type)}"
+                  role="img"
+                  aria-label={`${node.type} ${node.label}`}
+                >
+                  <circle cx={node.x} cy={node.y} r={nodeRadius(node)} />
+                  <text x={node.x + 10} y={node.y - 8}>{node.label}</text>
+                </g>
+              {/if}
             {/each}
           </svg>
         </section>
@@ -337,7 +351,7 @@
             {#each listNodes as node (node.id)}
               <tr data-testid="graph-row">
                 <td>
-                  {#if node.type === 'note'}
+                  {#if graphNodeIsInteractive(node)}
                     <button
                       type="button"
                       class="node-link"
