@@ -53,6 +53,11 @@ type TestApi = {
   getRenderedCounts: () => { nodes: number; edges: number; labels: number };
   getForceOptions: () => { repulsion: number; linkDistance: number };
   getSimulationState: () => { generation: number; alpha: number; paused: boolean };
+  getWorldState: () => {
+    width: number;
+    height: number;
+    nodeBounds: { minX: number; minY: number; maxX: number; maxY: number };
+  };
 };
 
 const enrichedGraphFixture: GraphPayload = {
@@ -112,10 +117,15 @@ test.describe('vault graph page', () => {
     const surfaceFrame = await page.getByTestId('graph-force-surface').evaluate((element) => {
       const style = window.getComputedStyle(element);
       const rect = element.getBoundingClientRect();
-      return { borderTopWidth: style.borderTopWidth, height: rect.height };
+      return { borderTopWidth: style.borderTopWidth, width: rect.width, height: rect.height };
     });
     expect(surfaceFrame.borderTopWidth).toBe('0px');
     expect(surfaceFrame.height).toBeGreaterThan(520);
+    const world = await graphWorldState(page);
+    expect(world.width).toBeGreaterThan(surfaceFrame.width * 2);
+    expect(world.height).toBeGreaterThan(surfaceFrame.height * 2);
+    expect(world.nodeBounds.maxX).toBeGreaterThan(surfaceFrame.width);
+    expect(world.nodeBounds.maxY).toBeGreaterThan(surfaceFrame.height);
 
     const counts = await graphCounts(page);
     expect(counts.nodes).toBe(enrichedGraphFixture.nodes.length);
@@ -356,6 +366,10 @@ async function graphForceOptions(page: Page) {
 
 async function graphSimulationState(page: Page) {
   return page.evaluate(() => (window as typeof window & { __pkmGraphTest: TestApi }).__pkmGraphTest.getSimulationState());
+}
+
+async function graphWorldState(page: Page) {
+  return page.evaluate(() => (window as typeof window & { __pkmGraphTest: TestApi }).__pkmGraphTest.getWorldState());
 }
 
 async function focusState(page: Page, id: string) {
