@@ -29,7 +29,7 @@ export default defineConfig({
     }
   ],
   webServer: {
-    command: 'pnpm dev',
+    command: 'VITE_PKM_GRAPH_TEST_API=1 pnpm dev',
     url: process.env.BASE_URL || 'http://localhost:5173',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000
