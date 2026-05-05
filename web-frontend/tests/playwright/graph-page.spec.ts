@@ -223,7 +223,11 @@ test.describe('vault graph page', () => {
     await expect(page.getByTestId('graph-preview-sheet')).toBeVisible();
     await expect(page.getByTestId('graph-preview-sheet')).toContainText('Preview body for Project Plan');
     expect(previewRequests.some((url) => decodeURIComponent(new URL(url).pathname).endsWith('/notes/project-plan'))).toBe(true);
+    await page.getByRole('button', { name: 'Close note preview' }).click();
+    await expect(page.getByTestId('graph-preview-sheet')).toHaveCount(0);
 
+    await clickNode(page, 'project-plan', [modifierKey()]);
+    await expect(page.getByTestId('graph-preview-sheet')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('graph-preview-sheet')).toHaveCount(0);
 
