@@ -15,6 +15,7 @@
   import {
     fitToBounds,
     panTransform,
+    pinchZoomTransform,
     screenToWorld,
     wheelZoomTransform,
     zoomAt,
@@ -42,6 +43,7 @@
     getForceOptions: () => { repulsion: number; linkDistance: number };
     getSimulationState: () => { generation: number; alpha: number; paused: boolean };
     getWorldState: () => ReturnType<typeof graphWorldState>;
+    getNodeStyle: (id: string) => ReturnType<typeof graphNodeStyle>;
   };
 
   type GraphWindow = Window &
@@ -79,9 +81,18 @@
   let simulation: GraphSimulationController | null = null;
   let simulationGeneration = 0;
   let raf = 0;
+  let activePointers = new Map<number, { x: number; y: number }>();
   let pointer:
-    | { mode: 'node'; nodeId: string; x: number; y: number; startedAt: number; moved: boolean }
-    | { mode: 'pan'; x: number; y: number; startedAt: number; moved: boolean }
+    | { mode: 'node'; pointerId: number; nodeId: string; x: number; y: number; startedAt: number; moved: boolean }
+    | { mode: 'pan'; pointerId: number; x: number; y: number; startedAt: number; moved: boolean }
+    | {
+        mode: 'pinch';
+        pointerIds: [number, number];
+        startCenter: { x: number; y: number };
+        startDistance: number;
+        startTransform: GraphTransform;
+        moved: boolean;
+      }
     | null = null;
 
   const graph = $derived(normalizeGraph(rawGraph));
@@ -303,23 +314,56 @@
 
   function handlePointerDown(event: PointerEvent) {
     if (!canvas || !simulation) return;
-    canvas.setPointerCapture(event.pointerId);
     const point = relativePoint(event);
+    activePointers.set(event.pointerId, point);
+    try {
+      canvas.setPointerCapture(event.pointerId);
+    } catch {
+      // Some synthetic browser events used in tests do not support pointer capture.
+    }
+
+    if (event.pointerType === 'touch' && activePointers.size >= 2) {
+      startPinchGesture();
+      return;
+    }
+
     const node = hitTestNode(simulation.nodes(), point, transform);
     if (node) {
-      pointer = { mode: 'node', nodeId: node.id, x: point.x, y: point.y, startedAt: Date.now(), moved: false };
+      pointer = {
+        mode: 'node',
+        pointerId: event.pointerId,
+        nodeId: node.id,
+        x: point.x,
+        y: point.y,
+        startedAt: Date.now(),
+        moved: false
+      };
       node.fx = node.x;
       node.fy = node.y;
       selectedId = node.id;
       simulation.reheat(0.25);
     } else {
-      pointer = { mode: 'pan', x: point.x, y: point.y, startedAt: Date.now(), moved: false };
+      pointer = { mode: 'pan', pointerId: event.pointerId, x: point.x, y: point.y, startedAt: Date.now(), moved: false };
     }
   }
 
   function handlePointerMove(event: PointerEvent) {
     if (!pointer || !simulation) return;
     const point = relativePoint(event);
+    activePointers.set(event.pointerId, point);
+    if (pointer.mode === 'pinch') {
+      const a = activePointers.get(pointer.pointerIds[0]);
+      const b = activePointers.get(pointer.pointerIds[1]);
+      if (!a || !b) return;
+      const center = midpoint(a, b);
+      const distance = pointDistance(a, b);
+      const zoomed = pinchZoomTransform(pointer.startTransform, pointer.startCenter, pointer.startDistance, distance);
+      transform = panTransform(zoomed, center.x - pointer.startCenter.x, center.y - pointer.startCenter.y);
+      pointer.moved = true;
+      scheduleDraw();
+      return;
+    }
+    if (event.pointerId !== pointer.pointerId) return;
     const dx = point.x - pointer.x;
     const dy = point.y - pointer.y;
     if (Math.hypot(dx, dy) > 2) pointer.moved = true;
@@ -345,6 +389,12 @@
 
   async function handlePointerUp(event: PointerEvent) {
     if (!pointer || !simulation) return;
+    activePointers.delete(event.pointerId);
+    if (pointer.mode === 'pinch') {
+      pointer = null;
+      return;
+    }
+    if (event.pointerId !== pointer.pointerId) return;
     const ended = pointer;
     const node = ended.mode === 'node' ? simulation.nodes().find((entry) => entry.id === ended.nodeId) : null;
     if (node) {
@@ -366,7 +416,9 @@
     else if (action === 'focus') focusNode(node);
   }
 
-  function handlePointerCancel() {
+  function handlePointerCancel(event?: PointerEvent) {
+    if (event) activePointers.delete(event.pointerId);
+    else activePointers.clear();
     if (pointer?.mode === 'node' && simulation) {
       const node = simulation.nodes().find((entry) => entry.id === pointer?.nodeId);
       if (node) {
@@ -375,6 +427,41 @@
       }
     }
     pointer = null;
+  }
+
+  function startPinchGesture() {
+    releaseActiveNode();
+    const entries = [...activePointers.entries()].slice(-2);
+    if (entries.length < 2) return;
+    const [first, second] = entries;
+    const startCenter = midpoint(first[1], second[1]);
+    pointer = {
+      mode: 'pinch',
+      pointerIds: [first[0], second[0]],
+      startCenter,
+      startDistance: pointDistance(first[1], second[1]),
+      startTransform: { ...transform },
+      moved: false
+    };
+  }
+
+  function releaseActiveNode() {
+    if (pointer?.mode !== 'node' || !simulation) return;
+    const node = simulation.nodes().find((entry) => entry.id === pointer?.nodeId);
+    if (!node) return;
+    node.fx = null;
+    node.fy = null;
+  }
+
+  function midpoint(a: { x: number; y: number }, b: { x: number; y: number }) {
+    return {
+      x: (a.x + b.x) / 2,
+      y: (a.y + b.y) / 2
+    };
+  }
+
+  function pointDistance(a: { x: number; y: number }, b: { x: number; y: number }) {
+    return Math.hypot(a.x - b.x, a.y - b.y);
   }
 
   function relativePoint(event: PointerEvent | WheelEvent | MouseEvent) {
@@ -535,7 +622,8 @@
         alpha: round(simulation?.alpha() ?? 0),
         paused: simulation?.isPaused() ?? true
       }),
-      getWorldState: graphWorldState
+      getWorldState: graphWorldState,
+      getNodeStyle: graphNodeStyle
     };
   }
 
@@ -602,6 +690,17 @@
     };
   }
 
+  function graphNodeStyle(id: string) {
+    const node = simulation?.nodes().find((entry) => entry.id === id) ?? interactiveGraph.nodes.find((entry) => entry.id === id);
+    const palette = graphPalette();
+    return node
+      ? {
+          fill: nodeColor(node, palette),
+          stroke: nodeStroke(node, palette)
+        }
+      : null;
+  }
+
   function nodeBounds(nodes: GraphSimulationNode[]) {
     if (nodes.length === 0) return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
     return nodes.reduce(
@@ -647,7 +746,7 @@
     const dark = typeof document !== 'undefined' && document.documentElement.dataset.theme === 'dark';
     return {
       note: dark ? '#6b7280' : '#374151',
-      tag: '#0f766e',
+      tag: dark ? '#facc15' : '#ca8a04',
       hub: '#2563eb',
       unresolved: '#9a3412',
       noteStroke: dark ? '#cbd5e1' : '#111827',
@@ -667,6 +766,7 @@
 
   function nodeStroke(node: NormalizedGraphNode, palette: ReturnType<typeof graphPalette>) {
     if (node.hub) return '#93c5fd';
+    if (node.type === 'tag') return '#fef08a';
     return palette.noteStroke;
   }
 

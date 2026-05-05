@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   fitToBounds,
   panTransform,
+  pinchZoomTransform,
   screenToWorld,
   wheelZoomTransform,
   worldToScreen,
@@ -22,6 +23,18 @@ describe('graph viewport transforms', () => {
     const zoomed = wheelZoomTransform(transform, pointer, -240);
     const worldAfter = screenToWorld(pointer, zoomed);
     expect(zoomed.k).toBeGreaterThan(1);
+    expect(worldAfter.x).toBeCloseTo(worldBefore.x, 6);
+    expect(worldAfter.y).toBeCloseTo(worldBefore.y, 6);
+  });
+
+  it('pinch zooms around the two-finger midpoint', () => {
+    const transform: GraphTransform = { x: 80, y: -30, k: 0.5 };
+    const midpoint = { x: 180, y: 220 };
+    const worldBefore = screenToWorld(midpoint, transform);
+    const zoomed = pinchZoomTransform(transform, midpoint, 120, 240);
+    const worldAfter = screenToWorld(midpoint, zoomed);
+
+    expect(zoomed.k).toBeCloseTo(1);
     expect(worldAfter.x).toBeCloseTo(worldBefore.x, 6);
     expect(worldAfter.y).toBeCloseTo(worldBefore.y, 6);
   });
