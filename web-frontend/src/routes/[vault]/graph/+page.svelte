@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { apiClient } from '$lib/api/client.js';
@@ -38,6 +39,7 @@
     dragNode: (id: string, dx: number, dy: number) => Promise<void>;
     getRenderedCounts: () => { nodes: number; edges: number; labels: number };
     getForceOptions: () => { repulsion: number; linkDistance: number };
+    getSimulationState: () => { generation: number; alpha: number; paused: boolean };
   };
 
   type GraphWindow = Window &
@@ -70,6 +72,7 @@
   let loadToken = 0;
   let canvas = $state<HTMLCanvasElement | null>(null);
   let simulation: GraphSimulationController | null = null;
+  let simulationGeneration = 0;
   let raf = 0;
   let pointer:
     | { mode: 'node'; nodeId: string; x: number; y: number; startedAt: number; moved: boolean }
@@ -102,12 +105,14 @@
     cancelAnimationFrame(raf);
     const size = canvasSize();
     graphWorld = { width: size.width, height: size.height };
+    const initialForce = untrack(() => ({ repulsion, linkDistance }));
+    simulationGeneration += 1;
     simulation = createGraphSimulation(interactiveGraph, {
       width: graphWorld.width,
       height: graphWorld.height,
       seed: `pkm:${vaultName}`,
-      chargeStrength: repulsion,
-      linkDistance,
+      chargeStrength: initialForce.repulsion,
+      linkDistance: initialForce.linkDistance,
       autoStart: true,
       onTick: scheduleDraw
     });
@@ -523,7 +528,12 @@
         edges: simulation?.links().filter((edge) => edge.visible).length ?? 0,
         labels: simulation ? visibleLabelIds(simulation.nodes()).size : 0
       }),
-      getForceOptions: () => ({ repulsion, linkDistance })
+      getForceOptions: () => ({ repulsion, linkDistance }),
+      getSimulationState: () => ({
+        generation: simulationGeneration,
+        alpha: round(simulation?.alpha() ?? 0),
+        paused: simulation?.isPaused() ?? true
+      })
     };
   }
 

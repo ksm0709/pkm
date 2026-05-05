@@ -52,6 +52,7 @@ type TestApi = {
   dragNode: (id: string, dx: number, dy: number) => Promise<void>;
   getRenderedCounts: () => { nodes: number; edges: number; labels: number };
   getForceOptions: () => { repulsion: number; linkDistance: number };
+  getSimulationState: () => { generation: number; alpha: number; paused: boolean };
 };
 
 const enrichedGraphFixture: GraphPayload = {
@@ -139,8 +140,15 @@ test.describe('vault graph page', () => {
     expect(semantic?.confidence).toBe(0.92);
     expect(semantic?.distance ?? Infinity).toBeLessThan(wikilink?.distance ?? 0);
 
+    const generationBeforeForceChange = (await graphSimulationState(page)).generation;
+    const nodeBeforeForceChange = await graphNode(page, 'journal');
     await setRange(page, 'Link distance', '160');
     await setRange(page, 'Repulsion strength', '-760');
+    const hotState = await graphSimulationState(page);
+    expect(hotState.generation).toBe(generationBeforeForceChange);
+    expect(hotState.paused).toBe(false);
+    expect(hotState.alpha).toBeGreaterThan(0);
+    await expect.poll(async () => distance(nodeBeforeForceChange!, (await graphNode(page, 'journal'))!)).toBeGreaterThan(4);
     await settleGraph(page, 80);
     const expandedWikilink = await graphEdge(page, 'project-plan', 'journal', 'wikilink');
     const forceOptions = await graphForceOptions(page);
@@ -344,6 +352,10 @@ async function graphTransform(page: Page) {
 
 async function graphForceOptions(page: Page) {
   return page.evaluate(() => (window as typeof window & { __pkmGraphTest: TestApi }).__pkmGraphTest.getForceOptions());
+}
+
+async function graphSimulationState(page: Page) {
+  return page.evaluate(() => (window as typeof window & { __pkmGraphTest: TestApi }).__pkmGraphTest.getSimulationState());
 }
 
 async function focusState(page: Page, id: string) {
