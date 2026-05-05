@@ -14,9 +14,154 @@ from mistletoe.ast_renderer import ASTRenderer
 import networkx as nx
 import numpy as np
 
-from pkm.config import VaultConfig
+from pkm.config import VaultConfig, load_config
 from pkm.frontmatter import parse as parse_note
 from pkm.note_summary import note_description
+
+SEMANTIC_SCORING_DEFAULTS = {
+    "candidate_threshold": 0.7325,
+    "score_threshold": 0.5952,
+    "mutual_top_k": 40,
+    "shared_neighbor_k": 20,
+    "local_neighbor_k": 15,
+    "weight_cosine": 0.0,
+    "weight_rank": 0.0652,
+    "weight_csls": 0.0922,
+    "weight_shared_neighbor": 0.3244,
+    "weight_local_z": 0.5182,
+    "min_description_chars": 20,
+    "finance_cross_domain_mode": "block",
+    "finance_cross_domain_penalty": 0.1943,
+}
+
+
+@dataclass(frozen=True)
+class SemanticScoringConfig:
+    candidate_threshold: float = SEMANTIC_SCORING_DEFAULTS["candidate_threshold"]
+    score_threshold: float = SEMANTIC_SCORING_DEFAULTS["score_threshold"]
+    mutual_top_k: int = SEMANTIC_SCORING_DEFAULTS["mutual_top_k"]
+    shared_neighbor_k: int = SEMANTIC_SCORING_DEFAULTS["shared_neighbor_k"]
+    local_neighbor_k: int = SEMANTIC_SCORING_DEFAULTS["local_neighbor_k"]
+    weight_cosine: float = SEMANTIC_SCORING_DEFAULTS["weight_cosine"]
+    weight_rank: float = SEMANTIC_SCORING_DEFAULTS["weight_rank"]
+    weight_csls: float = SEMANTIC_SCORING_DEFAULTS["weight_csls"]
+    weight_shared_neighbor: float = SEMANTIC_SCORING_DEFAULTS[
+        "weight_shared_neighbor"
+    ]
+    weight_local_z: float = SEMANTIC_SCORING_DEFAULTS["weight_local_z"]
+    min_description_chars: int = SEMANTIC_SCORING_DEFAULTS["min_description_chars"]
+    finance_cross_domain_mode: str = SEMANTIC_SCORING_DEFAULTS[
+        "finance_cross_domain_mode"
+    ]
+    finance_cross_domain_penalty: float = SEMANTIC_SCORING_DEFAULTS[
+        "finance_cross_domain_penalty"
+    ]
+
+
+def _float_config(defaults: dict[str, Any], key: str, fallback: float) -> float:
+    value = defaults.get(key, fallback)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _int_config(defaults: dict[str, Any], key: str, fallback: int) -> int:
+    value = defaults.get(key, fallback)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def semantic_scoring_config_from_defaults(
+    defaults: dict[str, Any] | None = None,
+) -> SemanticScoringConfig:
+    defaults = defaults or {}
+    return SemanticScoringConfig(
+        candidate_threshold=_float_config(
+            defaults,
+            "graph-semantic-candidate-threshold",
+            _float_config(
+                defaults,
+                "graph-similarity-threshold",
+                SEMANTIC_SCORING_DEFAULTS["candidate_threshold"],
+            ),
+        ),
+        score_threshold=_float_config(
+            defaults,
+            "graph-semantic-score-threshold",
+            SEMANTIC_SCORING_DEFAULTS["score_threshold"],
+        ),
+        mutual_top_k=max(
+            1,
+            _int_config(
+                defaults,
+                "graph-semantic-mutual-top-k",
+                SEMANTIC_SCORING_DEFAULTS["mutual_top_k"],
+            ),
+        ),
+        shared_neighbor_k=max(
+            1,
+            _int_config(
+                defaults,
+                "graph-semantic-shared-neighbor-k",
+                SEMANTIC_SCORING_DEFAULTS["shared_neighbor_k"],
+            ),
+        ),
+        local_neighbor_k=max(
+            1,
+            _int_config(
+                defaults,
+                "graph-semantic-local-neighbor-k",
+                SEMANTIC_SCORING_DEFAULTS["local_neighbor_k"],
+            ),
+        ),
+        weight_cosine=_float_config(
+            defaults,
+            "graph-semantic-weight-cosine",
+            SEMANTIC_SCORING_DEFAULTS["weight_cosine"],
+        ),
+        weight_rank=_float_config(
+            defaults,
+            "graph-semantic-weight-rank",
+            SEMANTIC_SCORING_DEFAULTS["weight_rank"],
+        ),
+        weight_csls=_float_config(
+            defaults,
+            "graph-semantic-weight-csls",
+            SEMANTIC_SCORING_DEFAULTS["weight_csls"],
+        ),
+        weight_shared_neighbor=_float_config(
+            defaults,
+            "graph-semantic-weight-shared-neighbor",
+            SEMANTIC_SCORING_DEFAULTS["weight_shared_neighbor"],
+        ),
+        weight_local_z=_float_config(
+            defaults,
+            "graph-semantic-weight-local-z",
+            SEMANTIC_SCORING_DEFAULTS["weight_local_z"],
+        ),
+        min_description_chars=max(
+            0,
+            _int_config(
+                defaults,
+                "graph-semantic-min-description-chars",
+                SEMANTIC_SCORING_DEFAULTS["min_description_chars"],
+            ),
+        ),
+        finance_cross_domain_mode=str(
+            defaults.get(
+                "graph-semantic-finance-cross-domain-mode",
+                SEMANTIC_SCORING_DEFAULTS["finance_cross_domain_mode"],
+            )
+        ),
+        finance_cross_domain_penalty=_float_config(
+            defaults,
+            "graph-semantic-finance-cross-domain-penalty",
+            SEMANTIC_SCORING_DEFAULTS["finance_cross_domain_penalty"],
+        ),
+    )
 
 
 def _cosine_distance(a: np.ndarray, b: np.ndarray) -> float:
@@ -52,19 +197,65 @@ def _load_embeddings_from_vector_db(vault: VaultConfig) -> dict[str, np.ndarray]
         return {}
 
 
+def _node_tags(G: nx.DiGraph, node_id: str) -> set[str]:
+    meta = G.nodes.get(node_id, {}).get("meta", {})
+    if not isinstance(meta, dict):
+        return set()
+    tags = meta.get("tags", [])
+    if not isinstance(tags, list):
+        return set()
+    return {str(tag) for tag in tags if tag is not None and str(tag) != "None"}
+
+
+def _node_title(G: nx.DiGraph, node_id: str) -> str:
+    node = G.nodes.get(node_id, {})
+    return str(node.get("title") or node.get("id") or node_id)
+
+
+def _node_description(G: nx.DiGraph, node_id: str) -> str:
+    meta = G.nodes.get(node_id, {}).get("meta", {})
+    if isinstance(meta, dict):
+        return str(meta.get("description") or "")
+    return ""
+
+
+def _is_finance_node(G: nx.DiGraph, node_id: str) -> bool:
+    title = _node_title(G, node_id)
+    tags = _node_tags(G, node_id)
+    finance_tags = {"주식분석", "딥리서치", "주도주", "투자일지", "my-invest", "매크로", "트렌드"}
+    return (
+        bool(tags & finance_tags)
+        or "[주식분석]" in title
+        or "stock" in title.lower()
+        or "investment" in title.lower()
+    )
+
+
 def _add_semantic_edges(
     G: nx.DiGraph,
     embeddings: dict[str, np.ndarray],
     threshold: float,
+    scoring_config: SemanticScoringConfig | None = None,
+    mutual_top_k: int = 20,
+    shared_neighbor_k: int = 20,
 ) -> None:
-    """Add semantic_similar edges for note pairs with cosine >= threshold.
+    """Add semantic_similar edges for reciprocal nearest-neighbor note pairs.
 
     Skip pairs already connected by any wikilink edge (either direction).
-    Uses numpy matmul on L2-normalized matrix for efficiency.
+    Uses numpy matmul on L2-normalized matrix for efficiency. Cosine still forms
+    the candidate set, but reciprocal rank and local-neighborhood diagnostics
+    keep broad embedding hubs from becoming overconfident graph edges.
     """
     note_ids = list(embeddings.keys())
     if len(note_ids) < 2:
         return
+    if scoring_config is None:
+        scoring_config = SemanticScoringConfig(
+            candidate_threshold=threshold,
+            score_threshold=threshold,
+            mutual_top_k=mutual_top_k,
+            shared_neighbor_k=shared_neighbor_k,
+        )
 
     # Build L2-normalized embedding matrix
     matrix = np.stack([embeddings[nid] for nid in note_ids])  # (N, 384)
@@ -74,13 +265,59 @@ def _add_semantic_edges(
     sim_matrix = matrix_norm @ matrix_norm.T  # (N, N) cosine similarities
 
     n = len(note_ids)
+    neighbor_limit = max(1, min(scoring_config.mutual_top_k, n - 1))
+    shared_limit = max(1, min(scoring_config.shared_neighbor_k, n - 1))
+    local_limit = max(
+        neighbor_limit,
+        shared_limit,
+        min(scoring_config.local_neighbor_k, n - 1),
+    )
+
+    ranking_matrix = sim_matrix.copy()
+    np.fill_diagonal(ranking_matrix, -np.inf)
+    neighbor_order = np.argsort(-ranking_matrix, axis=1)
+
+    ranks = np.zeros((n, n), dtype=np.int32)
+    for row_idx in range(n):
+        for rank, neighbor_idx in enumerate(neighbor_order[row_idx], start=1):
+            if neighbor_idx == row_idx:
+                continue
+            ranks[row_idx, neighbor_idx] = rank
+
+    top_sets = [
+        set(int(idx) for idx in neighbor_order[row_idx][:shared_limit])
+        for row_idx in range(n)
+    ]
+    local_means = np.zeros(n, dtype=float)
+    local_stds = np.ones(n, dtype=float)
+    for row_idx in range(n):
+        local_neighbors = neighbor_order[row_idx][:local_limit]
+        local_scores = ranking_matrix[row_idx, local_neighbors]
+        finite_scores = local_scores[np.isfinite(local_scores)]
+        if finite_scores.size == 0:
+            continue
+        local_means[row_idx] = float(np.mean(finite_scores))
+        std = float(np.std(finite_scores))
+        local_stds[row_idx] = std if std > 1e-9 else 1.0
+
     for i in range(n):
         for j in range(i + 1, n):
             sim = float(sim_matrix[i, j])
-            if sim < threshold:
+            if sim < scoring_config.candidate_threshold:
+                continue
+            source_rank = int(ranks[i, j])
+            target_rank = int(ranks[j, i])
+            if source_rank > neighbor_limit or target_rank > neighbor_limit:
                 continue
             src = note_ids[i]
             tgt = note_ids[j]
+            if scoring_config.min_description_chars > 0:
+                if (
+                    len(_node_description(G, src)) < scoring_config.min_description_chars
+                    or len(_node_description(G, tgt))
+                    < scoring_config.min_description_chars
+                ):
+                    continue
             # Skip if already connected by wikilink in either direction
             fwd_wikilink = (
                 G.has_edge(src, tgt) and G.edges[src, tgt].get("type") == "wikilink"
@@ -90,13 +327,54 @@ def _add_semantic_edges(
             )
             if fwd_wikilink or rev_wikilink:
                 continue
+
+            source_top = top_sets[i]
+            target_top = top_sets[j]
+            shared_neighbors = source_top & target_top
+            neighbor_union = source_top | target_top
+            shared_neighbor_score = (
+                len(shared_neighbors) / len(neighbor_union) if neighbor_union else 0.0
+            )
+            csls_score = float(2 * sim - local_means[i] - local_means[j])
+            source_z = (sim - local_means[i]) / local_stds[i]
+            target_z = (sim - local_means[j]) / local_stds[j]
+            local_z_score = float(min(source_z, target_z))
+            reciprocal_rank_score = float(1 / np.sqrt(source_rank * target_rank))
+            csls_component = max(0.0, min(1.0, (csls_score + 1.0) / 2.0))
+            z_component = max(0.0, min(1.0, (local_z_score + 1.0) / 2.0))
+            semantic_score = (
+                scoring_config.weight_cosine * sim
+                + scoring_config.weight_rank * reciprocal_rank_score
+                + scoring_config.weight_csls * csls_component
+                + scoring_config.weight_shared_neighbor * shared_neighbor_score
+                + scoring_config.weight_local_z * z_component
+            )
+            src_finance = _is_finance_node(G, src)
+            tgt_finance = _is_finance_node(G, tgt)
+            if src_finance != tgt_finance:
+                mode = scoring_config.finance_cross_domain_mode.lower()
+                if mode == "block":
+                    continue
+                if mode == "penalize":
+                    semantic_score -= scoring_config.finance_cross_domain_penalty
+            semantic_score = max(0.0, min(1.0, float(semantic_score)))
+            if semantic_score < scoring_config.score_threshold:
+                continue
             edge_attrs = {
                 "type": "semantic_similar",
                 "source_type": "embedding",
-                "confidence": sim,
-                "weight": sim,
+                "confidence": semantic_score,
+                "weight": semantic_score,
+                "semantic_score": semantic_score,
+                "cosine_similarity": sim,
+                "source_rank": source_rank,
+                "target_rank": target_rank,
+                "reciprocal_rank_score": reciprocal_rank_score,
+                "csls_score": csls_score,
+                "shared_neighbor_score": shared_neighbor_score,
+                "local_z_score": local_z_score,
                 "model": "all-MiniLM-L6-v2",
-                "extractor_version": "1",
+                "extractor_version": "2",
             }
             G.add_edge(src, tgt, **edge_attrs)
 
@@ -121,7 +399,9 @@ def _default(obj: object) -> str:
 
 
 def build_enriched_graph(
-    vault: VaultConfig, similarity_threshold: float = 0.75
+    vault: VaultConfig,
+    similarity_threshold: float | None = None,
+    scoring_config: SemanticScoringConfig | None = None,
 ) -> None:
     """Build graph_enriched.json: structural graph + semantic_similar edges + communities.
 
@@ -141,7 +421,24 @@ def build_enriched_graph(
         return
 
     # 3. Add semantic edges
-    _add_semantic_edges(G, embeddings, threshold=similarity_threshold)
+    if scoring_config is None:
+        scoring_config = semantic_scoring_config_from_defaults(
+            load_config().get("defaults", {})
+        )
+    if similarity_threshold is not None:
+        scoring_config = SemanticScoringConfig(
+            **{
+                **scoring_config.__dict__,
+                "candidate_threshold": similarity_threshold,
+                "score_threshold": similarity_threshold,
+            }
+        )
+    _add_semantic_edges(
+        G,
+        embeddings,
+        threshold=scoring_config.candidate_threshold,
+        scoring_config=scoring_config,
+    )
 
     # 3b. Enrich structural edges with confidence=1.0 for louvain weight="confidence"
     for _, _, edata in G.edges(data=True):

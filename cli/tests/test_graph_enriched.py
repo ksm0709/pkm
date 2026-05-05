@@ -8,12 +8,16 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import networkx as nx
 
 from pkm.config import VaultConfig
 from pkm.graph import (
+    SemanticScoringConfig,
+    _add_semantic_edges,
     _load_embeddings_from_vector_db,
     build_ast_and_graph,
     build_enriched_graph,
+    semantic_scoring_config_from_defaults,
 )
 
 
@@ -156,6 +160,255 @@ def test_similarity_threshold_effect(tmp_path: Path):
     ]
 
     assert len(semantic_low) >= len(semantic_high)
+
+
+def test_semantic_edges_require_mutual_neighbor_rank():
+    """High cosine alone is insufficient when the match is not reciprocal."""
+    G = nx.DiGraph()
+    for note_id in ("note-a", "note-b", "note-c"):
+        G.add_node(note_id, type="note")
+
+    embeddings = {
+        "note-a": np.array([1.0, 0.0, 0.0], dtype="<f4"),
+        "note-b": np.array([0.8, 0.6, 0.0], dtype="<f4"),
+        "note-c": np.array([0.8, 0.61, 0.0], dtype="<f4"),
+    }
+
+    _add_semantic_edges(
+        G,
+        embeddings,
+        threshold=0.75,
+        scoring_config=SemanticScoringConfig(
+            candidate_threshold=0.75,
+            score_threshold=0.0,
+            mutual_top_k=1,
+            min_description_chars=0,
+            finance_cross_domain_mode="off",
+        ),
+    )
+
+    assert not G.has_edge("note-a", "note-b")
+    assert G.has_edge("note-b", "note-c")
+
+
+def test_semantic_edges_keep_scoring_diagnostics():
+    """Semantic edges expose raw cosine plus adjusted embedding-space diagnostics."""
+    G = nx.DiGraph()
+    for note_id in ("note-a", "note-b", "note-c"):
+        G.add_node(note_id, type="note")
+
+    embeddings = {
+        "note-a": np.array([1.0, 0.0, 0.0], dtype="<f4"),
+        "note-b": np.array([0.9, 0.1, 0.0], dtype="<f4"),
+        "note-c": np.array([0.0, 1.0, 0.0], dtype="<f4"),
+    }
+
+    _add_semantic_edges(
+        G,
+        embeddings,
+        threshold=0.7,
+        scoring_config=SemanticScoringConfig(
+            candidate_threshold=0.7,
+            score_threshold=0.7,
+            mutual_top_k=2,
+            min_description_chars=0,
+            finance_cross_domain_mode="off",
+        ),
+    )
+
+    edge = G.edges["note-a", "note-b"]
+    assert edge["type"] == "semantic_similar"
+    assert edge["confidence"] == edge["semantic_score"]
+    assert edge["cosine_similarity"] > 0.99
+    assert edge["source_rank"] == 1
+    assert edge["target_rank"] == 1
+    assert "csls_score" in edge
+    assert "shared_neighbor_score" in edge
+    assert "local_z_score" in edge
+
+
+def test_semantic_edges_filter_low_adjusted_score():
+    """Edges that pass raw cosine can still fail adjusted semantic scoring."""
+    G = nx.DiGraph()
+    for note_id in ("note-a", "note-b", "note-c"):
+        G.add_node(note_id, type="note")
+
+    embeddings = {
+        "note-a": np.array([1.0, 0.0, 0.0], dtype="<f4"),
+        "note-b": np.array([0.8, 0.6, 0.0], dtype="<f4"),
+        "note-c": np.array([0.9, 0.435, 0.0], dtype="<f4"),
+    }
+
+    _add_semantic_edges(
+        G,
+        embeddings,
+        threshold=0.75,
+        scoring_config=SemanticScoringConfig(
+            candidate_threshold=0.75,
+            score_threshold=0.7,
+            mutual_top_k=2,
+            min_description_chars=0,
+            finance_cross_domain_mode="off",
+        ),
+    )
+
+    assert not G.has_edge("note-a", "note-b")
+    assert G.has_edge("note-b", "note-c")
+
+
+def test_semantic_scoring_config_reads_defaults():
+    """Semantic graph scoring parameters can be tuned without code changes."""
+    config = semantic_scoring_config_from_defaults(
+        {
+            "graph-semantic-candidate-threshold": "0.7",
+            "graph-semantic-score-threshold": "0.62",
+            "graph-semantic-mutual-top-k": "12",
+            "graph-semantic-shared-neighbor-k": "9",
+            "graph-semantic-local-neighbor-k": "15",
+            "graph-semantic-weight-cosine": "0.5",
+            "graph-semantic-weight-rank": "0.3",
+            "graph-semantic-weight-csls": "0.1",
+            "graph-semantic-weight-shared-neighbor": "0.07",
+            "graph-semantic-weight-local-z": "0.03",
+            "graph-semantic-min-description-chars": "80",
+            "graph-semantic-finance-cross-domain-mode": "block",
+            "graph-semantic-finance-cross-domain-penalty": "0.4",
+        }
+    )
+
+    assert config.candidate_threshold == 0.7
+    assert config.score_threshold == 0.62
+    assert config.mutual_top_k == 12
+    assert config.shared_neighbor_k == 9
+    assert config.local_neighbor_k == 15
+    assert config.weight_cosine == 0.5
+    assert config.weight_rank == 0.3
+    assert config.weight_csls == 0.1
+    assert config.weight_shared_neighbor == 0.07
+    assert config.weight_local_z == 0.03
+    assert config.min_description_chars == 80
+    assert config.finance_cross_domain_mode == "block"
+    assert config.finance_cross_domain_penalty == 0.4
+
+
+def test_semantic_scoring_defaults_are_optimized_taeho_values():
+    """Optimized semantic graph parameters are the code defaults."""
+    config = semantic_scoring_config_from_defaults({})
+
+    assert config.candidate_threshold == 0.7325
+    assert config.score_threshold == 0.5952
+    assert config.mutual_top_k == 40
+    assert config.shared_neighbor_k == 20
+    assert config.local_neighbor_k == 15
+    assert config.weight_cosine == 0.0
+    assert config.weight_rank == 0.0652
+    assert config.weight_csls == 0.0922
+    assert config.weight_shared_neighbor == 0.3244
+    assert config.weight_local_z == 0.5182
+    assert config.min_description_chars == 20
+    assert config.finance_cross_domain_mode == "block"
+    assert config.finance_cross_domain_penalty == 0.1943
+
+
+def test_semantic_edges_block_finance_cross_domain_pair():
+    """Finance/non-finance edges can be blocked by config."""
+    G = nx.DiGraph()
+    G.add_node(
+        "habit-note",
+        type="note",
+        title="habit-note",
+        meta={"description": "habit focus dopamine " * 20, "tags": []},
+    )
+    G.add_node(
+        "stock-note",
+        type="note",
+        title="2026-04-14-[주식분석]-stock",
+        meta={"description": "stock report growth " * 20, "tags": ["주식분석"]},
+    )
+    embeddings = {
+        "habit-note": np.array([1.0, 0.0, 0.0], dtype="<f4"),
+        "stock-note": np.array([1.0, 0.01, 0.0], dtype="<f4"),
+    }
+
+    _add_semantic_edges(
+        G,
+        embeddings,
+        threshold=0.7,
+        scoring_config=SemanticScoringConfig(
+            candidate_threshold=0.7,
+            score_threshold=0.7,
+            mutual_top_k=1,
+            finance_cross_domain_mode="block",
+        ),
+    )
+
+    assert not G.has_edge("habit-note", "stock-note")
+
+
+def test_semantic_edges_filter_short_descriptions():
+    """Short or empty notes can be excluded before scoring."""
+    G = nx.DiGraph()
+    G.add_node(
+        "empty-a",
+        type="note",
+        title="empty-a",
+        meta={"description": "", "tags": []},
+    )
+    G.add_node(
+        "empty-b",
+        type="note",
+        title="empty-b",
+        meta={"description": "", "tags": []},
+    )
+    embeddings = {
+        "empty-a": np.array([1.0, 0.0, 0.0], dtype="<f4"),
+        "empty-b": np.array([1.0, 0.0, 0.0], dtype="<f4"),
+    }
+
+    _add_semantic_edges(
+        G,
+        embeddings,
+        threshold=0.7,
+        scoring_config=SemanticScoringConfig(
+            candidate_threshold=0.7,
+            score_threshold=0.7,
+            mutual_top_k=1,
+            min_description_chars=10,
+        ),
+    )
+
+    assert not G.has_edge("empty-a", "empty-b")
+
+
+def test_build_enriched_graph_accepts_scoring_config(tmp_path: Path):
+    """Graph enrichment can use an explicit config object for optimization loops."""
+    vault = _make_minimal_vault(tmp_path)
+    embeddings = {
+        "note-a": np.array([1.0, 0.0, 0.0], dtype="<f4"),
+        "note-b": np.array([0.8, 0.6, 0.0], dtype="<f4"),
+        "note-c": np.array([0.9, 0.435, 0.0], dtype="<f4"),
+    }
+    _write_vector_db(vault.pkm_dir, embeddings)
+
+    build_enriched_graph(
+        vault,
+        scoring_config=SemanticScoringConfig(
+            candidate_threshold=0.75,
+            score_threshold=0.7,
+            mutual_top_k=2,
+            shared_neighbor_k=2,
+            local_neighbor_k=2,
+            min_description_chars=0,
+            finance_cross_domain_mode="off",
+        ),
+    )
+
+    data = json.loads(vault.graph_enriched_path.read_text())
+    edge_key = "edges" if "edges" in data else "links"
+    semantic_edges = [e for e in data[edge_key] if e.get("type") == "semantic_similar"]
+    assert len(semantic_edges) == 1
+    assert semantic_edges[0]["source"] == "note-b"
+    assert semantic_edges[0]["target"] == "note-c"
 
 
 def test_community_field_set_on_nodes(tmp_path: Path):
