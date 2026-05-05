@@ -519,6 +519,10 @@
     void goto(`/${encodeURIComponent(vaultName)}/notes/${encodeURIComponent(node.id)}`);
   }
 
+  function closePreview() {
+    preview = null;
+  }
+
   function handleKeydown(event: KeyboardEvent) {
     if (event.key !== 'Escape') return;
     if (preview) {
@@ -920,14 +924,24 @@
               <p class="preview-kicker">Preview</p>
               <h2>{preview.title}</h2>
             </div>
-            <button
-              type="button"
-              class="open-note"
-              aria-label={`Open note ${preview.node.label}`}
-              onclick={() => openNote(preview.node)}
-            >
-              ⤢
-            </button>
+            <div class="preview-actions">
+              <button
+                type="button"
+                class="preview-icon-button"
+                aria-label={`Open note ${preview.node.label}`}
+                onclick={() => openNote(preview.node)}
+              >
+                ⤢
+              </button>
+              <button
+                type="button"
+                class="preview-icon-button"
+                aria-label="Close note preview"
+                onclick={closePreview}
+              >
+                ×
+              </button>
+            </div>
           </div>
 
           {#if preview.loading}
@@ -1082,7 +1096,7 @@
   .control-buttons button,
   .search-results button,
   .focus-panel button,
-  .open-note {
+  .preview-icon-button {
     min-height: 30px;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm, 2px);
@@ -1171,7 +1185,13 @@
     line-height: 1.25;
   }
 
-  .open-note {
+  .preview-actions {
+    display: flex;
+    flex-shrink: 0;
+    gap: 6px;
+  }
+
+  .preview-icon-button {
     width: 34px;
     height: 34px;
     padding: 0;
