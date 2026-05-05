@@ -30,6 +30,7 @@ LOCK_PATH = Path.home() / ".config" / "pkm" / "daemon.lock"
 LOG_PATH = Path.home() / ".config" / "pkm" / "daemon.log"
 LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 IDLE_TIMEOUT = 3600
+KEEPALIVE_ENV = "PKM_DAEMON_KEEPALIVE"
 
 logging.basicConfig(
     filename=str(LOG_PATH),
@@ -155,6 +156,7 @@ class LLMWorkerProxy:
         self.process: Optional[asyncio.subprocess.Process] = None
         self.pending_tasks: Dict[str, asyncio.Future[Any]] = {}
         self.stream_callbacks: Dict[str, Any] = {}
+        self.budget = TokenBudget(max_tokens=1_000_000, window_seconds=60 * 60)
 
     async def start(self, vault_dir: str):
         import sys
@@ -562,12 +564,24 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
 
 
 async def idle_checker(server: asyncio.Server):
+    if _idle_timeout_disabled():
+        logger.info("Idle timeout disabled by %s.", KEEPALIVE_ENV)
+        return
     while True:
         await asyncio.sleep(60)
         if time.time() - DaemonState.last_activity > IDLE_TIMEOUT:
             logger.info("Idle timeout reached. Shutting down daemon.")
             server.close()
             break
+
+
+def _idle_timeout_disabled() -> bool:
+    return os.environ.get(KEEPALIVE_ENV, "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 async def process_background_tasks():

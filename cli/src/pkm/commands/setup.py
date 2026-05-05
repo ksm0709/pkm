@@ -113,7 +113,8 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/pkm daemon start
+Environment=PKM_DAEMON_KEEPALIVE=1
+ExecStart=%h/.local/bin/pkm daemon run
 Restart=on-failure
 RestartSec=5
 
