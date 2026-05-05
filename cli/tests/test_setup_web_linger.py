@@ -86,7 +86,8 @@ def test_web_setup_writes_token_and_unit_when_linger_yes(
     unit_text = unit_path.read_text(encoding="utf-8")
     assert "[Service]" in unit_text
     assert "ExecStart=" in unit_text
-    assert "pkm daemon start" in unit_text
+    assert "Environment=PKM_DAEMON_KEEPALIVE=1" in unit_text
+    assert "pkm daemon run" in unit_text
     assert "WantedBy=default.target" in unit_text
 
     # Token printed for the user to copy

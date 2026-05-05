@@ -100,6 +100,14 @@ def daemon_start() -> None:
         raise SystemExit(1)
 
 
+@daemon_group.command("run")
+def daemon_run() -> None:
+    """Run the daemon in the foreground for process managers."""
+    from pkm.daemon import main as daemon_main
+
+    daemon_main()
+
+
 @daemon_group.command("stop")
 def daemon_stop() -> None:
     """Stop the running daemon."""
