@@ -247,11 +247,8 @@ def build_index(
     # Graceful degradation: warn but don't fail index build.
     try:
         from pkm.graph import build_enriched_graph
-        from pkm.config import load_config
 
-        cfg = load_config().get("defaults", {})
-        threshold = float(cfg.get("graph-similarity-threshold", 0.75))
-        build_enriched_graph(vault, similarity_threshold=threshold)
+        build_enriched_graph(vault)
     except Exception as e:
         logging.getLogger(__name__).warning(
             f"Enriched graph build failed; structural graph still available: {e}"

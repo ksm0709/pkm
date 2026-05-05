@@ -37,6 +37,58 @@ CONFIG_SCHEMA = {
         "internal_key": "reasoning-effort",
         "description": "Reasoning effort for capable models (e.g., low, medium, high)",
     },
+    "graph-semantic-candidate-threshold": {
+        "internal_key": "graph-semantic-candidate-threshold",
+        "description": "Raw cosine floor for semantic graph edge candidates",
+    },
+    "graph-semantic-score-threshold": {
+        "internal_key": "graph-semantic-score-threshold",
+        "description": "Final adjusted semantic score floor for graph edges",
+    },
+    "graph-semantic-mutual-top-k": {
+        "internal_key": "graph-semantic-mutual-top-k",
+        "description": "Require each endpoint to rank the other within this top-k",
+    },
+    "graph-semantic-shared-neighbor-k": {
+        "internal_key": "graph-semantic-shared-neighbor-k",
+        "description": "Neighborhood size used for shared-nearest-neighbor scoring",
+    },
+    "graph-semantic-local-neighbor-k": {
+        "internal_key": "graph-semantic-local-neighbor-k",
+        "description": "Neighborhood size used for local density and CSLS scoring",
+    },
+    "graph-semantic-weight-cosine": {
+        "internal_key": "graph-semantic-weight-cosine",
+        "description": "Adjusted semantic score weight for raw cosine",
+    },
+    "graph-semantic-weight-rank": {
+        "internal_key": "graph-semantic-weight-rank",
+        "description": "Adjusted semantic score weight for reciprocal rank",
+    },
+    "graph-semantic-weight-csls": {
+        "internal_key": "graph-semantic-weight-csls",
+        "description": "Adjusted semantic score weight for CSLS-style hubness correction",
+    },
+    "graph-semantic-weight-shared-neighbor": {
+        "internal_key": "graph-semantic-weight-shared-neighbor",
+        "description": "Adjusted semantic score weight for shared nearest neighbors",
+    },
+    "graph-semantic-weight-local-z": {
+        "internal_key": "graph-semantic-weight-local-z",
+        "description": "Adjusted semantic score weight for local z-score",
+    },
+    "graph-semantic-min-description-chars": {
+        "internal_key": "graph-semantic-min-description-chars",
+        "description": "Drop semantic candidates whose auto description is shorter than this",
+    },
+    "graph-semantic-finance-cross-domain-mode": {
+        "internal_key": "graph-semantic-finance-cross-domain-mode",
+        "description": "How to handle finance/non-finance semantic candidates: off, penalize, block",
+    },
+    "graph-semantic-finance-cross-domain-penalty": {
+        "internal_key": "graph-semantic-finance-cross-domain-penalty",
+        "description": "Score penalty when finance cross-domain mode is penalize",
+    },
 }
 
 VALID_KEYS = set(CONFIG_SCHEMA.keys())
