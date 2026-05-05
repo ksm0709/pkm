@@ -48,6 +48,7 @@ type TestApi = {
   ) => null | { source: string; target: string; type: string; distance: number; confidence: number; visible: boolean };
   getTransform: () => { x: number; y: number; k: number };
   getFocusState: (id: string) => 'focused' | 'neighbor' | 'muted' | 'normal' | null;
+  getRenderedLabels: () => Array<{ id: string; text: string }>;
   dragNode: (id: string, dx: number, dy: number) => Promise<void>;
   getRenderedCounts: () => { nodes: number; edges: number; labels: number };
   getForceOptions: () => { repulsion: number; linkDistance: number };
@@ -64,7 +65,14 @@ const TEST_VAULT = 'bear';
 
 const enrichedGraphFixture: GraphPayload = {
   nodes: [
-    { id: 'project-plan', title: 'Project Plan', type: 'note', community: 'planning', importance: 8 },
+    {
+      id: 'project-plan',
+      title: 'Project Plan',
+      type: 'note',
+      community: 'planning',
+      importance: 8,
+      description: 'Planning hub for active PKM work.'
+    },
     { id: 'journal', title: 'Journal', type: 'note', community: 'daily', importance: 3 },
     { id: 'architecture', title: 'Architecture', type: 'note', community: 'architecture', importance: 7 },
     { id: 'daily-log', title: 'Daily Log', type: 'note', community: 'daily', importance: 4 },
@@ -116,6 +124,8 @@ test.describe('vault graph page', () => {
     await expect(page.getByTestId('graph-force-surface')).toBeVisible();
     await expect(page.getByTestId('graph-canvas')).toBeVisible();
     await expect(page.getByTestId('graph-node')).toHaveCount(0);
+    await expect(page.getByTestId('graph-summary')).toHaveCount(0);
+    await expect(page.getByTestId('graph-cap-status')).toHaveCount(0);
     const surfaceFrame = await page.getByTestId('graph-force-surface').evaluate((element) => {
       const style = window.getComputedStyle(element);
       const rect = element.getBoundingClientRect();
@@ -201,9 +211,18 @@ test.describe('vault graph page', () => {
 
     expect(page.url()).toBe(before);
     await expect(page.getByTestId('graph-focus-status')).toContainText('Project Plan');
+    await expect(page.getByTestId('graph-focus-description')).toContainText('Planning hub for active PKM work.');
     expect(await focusState(page, 'project-plan')).toBe('focused');
     expect(await focusState(page, 'architecture')).toBe('neighbor');
     expect(await focusState(page, 'daily-log')).toBe('muted');
+    expect(await graphLabels(page)).toEqual([
+      { id: 'architecture', text: 'architecture' },
+      { id: 'hub-pkm-development', text: 'hub-pkm-development' },
+      { id: 'journal', text: 'journal' },
+      { id: 'missing-roadmap', text: 'missing-roadmap' },
+      { id: 'project-plan', text: 'project-plan' },
+      { id: 'tag:pkm', text: 'tag:pkm' }
+    ]);
   });
 
   test('cmd click and long press open note preview while tag and unresolved nodes focus only', async ({ page }) => {
@@ -288,7 +307,7 @@ test.describe('vault graph page', () => {
     await mockNoteApi(page, async (route) => route.fulfill({ status: 500, body: 'preview boom' }));
     await page.goto(graphPath(vaultName));
     await settleGraph(page);
-    await expect(page.getByTestId('graph-cap-status')).toContainText('Rendering first 300 of 331');
+    await expect(page.getByTestId('graph-cap-status')).toHaveCount(0);
     await page.getByRole('searchbox', { name: 'Search graph nodes' }).fill('project');
     await page.getByRole('button', { name: /Focus Project Plan/ }).click();
     await page.getByRole('button', { name: /Preview focused note/ }).click();
@@ -366,6 +385,10 @@ async function graphEdge(page: Page, source: string, target: string, type?: stri
 
 async function graphCounts(page: Page) {
   return page.evaluate(() => (window as typeof window & { __pkmGraphTest: TestApi }).__pkmGraphTest.getRenderedCounts());
+}
+
+async function graphLabels(page: Page) {
+  return page.evaluate(() => (window as typeof window & { __pkmGraphTest: TestApi }).__pkmGraphTest.getRenderedLabels());
 }
 
 async function graphTransform(page: Page) {

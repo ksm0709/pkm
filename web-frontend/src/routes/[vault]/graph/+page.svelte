@@ -3,7 +3,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { apiClient } from '$lib/api/client.js';
-  import { graphFocusState } from '$lib/graph/focus.js';
+  import { focusNeighborhood, graphFocusState } from '$lib/graph/focus.js';
   import { classifyGraphGesture } from '$lib/graph/gestures.js';
   import { hitTestNode } from '$lib/graph/hit-test.js';
   import {
@@ -37,6 +37,7 @@
     getEdge: (source: string, target: string, type?: string) => ReturnType<typeof serializeEdge>;
     getTransform: () => GraphTransform;
     getFocusState: (id: string) => string | null;
+    getRenderedLabels: () => Array<{ id: string; text: string }>;
     hitTest: (screenX: number, screenY: number) => { id: string } | null;
     dragNode: (id: string, dx: number, dy: number) => Promise<void>;
     getRenderedCounts: () => { nodes: number; edges: number; labels: number };
@@ -101,13 +102,9 @@
   const focusedNode = $derived(
     focusedId ? interactiveGraph.nodes.find((node) => node.id === focusedId) ?? null : null
   );
+  const focusedDescription = $derived(focusedNode?.description?.trim() ?? '');
   const searchResults = $derived(searchGraphNodes(interactiveGraph.nodes, searchQuery));
   const a11yStatus = $derived(accessibilityStatus());
-  const capStatus = $derived(
-    graph.nodes.length > INTERACTIVE_NODE_CAP
-      ? `Rendering first ${INTERACTIVE_NODE_CAP} of ${graph.nodes.length} nodes by graph importance.`
-      : ''
-  );
 
   $effect(() => {
     if (!vaultName) return;
@@ -277,7 +274,7 @@
       const pos = worldToCanvas(node);
       ctx.globalAlpha = state === 'muted' ? 0.22 : 0.9;
       ctx.fillStyle = palette.label;
-      ctx.fillText(node.label, pos.x + node.radius * transform.k + 6, pos.y);
+      ctx.fillText(labelText(node), pos.x + node.radius * transform.k + 6, pos.y);
     }
     ctx.globalAlpha = 1;
   }
@@ -291,6 +288,14 @@
 
   function visibleLabelIds(nodes: GraphSimulationNode[]) {
     const labels = new Set<string>();
+    const nodeIds = new Set(nodes.map((node) => node.id));
+    if (focusedId) {
+      for (const id of focusNeighborhood(interactiveGraph, focusedId, 1)) {
+        if (nodeIds.has(id)) labels.add(id);
+      }
+      return labels;
+    }
+
     for (const id of [focusedId, hoveredId, selectedId]) {
       if (id) labels.add(id);
     }
@@ -303,6 +308,18 @@
       labels.add(node.id);
     }
     return labels;
+  }
+
+  function renderedLabels(nodes: GraphSimulationNode[]) {
+    const labelIds = visibleLabelIds(nodes);
+    return nodes
+      .filter((node) => labelIds.has(node.id))
+      .map((node) => ({ id: node.id, text: labelText(node) }))
+      .sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  function labelText(node: GraphSimulationNode) {
+    return focusedId ? node.id : node.label;
   }
 
   function handleWheel(event: WheelEvent) {
@@ -596,6 +613,7 @@
       },
       getTransform: () => ({ ...transform }),
       getFocusState: (id) => focusStates.get(id) ?? null,
+      getRenderedLabels: () => (simulation ? renderedLabels(simulation.nodes()) : []),
       hitTest: (screenX, screenY) => {
         if (!simulation) return null;
         const node = hitTestNode(simulation.nodes(), { x: screenX, y: screenY }, transform);
@@ -819,23 +837,6 @@
       data-preview-open={preview ? 'true' : 'false'}
     >
       <div class="graph-stage">
-        <div class="graph-topline">
-          <p class="graph-summary" data-testid="graph-summary">
-            <strong>{graph.nodes.length}</strong> nodes · <strong>{graph.edges.length}</strong> edges
-          </p>
-          <p class="graph-focus-status" data-testid="graph-focus-status">
-            {#if focusedNode}
-              Focus: {focusedNode.label}
-            {:else}
-              Focus: full graph
-            {/if}
-          </p>
-        </div>
-
-        {#if capStatus}
-          <p class="cap-status" data-testid="graph-cap-status">{capStatus}</p>
-        {/if}
-
         <div class="graph-controls" data-testid="graph-controls" aria-label="Graph controls">
           <label class="search-control">
             <span>Search</span>
@@ -882,6 +883,24 @@
           </div>
         </div>
 
+        <div class="focus-panel" aria-label="Focused graph node">
+          <div class="focus-copy">
+            <p class="graph-focus-status" data-testid="graph-focus-status">
+              {#if focusedNode}
+                Focus: {focusedNode.label}
+              {:else}
+                Focus: full graph
+              {/if}
+            </p>
+            {#if focusedDescription}
+              <p class="graph-focus-description" data-testid="graph-focus-description">{focusedDescription}</p>
+            {/if}
+          </div>
+          {#if focusedNode?.type === 'note'}
+            <button type="button" onclick={() => void openPreview(focusedNode)}>Preview focused note</button>
+          {/if}
+        </div>
+
         {#if searchResults.length}
           <div class="search-results" aria-label="Graph search results">
             {#each searchResults as result (result.id)}
@@ -891,15 +910,6 @@
         {/if}
 
         <p class="sr-status" data-testid="graph-a11y-status" aria-live="polite">{a11yStatus}</p>
-
-        {#if focusedNode}
-          <div class="focus-panel" aria-label="Focused graph node">
-            <span>{focusedNode.label}</span>
-            {#if focusedNode.type === 'note'}
-              <button type="button" onclick={() => void openPreview(focusedNode)}>Preview focused note</button>
-            {/if}
-          </div>
-        {/if}
 
         <div class="force-surface" data-testid="graph-force-surface" role="application" aria-label="Vault graph">
           <canvas
@@ -1002,29 +1012,22 @@
     padding: 8px 10px 0;
   }
 
-  .graph-topline {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 8px;
-  }
-
-  .graph-summary,
   .graph-focus-status,
-  .cap-status {
+  .graph-focus-description {
     margin: 0;
     color: var(--text-muted);
     font-size: 13px;
     line-height: 1.45;
   }
 
-  .graph-summary strong {
+  .graph-focus-status {
     color: var(--text);
+    font-weight: 600;
   }
 
-  .cap-status {
-    margin-bottom: 8px;
+  .graph-focus-description {
+    max-width: 820px;
+    color: var(--text-muted);
   }
 
   .graph-controls {
@@ -1117,6 +1120,15 @@
 
   .focus-panel {
     align-items: center;
+    justify-content: space-between;
+    min-height: 34px;
+    gap: 12px;
+  }
+
+  .focus-copy {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
   }
 
   .force-surface {
@@ -1226,7 +1238,7 @@
       padding: 8px 8px 0;
     }
 
-    .graph-topline,
+    .focus-panel,
     .graph-controls {
       align-items: flex-start;
       flex-direction: column;
