@@ -118,7 +118,6 @@ export function createGraphSimulation(
     .force('cluster', communityForce(centers, forceOptions.clusterStrength))
     .velocityDecay(0.42)
     .on('tick', () => {
-      constrainNodes(nodes, width, height);
       options.onTick?.();
     });
 
@@ -129,7 +128,6 @@ export function createGraphSimulation(
     links: () => links,
     settle(ticks = 120) {
       for (let i = 0; i < ticks; i += 1) simulation.tick();
-      constrainNodes(nodes, width, height);
       options.onTick?.();
     },
     pause() {
@@ -275,13 +273,6 @@ function communityCenters(nodes: NormalizedGraphNode[], width: number, height: n
   return centers;
 }
 
-function constrainNodes(nodes: GraphSimulationNode[], width: number, height: number) {
-  for (const node of nodes) {
-    node.x = clamp(finiteOr(node.x, width / 2), node.radius, width - node.radius);
-    node.y = clamp(finiteOr(node.y, height / 2), node.radius, height - node.radius);
-  }
-}
-
 function seedRandom(seed: string) {
   let state = hash(seed) || 1;
   return () => {
@@ -301,10 +292,6 @@ function hash(input: string): number {
     value = Math.imul(value, 16777619);
   }
   return value >>> 0;
-}
-
-function finiteOr(value: number | undefined, fallback: number) {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
 function clamp(value: number, min: number, max: number) {

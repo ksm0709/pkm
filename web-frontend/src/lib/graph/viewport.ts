@@ -8,7 +8,7 @@ export type GraphTransform = {
   k: number;
 };
 
-const MIN_ZOOM = 0.25;
+const MIN_ZOOM = 0.08;
 const MAX_ZOOM = 4;
 
 export function worldToScreen(point: GraphPoint, transform: GraphTransform): GraphPoint {

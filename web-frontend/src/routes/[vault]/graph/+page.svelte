@@ -17,6 +17,7 @@
     panTransform,
     screenToWorld,
     wheelZoomTransform,
+    zoomAt,
     type GraphTransform
   } from '$lib/graph/viewport.js';
   import { normalizeGraph, type NormalizedGraph, type NormalizedGraphNode } from '$lib/graph/normalize.js';
@@ -40,6 +41,7 @@
     getRenderedCounts: () => { nodes: number; edges: number; labels: number };
     getForceOptions: () => { repulsion: number; linkDistance: number };
     getSimulationState: () => { generation: number; alpha: number; paused: boolean };
+    getWorldState: () => ReturnType<typeof graphWorldState>;
   };
 
   type GraphWindow = Window &
@@ -49,6 +51,9 @@
 
   const GRAPH_FALLBACK_WIDTH = 1200;
   const GRAPH_FALLBACK_HEIGHT = 780;
+  const GRAPH_WORLD_VIEWPORT_SCALE = 3.2;
+  const GRAPH_WORLD_NODE_SPACING_X = 340;
+  const GRAPH_WORLD_NODE_SPACING_Y = 230;
   const INTERACTIVE_NODE_CAP = 300;
   const LONG_PRESS_MS = 500;
 
@@ -104,7 +109,7 @@
     simulation?.dispose();
     cancelAnimationFrame(raf);
     const size = canvasSize();
-    graphWorld = { width: size.width, height: size.height };
+    graphWorld = graphWorldSize(size, interactiveGraph.nodes.length);
     const initialForce = untrack(() => ({ repulsion, linkDistance }));
     simulationGeneration += 1;
     simulation = createGraphSimulation(interactiveGraph, {
@@ -464,11 +469,7 @@
   function zoomBy(delta: number) {
     if (!canvas) return;
     const size = canvasSize();
-    transform = {
-      x: transform.x - (size.width / 2 - transform.x) * delta,
-      y: transform.y - (size.height / 2 - transform.y) * delta,
-      k: Math.max(0.25, Math.min(4, Math.round((transform.k + delta) * 10) / 10))
-    };
+    transform = zoomAt(transform, { x: size.width / 2, y: size.height / 2 }, transform.k + delta);
     scheduleDraw();
   }
 
@@ -533,7 +534,8 @@
         generation: simulationGeneration,
         alpha: round(simulation?.alpha() ?? 0),
         paused: simulation?.isPaused() ?? true
-      })
+      }),
+      getWorldState: graphWorldState
     };
   }
 
@@ -583,6 +585,34 @@
       width: Math.max(1, rect?.width ?? GRAPH_FALLBACK_WIDTH),
       height: Math.max(1, rect?.height ?? GRAPH_FALLBACK_HEIGHT)
     };
+  }
+
+  function graphWorldSize(size: { width: number; height: number }, nodeCount: number) {
+    const spread = Math.max(1, Math.sqrt(Math.max(1, nodeCount)));
+    return {
+      width: Math.round(Math.max(GRAPH_FALLBACK_WIDTH, size.width * GRAPH_WORLD_VIEWPORT_SCALE, spread * GRAPH_WORLD_NODE_SPACING_X)),
+      height: Math.round(Math.max(GRAPH_FALLBACK_HEIGHT, size.height * GRAPH_WORLD_VIEWPORT_SCALE, spread * GRAPH_WORLD_NODE_SPACING_Y))
+    };
+  }
+
+  function graphWorldState() {
+    return {
+      ...graphWorld,
+      nodeBounds: nodeBounds(simulation?.nodes() ?? [])
+    };
+  }
+
+  function nodeBounds(nodes: GraphSimulationNode[]) {
+    if (nodes.length === 0) return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+    return nodes.reduce(
+      (bounds, node) => ({
+        minX: Math.min(bounds.minX, round(node.x)),
+        minY: Math.min(bounds.minY, round(node.y)),
+        maxX: Math.max(bounds.maxX, round(node.x)),
+        maxY: Math.max(bounds.maxY, round(node.y))
+      }),
+      { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
+    );
   }
 
   function searchGraphNodes(nodes: NormalizedGraphNode[], query: string) {

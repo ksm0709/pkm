@@ -40,7 +40,7 @@ describe('graph force simulation', () => {
     expect(simulationNodeRadius(node('tag:x', '#x', 'tag', 1, false, 'x'))).toBeGreaterThanOrEqual(9);
   });
 
-  it('creates deterministic seeded positions and settles inside bounds', () => {
+  it('creates deterministic seeded positions and keeps coordinates finite while settling', () => {
     const a = createGraphSimulation(graph, { width: 800, height: 500, seed: 'same-seed', autoStart: false });
     const b = createGraphSimulation(graph, { width: 800, height: 500, seed: 'same-seed', autoStart: false });
 
@@ -50,13 +50,25 @@ describe('graph force simulation', () => {
     for (const n of a.nodes()) {
       expect(Number.isFinite(n.x)).toBe(true);
       expect(Number.isFinite(n.y)).toBe(true);
-      expect(n.x).toBeGreaterThanOrEqual(n.radius);
-      expect(n.x).toBeLessThanOrEqual(800 - n.radius);
-      expect(n.y).toBeGreaterThanOrEqual(n.radius);
-      expect(n.y).toBeLessThanOrEqual(500 - n.radius);
     }
     a.dispose();
     b.dispose();
+  });
+
+  it('does not clamp graph nodes to the visible viewport rectangle', () => {
+    const sim = createGraphSimulation(graph, { width: 800, height: 500, seed: 'free-world', autoStart: false });
+    const alpha = sim.nodes().find((n) => n.id === 'alpha');
+    expect(alpha).toBeTruthy();
+
+    alpha!.x = 1180;
+    alpha!.y = 760;
+    alpha!.fx = 1180;
+    alpha!.fy = 760;
+    sim.settle(2);
+
+    expect(alpha!.x).toBeGreaterThan(800);
+    expect(alpha!.y).toBeGreaterThan(500);
+    sim.dispose();
   });
 
   it('exposes pause, resume, reheat, and dispose lifecycle', () => {
