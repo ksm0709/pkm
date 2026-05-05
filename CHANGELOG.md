@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.74.1 (2026-05-05)
+
+### Bug Fixes
+
+- Tag daily subnotes for reliable discovery
+  ([`8458ec2`](https://github.com/ksm0709/pkm/commit/8458ec24a846dac807cfca9ee15f2fb4fb437317))
+
+
 ## v2.74.0 (2026-05-02)
 
 ### Bug Fixes
