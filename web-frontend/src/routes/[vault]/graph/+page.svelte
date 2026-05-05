@@ -45,8 +45,8 @@
       __pkmGraphTest?: GraphTestApi;
     };
 
-  const GRAPH_WIDTH = 1000;
-  const GRAPH_HEIGHT = 640;
+  const GRAPH_FALLBACK_WIDTH = 1200;
+  const GRAPH_FALLBACK_HEIGHT = 780;
   const INTERACTIVE_NODE_CAP = 300;
   const LONG_PRESS_MS = 500;
 
@@ -65,6 +65,7 @@
   let renderVersion = $state(0);
   let repulsion = $state(-420);
   let linkDistance = $state(92);
+  let graphWorld = { width: GRAPH_FALLBACK_WIDTH, height: GRAPH_FALLBACK_HEIGHT };
 
   let loadToken = 0;
   let canvas = $state<HTMLCanvasElement | null>(null);
@@ -99,16 +100,18 @@
 
     simulation?.dispose();
     cancelAnimationFrame(raf);
+    const size = canvasSize();
+    graphWorld = { width: size.width, height: size.height };
     simulation = createGraphSimulation(interactiveGraph, {
-      width: GRAPH_WIDTH,
-      height: GRAPH_HEIGHT,
+      width: graphWorld.width,
+      height: graphWorld.height,
       seed: `pkm:${vaultName}`,
       chargeStrength: repulsion,
       linkDistance,
       autoStart: true,
       onTick: scheduleDraw
     });
-    transform = fitToBounds({ minX: 0, minY: 0, maxX: GRAPH_WIDTH, maxY: GRAPH_HEIGHT }, canvasSize(), 18);
+    transform = fitToBounds({ minX: 0, minY: 0, maxX: graphWorld.width, maxY: graphWorld.height }, size, 0);
     paused = false;
     scheduleDraw();
     installTestApi();
@@ -466,7 +469,7 @@
 
   function resetView() {
     if (!canvas) return;
-    transform = fitToBounds({ minX: 0, minY: 0, maxX: GRAPH_WIDTH, maxY: GRAPH_HEIGHT }, canvasSize(), 18);
+    transform = fitToBounds({ minX: 0, minY: 0, maxX: graphWorld.width, maxY: graphWorld.height }, canvasSize(), 0);
     scheduleDraw();
   }
 
@@ -566,7 +569,10 @@
 
   function canvasSize() {
     const rect = canvas?.getBoundingClientRect();
-    return { width: Math.max(1, rect?.width ?? GRAPH_WIDTH), height: Math.max(1, rect?.height ?? GRAPH_HEIGHT) };
+    return {
+      width: Math.max(1, rect?.width ?? GRAPH_FALLBACK_WIDTH),
+      height: Math.max(1, rect?.height ?? GRAPH_FALLBACK_HEIGHT)
+    };
   }
 
   function searchGraphNodes(nodes: NormalizedGraphNode[], query: string) {
@@ -799,7 +805,8 @@
 
 <style>
   .graph-page {
-    min-height: 100%;
+    height: calc(100dvh - 58px);
+    min-height: 560px;
     color: var(--text);
     background: var(--bg);
   }
@@ -823,7 +830,8 @@
 
   .graph-layout {
     display: grid;
-    min-height: calc(100vh - 58px);
+    height: 100%;
+    min-height: 0;
     grid-template-columns: minmax(0, 1fr);
     background: var(--bg);
   }
@@ -835,8 +843,9 @@
   .graph-stage {
     display: flex;
     min-width: 0;
+    min-height: 0;
     flex-direction: column;
-    padding: 12px 16px 14px;
+    padding: 8px 10px 0;
   }
 
   .graph-topline {
@@ -961,8 +970,8 @@
     min-height: 0;
     flex: 1;
     width: 100%;
-    border: 1px solid var(--border);
-    background: var(--surface);
+    border: 0;
+    background: transparent;
     overflow: hidden;
     touch-action: none;
   }
@@ -971,7 +980,7 @@
     display: block;
     width: 100%;
     height: 100%;
-    min-height: 440px;
+    min-height: 0;
     cursor: grab;
   }
 
@@ -1054,7 +1063,7 @@
     }
 
     .graph-stage {
-      padding: 10px;
+      padding: 8px 8px 0;
     }
 
     .graph-topline,
@@ -1066,10 +1075,6 @@
 
     .control-buttons button {
       flex: 1;
-    }
-
-    .graph-canvas {
-      min-height: 390px;
     }
 
     .preview-sheet {

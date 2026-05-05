@@ -108,6 +108,13 @@ test.describe('vault graph page', () => {
     await expect(page.getByTestId('graph-force-surface')).toBeVisible();
     await expect(page.getByTestId('graph-canvas')).toBeVisible();
     await expect(page.getByTestId('graph-node')).toHaveCount(0);
+    const surfaceFrame = await page.getByTestId('graph-force-surface').evaluate((element) => {
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return { borderTopWidth: style.borderTopWidth, height: rect.height };
+    });
+    expect(surfaceFrame.borderTopWidth).toBe('0px');
+    expect(surfaceFrame.height).toBeGreaterThan(520);
 
     const counts = await graphCounts(page);
     expect(counts.nodes).toBe(enrichedGraphFixture.nodes.length);
