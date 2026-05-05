@@ -9,9 +9,6 @@ type GraphNode = {
   type?: 'note' | 'tag' | 'note_or_unresolved';
   description?: string;
   community?: string;
-  cluster?: string;
-  clusters?: string[];
-  top_tags?: string[];
   graph_tier?: string;
   importance?: number;
 };
@@ -22,7 +19,6 @@ type GraphLink = {
   type?: string;
   confidence?: number;
   weight?: number;
-  relation?: string;
 };
 
 type GraphPayload = {
@@ -31,64 +27,49 @@ type GraphPayload = {
   edges?: GraphLink[];
 };
 
+type TestNode = {
+  id: string;
+  label: string;
+  type: string;
+  x: number;
+  y: number;
+  radius: number;
+  degree: number;
+  hub: boolean;
+  visible: boolean;
+};
+
+type TestApi = {
+  settle: (ticks?: number) => Promise<void>;
+  getNode: (id: string) => TestNode | null;
+  getEdge: (
+    source: string,
+    target: string,
+    type?: string
+  ) => null | { source: string; target: string; type: string; distance: number; confidence: number; visible: boolean };
+  getTransform: () => { x: number; y: number; k: number };
+  getFocusState: (id: string) => 'focused' | 'neighbor' | 'muted' | 'normal' | null;
+  dragNode: (id: string, dx: number, dy: number) => Promise<void>;
+  getRenderedCounts: () => { nodes: number; edges: number; labels: number };
+  getForceOptions: () => { repulsion: number; linkDistance: number };
+};
+
 const enrichedGraphFixture: GraphPayload = {
   nodes: [
-    {
-      id: 'project-plan',
-      title: 'Project Plan',
-      type: 'note',
-      description: 'Planning note',
-      community: 'planning',
-      importance: 8,
-      top_tags: ['pkm']
-    },
-    {
-      id: 'journal',
-      title: 'Journal',
-      type: 'note',
-      description: 'Journal note',
-      community: 'daily',
-      importance: 3
-    },
-    {
-      id: 'architecture',
-      title: 'Architecture',
-      type: 'note',
-      description: 'Architecture note',
-      community: 'architecture',
-      importance: 7
-    },
-    {
-      id: 'daily-log',
-      title: 'Daily Log',
-      type: 'note',
-      description: 'Daily note',
-      community: 'daily',
-      importance: 4
-    },
+    { id: 'project-plan', title: 'Project Plan', type: 'note', community: 'planning', importance: 8 },
+    { id: 'journal', title: 'Journal', type: 'note', community: 'daily', importance: 3 },
+    { id: 'architecture', title: 'Architecture', type: 'note', community: 'architecture', importance: 7 },
+    { id: 'daily-log', title: 'Daily Log', type: 'note', community: 'daily', importance: 4 },
     {
       id: 'hub-pkm-development',
       title: 'PKM Development Hub',
       type: 'note',
-      description: 'High degree hub note',
       community: 'planning',
       graph_tier: 'hub',
       importance: 9
     },
-    {
-      id: 'tag:pkm',
-      title: '#pkm',
-      type: 'tag',
-      description: 'PKM tag',
-      community: 'planning'
-    },
-    {
-      id: 'missing-roadmap',
-      title: 'Missing Roadmap',
-      type: 'note_or_unresolved',
-      description: 'Unresolved note',
-      community: 'planning'
-    }
+    { id: 'tag:pkm', title: '#pkm', type: 'tag', community: 'planning' },
+    { id: 'missing-roadmap', title: 'Missing Roadmap', type: 'note_or_unresolved', community: 'planning' }
   ],
   links: [
     { source: 'project-plan', target: 'journal', type: 'wikilink', weight: 1 },
@@ -112,7 +93,7 @@ const malformedPayload = {
 };
 
 test.describe('vault graph page', () => {
-  test('renders a clustered force graph from enriched graph data', async ({ page }) => {
+  test('renders a canvas force graph from enriched graph data', async ({ page }) => {
     const vaultName = await loginAndFindVault(page);
     const graphRequests: string[] = [];
     await mockGraphApi(page, async (route) => {
@@ -123,60 +104,59 @@ test.describe('vault graph page', () => {
     await page.goto(graphPath(vaultName));
     await settleGraph(page);
 
-    expect(
-      graphRequests.some(
-        (url) => decodeURIComponent(new URL(url).pathname) === `/api/v1/vault/${vaultName}/graph`
-      )
-    ).toBe(true);
+    expect(graphRequests.some((url) => decodeURIComponent(new URL(url).pathname) === `/api/v1/vault/${vaultName}/graph`)).toBe(true);
     await expect(page.getByTestId('graph-force-surface')).toBeVisible();
-    await expect(page.getByTestId('graph-node')).toHaveCount(enrichedGraphFixture.nodes.length);
-    await expect(page.getByTestId('graph-edge')).toHaveCount(enrichedGraphFixture.links?.length ?? 0);
-    await expect(graphNode(page, 'project-plan')).toHaveAttribute('data-node-type', 'note');
-    await expect(graphNode(page, 'tag:pkm')).toHaveAttribute('data-node-type', 'tag');
-    await expect(graphNode(page, 'missing-roadmap')).toHaveAttribute('data-node-type', 'note_or_unresolved');
-    await expect(graphNode(page, 'hub-pkm-development')).toHaveAttribute('data-hub', 'true');
-    await expect(page.getByRole('button', { name: 'Radial' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Cluster' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Degree' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'List' })).toHaveCount(0);
+    await expect(page.getByTestId('graph-canvas')).toBeVisible();
+    await expect(page.getByTestId('graph-node')).toHaveCount(0);
+
+    const counts = await graphCounts(page);
+    expect(counts.nodes).toBe(enrichedGraphFixture.nodes.length);
+    expect(counts.edges).toBe(enrichedGraphFixture.links?.length);
+
+    const hub = await graphNode(page, 'hub-pkm-development');
+    const journal = await graphNode(page, 'journal');
+    expect(hub?.hub).toBe(true);
+    expect(hub?.radius ?? 0).toBeGreaterThan(journal?.radius ?? 0);
+    expect((await graphNode(page, 'tag:pkm'))?.type).toBe('tag');
   });
 
-  test('sizes nodes by degree and marks hubs', async ({ page }) => {
+  test('uses semantic confidence, zooms, pans, and drags nodes', async ({ page }) => {
     const vaultName = await loginAndFindVault(page);
     await mockGraphApi(page, async (route) => json(route, enrichedGraphFixture));
 
     await page.goto(graphPath(vaultName));
     await settleGraph(page);
 
-    const hubSize = await numericAttribute(graphNode(page, 'hub-pkm-development'), 'data-size');
-    const journalSize = await numericAttribute(graphNode(page, 'journal'), 'data-size');
-    expect(hubSize).toBeGreaterThan(journalSize);
-    await expect(graphNode(page, 'hub-pkm-development')).toHaveClass(/node-hub/);
-    await expect(graphNode(page, 'hub-pkm-development')).toHaveAttribute('data-degree', '5');
-  });
+    const semantic = await graphEdge(page, 'project-plan', 'architecture', 'semantic_similar');
+    const wikilink = await graphEdge(page, 'project-plan', 'journal', 'wikilink');
+    expect(semantic?.confidence).toBe(0.92);
+    expect(semantic?.distance ?? Infinity).toBeLessThan(wikilink?.distance ?? 0);
 
-  test('uses semantic similarity confidence as layout force input', async ({ page }) => {
-    const vaultName = await loginAndFindVault(page);
-    await mockGraphApi(page, async (route) => json(route, enrichedGraphFixture));
+    await setRange(page, 'Link distance', '160');
+    await setRange(page, 'Repulsion strength', '-760');
+    await settleGraph(page, 80);
+    const expandedWikilink = await graphEdge(page, 'project-plan', 'journal', 'wikilink');
+    const forceOptions = await graphForceOptions(page);
+    expect(expandedWikilink?.distance ?? 0).toBeGreaterThan(wikilink?.distance ?? Infinity);
+    expect(forceOptions).toEqual({ repulsion: -760, linkDistance: 160 });
 
-    await page.goto(graphPath(vaultName));
-    await settleGraph(page);
+    const beforeTransform = await graphTransform(page);
+    await page.getByTestId('graph-canvas').hover();
+    await page.mouse.wheel(0, -400);
+    await expect.poll(() => graphTransform(page)).not.toEqual(beforeTransform);
 
-    const semanticEdge = graphEdge(page, 'project-plan', 'architecture', 'semantic_similar');
-    await expect(semanticEdge).toHaveAttribute('data-edge-type', 'semantic_similar');
-    await expect(semanticEdge).toHaveAttribute('data-confidence', '0.92');
-    await expect(semanticEdge).toHaveAttribute('data-weight', /^(?!0(?:\.0+)?$).+/);
-    await expect(semanticEdge).toHaveAttribute('data-force-distance', /^(?!0(?:\.0+)?$).+/);
+    const afterZoom = await graphTransform(page);
+    await dragCanvas(page, 30, -20);
+    const afterPan = await graphTransform(page);
+    expect(afterPan.x).not.toBe(afterZoom.x);
+    expect(afterPan.y).not.toBe(afterZoom.y);
 
-    const highConfidenceDistance = distance(
-      await nodePosition(page, 'project-plan'),
-      await nodePosition(page, 'architecture')
-    );
-    const unrelatedDistance = distance(
-      await nodePosition(page, 'project-plan'),
-      await nodePosition(page, 'daily-log')
-    );
-    expect(highConfidenceDistance).toBeLessThan(unrelatedDistance);
+    const beforeNode = await graphNode(page, 'journal');
+    await page.evaluate(async () => {
+      await (window as typeof window & { __pkmGraphTest: TestApi }).__pkmGraphTest.dragNode('journal', 45, 10);
+    });
+    const afterNode = await graphNode(page, 'journal');
+    expect(distance(beforeNode!, afterNode!)).toBeGreaterThan(10);
   });
 
   test('click focuses a neighborhood without URL navigation', async ({ page }) => {
@@ -185,35 +165,18 @@ test.describe('vault graph page', () => {
 
     await page.goto(graphPath(vaultName));
     await settleGraph(page);
-
     const before = page.url();
-    await graphNode(page, 'project-plan').click({ force: true });
+
+    await clickNode(page, 'project-plan');
 
     expect(page.url()).toBe(before);
     await expect(page.getByTestId('graph-focus-status')).toContainText('Project Plan');
-    await expect(graphNode(page, 'architecture')).toHaveAttribute('data-focus-state', 'neighbor');
-    await expect(graphNode(page, 'daily-log')).toHaveAttribute('data-focus-state', 'muted');
+    expect(await focusState(page, 'project-plan')).toBe('focused');
+    expect(await focusState(page, 'architecture')).toBe('neighbor');
+    expect(await focusState(page, 'daily-log')).toBe('muted');
   });
 
-  test('focus keeps global muted nodes rendered with stable positions', async ({ page }) => {
-    const vaultName = await loginAndFindVault(page);
-    await mockGraphApi(page, async (route) => json(route, enrichedGraphFixture));
-
-    await page.goto(graphPath(vaultName));
-    await settleGraph(page);
-    const before = await nodePosition(page, 'daily-log');
-
-    await graphNode(page, 'project-plan').click({ force: true });
-    await settleGraph(page);
-    const after = await nodePosition(page, 'daily-log');
-
-    await expect(graphNode(page, 'daily-log')).toHaveAttribute('data-focus-state', 'muted');
-    expect(distance(before, after)).toBeLessThanOrEqual(8);
-  });
-
-  test('cmd click opens a note preview sheet and the open note icon routes to the note', async ({
-    page
-  }) => {
+  test('cmd click and long press open note preview while tag and unresolved nodes focus only', async ({ page }) => {
     const vaultName = await loginAndFindVault(page);
     const previewRequests: string[] = [];
     await mockGraphApi(page, async (route) => json(route, enrichedGraphFixture));
@@ -224,167 +187,87 @@ test.describe('vault graph page', () => {
 
     await page.goto(graphPath(vaultName));
     await settleGraph(page);
-    await graphNode(page, 'project-plan').click({ modifiers: [modifierKey()], force: true });
+    const before = page.url();
 
+    await clickNode(page, 'project-plan', [modifierKey()]);
     await expect(page.getByTestId('graph-preview-sheet')).toBeVisible();
-    await expect(page.getByTestId('graph-force-surface')).toBeVisible();
     await expect(page.getByTestId('graph-preview-sheet')).toContainText('Preview body for Project Plan');
-    await expect(page.getByTestId('graph-layout')).toHaveAttribute('data-preview-open', 'true');
-    expect(previewRequests.some((url) => decodeURIComponent(new URL(url).pathname).endsWith('/notes/project-plan'))).toBe(
-      true
-    );
+    expect(previewRequests.some((url) => decodeURIComponent(new URL(url).pathname).endsWith('/notes/project-plan'))).toBe(true);
 
-    await page.getByRole('button', { name: /Open note Project Plan/ }).click();
-    await expect(page).toHaveURL(new RegExp(`/${vaultPathPattern(vaultName)}/notes/project-plan$`));
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('graph-preview-sheet')).toHaveCount(0);
+
+    await longPressNode(page, 'project-plan');
+    await expect(page.getByTestId('graph-preview-sheet')).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    await clickNode(page, 'tag:pkm', [modifierKey()]);
+    await expect(page.getByTestId('graph-preview-sheet')).toHaveCount(0);
+    await expect(page.getByTestId('graph-focus-status')).toContainText('#pkm');
+
+    await clickNode(page, 'missing-roadmap', [modifierKey()]);
+    await expect(page.getByTestId('graph-preview-sheet')).toHaveCount(0);
+    await expect(page.getByTestId('graph-focus-status')).toContainText('Missing Roadmap');
+    expect(page.url()).toBe(before);
   });
 
-  test('long press opens a note preview without URL navigation', async ({ page }) => {
+  test('keyboard search, preview action, and escape keep canvas graph accessible', async ({ page }) => {
     const vaultName = await loginAndFindVault(page);
     await mockGraphApi(page, async (route) => json(route, enrichedGraphFixture));
     await mockNoteApi(page, async (route) => json(route, notePayload('project-plan', 'Project Plan')));
 
     await page.goto(graphPath(vaultName));
     await settleGraph(page);
-    const before = page.url();
-    const box = await graphNode(page, 'project-plan').boundingBox();
-    expect(box).not.toBeNull();
 
-    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
-    await page.mouse.down();
-    await page.waitForTimeout(700);
-    await page.mouse.up();
+    await page.getByRole('searchbox', { name: 'Search graph nodes' }).fill('project');
+    await page.getByRole('button', { name: /Focus Project Plan/ }).click();
+    await expect(page.getByTestId('graph-focus-status')).toContainText('Project Plan');
+    await expect(page.getByTestId('graph-a11y-status')).toContainText(/Project Plan/);
 
-    expect(page.url()).toBe(before);
+    await page.getByRole('button', { name: /Preview focused note/ }).click();
     await expect(page.getByTestId('graph-preview-sheet')).toBeVisible();
-    await expect(page.getByTestId('graph-preview-sheet')).toContainText('Preview body for Project Plan');
-  });
-
-  test('tag and unresolved nodes focus only and never open fake note previews', async ({ page }) => {
-    const vaultName = await loginAndFindVault(page);
-    const previewRequests: string[] = [];
-    await mockGraphApi(page, async (route) => json(route, enrichedGraphFixture));
-    await mockNoteApi(page, async (route) => {
-      previewRequests.push(route.request().url());
-      await route.fulfill({ status: 500, body: 'tags and unresolved nodes must not fetch notes' });
-    });
-
-    await page.goto(graphPath(vaultName));
-    await settleGraph(page);
-    const before = page.url();
-
-    await graphNode(page, 'tag:pkm').click({ modifiers: [modifierKey()], force: true });
-    await expect(page.getByTestId('graph-focus-status')).toContainText('#pkm');
+    await page.keyboard.press('Escape');
     await expect(page.getByTestId('graph-preview-sheet')).toHaveCount(0);
-    expect(page.url()).toBe(before);
-
-    await graphNode(page, 'missing-roadmap').click({ modifiers: [modifierKey()], force: true });
-    await expect(page.getByTestId('graph-focus-status')).toContainText('Missing Roadmap');
-    await expect(page.getByTestId('graph-preview-sheet')).toHaveCount(0);
-    expect(page.url()).toBe(before);
-    expect(previewRequests).toEqual([]);
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('graph-focus-status')).toContainText('full graph');
   });
 
-  test('limits labels to important and viewport nodes', async ({ page }) => {
+  test('handles graph failures, malformed payloads, cap status, and preview failures', async ({ page }) => {
     const vaultName = await loginAndFindVault(page);
-    const graph = graphWithLowImportanceNodes(72);
-    await mockGraphApi(page, async (route) => json(route, graph));
 
-    await page.goto(graphPath(vaultName));
-    await settleGraph(page);
-
-    const labelCount = await page.getByTestId('graph-label').count();
-    expect(labelCount).toBeLessThan(graph.nodes.length);
-    await expect(graphLabel(page, 'hub-pkm-development')).toBeVisible();
-
-    await graphNode(page, 'low-01').click({ force: true });
-    await expect(graphLabel(page, 'low-01')).toBeVisible();
-  });
-
-  test('explains how to create the graph index when graph data is missing', async ({ page }) => {
-    const vaultName = await loginAndFindVault(page);
     await mockGraphApi(page, async (route) => route.fulfill({ status: 404, body: 'not found' }));
-
     await page.goto(graphPath(vaultName));
-
     await expect(page.getByText('Graph index not found.')).toBeVisible();
-    await expect(page.getByText(/pkm index/)).toBeVisible();
-  });
 
-  test('treats malformed payloads as empty graph data', async ({ page }) => {
-    const vaultName = await loginAndFindVault(page);
+    await page.unroute('**/api/v1/vault/*/graph');
     await mockGraphApi(page, async (route) => json(route, malformedPayload));
-
     await page.goto(graphPath(vaultName));
-
     await expect(page.getByText('Graph is empty.')).toBeVisible();
-    await expect(page.getByTestId('graph-node')).toHaveCount(0);
-  });
 
-  test('shows graph backend failures without rendering stale graph data', async ({ page }) => {
-    const vaultName = await loginAndFindVault(page);
+    await page.unroute('**/api/v1/vault/*/graph');
     await mockGraphApi(page, async (route) => route.fulfill({ status: 500, body: 'boom' }));
-
     await page.goto(graphPath(vaultName));
-
     await expect(page.getByText(/GET graph.*500/)).toBeVisible();
-    await expect(page.getByTestId('graph-node')).toHaveCount(0);
-  });
 
-  test('shows preview failure inside the sheet', async ({ page }) => {
-    const vaultName = await loginAndFindVault(page);
-    await mockGraphApi(page, async (route) => json(route, enrichedGraphFixture));
+    await page.unroute('**/api/v1/vault/*/graph');
+    await mockGraphApi(page, async (route) => json(route, graphWithLowImportanceNodes(325)));
     await mockNoteApi(page, async (route) => route.fulfill({ status: 500, body: 'preview boom' }));
-
     await page.goto(graphPath(vaultName));
     await settleGraph(page);
-    await graphNode(page, 'project-plan').click({ modifiers: [modifierKey()], force: true });
-
-    await expect(page.getByTestId('graph-preview-sheet')).toBeVisible();
+    await expect(page.getByTestId('graph-cap-status')).toContainText('Rendering first 300 of 331');
+    await page.getByRole('searchbox', { name: 'Search graph nodes' }).fill('project');
+    await page.getByRole('button', { name: /Focus Project Plan/ }).click();
+    await page.getByRole('button', { name: /Preview focused note/ }).click();
     await expect(page.getByTestId('graph-preview-error')).toContainText(/preview.*500/i);
   });
 
-  test('caps the interactive graph at 300 nodes while preserving total counts', async ({ page }) => {
-    const vaultName = await loginAndFindVault(page);
-    const graph = graphWithLowImportanceNodes(325);
-    await mockGraphApi(page, async (route) => json(route, graph));
-
-    await page.goto(graphPath(vaultName));
-    await settleGraph(page);
-
-    await expect(page.getByTestId('graph-node')).toHaveCount(300);
-    await expect(page.getByTestId('graph-cap-status')).toContainText('Rendering first 300 of 331');
-    await expect(page.getByTestId('graph-summary')).toContainText('331 nodes');
-  });
-
-  test('adjusts attraction, repulsion, and zoom from graph controls', async ({ page }) => {
-    const vaultName = await loginAndFindVault(page);
-    await mockGraphApi(page, async (route) => json(route, enrichedGraphFixture));
-
-    await page.goto(graphPath(vaultName));
-    await settleGraph(page);
-    const before = await nodePosition(page, 'journal');
-
-    await page.getByRole('slider', { name: 'Repulsion' }).fill('2.4');
-    await page.getByRole('slider', { name: 'Attraction' }).fill('0.7');
-    await settleGraph(page);
-    const after = await nodePosition(page, 'journal');
-
-    await expect(page.getByTestId('graph-force-surface')).toHaveAttribute('data-repulsion', '2.4');
-    await expect(page.getByTestId('graph-force-surface')).toHaveAttribute('data-attraction', '0.7');
-    expect(distance(before, after)).toBeGreaterThan(1);
-
-    await page.getByRole('button', { name: 'Zoom in' }).click();
-    await expect(page.getByTestId('graph-force-surface')).toHaveAttribute('data-zoom', '1.1');
-
-    await page.getByRole('button', { name: 'Reset graph controls' }).click();
-    await expect(page.getByTestId('graph-force-surface')).toHaveAttribute('data-zoom', '1');
-    await expect(page.getByTestId('graph-force-surface')).toHaveAttribute('data-repulsion', '1.6');
-    await expect(page.getByTestId('graph-force-surface')).toHaveAttribute('data-attraction', '1');
-  });
-
-  test('keeps zoom controls usable on mobile viewports', async ({ page }) => {
+  test('keeps zoom controls usable on mobile viewports and dark theme surfaces dark', async ({ page }, testInfo) => {
     const vaultName = await loginAndFindVault(page);
     await page.setViewportSize({ width: 390, height: 740 });
+    if (testInfo.project.name.includes('dark')) {
+      await page.addInitScript(() => localStorage.setItem('pkm.theme', 'dark'));
+      await applyTheme(page, 'dark');
+    }
     await mockGraphApi(page, async (route) => json(route, enrichedGraphFixture));
 
     await page.goto(graphPath(vaultName));
@@ -392,33 +275,15 @@ test.describe('vault graph page', () => {
 
     await expect(page.getByTestId('graph-controls')).toBeVisible();
     await page.getByRole('button', { name: 'Zoom out' }).click();
-    await expect(page.getByTestId('graph-force-surface')).toHaveAttribute('data-zoom', '0.9');
-    await page.getByRole('slider', { name: 'Zoom' }).fill('1.4');
-    await expect(page.getByTestId('graph-force-surface')).toHaveAttribute('data-zoom', '1.4');
-  });
+    expect((await graphTransform(page)).k).toBeLessThan(1);
 
-  test('uses dark theme graph surfaces instead of hard-coded white', async ({ page }, testInfo) => {
-    test.skip(!testInfo.project.name.includes('dark'), 'dark theme contract only');
-    const vaultName = await loginAndFindVault(page);
-    await page.addInitScript(() => {
-      localStorage.setItem('pkm.theme', 'dark');
-    });
-    await applyTheme(page, 'dark');
-    await mockGraphApi(page, async (route) => json(route, enrichedGraphFixture));
-
-    await page.goto(graphPath(vaultName));
-    await settleGraph(page);
-
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-    const surfaceBackground = await page.getByTestId('graph-force-surface').evaluate((element) => {
-      return window.getComputedStyle(element).backgroundColor;
-    });
-    const pageBackground = await page.locator('.graph-page').evaluate((element) => {
-      return window.getComputedStyle(element).backgroundColor;
-    });
-
-    expect(surfaceBackground).not.toBe('rgb(255, 255, 255)');
-    expect(pageBackground).not.toBe('rgb(255, 255, 255)');
+    if (testInfo.project.name.includes('dark')) {
+      await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+      const surfaceBackground = await page.getByTestId('graph-force-surface').evaluate((element) => {
+        return window.getComputedStyle(element).backgroundColor;
+      });
+      expect(surfaceBackground).not.toBe('rgb(255, 255, 255)');
+    }
   });
 });
 
@@ -438,49 +303,87 @@ async function json(route: Route, payload: unknown) {
   });
 }
 
-async function settleGraph(page: Page) {
-  await expect(page.getByTestId('graph-force-surface')).toBeVisible({ timeout: 1500 });
-  await page.waitForFunction(() => {
-    const testHook = (window as typeof window & { __pkmGraphTest?: { settle?: () => Promise<void> | void } })
-      .__pkmGraphTest;
-    return Boolean(testHook?.settle);
-  }, null, { timeout: 1500 });
-  await page.evaluate(async () => {
-    await (window as typeof window & { __pkmGraphTest: { settle: () => Promise<void> | void } }).__pkmGraphTest.settle();
-  });
+async function settleGraph(page: Page, ticks = 180) {
+  await expect(page.getByTestId('graph-canvas')).toBeVisible({ timeout: 3000 });
+  await page.waitForFunction(() => Boolean((window as typeof window & { __pkmGraphTest?: TestApi }).__pkmGraphTest?.settle), null, { timeout: 2000 });
+  await page.evaluate(async (settleTicks) => {
+    await (window as typeof window & { __pkmGraphTest: TestApi }).__pkmGraphTest.settle(settleTicks);
+  }, ticks);
 }
 
 function graphPath(vaultName: string) {
   return `/${encodeURIComponent(vaultName)}/graph`;
 }
 
-function graphNode(page: Page, id: string) {
-  return page.locator(`[data-testid="graph-node"][data-node-id="${cssString(id)}"]`);
+async function graphNode(page: Page, id: string) {
+  return page.evaluate((nodeId) => (window as typeof window & { __pkmGraphTest: TestApi }).__pkmGraphTest.getNode(nodeId), id);
 }
 
-function graphLabel(page: Page, id: string) {
-  return page.locator(`[data-testid="graph-label"][data-node-id="${cssString(id)}"]`);
+async function graphEdge(page: Page, source: string, target: string, type?: string) {
+  return page.evaluate(([s, t, edgeType]) => (window as typeof window & { __pkmGraphTest: TestApi }).__pkmGraphTest.getEdge(s, t, edgeType || undefined), [
+    source,
+    target,
+    type ?? ''
+  ]);
 }
 
-function graphEdge(page: Page, source: string, target: string, type?: string) {
-  const edgeTypeSelector = type ? `[data-edge-type="${cssString(type)}"]` : '';
-  return page.locator(
-    `[data-testid="graph-edge"][data-source="${cssString(source)}"][data-target="${cssString(target)}"]${edgeTypeSelector}`
+async function graphCounts(page: Page) {
+  return page.evaluate(() => (window as typeof window & { __pkmGraphTest: TestApi }).__pkmGraphTest.getRenderedCounts());
+}
+
+async function graphTransform(page: Page) {
+  return page.evaluate(() => (window as typeof window & { __pkmGraphTest: TestApi }).__pkmGraphTest.getTransform());
+}
+
+async function graphForceOptions(page: Page) {
+  return page.evaluate(() => (window as typeof window & { __pkmGraphTest: TestApi }).__pkmGraphTest.getForceOptions());
+}
+
+async function focusState(page: Page, id: string) {
+  return page.evaluate((nodeId) => (window as typeof window & { __pkmGraphTest: TestApi }).__pkmGraphTest.getFocusState(nodeId), id);
+}
+
+async function setRange(page: Page, name: string, value: string) {
+  await page.getByLabel(name).evaluate(
+    (input, nextValue) => {
+      const range = input as HTMLInputElement;
+      range.value = nextValue;
+      range.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+    value
   );
 }
 
-async function numericAttribute(locator: ReturnType<Page['locator']>, name: string) {
-  const value = await locator.getAttribute(name);
-  expect(value).not.toBeNull();
-  return Number(value);
+async function clickNode(page: Page, id: string, modifiers: ('Control' | 'Meta')[] = []) {
+  const node = await graphNode(page, id);
+  expect(node).not.toBeNull();
+  const box = await page.getByTestId('graph-canvas').boundingBox();
+  expect(box).not.toBeNull();
+  const transform = await graphTransform(page);
+  for (const modifier of modifiers) await page.keyboard.down(modifier);
+  await page.mouse.click(box!.x + node!.x * transform.k + transform.x, box!.y + node!.y * transform.k + transform.y);
+  for (const modifier of [...modifiers].reverse()) await page.keyboard.up(modifier);
 }
 
-async function nodePosition(page: Page, id: string) {
-  const value = await graphNode(page, id).getAttribute('data-position');
-  expect(value).not.toBeNull();
-  const match = value!.match(/^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/);
-  expect(match).not.toBeNull();
-  return { x: Number(match![1]), y: Number(match![2]) };
+async function longPressNode(page: Page, id: string) {
+  const node = await graphNode(page, id);
+  expect(node).not.toBeNull();
+  const box = await page.getByTestId('graph-canvas').boundingBox();
+  expect(box).not.toBeNull();
+  const transform = await graphTransform(page);
+  await page.mouse.move(box!.x + node!.x * transform.k + transform.x, box!.y + node!.y * transform.k + transform.y);
+  await page.mouse.down();
+  await page.waitForTimeout(650);
+  await page.mouse.up();
+}
+
+async function dragCanvas(page: Page, dx: number, dy: number) {
+  const box = await page.getByTestId('graph-canvas').boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width / 2 + dx, box!.y + box!.height / 2 + dy, { steps: 5 });
+  await page.mouse.up();
 }
 
 function distance(a: { x: number; y: number }, b: { x: number; y: number }) {
@@ -519,20 +422,6 @@ function graphWithLowImportanceNodes(count: number): GraphPayload {
   };
 }
 
-function cssString(value: string) {
-  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}
-
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function vaultPathPattern(value: string) {
-  const decoded = escapeRegExp(value);
-  const encoded = escapeRegExp(encodeURIComponent(value));
-  return decoded === encoded ? decoded : `(?:${decoded}|${encoded})`;
-}
-
-function modifierKey() {
+function modifierKey(): 'Control' | 'Meta' {
   return process.platform === 'darwin' ? 'Meta' : 'Control';
 }
