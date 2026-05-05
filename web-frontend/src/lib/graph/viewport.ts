@@ -51,6 +51,18 @@ export function wheelZoomTransform(
   };
 }
 
+export function pinchZoomTransform(
+  transform: GraphTransform,
+  pointer: GraphPoint,
+  startDistance: number,
+  currentDistance: number,
+  minZoom = MIN_ZOOM,
+  maxZoom = MAX_ZOOM
+): GraphTransform {
+  const ratio = currentDistance / Math.max(1, startDistance);
+  return zoomAt(transform, pointer, transform.k * ratio, minZoom, maxZoom);
+}
+
 export function zoomAt(
   transform: GraphTransform,
   pointer: GraphPoint,

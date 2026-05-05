@@ -1,6 +1,5 @@
 import { expect, type Page, type Route, test } from '@playwright/test';
 import { applyTheme } from './fixtures/theme';
-import { loginAndFindVault } from './helpers/pkm';
 
 type GraphNode = {
   id: string;
@@ -58,7 +57,10 @@ type TestApi = {
     height: number;
     nodeBounds: { minX: number; minY: number; maxX: number; maxY: number };
   };
+  getNodeStyle: (id: string) => null | { fill: string; stroke: string };
 };
+
+const TEST_VAULT = 'bear';
 
 const enrichedGraphFixture: GraphPayload = {
   nodes: [
@@ -100,7 +102,7 @@ const malformedPayload = {
 
 test.describe('vault graph page', () => {
   test('renders a canvas force graph from enriched graph data', async ({ page }) => {
-    const vaultName = await loginAndFindVault(page);
+    const vaultName = TEST_VAULT;
     const graphRequests: string[] = [];
     await mockGraphApi(page, async (route) => {
       graphRequests.push(route.request().url());
@@ -136,10 +138,13 @@ test.describe('vault graph page', () => {
     expect(hub?.hub).toBe(true);
     expect(hub?.radius ?? 0).toBeGreaterThan(journal?.radius ?? 0);
     expect((await graphNode(page, 'tag:pkm'))?.type).toBe('tag');
+    const tagStyle = await graphNodeStyle(page, 'tag:pkm');
+    expect(tagStyle?.fill).toMatch(/^#(?:ca8a04|facc15)$/);
+    expect(tagStyle?.stroke).toBe('#fef08a');
   });
 
   test('uses semantic confidence, zooms, pans, and drags nodes', async ({ page }) => {
-    const vaultName = await loginAndFindVault(page);
+    const vaultName = TEST_VAULT;
     await mockGraphApi(page, async (route) => json(route, enrichedGraphFixture));
 
     await page.goto(graphPath(vaultName));
@@ -185,7 +190,7 @@ test.describe('vault graph page', () => {
   });
 
   test('click focuses a neighborhood without URL navigation', async ({ page }) => {
-    const vaultName = await loginAndFindVault(page);
+    const vaultName = TEST_VAULT;
     await mockGraphApi(page, async (route) => json(route, enrichedGraphFixture));
 
     await page.goto(graphPath(vaultName));
@@ -202,7 +207,7 @@ test.describe('vault graph page', () => {
   });
 
   test('cmd click and long press open note preview while tag and unresolved nodes focus only', async ({ page }) => {
-    const vaultName = await loginAndFindVault(page);
+    const vaultName = TEST_VAULT;
     const previewRequests: string[] = [];
     await mockGraphApi(page, async (route) => json(route, enrichedGraphFixture));
     await mockNoteApi(page, async (route) => {
@@ -237,7 +242,7 @@ test.describe('vault graph page', () => {
   });
 
   test('keyboard search, preview action, and escape keep canvas graph accessible', async ({ page }) => {
-    const vaultName = await loginAndFindVault(page);
+    const vaultName = TEST_VAULT;
     await mockGraphApi(page, async (route) => json(route, enrichedGraphFixture));
     await mockNoteApi(page, async (route) => json(route, notePayload('project-plan', 'Project Plan')));
 
@@ -258,7 +263,7 @@ test.describe('vault graph page', () => {
   });
 
   test('handles graph failures, malformed payloads, cap status, and preview failures', async ({ page }) => {
-    const vaultName = await loginAndFindVault(page);
+    const vaultName = TEST_VAULT;
 
     await mockGraphApi(page, async (route) => route.fulfill({ status: 404, body: 'not found' }));
     await page.goto(graphPath(vaultName));
@@ -287,7 +292,7 @@ test.describe('vault graph page', () => {
   });
 
   test('keeps zoom controls usable on mobile viewports and dark theme surfaces dark', async ({ page }, testInfo) => {
-    const vaultName = await loginAndFindVault(page);
+    const vaultName = TEST_VAULT;
     await page.setViewportSize({ width: 390, height: 740 });
     if (testInfo.project.name.includes('dark')) {
       await page.addInitScript(() => localStorage.setItem('pkm.theme', 'dark'));
@@ -301,6 +306,9 @@ test.describe('vault graph page', () => {
     await expect(page.getByTestId('graph-controls')).toBeVisible();
     await page.getByRole('button', { name: 'Zoom out' }).click();
     expect((await graphTransform(page)).k).toBeLessThan(1);
+    const beforePinch = await graphTransform(page);
+    await pinchCanvas(page, 90, 180);
+    expect((await graphTransform(page)).k).toBeGreaterThan(beforePinch.k);
 
     if (testInfo.project.name.includes('dark')) {
       await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
@@ -372,6 +380,10 @@ async function graphWorldState(page: Page) {
   return page.evaluate(() => (window as typeof window & { __pkmGraphTest: TestApi }).__pkmGraphTest.getWorldState());
 }
 
+async function graphNodeStyle(page: Page, id: string) {
+  return page.evaluate((nodeId) => (window as typeof window & { __pkmGraphTest: TestApi }).__pkmGraphTest.getNodeStyle(nodeId), id);
+}
+
 async function focusState(page: Page, id: string) {
   return page.evaluate((nodeId) => (window as typeof window & { __pkmGraphTest: TestApi }).__pkmGraphTest.getFocusState(nodeId), id);
 }
@@ -417,6 +429,30 @@ async function dragCanvas(page: Page, dx: number, dy: number) {
   await page.mouse.down();
   await page.mouse.move(box!.x + box!.width / 2 + dx, box!.y + box!.height / 2 + dy, { steps: 5 });
   await page.mouse.up();
+}
+
+async function pinchCanvas(page: Page, startDistance: number, endDistance: number) {
+  const box = await page.getByTestId('graph-canvas').boundingBox();
+  expect(box).not.toBeNull();
+  const center = { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 };
+  await dispatchTouchPointer(page, 'pointerdown', 21, center.x - startDistance / 2, center.y);
+  await dispatchTouchPointer(page, 'pointerdown', 22, center.x + startDistance / 2, center.y);
+  await dispatchTouchPointer(page, 'pointermove', 21, center.x - endDistance / 2, center.y);
+  await dispatchTouchPointer(page, 'pointermove', 22, center.x + endDistance / 2, center.y);
+  await dispatchTouchPointer(page, 'pointerup', 21, center.x - endDistance / 2, center.y);
+  await dispatchTouchPointer(page, 'pointerup', 22, center.x + endDistance / 2, center.y);
+}
+
+async function dispatchTouchPointer(page: Page, type: string, pointerId: number, clientX: number, clientY: number) {
+  await page.getByTestId('graph-canvas').dispatchEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    pointerId,
+    pointerType: 'touch',
+    isPrimary: pointerId === 21,
+    clientX,
+    clientY
+  });
 }
 
 function distance(a: { x: number; y: number }, b: { x: number; y: number }) {
