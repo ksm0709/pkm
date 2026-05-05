@@ -9,7 +9,7 @@ The MCP server runs a JSON-RPC 2.0 server over `stdio` and exposes the following
 **Write tools**
 - **`note_add`**: Create a new atomic note in the vault.
 - **`daily_add`**: Append a timestamped log entry or TODO to today's daily note.
-- **`create_daily_subnote`**: Create a dated subnote (`YYYY-MM-DD-{title}.md`) and add a `[[wikilink]]` entry to today's daily note.
+- **`create_daily_subnote`**: Create a dated subnote (`YYYY-MM-DD-{title}.md`) tagged `daily-note` and add a `[[wikilink]]` entry to today's daily note.
 
 **Search & discovery tools**
 - **`read_daily_log`**: Read a past or present daily note. Use `offset=N` for N days ago (`0`=today, `1`=yesterday) or `date_str=YYYY-MM-DD` for an explicit date (`date_str` wins if both given).

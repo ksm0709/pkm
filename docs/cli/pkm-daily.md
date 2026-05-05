@@ -15,7 +15,7 @@ read-side options below to view a past daily note instead.
 
 ## Commands
 - **`add`**: Append a timestamped `[hh:mm:ss]` log entry to today's `## Logs` section. Always today.
-- **`subnote`**: Create a sub-note and log a `[[wikilink]]` in today's daily note. Always today.
+- **`subnote`**: Create a sub-note tagged `daily-note` and log a `[[wikilink]]` in today's daily note. Always today.
 - **`edit`**: Open a daily note in your configured editor. Defaults to today; `--offset N`
   or `--date YYYY-MM-DD` opens a past note (must already exist).
 
@@ -44,3 +44,6 @@ pkm daily subnote "ideas" --stdin < notes.md
 pkm daily edit
 pkm daily edit --offset 2                     # edit 2 days ago (note must already exist)
 ```
+
+Sub-notes always include the `daily-note` tag in frontmatter. Tags passed with
+`--tags` are added after it without duplicating `daily-note`.

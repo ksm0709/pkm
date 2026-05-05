@@ -17,6 +17,8 @@ from pkm.editor import get_editor
 
 console = Console()
 
+SUBNOTE_TAG = "daily-note"
+
 DAILY_TEMPLATE = """\
 ---
 id: {date}
@@ -36,11 +38,16 @@ def _make_subnote_content(
     aliases: list[str] | None = None,
 ) -> str:
     """Generate subnote file content with frontmatter."""
-    tags = tags or []
+    tags = [SUBNOTE_TAG, *(tags or [])]
+    tags = list(dict.fromkeys(tags))
     aliases = aliases or []
-    tags_yaml = "[]" if not tags else "\n" + "\n".join(f"- {t}" for t in tags)
-    aliases_yaml = "[]" if not aliases else "\n" + "\n".join(f"- {a}" for a in aliases)
-    return f"---\nid: {note_id}\naliases: {aliases_yaml}\ntags: {tags_yaml}\n---\n\n{content}"
+    tags_yaml = "tags: []" if not tags else "tags:\n" + "\n".join(f"- {t}" for t in tags)
+    aliases_yaml = (
+        "aliases: []"
+        if not aliases
+        else "aliases:\n" + "\n".join(f"- {a}" for a in aliases)
+    )
+    return f"---\nid: {note_id}\n{aliases_yaml}\n{tags_yaml}\n---\n\n{content}"
 
 
 def resolve_target_date(date_str: str | None, offset: int) -> str:
@@ -250,6 +257,7 @@ def subnote(
 
     The subnote YYYY-MM-DD-TITLE.md is created in the daily directory.
     If it already exists, only the wikilink is added to the daily log.
+    New subnotes always include the daily-note tag.
 
     \b
     Agent usage examples:

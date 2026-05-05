@@ -234,6 +234,7 @@ def test_create_daily_subnote_tool(tmp_path, monkeypatch):
     today = datetime.now().strftime("%Y-%m-%d")
     subnote = vault.daily_dir / f"{today}-test-summary.md"
     assert subnote.exists()
+    assert "- daily-note" in subnote.read_text()
 
     # Daily note has wikilink to subnote
     daily = vault.daily_dir / f"{today}.md"

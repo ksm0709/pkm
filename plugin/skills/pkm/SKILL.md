@@ -245,7 +245,7 @@ $ pkm daily add "오늘의 작업 내용"
 **Never create or append to daily/note files directly with Write/Edit tools as the first action.** Always use the CLI as the entry gate:
 
 - **Daily entries**: `pkm daily add "<text>"` — ensures [hh:mm:ss] timestamp format and ## Logs section
-- **Sub-notes**: `pkm daily subnote "<title>"` — creates dated sub-note and logs [[wikilink]] in daily
+- **Sub-notes**: `pkm daily subnote "<title>"` — creates dated sub-note tagged `daily-note` and logs [[wikilink]] in daily
 - **New notes**: `pkm note add "<Title>" --tags t1,t2` — ensures required frontmatter (id, aliases, tags, description)
 
 **After** the CLI creates the file/entry, using Read/Edit to modify the internal content is fine (e.g., expanding a note body, fixing wording). The gate applies to creation and appending only.

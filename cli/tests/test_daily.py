@@ -231,7 +231,7 @@ def test_daily_subnote_with_content(cli_runner, tmp_vault):
 
 
 def test_daily_subnote_with_tags(cli_runner, tmp_vault):
-    """daily subnote --tags writes tags in subnote frontmatter."""
+    """daily subnote --tags preserves user tags after the automatic daily-note tag."""
     today_str = today()
     note_path = tmp_vault.daily_dir / f"{today_str}.md"
     note_path.write_text(f"---\nid: {today_str}\n---\n## Logs\n", encoding="utf-8")
@@ -242,8 +242,24 @@ def test_daily_subnote_with_tags(cli_runner, tmp_vault):
     note_id = f"{today_str}-work-item"
     subnote = tmp_vault.daily_dir / f"{note_id}.md"
     content = subnote.read_text(encoding="utf-8")
+    assert "- daily-note" in content
     assert "work" in content
     assert "project" in content
+
+
+def test_daily_subnote_deduplicates_daily_note_tag(cli_runner, tmp_vault):
+    """daily subnote does not duplicate daily-note when passed explicitly."""
+    today_str = today()
+    note_path = tmp_vault.daily_dir / f"{today_str}.md"
+    note_path.write_text(f"---\nid: {today_str}\n---\n## Logs\n", encoding="utf-8")
+
+    result = cli_runner("daily", "subnote", "tagged", "--tags", "daily-note,work")
+    assert result.exit_code == 0, result.output
+
+    note_id = f"{today_str}-tagged"
+    content = (tmp_vault.daily_dir / f"{note_id}.md").read_text(encoding="utf-8")
+    assert content.count("- daily-note") == 1
+    assert "- work" in content
 
 
 def test_daily_subnote_with_aliases(cli_runner, tmp_vault):
@@ -343,7 +359,7 @@ def test_daily_subnote_path_traversal_rejected(cli_runner, tmp_vault):
 
 
 def test_daily_subnote_frontmatter_defaults(cli_runner, tmp_vault):
-    """daily subnote with no options creates subnote with empty tags/aliases."""
+    """daily subnote with no options creates default frontmatter."""
     today_str = today()
     note_path = tmp_vault.daily_dir / f"{today_str}.md"
     note_path.write_text(f"---\nid: {today_str}\n---\n## Logs\n", encoding="utf-8")
@@ -355,7 +371,7 @@ def test_daily_subnote_frontmatter_defaults(cli_runner, tmp_vault):
     content = (tmp_vault.daily_dir / f"{note_id}.md").read_text(encoding="utf-8")
     assert f"id: {note_id}" in content
     assert "aliases:" in content
-    assert "tags:" in content
+    assert "tags:\n- daily-note" in content
 
 
 # ---------------------------------------------------------------------------
