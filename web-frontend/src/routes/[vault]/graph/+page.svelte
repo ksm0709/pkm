@@ -59,6 +59,8 @@
   const GRAPH_WORLD_NODE_SPACING_Y = 230;
   const INTERACTIVE_NODE_CAP = 300;
   const LONG_PRESS_MS = 500;
+  const BACKGROUND_DOUBLE_TAP_MS = 360;
+  const BACKGROUND_DOUBLE_TAP_RADIUS = 28;
 
   let vaultName = $derived($page.params.vault ?? '');
   let loading = $state(true);
@@ -83,6 +85,7 @@
   let simulationGeneration = 0;
   let raf = 0;
   let activePointers = new Map<number, { x: number; y: number }>();
+  let lastBackgroundTap: { x: number; y: number; at: number } | null = null;
   let pointer:
     | { mode: 'node'; pointerId: number; nodeId: string; x: number; y: number; startedAt: number; moved: boolean }
     | { mode: 'pan'; pointerId: number; x: number; y: number; startedAt: number; moved: boolean }
@@ -420,7 +423,15 @@
     }
     pointer = null;
 
-    if (!node || ended.moved) return;
+    if (ended.moved) {
+      lastBackgroundTap = null;
+      return;
+    }
+    if (ended.mode === 'pan') {
+      handleBackgroundTap({ x: ended.x, y: ended.y });
+      return;
+    }
+    if (!node) return;
     const action = classifyGraphGesture({
       nodeType: node.type,
       durationMs: Date.now() - ended.startedAt,
@@ -433,9 +444,22 @@
     else if (action === 'focus') focusNode(node);
   }
 
+  function handleBackgroundTap(point: { x: number; y: number }) {
+    const now = Date.now();
+    const previous = lastBackgroundTap;
+    lastBackgroundTap = { ...point, at: now };
+    if (!previous) return;
+    const closeEnough = pointDistance(point, previous) <= BACKGROUND_DOUBLE_TAP_RADIUS;
+    const soonEnough = now - previous.at <= BACKGROUND_DOUBLE_TAP_MS;
+    if (!closeEnough || !soonEnough) return;
+    clearFocus();
+    lastBackgroundTap = null;
+  }
+
   function handlePointerCancel(event?: PointerEvent) {
     if (event) activePointers.delete(event.pointerId);
     else activePointers.clear();
+    lastBackgroundTap = null;
     if (pointer?.mode === 'node' && simulation) {
       const node = simulation.nodes().find((entry) => entry.id === pointer?.nodeId);
       if (node) {
@@ -493,6 +517,14 @@
     focusedId = node.id;
     selectedId = node.id;
     preview = null;
+    lastBackgroundTap = null;
+    renderVersion += 1;
+  }
+
+  function clearFocus() {
+    focusedId = null;
+    selectedId = null;
+    preview = null;
     renderVersion += 1;
   }
 
@@ -546,9 +578,7 @@
       preview = null;
       return;
     }
-    focusedId = null;
-    selectedId = null;
-    renderVersion += 1;
+    clearFocus();
   }
 
   function setPaused() {
@@ -768,10 +798,12 @@
     const dark = typeof document !== 'undefined' && document.documentElement.dataset.theme === 'dark';
     return {
       note: dark ? '#6b7280' : '#374151',
+      dailyNote: dark ? '#86efac' : '#bbf7d0',
       tag: dark ? '#facc15' : '#ca8a04',
       hub: '#2563eb',
       unresolved: '#9a3412',
       noteStroke: dark ? '#cbd5e1' : '#111827',
+      dailyNoteStroke: dark ? '#bbf7d0' : '#16a34a',
       edge: dark ? '#64748b' : '#94a3b8',
       semanticEdge: dark ? '#a78bfa' : '#7c3aed',
       accent: '#eab308',
@@ -783,13 +815,22 @@
     if (node.hub) return palette.hub;
     if (node.type === 'tag') return palette.tag;
     if (node.type === 'note_or_unresolved') return palette.unresolved;
+    if (isDailyNote(node)) return palette.dailyNote;
     return palette.note;
   }
 
   function nodeStroke(node: NormalizedGraphNode, palette: ReturnType<typeof graphPalette>) {
     if (node.hub) return '#93c5fd';
     if (node.type === 'tag') return '#fef08a';
+    if (isDailyNote(node)) return palette.dailyNoteStroke;
     return palette.noteStroke;
+  }
+
+  function isDailyNote(node: NormalizedGraphNode) {
+    if (node.type !== 'note') return false;
+    const community = node.community.toLowerCase();
+    const path = stringValue(node.raw.path).replace(/\\/g, '/').toLowerCase();
+    return community === 'daily' || path.includes('/daily/') || /^\d{4}-\d{2}-\d{2}(?:$|-)/.test(node.id);
   }
 
   function stringValue(value: unknown) {
