@@ -10,6 +10,7 @@ type GraphNode = {
   community?: string;
   graph_tier?: string;
   importance?: number;
+  path?: string;
 };
 
 type GraphLink = {
@@ -49,6 +50,7 @@ type TestApi = {
   getTransform: () => { x: number; y: number; k: number };
   getFocusState: (id: string) => 'focused' | 'neighbor' | 'muted' | 'normal' | null;
   getRenderedLabels: () => Array<{ id: string; text: string }>;
+  hitTest: (screenX: number, screenY: number) => { id: string } | null;
   dragNode: (id: string, dx: number, dy: number) => Promise<void>;
   getRenderedCounts: () => { nodes: number; edges: number; labels: number };
   getForceOptions: () => { repulsion: number; linkDistance: number };
@@ -76,6 +78,14 @@ const enrichedGraphFixture: GraphPayload = {
     { id: 'journal', title: 'Journal', type: 'note', community: 'daily', importance: 3 },
     { id: 'architecture', title: 'Architecture', type: 'note', community: 'architecture', importance: 7 },
     { id: 'daily-log', title: 'Daily Log', type: 'note', community: 'daily', importance: 4 },
+    {
+      id: 'daily-hub',
+      title: 'Daily Hub',
+      type: 'note',
+      community: 'daily',
+      graph_tier: 'hub',
+      path: '/vault/daily/daily-hub.md'
+    },
     {
       id: 'hub-pkm-development',
       title: 'PKM Development Hub',
@@ -148,6 +158,15 @@ test.describe('vault graph page', () => {
     expect(hub?.hub).toBe(true);
     expect(hub?.radius ?? 0).toBeGreaterThan(journal?.radius ?? 0);
     expect((await graphNode(page, 'tag:pkm'))?.type).toBe('tag');
+    const normalStyle = await graphNodeStyle(page, 'architecture');
+    expect(normalStyle?.fill).toBe('#374151');
+    expect(normalStyle?.stroke).toBe('#111827');
+    const dailyStyle = await graphNodeStyle(page, 'journal');
+    expect(dailyStyle?.fill).toBe('#bbf7d0');
+    expect(dailyStyle?.stroke).toBe('#16a34a');
+    const dailyHubStyle = await graphNodeStyle(page, 'daily-hub');
+    expect(dailyHubStyle?.fill).toBe('#2563eb');
+    expect(dailyHubStyle?.stroke).toBe('#93c5fd');
     const tagStyle = await graphNodeStyle(page, 'tag:pkm');
     expect(tagStyle?.fill).toMatch(/^#(?:ca8a04|facc15)$/);
     expect(tagStyle?.stroke).toBe('#fef08a');
@@ -223,6 +242,24 @@ test.describe('vault graph page', () => {
       { id: 'project-plan', text: 'project-plan' },
       { id: 'tag:pkm', text: 'tag:pkm' }
     ]);
+  });
+
+  test('double tapping empty graph space clears the focused neighborhood', async ({ page }) => {
+    const vaultName = TEST_VAULT;
+    await mockGraphApi(page, async (route) => json(route, enrichedGraphFixture));
+
+    await page.goto(graphPath(vaultName));
+    await settleGraph(page);
+
+    await clickNode(page, 'project-plan');
+    await expect(page.getByTestId('graph-focus-status')).toContainText('Project Plan');
+    expect(await focusState(page, 'daily-log')).toBe('muted');
+
+    await doubleTapEmptyCanvas(page);
+
+    await expect(page.getByTestId('graph-focus-status')).toContainText('full graph');
+    expect(await focusState(page, 'project-plan')).toBe('normal');
+    expect(await focusState(page, 'daily-log')).toBe('normal');
   });
 
   test('cmd click and long press open note preview while tag and unresolved nodes focus only', async ({ page }) => {
@@ -468,6 +505,39 @@ async function pinchCanvas(page: Page, startDistance: number, endDistance: numbe
   await dispatchTouchPointer(page, 'pointermove', 22, center.x + endDistance / 2, center.y);
   await dispatchTouchPointer(page, 'pointerup', 21, center.x - endDistance / 2, center.y);
   await dispatchTouchPointer(page, 'pointerup', 22, center.x + endDistance / 2, center.y);
+}
+
+async function doubleTapEmptyCanvas(page: Page) {
+  const point = await emptyCanvasPoint(page);
+  await dispatchTouchPointer(page, 'pointerdown', 31, point.x, point.y);
+  await dispatchTouchPointer(page, 'pointerup', 31, point.x, point.y);
+  await page.waitForTimeout(80);
+  await dispatchTouchPointer(page, 'pointerdown', 32, point.x, point.y);
+  await dispatchTouchPointer(page, 'pointerup', 32, point.x, point.y);
+}
+
+async function emptyCanvasPoint(page: Page) {
+  const box = await page.getByTestId('graph-canvas').boundingBox();
+  expect(box).not.toBeNull();
+  const candidates = [
+    { x: box!.x + 24, y: box!.y + 24 },
+    { x: box!.x + box!.width - 24, y: box!.y + 24 },
+    { x: box!.x + 24, y: box!.y + box!.height - 24 },
+    { x: box!.x + box!.width - 24, y: box!.y + box!.height - 24 },
+    { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 }
+  ];
+  for (const candidate of candidates) {
+    const hit = await page.evaluate(
+      ({ x, y, left, top }) =>
+        (window as typeof window & { __pkmGraphTest: TestApi }).__pkmGraphTest.hitTest(
+          x - left,
+          y - top
+        ),
+      { ...candidate, left: box!.x, top: box!.y }
+    );
+    if (!hit) return candidate;
+  }
+  throw new Error('Unable to find empty graph canvas point');
 }
 
 async function dispatchTouchPointer(page: Page, type: string, pointerId: number, clientX: number, clientY: number) {
