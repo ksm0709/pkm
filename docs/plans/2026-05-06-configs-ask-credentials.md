@@ -2,9 +2,9 @@
 
 > **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task.
 
-**Goal:** Add a vault-scoped Configs page where a local single user can safely enter, test, delete, and use Ask model API keys without storing secrets in the browser.
+**Goal:** Add a vault-scoped Configs page where a local single user can safely enter, test, delete, and use Ask model API keys from localhost or trusted Tailscale devices without storing secrets in the browser.
 
-**Architecture:** The browser renders a reusable `/{vault}/configs` settings hub and only sends API keys once over authenticated same-origin requests. The daemon stores secrets in an OS keyring when available, falls back to a `0600` local secrets file, returns only status/fingerprint metadata to the UI, and injects saved keys into Ask worker tasks server-side.
+**Architecture:** The browser renders a reusable `/{vault}/configs` settings hub and only sends API keys once over authenticated same-origin requests. The daemon accepts credential mutation only from loopback or Tailscale client IPs, stores secrets in an OS keyring when available, falls back to a `0600` local secrets file, returns only status/fingerprint metadata to the UI, and injects saved keys into Ask worker tasks server-side. Tailscale already encrypts device-to-device transport with WireGuard, so app-level request-body encryption is out of scope for this local/tailnet design.
 
 **Tech Stack:** SvelteKit/Svelte 5 frontend, aiohttp backend, optional Python `keyring`, local permission-restricted fallback file, existing Playwright/Vitest/pytest test suites.
 
@@ -53,6 +53,17 @@ def test_provider_registry_uses_litellm_environment_names():
     assert ASK_CREDENTIAL_PROVIDERS["google"]["env_key"] == "GEMINI_API_KEY"
     assert ASK_CREDENTIAL_PROVIDERS["openai"]["env_key"] == "OPENAI_API_KEY"
     assert ASK_CREDENTIAL_PROVIDERS["anthropic"]["env_key"] == "ANTHROPIC_API_KEY"
+
+
+def test_credential_origin_guard_allows_loopback_and_tailscale_only():
+    from pkm.secrets import credential_origin_allowed
+
+    assert credential_origin_allowed("127.0.0.1") is True
+    assert credential_origin_allowed("::1") is True
+    assert credential_origin_allowed("100.101.102.103") is True
+    assert credential_origin_allowed("fd7a:115c:a1e0::1") is True
+    assert credential_origin_allowed("192.168.0.10") is False
+    assert credential_origin_allowed("8.8.8.8") is False
 ```
 
 **Step 2: Run test to verify failure**
@@ -98,10 +109,13 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from ipaddress import ip_address, ip_network
 from pathlib import Path
 
 SECRET_PATH = Path.home() / ".config" / "pkm" / "secrets.env"
 KEYRING_SERVICE = "pkm.ask"
+TAILSCALE_IPV4 = ip_network("100.64.0.0/10")
+TAILSCALE_IPV6 = ip_network("fd7a:115c:a1e0::/48")
 
 ASK_CREDENTIAL_PROVIDERS = {
     "google": {"label": "Google Gemini", "env_key": "GEMINI_API_KEY"},
@@ -116,6 +130,16 @@ def mask_secret(value: str) -> str:
     if len(value) <= 4:
         return "****"
     return "*" * (len(value) - 4) + value[-4:]
+
+
+def credential_origin_allowed(remote: str | None) -> bool:
+    if not remote:
+        return False
+    try:
+        addr = ip_address(remote)
+    except ValueError:
+        return False
+    return addr.is_loopback or addr in TAILSCALE_IPV4 or addr in TAILSCALE_IPV6
 
 
 @dataclass
@@ -342,6 +366,23 @@ async def test_save_and_delete_credential(app, tmp_vault, monkeypatch):
         ("set", "OPENAI_API_KEY", "sk-test-secret"),
         ("delete", "OPENAI_API_KEY"),
     ]
+
+
+@pytest.mark.anyio
+async def test_credential_mutation_rejects_non_tailnet_remote(app, tmp_vault, monkeypatch):
+    monkeypatch.setattr(
+        "pkm.web.routes.configs.request_credential_origin_allowed",
+        lambda request: False,
+    )
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.put(
+            "/api/v1/vault/test-vault/configs/ask/credentials/openai",
+            json={"api_key": "sk-test-secret"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+
+    assert resp.status == 403
 ```
 
 **Step 2: Run test to verify failure**
@@ -371,7 +412,12 @@ from typing import Any
 
 from aiohttp import web
 
-from pkm.secrets import ASK_CREDENTIAL_PROVIDERS, SecretStore, provider_payload
+from pkm.secrets import (
+    ASK_CREDENTIAL_PROVIDERS,
+    SecretStore,
+    credential_origin_allowed,
+    provider_payload,
+)
 from pkm.web.routes.notes import _resolve_vault
 
 
@@ -380,6 +426,17 @@ def _provider_or_404(provider_id: str) -> dict[str, str]:
     if provider is None:
         raise web.HTTPNotFound(reason="Unknown credential provider")
     return provider
+
+
+def request_credential_origin_allowed(request: web.Request) -> bool:
+    peer = request.transport.get_extra_info("peername") if request.transport else None
+    remote = request.remote or (peer[0] if peer else None)
+    return credential_origin_allowed(remote)
+
+
+def _require_credential_origin(request: web.Request) -> None:
+    if not request_credential_origin_allowed(request):
+        raise web.HTTPForbidden(reason="Credential changes require localhost or Tailscale access")
 
 
 async def get_configs(request: web.Request) -> web.Response:
@@ -394,6 +451,7 @@ async def get_configs(request: web.Request) -> web.Response:
 
 async def put_ask_credential(request: web.Request) -> web.Response:
     _resolve_vault(request.match_info["name"])
+    _require_credential_origin(request)
     provider = _provider_or_404(request.match_info["provider"])
     body: dict[str, Any] = await request.json()
     api_key = str(body.get("api_key") or "").strip()
@@ -405,6 +463,7 @@ async def put_ask_credential(request: web.Request) -> web.Response:
 
 async def delete_ask_credential(request: web.Request) -> web.Response:
     _resolve_vault(request.match_info["name"])
+    _require_credential_origin(request)
     provider = _provider_or_404(request.match_info["provider"])
     SecretStore().delete(provider["env_key"])
     return web.json_response({"ok": True, "provider": request.match_info["provider"]})
@@ -412,6 +471,7 @@ async def delete_ask_credential(request: web.Request) -> web.Response:
 
 async def test_ask_credential(request: web.Request) -> web.Response:
     _resolve_vault(request.match_info["name"])
+    _require_credential_origin(request)
     provider = _provider_or_404(request.match_info["provider"])
     value = SecretStore().get(provider["env_key"])
     if not value:
@@ -1037,6 +1097,8 @@ Commit only files touched by fixes, using Lore trailer format.
 - Do not store API keys in `localStorage`, `sessionStorage`, IndexedDB, URL params, service worker cache, or transcript history.
 - Do not return raw secrets from any API response.
 - Do not log request bodies for credential routes.
+- Credential save/delete/test requests are allowed only from loopback or Tailscale IPs (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) after normal web authentication.
+- Do not add custom browser-side request-body encryption for this scope. It does not protect against compromised served JavaScript, while Tailscale already encrypts transport between trusted devices.
 - The fallback file exists only for local single-user mode and must always be `0600`.
 - `Configs` is the settings hub; future general settings should add new sections under this page instead of creating one-off settings pages.
 - If `keyring` is unavailable or unusable on a headless Linux session, fallback file storage is expected behavior, not a failure.
