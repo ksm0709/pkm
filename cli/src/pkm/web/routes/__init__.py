@@ -5,6 +5,11 @@ from __future__ import annotations
 from aiohttp import web
 
 from pkm.web.routes.ask import get_ask_options, get_ask_run, post_ask
+from pkm.web.routes.configs import (
+    delete_ask_credential,
+    get_configs,
+    put_ask_credential,
+)
 from pkm.web.routes.daily import (
     get_daily_date,
     get_daily_today,
@@ -66,6 +71,17 @@ def register_routes(app: web.Application) -> None:
     app.router.add_get("/api/v1/vault/{name}/ask/options", get_ask_options)
     app.router.add_get("/api/v1/vault/{name}/ask/runs/{run_id}", get_ask_run)
     app.router.add_post("/api/v1/vault/{name}/ask", post_ask)
+
+    # Configs
+    app.router.add_get("/api/v1/vault/{name}/configs", get_configs)
+    app.router.add_put(
+        "/api/v1/vault/{name}/configs/ask/credentials/{provider}",
+        put_ask_credential,
+    )
+    app.router.add_delete(
+        "/api/v1/vault/{name}/configs/ask/credentials/{provider}",
+        delete_ask_credential,
+    )
 
     # Workflows
     app.router.add_get("/api/v1/vault/{name}/workflows", list_workflows)

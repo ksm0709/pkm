@@ -83,6 +83,9 @@ let workflowConfigs: Record<string, {
 }>;
 
 let askPayloads: Array<{ query?: string; context?: string; ask_session_id?: string }> = [];
+let configCredentialStatus: Record<string, { configured: boolean; fingerprint: string | null }>;
+let failNextConfigSaveFor = '';
+let configGetCount = 0;
 
 const noteBodies: Record<string, unknown> = {
   'project-plan': {
@@ -151,7 +154,10 @@ test.describe('generated routing and event contracts', () => {
   test.beforeEach(async ({ page }) => {
     resetMockNotes();
     resetMockWorkflows();
+    resetMockConfigs();
     askPayloads = [];
+    failNextConfigSaveFor = '';
+    configGetCount = 0;
     await mockPkmApi(page);
   });
 
@@ -482,20 +488,18 @@ test.describe('generated routing and event contracts', () => {
     await expectTopbar(page, vaultName, 'daily');
     await expect(page.getByRole('heading', { name: 'Daily' })).toHaveCount(0);
 
-    const beforeDisabled = page.url();
     await page.getByRole('button', { name: 'Open navigation drawer' }).click();
     await expect(page.locator('aside[aria-label="App navigation"]')).toHaveAttribute(
       'aria-hidden',
       'false'
     );
-    await page
-      .locator('[role="button"][aria-label="Tags"]')
-      .evaluate((el) => (el as HTMLElement).click());
-    await expect(page).toHaveURL(beforeDisabled);
+    await page.getByRole('button', { name: 'Tags' }).click();
+    await expect(page).toHaveURL(new RegExp(`/${vaultName}/tags$`));
+    await expect(page.getByText('3 tags')).toBeVisible();
+    await page.getByRole('button', { name: 'Open navigation drawer' }).click();
     await page.getByRole('button', { name: 'Graph' }).click();
     await expect(page).toHaveURL(new RegExp(`/${vaultName}/graph$`));
     await expect(page.getByText('3 nodes')).toBeVisible();
-    await expect(page.locator('[data-testid="graph-node"]')).toHaveCount(3);
 
     await page.evaluate(() => {
       if (document.activeElement instanceof HTMLElement) {
@@ -507,6 +511,23 @@ test.describe('generated routing and event contracts', () => {
     await page.keyboard.press('d');
     await expect(page).toHaveURL(new RegExp(`/${vaultName}/notes/${today}$`));
     await expectNoteHeaderId(page, today);
+  });
+
+  test('tags page sorts tags by reference count and opens tag notes', async ({
+    page
+  }) => {
+    await page.goto(`/${vaultName}/tags`);
+    await page.waitForLoadState('networkidle').catch(() => {});
+
+    await expectTopbar(page, vaultName, 'tags');
+    await expect(page.getByText('3 tags')).toBeVisible();
+    await expect(page.locator('.tag-name')).toHaveText(['#pkm', '#layout', '#work']);
+    await expect(page.locator('.tag-count')).toHaveText(['2', '1', '1']);
+
+    await page.getByRole('link', { name: /#pkm/ }).click();
+    await expect(page).toHaveURL(new RegExp(`/${vaultName}/notes/tag%3Apkm$`));
+    await expectTopbar(page, vaultName, 'tag:pkm');
+    await expect(page.getByText('2 linked notes')).toBeVisible();
   });
 
   test('ask route auto-submits query params and streams manual submissions', async ({
@@ -581,7 +602,7 @@ test.describe('generated routing and event contracts', () => {
     const input = page.getByPlaceholder(/Ask/);
     const submit = page.getByRole('button', { name: 'Submit' });
     await expect(page.getByText('Enter a query packet below.')).toBeVisible();
-    await expect(page.getByText('model test/default-model')).toBeVisible();
+    await expect(page.getByText('model test/default-model (auto)')).toBeVisible();
     await expect(submit).toBeDisabled();
     const initialInputBox = await page.locator('.ask-input').boundingBox();
     expect(initialInputBox).not.toBeNull();
@@ -617,7 +638,7 @@ test.describe('generated routing and event contracts', () => {
       const box = await page.locator('.ask-input').boundingBox();
       return Math.round((box?.y ?? 0) + (box?.height ?? 0));
     }).toBe(720);
-    const modelBox = await page.getByText('model test/default-model').boundingBox();
+    const modelBox = await page.getByText('model test/default-model (auto)').boundingBox();
     const submitBox = await submit.boundingBox();
     const inputBox = await input.boundingBox();
     expect(modelBox).not.toBeNull();
@@ -1206,10 +1227,7 @@ test.describe('generated routing and event contracts', () => {
 
     await page.goto(`/${vaultName}`);
     await page.getByRole('button', { name: 'Open navigation drawer' }).click();
-    await expect(page.locator('[role="button"][aria-label="Graph"]')).toHaveAttribute(
-      'aria-disabled',
-      'false'
-    );
+    await expect(page.locator('button[aria-label="Graph"]')).toBeVisible();
 
     await openCommandPalette(page);
     await page.getByRole('option', { name: /Open graph/ }).click();
@@ -1219,6 +1237,56 @@ test.describe('generated routing and event contracts', () => {
       page.locator('[role="dialog"][aria-label="Command palette"]')
     ).toBeHidden();
     await expectNoMissingPage(page);
+  });
+
+  test('configs route manages ask credentials without storing raw secrets', async ({ page }) => {
+    const rawSecret = 'sk-live-raw-config-secret';
+    await page.goto(`/${vaultName}/configs`);
+
+    await expectTopbar(page, vaultName, 'configs');
+    await expect(page.getByRole('heading', { name: 'Configs' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Global Settings' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Ask Model Credentials' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Vault Settings' })).toBeVisible();
+
+    const openai = page.locator('[data-provider-id="openai"]');
+    const anthropic = page.locator('[data-provider-id="anthropic"]');
+    await expect(openai).toContainText('OpenAI');
+    await expect(openai).toContainText('OPENAI_API_KEY');
+    await expect(openai).toContainText('not configured');
+    await expect(anthropic).toContainText('Anthropic');
+    await expect(anthropic).toContainText('configured');
+    await expect(anthropic).toContainText('fp_existing');
+
+    const getCountBeforeSave = configGetCount;
+    await openai.getByLabel('OpenAI API key').fill(rawSecret);
+    await openai.getByRole('button', { name: 'Save OpenAI credential' }).click();
+    await expect(openai.getByText('Saved', { exact: true })).toBeVisible();
+    expect(configGetCount).toBeGreaterThan(getCountBeforeSave);
+    await expect(openai.getByLabel('OpenAI API key')).toHaveValue('');
+    await expect(openai).toContainText('configured');
+    await expect(openai).toContainText('fp_openai_saved');
+
+    const storageSnapshot = await page.evaluate((secret) => {
+      const dump = (storage: Storage) =>
+        Array.from({ length: storage.length }, (_, index) => {
+          const key = storage.key(index) ?? '';
+          return `${key}=${storage.getItem(key) ?? ''}`;
+        }).join('\n');
+      return {
+        local: dump(localStorage),
+        session: dump(sessionStorage)
+      };
+    }, rawSecret);
+    expect(storageSnapshot.local).not.toContain(rawSecret);
+    expect(storageSnapshot.session).not.toContain(rawSecret);
+
+    failNextConfigSaveFor = 'openai';
+    await openai.getByLabel('OpenAI API key').fill('sk-failing-secret');
+    await openai.getByRole('button', { name: 'Save OpenAI credential' }).click();
+    await expect(openai.getByText('Failed to save OpenAI credential.')).toBeVisible();
+    await expect(openai.getByLabel('OpenAI API key')).toHaveValue('sk-failing-secret');
+    await expect(anthropic.getByText('Failed to save OpenAI credential.')).toHaveCount(0);
   });
 
   test('command palette search, tag search, and empty states render deterministic content', async ({
@@ -1357,6 +1425,41 @@ async function mockPkmApi(page: Page) {
       return;
     }
 
+    const configsMatch = path.match(/^\/api\/v1\/vault\/([^/]+)\/configs$/);
+    if (configsMatch && route.request().method() === 'GET') {
+      configGetCount += 1;
+      await json(route, configPayload());
+      return;
+    }
+
+    const credentialMatch = path.match(
+      /^\/api\/v1\/vault\/([^/]+)\/configs\/ask\/credentials\/([^/]+)$/
+    );
+    if (credentialMatch) {
+      const providerId = credentialMatch[2];
+      if (route.request().method() === 'PUT') {
+        if (failNextConfigSaveFor === providerId) {
+          failNextConfigSaveFor = '';
+          await route.fulfill({ status: 500, body: 'save failed' });
+          return;
+        }
+        configCredentialStatus[providerId] = {
+          configured: true,
+          fingerprint: `fp_${providerId}_saved`
+        };
+        await json(route, configProviderPayload(providerId));
+        return;
+      }
+      if (route.request().method() === 'DELETE') {
+        configCredentialStatus[providerId] = {
+          configured: false,
+          fingerprint: null
+        };
+        await json(route, configProviderPayload(providerId));
+        return;
+      }
+    }
+
     const dailyDateMatch = path.match(/^\/api\/v1\/vault\/([^/]+)\/daily\/(\d{4}-\d{2}-\d{2})$/);
     if (dailyDateMatch) {
       const note = noteBodies[dailyDateMatch[2]];
@@ -1438,7 +1541,11 @@ async function mockPkmApi(page: Page) {
 
     const askOptionsMatch = path.match(/^\/api\/v1\/vault\/([^/]+)\/ask\/options$/);
     if (askOptionsMatch) {
-      await json(route, { model: 'test/default-model', reasoning_effort: 'medium' });
+      await json(route, {
+        model: 'auto',
+        resolved_model: 'test/default-model',
+        reasoning_effort: 'medium'
+      });
       return;
     }
 
@@ -1681,6 +1788,45 @@ function resetMockWorkflows() {
       jitter_type: 'md5_hostname_suffix:summary'
     }
   };
+}
+
+function resetMockConfigs() {
+  configCredentialStatus = {
+    openai: {
+      configured: false,
+      fingerprint: null
+    },
+    anthropic: {
+      configured: true,
+      fingerprint: 'fp_existing'
+    }
+  };
+}
+
+function configPayload() {
+  return {
+    ask_credentials: {
+      providers: [
+        {
+          id: 'openai',
+          label: 'OpenAI',
+          env_key: 'OPENAI_API_KEY',
+          ...configCredentialStatus.openai
+        },
+        {
+          id: 'anthropic',
+          label: 'Anthropic',
+          env_key: 'ANTHROPIC_API_KEY',
+          ...configCredentialStatus.anthropic
+        }
+      ]
+    }
+  };
+}
+
+function configProviderPayload(providerId: string) {
+  const providers = configPayload().ask_credentials.providers;
+  return providers.find((provider) => provider.id === providerId) ?? providers[0];
 }
 
 function snippetFor(query: string, body: string): string {

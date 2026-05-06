@@ -34,6 +34,7 @@ dev = [
 ]
 web = [
     "aiohttp>=3.9",
+    "keyring>=25.0",
 ]
 
 [tool.hatch.metadata]

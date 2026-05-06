@@ -51,4 +51,32 @@ describe('AskSessionState', () => {
     expect(session.turns[0].items).toEqual([]);
     expect(getMock).toHaveBeenCalledWith(expect.stringContaining('/ask/runs/web-run-'));
   });
+
+  it('labels auto model selections with the resolved model', async () => {
+    const getMock = vi.mocked(apiGet);
+    getMock.mockResolvedValue({
+      model: 'auto',
+      resolved_model: 'test/resolved-model',
+      reasoning_effort: 'medium'
+    });
+
+    const session = getAskSession(`auto-model-${Date.now()}`);
+    await session.loadOptions();
+
+    expect(session.modelLabel).toBe('test/resolved-model (auto)');
+  });
+
+  it('labels explicit model selections without an auto suffix', async () => {
+    const getMock = vi.mocked(apiGet);
+    getMock.mockResolvedValue({
+      model: 'test/explicit-model',
+      resolved_model: 'test/explicit-model',
+      reasoning_effort: 'medium'
+    });
+
+    const session = getAskSession(`explicit-model-${Date.now()}`);
+    await session.loadOptions();
+
+    expect(session.modelLabel).toBe('test/explicit-model');
+  });
 });

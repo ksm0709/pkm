@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { apiGet } from '$lib/api/client.js';
+  import { appNavPages } from '$lib/navigation/app-nav';
 
   interface Props {
     vaultName: string;
@@ -114,6 +115,14 @@
   }
 
   function staticCommands(): CommandRow[] {
+    const navCommands: CommandRow[] = appNavPages.map((item) => ({
+      kind: 'command',
+      id: `nav:${item.id}`,
+      label: item.commandLabel,
+      hint: item.commandHint,
+      run: () => goto(item.href(vaultName))
+    }));
+
     const list: CommandRow[] = [
       {
         kind: 'command',
@@ -145,20 +154,7 @@
           return goto(target);
         }
       },
-      {
-        kind: 'command',
-        id: 'cmd:logger',
-        label: 'Open logger',
-        hint: 'daily log',
-        run: () => goto(`/${vaultName}/logger`)
-      },
-      {
-        kind: 'command',
-        id: 'cmd:workflows',
-        label: 'Open workflows',
-        hint: 'automation',
-        run: () => goto(`/${vaultName}/workflows`)
-      },
+      ...navCommands,
       {
         kind: 'command',
         id: 'cmd:switch',
@@ -181,13 +177,6 @@
           const t = nextTheme(readStoredTheme());
           dispatchTheme(t);
         }
-      },
-      {
-        kind: 'command',
-        id: 'cmd:graph',
-        label: 'Open graph',
-        hint: 'graph overview',
-        run: () => goto(`/${vaultName}/graph`)
       }
     ];
     return list;

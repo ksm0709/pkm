@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 import sys
 import time
@@ -31,6 +32,8 @@ from aiohttp.client_exceptions import ClientConnectionResetError
 from aiohttp import web
 
 from pkm.config import load_config
+from pkm.models import resolve_auto_models
+from pkm.credential_store import ask_credential_env
 from pkm.web.keepalive import run_keepalive
 from pkm.web.routes.notes import _resolve_vault
 
@@ -210,6 +213,39 @@ def _default_ask_options() -> tuple[str, str | None]:
     return defaults.get("model") or "auto", defaults.get("reasoning-effort")
 
 
+_MISSING_ENV = object()
+
+
+def _resolve_auto_models_with_env(env_keys: dict[str, str]) -> list[str]:
+    previous: dict[str, str | object] = {}
+    for key, value in env_keys.items():
+        if not value:
+            continue
+        previous[key] = os.environ.get(key, _MISSING_ENV)
+        os.environ[key] = value
+    try:
+        return resolve_auto_models()
+    finally:
+        for key, value in previous.items():
+            if value is _MISSING_ENV:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = str(value)
+
+
+def _resolved_ask_model(model: str, env_keys: dict[str, str] | None = None) -> str | None:
+    if model != "auto":
+        return model
+    try:
+        models = _resolve_auto_models_with_env(env_keys or {})
+    except ImportError:
+        return "gemini/gemini-3-flash-preview"
+    except Exception:
+        logger.exception("Failed to resolve auto ask model")
+        return None
+    return models[0] if models else None
+
+
 def _ask_run_id(value: Any) -> str:
     if isinstance(value, str):
         candidate = value.strip()
@@ -222,7 +258,14 @@ async def get_ask_options(request: web.Request) -> web.Response:
     """GET /api/v1/vault/{name}/ask/options — expose resolved ask defaults."""
     _resolve_vault(request.match_info["name"])
     model, reasoning_effort = _default_ask_options()
-    return web.json_response({"model": model, "reasoning_effort": reasoning_effort})
+    env_keys = ask_credential_env()
+    return web.json_response(
+        {
+            "model": model,
+            "resolved_model": _resolved_ask_model(model, env_keys),
+            "reasoning_effort": reasoning_effort,
+        }
+    )
 
 
 async def get_ask_run(request: web.Request) -> web.Response:
@@ -353,7 +396,7 @@ async def post_ask(request: web.Request) -> web.StreamResponse:
             "ask_session_id": ask_session_id,
             "model": model,
             "reasoning_effort": reasoning_effort,
-            "env_keys": body.get("env_keys", {}),
+            "env_keys": ask_credential_env(),
             "env": {"PKM_VAULT_DIR": str(vault.path)},
             "cwd": body.get("cwd"),
         }
