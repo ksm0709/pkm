@@ -111,8 +111,8 @@ export class AskSessionState {
     try {
       const options = (await apiGet(
         `/api/v1/vault/${this.vaultName}/ask/options`
-      )) as { model?: string };
-      this.modelLabel = options.model || 'auto';
+      )) as { model?: string; resolved_model?: string };
+      this.modelLabel = modelLabelFromOptions(options);
     } catch {
       this.modelLabel = 'auto';
     }
@@ -368,6 +368,13 @@ export class AskSessionState {
       })
     ].join('\n\n');
   }
+}
+
+function modelLabelFromOptions(options: { model?: string; resolved_model?: string }) {
+  const selected = options.model || 'auto';
+  const resolved = options.resolved_model || '';
+  if (selected === 'auto') return resolved ? `${resolved} (auto)` : 'auto';
+  return resolved || selected;
 }
 
 function createAskSessionId() {

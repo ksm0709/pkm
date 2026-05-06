@@ -57,7 +57,7 @@ test.describe('command palette and shell navigation', () => {
       'false'
     );
     await expect(page.getByRole('navigation', { name: 'Vault sections' })).toBeVisible();
-    for (const label of ['Notes', 'Search', 'Tags', 'Graph', 'Ask', 'Logger', 'Daily']) {
+    for (const label of ['Notes', 'Search', 'Tags', 'Graph', 'Ask', 'Logger', 'Workflows', 'Daily', 'Configs']) {
       await expect(page.getByRole('button', { name: new RegExp(label) })).toBeVisible();
     }
     expect(noteListRequests).toEqual([]);
@@ -75,16 +75,15 @@ test.describe('command palette and shell navigation', () => {
       'false'
     );
 
-    const before = page.url();
-    const tags = page.locator('[role="button"][aria-label="Tags"]');
+    const tags = page.getByRole('button', { name: 'Tags' });
     const graph = page.getByRole('button', { name: 'Graph' });
     const vaultPath = vaultPathPattern(vaultName);
-    await expect(tags).toHaveAttribute('aria-disabled', 'true');
     await expect(graph).toBeVisible();
 
-    await tags.evaluate((el) => (el as HTMLElement).click());
-    expect(page.url()).toBe(before);
+    await tags.click();
+    await expect(page).toHaveURL(new RegExp(`/${vaultPath}/tags$`));
 
+    await page.getByRole('button', { name: 'Open navigation drawer' }).click();
     await page
       .locator('button[aria-label="Graph"]')
       .evaluate((el) => (el as HTMLElement).click());
@@ -131,6 +130,31 @@ test.describe('command palette and shell navigation', () => {
     await result.click();
 
     await expect(page).toHaveURL(new RegExp(`/${escapeRegExp(vaultName)}/notes/`));
+  });
+
+  test('command palette exposes every routed sidebar page', async ({ page }) => {
+    const vaultName = await loginAndFindVault(page);
+    const vaultPath = vaultPathPattern(vaultName);
+    const navCommands = [
+      { query: 'notes', label: /^Open notes\b/, path: `/${vaultPath}$` },
+      { query: 'tags', label: /^Open tags\b/, path: `/${vaultPath}/tags$` },
+      { query: 'graph', label: /^Open graph\b/, path: `/${vaultPath}/graph$` },
+      { query: 'ask', label: /^Open ask\b/, path: `/${vaultPath}/ask$` },
+      { query: 'logger', label: /^Open logger\b/, path: `/${vaultPath}/logger$` },
+      { query: 'workflow', label: /^Open workflows\b/, path: `/${vaultPath}/workflows$` },
+      { query: 'daily', label: /^Open daily\b/, path: `/${vaultPath}/daily$` },
+      { query: 'configs', label: /^Open configs\b/, path: `/${vaultPath}/configs$` }
+    ];
+
+    for (const command of navCommands) {
+      await page.goto(`/${encodeURIComponent(vaultName)}`);
+      await page.waitForLoadState('networkidle').catch(() => {});
+      await page.getByRole('button', { name: 'Open command palette' }).click();
+      await expectCommandPaletteFocused(page);
+      await page.locator('.cmdk-input').fill(command.query);
+      await page.getByRole('option', { name: command.label }).click();
+      await expect(page).toHaveURL(new RegExp(command.path));
+    }
   });
 });
 

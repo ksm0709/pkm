@@ -1,11 +1,12 @@
 import asyncio
+import contextvars
 import sys
 import json
 import os
 import logging
 import re
 from collections import OrderedDict
-from typing import Dict, Any, Optional, List
+from typing import Awaitable, Callable, Dict, Any, Optional, List
 
 # Configure logging to stderr so it doesn't interfere with stdout IPC
 logging.basicConfig(
@@ -138,6 +139,10 @@ class IPCClient:
 
 
 ipc = IPCClient()
+_ENV_LOCK = asyncio.Lock()
+_ENV_LOCK_HELD: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "pkm_worker_env_lock_held", default=False
+)
 
 
 async def _run_agent_task(
@@ -154,25 +159,84 @@ async def _run_agent_task(
     persistent_session_id: Optional[str] = None,
     mock_response_prefix: str = "Mocked response for:",
 ):
-    if env_keys:
-        os.environ.update(env_keys)
-
-    if os.environ.get("PKM_TEST_MOCK_LLM") == "1":
-        if mock_response_prefix == "Mocked maintenance response":
-            mock_res = mock_response_prefix
-        else:
-            mock_res = f"{mock_response_prefix} {user_content}"
-        await ipc.send_message(
-            {
-                "type": "result",
-                "id": task_id,
-                "status": "success",
-                "data": {"response": mock_res},
-            }
+    async def run() -> None:
+        await _run_agent_task_impl(
+            task_id=task_id,
+            session_prefix=session_prefix,
+            user_content=user_content,
+            system_prompt=system_prompt,
+            vault_dir=vault_dir,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            cwd=cwd,
+            skills_dirs=skills_dirs,
+            persistent_session_id=persistent_session_id,
+            mock_response_prefix=mock_response_prefix,
         )
-        return
 
+    await _run_with_env(env_keys or {}, run)
+
+
+async def _run_with_env(
+    env_vars: Dict[str, str],
+    action: Callable[[], Awaitable[Any]],
+) -> Any:
+    if _ENV_LOCK_HELD.get():
+        return await _run_with_env_unlocked(env_vars, action)
+
+    async with _ENV_LOCK:
+        token = _ENV_LOCK_HELD.set(True)
+        try:
+            return await _run_with_env_unlocked(env_vars, action)
+        finally:
+            _ENV_LOCK_HELD.reset(token)
+
+
+async def _run_with_env_unlocked(
+    env_vars: Dict[str, str],
+    action: Callable[[], Awaitable[Any]],
+) -> Any:
+    previous_env = {key: os.environ.get(key) for key in env_vars}
     try:
+        os.environ.update(env_vars)
+        return await action()
+    finally:
+        for key, value in previous_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
+async def _run_agent_task_impl(
+    task_id: str,
+    session_prefix: str,
+    user_content: str,
+    system_prompt: str,
+    vault_dir: str,
+    model: Optional[str] = None,
+    reasoning_effort: Optional[str] = None,
+    cwd: Optional[str] = None,
+    skills_dirs: Optional[List[str]] = None,
+    persistent_session_id: Optional[str] = None,
+    mock_response_prefix: str = "Mocked response for:",
+):
+    try:
+        if os.environ.get("PKM_TEST_MOCK_LLM") == "1":
+            if mock_response_prefix == "Mocked maintenance response":
+                mock_res = mock_response_prefix
+            else:
+                mock_res = f"{mock_response_prefix} {user_content}"
+            await ipc.send_message(
+                {
+                    "type": "result",
+                    "id": task_id,
+                    "status": "success",
+                    "data": {"response": mock_res},
+                }
+            )
+            return
+
         from tiny_agent.agent import Agent
         from pkm.tools import get_pkm_tools
 
@@ -421,12 +485,17 @@ async def _dispatch_workflow(
 
 
 async def handle_task(msg: Dict[str, Any]):
+    env_vars = msg.get("env", {})
+
+    async def run() -> None:
+        await _handle_task_with_current_env(msg)
+
+    await _run_with_env(env_vars, run)
+
+
+async def _handle_task_with_current_env(msg: Dict[str, Any]) -> None:
     task_id = str(msg.get("id", ""))
     task_type = msg.get("task_type")
-
-    env_vars = msg.get("env", {})
-    for k, v in env_vars.items():
-        os.environ[k] = v
 
     vault_dir = os.environ.get("PKM_VAULT_DIR", ".")
 

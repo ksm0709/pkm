@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
+  import { appNavPages } from '$lib/navigation/app-nav';
 
   interface Props {
     vaultName: string;
@@ -18,7 +19,7 @@
     disabled?: boolean;
   };
 
-  const props = $props<Props>();
+  const props: Props = $props();
   let vaultName = $derived(props.vaultName);
   let open = $derived(props.open ?? false);
   let openCommandPalette = $derived(props.openCommandPalette ?? (() => {}));
@@ -26,12 +27,10 @@
 
   let activePath = $derived(decodeURIComponent($page.url.pathname));
 
-  let navItems = $derived<NavItem[]>([
+  let navItems: NavItem[] = $derived([
     {
-      id: 'notes',
-      label: 'Notes',
-      meta: 'index',
-      href: `/${vaultName}`
+      ...appNavPages[0],
+      href: appNavPages[0].href(vaultName)
     },
     {
       id: 'search',
@@ -39,42 +38,10 @@
       meta: 'cmdk',
       action: openCommandPalette
     },
-    {
-      id: 'tags',
-      label: 'Tags',
-      meta: 'pending',
-      disabled: true
-    },
-    {
-      id: 'graph',
-      label: 'Graph',
-      meta: 'network',
-      href: `/${vaultName}/graph`
-    },
-    {
-      id: 'ask',
-      label: 'Ask',
-      meta: 'agent',
-      href: `/${vaultName}/ask`
-    },
-    {
-      id: 'logger',
-      label: 'Logger',
-      meta: 'daily log',
-      href: `/${vaultName}/logger`
-    },
-    {
-      id: 'workflows',
-      label: 'Workflows',
-      meta: 'automation',
-      href: `/${vaultName}/workflows`
-    },
-    {
-      id: 'daily',
-      label: 'Daily',
-      meta: 'ledger',
-      href: `/${vaultName}/daily`
-    }
+    ...appNavPages.slice(1).map((item) => ({
+      ...item,
+      href: item.href(vaultName)
+    }))
   ]);
 
   function isActive(item: NavItem) {
@@ -108,7 +75,7 @@
   <div class="drawer-inner">
     <div class="drawer-header">
       <span class="drawer-title">navigation</span>
-      <span class="drawer-count">8 channels</span>
+      <span class="drawer-count">{navItems.length} channels</span>
     </div>
 
     <nav class="nav-list" aria-label="Vault sections">

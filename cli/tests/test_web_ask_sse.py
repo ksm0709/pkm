@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 import time
 import types
@@ -630,6 +631,37 @@ async def test_ask_uses_configured_default_model_and_reasoning_effort(
 
 
 @pytest.mark.anyio
+async def test_ask_injects_saved_credentials_and_ignores_body_env_keys(
+    app, tmp_vault: VaultConfig, patch_daemon, monkeypatch
+) -> None:
+    """HTTP web ask should use saved credentials, not caller-supplied env_keys."""
+    fake = _FakeWorker()
+    monkeypatch.setattr(_daemon, "worker_proxy", fake)
+    monkeypatch.setattr(
+        ask_route,
+        "ask_credential_env",
+        lambda: {"GEMINI_API_KEY": "saved-gemini"},
+    )
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post(
+            "/api/v1/vault/test-vault/ask",
+            json={
+                "query": "anything",
+                "env_keys": {
+                    "GEMINI_API_KEY": "body-gemini",
+                    "OPENAI_API_KEY": "body-openai",
+                },
+            },
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        await resp.text()
+
+    assert resp.status == 200
+    assert fake.tasks_seen[-1]["env_keys"] == {"GEMINI_API_KEY": "saved-gemini"}
+
+
+@pytest.mark.anyio
 async def test_get_ask_options_returns_configured_default_model(
     app, tmp_vault: VaultConfig, monkeypatch
 ) -> None:
@@ -648,7 +680,81 @@ async def test_get_ask_options_returns_configured_default_model(
         body = await resp.json()
 
     assert resp.status == 200
-    assert body == {"model": "test/default-model", "reasoning_effort": "medium"}
+    assert body == {
+        "model": "test/default-model",
+        "resolved_model": "test/default-model",
+        "reasoning_effort": "medium",
+    }
+
+
+@pytest.mark.anyio
+async def test_get_ask_options_resolves_auto_model(
+    app, tmp_vault: VaultConfig, monkeypatch
+) -> None:
+    """When ask defaults use auto, expose the model the worker will try first."""
+    monkeypatch.setattr(
+        ask_route,
+        "load_config",
+        lambda: {"defaults": {"model": "auto", "reasoning-effort": "medium"}},
+    )
+    monkeypatch.setattr(
+        ask_route,
+        "resolve_auto_models",
+        lambda: ["test/resolved-model", "test/fallback-model"],
+    )
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/ask/options",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        body = await resp.json()
+
+    assert resp.status == 200
+    assert body == {
+        "model": "auto",
+        "resolved_model": "test/resolved-model",
+        "reasoning_effort": "medium",
+    }
+
+
+@pytest.mark.anyio
+async def test_get_ask_options_resolves_auto_model_with_saved_credentials(
+    app, tmp_vault: VaultConfig, monkeypatch
+) -> None:
+    """The displayed auto model should match the worker's credential-injected env."""
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(
+        ask_route,
+        "load_config",
+        lambda: {"defaults": {"model": "auto", "reasoning-effort": "medium"}},
+    )
+    monkeypatch.setattr(
+        ask_route,
+        "ask_credential_env",
+        lambda: {"OPENAI_API_KEY": "saved-openai-key"},
+    )
+
+    def _resolve_auto_models() -> list[str]:
+        assert os.environ.get("OPENAI_API_KEY") == "saved-openai-key"
+        return ["gpt-5.4-mini"]
+
+    monkeypatch.setattr(ask_route, "resolve_auto_models", _resolve_auto_models)
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/ask/options",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        body = await resp.json()
+
+    assert resp.status == 200
+    assert body == {
+        "model": "auto",
+        "resolved_model": "gpt-5.4-mini",
+        "reasoning_effort": "medium",
+    }
+    assert os.environ.get("OPENAI_API_KEY") is None
 
 
 # ---------------------------------------------------------------------------
