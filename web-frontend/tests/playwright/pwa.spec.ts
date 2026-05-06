@@ -13,6 +13,7 @@ test.describe('PWA installability contract', () => {
     expect(manifest.start_url).toBe('/');
     expect(manifest.scope).toBe('/');
     expect(manifest.display).toBe('standalone');
+    expect(manifest.orientation).toBe('portrait');
     expect(manifest.theme_color).toBe('#090b0d');
     expect(manifest.background_color).toBe('#090b0d');
     expect(manifest.icons).toEqual(
@@ -73,5 +74,38 @@ test.describe('PWA installability contract', () => {
     expect(sourceFile).toContain('fetch');
     expect(sourceFile).toContain('manifest.webmanifest');
     expect(sourceFile).toContain('/icons/pwa-192.png');
+  });
+
+  test('keeps the app icon as a radial node graph without text', async () => {
+    const source = await readFile('static/icons/pkm-node-graph.svg', 'utf8');
+
+    expect(source).toContain('aria-label="PKM node graph icon"');
+    expect(source).not.toMatch(/<text\b/i);
+    expect(source.match(/<circle\b/g)?.length ?? 0).toBeGreaterThanOrEqual(6);
+  });
+
+  test('requests portrait orientation lock when supported', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(window.screen, 'orientation', {
+        configurable: true,
+        value: {
+          lock: async (orientation: string) => {
+            (window as typeof window & { __orientationLockCalls: string[] })
+              .__orientationLockCalls.push(orientation);
+          }
+        }
+      });
+      (window as typeof window & { __orientationLockCalls: string[] }).__orientationLockCalls = [];
+    });
+
+    await page.goto('/');
+
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => (window as typeof window & { __orientationLockCalls: string[] }).__orientationLockCalls
+        )
+      )
+      .toEqual(['portrait']);
   });
 });

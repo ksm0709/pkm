@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="PKM node graph icon">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="44%" r="76%">
+      <stop offset="0%" stop-color="#182329" />
+      <stop offset="58%" stop-color="#0b1115" />
+      <stop offset="100%" stop-color="#07090b" />
+    </radialGradient>
+    <linearGradient id="edge" x1="96" y1="88" x2="416" y2="424">
+      <stop offset="0%" stop-color="#9ddad2" />
+      <stop offset="50%" stop-color="#d8bc6a" />
+      <stop offset="100%" stop-color="#b7c5ff" />
+    </linearGradient>
+    <filter id="soft-glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="9" result="blur" />
+      <feColorMatrix
+        in="blur"
+        type="matrix"
+        values="0 0 0 0 0.61 0 0 0 0 0.84 0 0 0 0 0.80 0 0 0 0.54 0"
+      />
+      <feMerge>
+        <feMergeNode />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="108" fill="url(#bg)" />
+  <circle cx="256" cy="256" r="178" fill="none" stroke="#223038" stroke-width="2" opacity="0.58" />
+  <circle cx="256" cy="256" r="112" fill="none" stroke="#263b43" stroke-width="1.5" opacity="0.46" />
+
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M256 102 404 207 348 381 164 381 108 207 256 102" stroke="#d8bc6a" stroke-width="9" opacity="0.56" />
+    <path d="M256 256 256 102" stroke="#9ddad2" stroke-width="14" opacity="0.86" />
+    <path d="M256 256 404 207" stroke="#d8bc6a" stroke-width="14" opacity="0.82" />
+    <path d="M256 256 348 381" stroke="#b7c5ff" stroke-width="14" opacity="0.82" />
+    <path d="M256 256 164 381" stroke="#e3a5b4" stroke-width="14" opacity="0.82" />
+    <path d="M256 256 108 207" stroke="#8fd18f" stroke-width="14" opacity="0.82" />
+  </g>
+
+  <g filter="url(#soft-glow)">
+    <circle cx="256" cy="256" r="38" fill="#f4d27b" />
+    <circle cx="256" cy="256" r="19" fill="#0b1115" opacity="0.34" />
+    <circle cx="256" cy="102" r="30" fill="#9ddad2" />
+    <circle cx="404" cy="207" r="30" fill="#d8bc6a" />
+    <circle cx="348" cy="381" r="30" fill="#b7c5ff" />
+    <circle cx="164" cy="381" r="30" fill="#e3a5b4" />
+    <circle cx="108" cy="207" r="30" fill="#8fd18f" />
+  </g>
+
+  <g fill="#ffffff" opacity="0.28">
+    <circle cx="246" cy="244" r="6" />
+    <circle cx="247" cy="91" r="5" />
+    <circle cx="394" cy="196" r="5" />
+    <circle cx="338" cy="370" r="5" />
+    <circle cx="154" cy="370" r="5" />
+    <circle cx="98" cy="196" r="5" />
+  </g>
+</svg>
