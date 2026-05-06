@@ -46,6 +46,7 @@ cli/.pkm
 .claude/scheduled_tasks.lock
 AGENTS.md
 CLAUDE.md
+docs/plans/
 .context/*
 !.context/config.jsonc
 !.context/memory
