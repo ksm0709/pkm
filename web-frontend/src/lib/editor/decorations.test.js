@@ -5,6 +5,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { admonitions, admonitionsTheme } from "./admonitions.js";
 import { checkboxes, checkboxesTheme } from "./checkboxes.js";
 import { footnotes, footnotesTheme } from "./footnotes.js";
+import {
+  frontmatterByline,
+  frontmatterBylineTheme,
+} from "./frontmatter-byline.js";
+import { katexLazy, katexLazyTheme } from "./katex-lazy.js";
 import { markdownWithGfm } from "./markdown-extensions.js";
 import { tagPill, tagPillTheme } from "./tag-pill.js";
 import { pkmTheme } from "./theme.js";
@@ -17,14 +22,14 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-function createView(doc, extensions) {
+function createView(doc, extensions, selection = 0) {
   const parent = document.createElement("div");
   document.body.appendChild(parent);
   const view = new EditorView({
     parent,
     state: EditorState.create({
       doc,
-      selection: { anchor: 0 },
+      selection: { anchor: selection },
       extensions,
     }),
   });
@@ -113,5 +118,41 @@ describe("editor markdown decorations", () => {
       0,
     );
     expect(view.dom.className).toContain("cm-editor");
+  });
+
+  it("renders frontmatter as an author/date byline only when the cursor is outside YAML", () => {
+    const doc = '---\nauthor: "Ada"\ndate: 2026-05-08\n---\n# Title\n';
+    const hidden = createView(
+      doc,
+      [frontmatterByline, frontmatterBylineTheme],
+      doc.length,
+    );
+
+    expect(
+      hidden.dom.querySelector(".cm-frontmatter-byline")?.textContent,
+    ).toBe("by Ada · 2026-05-08");
+    expect(hidden.dom.textContent).not.toContain("author:");
+
+    const editable = createView(
+      doc,
+      [frontmatterByline, frontmatterBylineTheme],
+      4,
+    );
+    expect(editable.dom.querySelector(".cm-frontmatter-byline")).toBeNull();
+    expect(editable.dom.textContent).toContain("author:");
+  });
+
+  it("replaces off-line inline and block math while keeping active-line math editable", () => {
+    const view = createView("active $raw$\nmath $x + y$ and $$z^2$$\n", [
+      katexLazy,
+      katexLazyTheme,
+    ]);
+
+    const math = [...view.dom.querySelectorAll(".cm-md-math")].map((node) =>
+      node.textContent?.trim(),
+    );
+
+    expect(math).toEqual(["x + y", "z^2"]);
+    expect(view.dom.textContent).toContain("$raw$");
   });
 });

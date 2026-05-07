@@ -18,8 +18,8 @@
  * Lightweight YAML parsing only — `key: value` per-line regex. No external
  * YAML library; this widget renders a caption, not a full editor.
  */
-import { EditorView, ViewPlugin, Decoration, WidgetType } from '@codemirror/view';
-import { RangeSetBuilder } from '@codemirror/state';
+import { EditorView, Decoration, WidgetType } from "@codemirror/view";
+import { RangeSetBuilder, StateField } from "@codemirror/state";
 
 // Match a key:value line inside the frontmatter block. Keys are simple
 // identifiers (a-z, 0-9, _, -); values are everything to end of line.
@@ -35,7 +35,7 @@ function findFrontmatter(doc) {
   // Must start with "---\n" at the very beginning.
   if (doc.length < 8) return null;
   const head = doc.sliceString(0, 4);
-  if (head !== '---\n') return null;
+  if (head !== "---\n") return null;
 
   // Search the document for the closing "\n---\n" or "\n---" at EOF.
   const text = doc.sliceString(0, Math.min(doc.length, 4096));
@@ -46,7 +46,7 @@ function findFrontmatter(doc) {
   const m = closeRe.exec(text);
   if (!m) return null;
   const closeStart = m.index + 1; // position of the "---" line start
-  const closeEnd = closeStart + 3 + (m[1] === '\n' ? 1 : 0); // include trailing newline if present
+  const closeEnd = closeStart + 3 + (m[1] === "\n" ? 1 : 0); // include trailing newline if present
   const body = text.slice(4, closeStart);
   return { from: 0, to: closeEnd, body };
 }
@@ -60,7 +60,7 @@ function findFrontmatter(doc) {
 function parseFields(body) {
   /** @type {Record<string,string>} */
   const out = {};
-  const lines = body.split('\n');
+  const lines = body.split("\n");
   for (const line of lines) {
     const m = KV_RE.exec(line);
     if (!m) continue;
@@ -89,7 +89,7 @@ function buildCaption(fm) {
   const parts = [];
   if (author) parts.push(`by ${author}`);
   if (date) parts.push(date);
-  return parts.join(' · ');
+  return parts.join(" · ");
 }
 
 class BylineWidget extends WidgetType {
@@ -103,8 +103,8 @@ class BylineWidget extends WidgetType {
     return other.caption === this.caption;
   }
   toDOM() {
-    const div = document.createElement('div');
-    div.className = 'cm-frontmatter-byline';
+    const div = document.createElement("div");
+    div.className = "cm-frontmatter-byline";
     div.textContent = this.caption;
     return div;
   }
@@ -113,15 +113,15 @@ class BylineWidget extends WidgetType {
   }
 }
 
-/** @param {import('@codemirror/view').EditorView} view */
-function buildDecorations(view) {
+/** @param {import('@codemirror/state').EditorState} state */
+function buildDecorations(state) {
   /** @type {RangeSetBuilder<Decoration>} */
   const builder = new RangeSetBuilder();
-  const fm = findFrontmatter(view.state.doc);
+  const fm = findFrontmatter(state.doc);
   if (!fm) return builder.finish();
 
   // If cursor is INSIDE the frontmatter range, render raw YAML (no deco).
-  const head = view.state.selection.main.head;
+  const head = state.selection.main.head;
   if (head >= fm.from && head <= fm.to) return builder.finish();
 
   const fields = parseFields(fm.body);
@@ -133,40 +133,30 @@ function buildDecorations(view) {
     fm.to,
     Decoration.replace({
       widget: new BylineWidget(caption),
-      block: true
-    })
+      block: true,
+    }),
   );
   return builder.finish();
 }
 
-export const frontmatterByline = ViewPlugin.fromClass(
-  class {
-    /** @param {import('@codemirror/view').EditorView} view */
-    constructor(view) {
-      /** @type {import('@codemirror/view').DecorationSet} */
-      this.decorations = buildDecorations(view);
-    }
-    /** @param {import('@codemirror/view').ViewUpdate} update */
-    update(update) {
-      if (
-        update.docChanged ||
-        update.selectionSet ||
-        update.viewportChanged
-      ) {
-        this.decorations = buildDecorations(update.view);
-      }
-    }
+export const frontmatterByline = StateField.define({
+  create(state) {
+    return buildDecorations(state);
   },
-  { decorations: (v) => v.decorations }
-);
+  update(value, tr) {
+    if (tr.docChanged || tr.selection) return buildDecorations(tr.state);
+    return value;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
 
 export const frontmatterBylineTheme = EditorView.baseTheme({
-  '.cm-frontmatter-byline': {
-    fontFamily: 'var(--font-display)',
-    fontStyle: 'italic',
-    color: 'var(--text-muted)',
-    fontSize: 'var(--type-caption-size, 14px)',
-    lineHeight: 'var(--type-caption-lh, 1.4)',
-    marginBottom: 'var(--space-2, 8px)'
-  }
+  ".cm-frontmatter-byline": {
+    fontFamily: "var(--font-display)",
+    fontStyle: "italic",
+    color: "var(--text-muted)",
+    fontSize: "var(--type-caption-size, 14px)",
+    lineHeight: "var(--type-caption-lh, 1.4)",
+    marginBottom: "var(--space-2, 8px)",
+  },
 });
