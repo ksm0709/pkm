@@ -22,15 +22,21 @@
  *
  * See WikilinkResolver singleton below.
  */
-import { EditorView, ViewPlugin, Decoration, WidgetType } from '@codemirror/view';
-import { RangeSetBuilder } from '@codemirror/state';
-import { apiClient } from '../api/client.js';
+import {
+  EditorView,
+  ViewPlugin,
+  Decoration,
+  WidgetType,
+} from "@codemirror/view";
+import { RangeSetBuilder, StateEffect } from "@codemirror/state";
+import { apiClient } from "../api/client.js";
 
 // Single-line, single capture group. Disallow ']' and newline inside id.
 const WIKILINK_RE = /\[\[([^\]\n]+)\]\]/g;
 
 // Hover delay before requesting preview (ms).
 const HOVER_DELAY_MS = 200;
+const wikilinkRedecorate = StateEffect.define();
 
 /* ----------------------------- Resolver ----------------------------- */
 
@@ -53,11 +59,11 @@ class WikilinkResolver {
   }
 
   _installFocusInvalidator() {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     const win = /** @type {any} */ (window);
     if (win.__pkmWikilinkFocusInstalled) return;
     win.__pkmWikilinkFocusInstalled = true;
-    window.addEventListener('focus', () => {
+    window.addEventListener("focus", () => {
       // Drop all caches; pending in-flight batches still resolve their own
       // promises (callers waiting on them get the previous result).
       this.cache.clear();
@@ -120,14 +126,14 @@ class WikilinkResolver {
       const res = await apiClient(
         `/api/v1/vault/${encodeURIComponent(vault)}/notes/batch-titles`,
         {
-          method: 'POST',
-          body: JSON.stringify({ ids })
-        }
+          method: "POST",
+          body: JSON.stringify({ ids }),
+        },
       );
       if (res.status === 401 || res.status === 403) {
         // Treat auth failure as unresolved (apiClient already redirects on 401).
         for (const id of ids) {
-          resolvers.get(id)?.resolve('');
+          resolvers.get(id)?.resolve("");
         }
         return;
       }
@@ -143,7 +149,7 @@ class WikilinkResolver {
       /** @type {Record<string,string>} */
       const data = await res.json();
       for (const id of ids) {
-        const title = typeof data[id] === 'string' ? data[id] : '';
+        const title = typeof data[id] === "string" ? data[id] : "";
         resolvers.get(id)?.resolve(title);
       }
     } catch (err) {
@@ -187,38 +193,38 @@ class WikilinkWidget extends WidgetType {
     );
   }
   toDOM() {
-    const span = document.createElement('span');
-    span.className = 'cm-wikilink';
+    const span = document.createElement("span");
+    span.className = "cm-wikilink";
     span.dataset.wikilinkId = this.id;
-    if (this.state === 'resolved') {
-      span.classList.add('cm-wikilink-resolved');
+    if (this.state === "resolved") {
+      span.classList.add("cm-wikilink-resolved");
       span.textContent = this.title;
     } else {
-      span.classList.add('cm-wikilink-faint');
+      span.classList.add("cm-wikilink-faint");
       span.textContent = `[[${this.id}]]`;
     }
     /** @type {ReturnType<typeof setTimeout>|null} */
     let hoverTimer = null;
-    span.addEventListener('click', (ev) => {
+    span.addEventListener("click", (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
       const nav = /** @type {any} */ (window).__pkmNav;
       nav?.gotoNote?.(this.id);
     });
-    span.addEventListener('mouseenter', (ev) => {
+    span.addEventListener("mouseenter", (ev) => {
       const x = ev.clientX;
       const y = ev.clientY;
       hoverTimer = setTimeout(() => {
         const preview = /** @type {any} */ (window).__pkmPreview;
         preview?.show?.({
           id: this.id,
-          title: this.state === 'resolved' ? this.title : this.id,
+          title: this.state === "resolved" ? this.title : this.id,
           x,
-          y
+          y,
         });
       }, HOVER_DELAY_MS);
     });
-    span.addEventListener('mouseleave', () => {
+    span.addEventListener("mouseleave", () => {
       if (hoverTimer) {
         clearTimeout(hoverTimer);
         hoverTimer = null;
@@ -237,9 +243,9 @@ class WikilinkWidget extends WidgetType {
 
 /** Read current vault from `/[vault]/...` URL. */
 function currentVault() {
-  if (typeof window === 'undefined') return '';
+  if (typeof window === "undefined") return "";
   const m = window.location.pathname.match(/^\/([^/]+)/);
-  return m ? decodeURIComponent(m[1]) : '';
+  return m ? decodeURIComponent(m[1]) : "";
 }
 
 /**
@@ -278,8 +284,8 @@ function buildWikilinkDecorations(view, stateOf, titleOf) {
             from: start,
             to: end,
             deco: Decoration.replace({
-              widget: new WikilinkWidget(id, title, state)
-            })
+              widget: new WikilinkWidget(id, title, state),
+            }),
           });
         }
       }
@@ -312,26 +318,26 @@ export const wikilinkWidget = ViewPlugin.fromClass(
     /** @param {string} id */
     _ensure(id) {
       if (this.states.has(id)) return;
-      this.states.set(id, 'loading');
-      this.titles.set(id, '');
+      this.states.set(id, "loading");
+      this.titles.set(id, "");
       if (!this.vault) {
-        this.states.set(id, 'unresolved');
+        this.states.set(id, "unresolved");
         return;
       }
       wikilinkResolver
         .resolve(this.vault, id)
         .then((title) => {
           if (title) {
-            this.states.set(id, 'resolved');
+            this.states.set(id, "resolved");
             this.titles.set(id, title);
           } else {
-            this.states.set(id, 'unresolved');
+            this.states.set(id, "unresolved");
           }
           // Trigger a re-decoration on the next animation frame.
           this._scheduleRedecorate();
         })
         .catch(() => {
-          this.states.set(id, 'unresolved');
+          this.states.set(id, "unresolved");
           this._scheduleRedecorate();
         });
     }
@@ -341,10 +347,7 @@ export const wikilinkWidget = ViewPlugin.fromClass(
       this._redecorateScheduled = true;
       requestAnimationFrame(() => {
         this._redecorateScheduled = false;
-        this.decorations = this._build();
-        // Force CM to re-read decorations by dispatching a no-op effect.
-        // The simplest way: schedule a measure that prompts decoration read.
-        this.view.requestMeasure();
+        this.view.dispatch({ effects: wikilinkRedecorate.of(null) });
       });
     }
 
@@ -353,9 +356,9 @@ export const wikilinkWidget = ViewPlugin.fromClass(
         this.view,
         (id) => {
           this._ensure(id);
-          return this.states.get(id) ?? 'loading';
+          return this.states.get(id) ?? "loading";
         },
-        (id) => this.titles.get(id) ?? ''
+        (id) => this.titles.get(id) ?? "",
       );
     }
 
@@ -364,31 +367,34 @@ export const wikilinkWidget = ViewPlugin.fromClass(
       if (
         update.docChanged ||
         update.viewportChanged ||
-        update.selectionSet
+        update.selectionSet ||
+        update.transactions.some((tr) =>
+          tr.effects.some((effect) => effect.is(wikilinkRedecorate)),
+        )
       ) {
         this.decorations = this._build();
       }
     }
   },
-  { decorations: (v) => v.decorations }
+  { decorations: (v) => v.decorations },
 );
 
 export const wikilinkWidgetTheme = EditorView.baseTheme({
-  '.cm-wikilink': {
-    cursor: 'pointer'
+  ".cm-wikilink": {
+    cursor: "pointer",
   },
-  '.cm-wikilink-resolved': {
-    color: 'var(--accent)',
-    textDecoration: 'underline',
-    textDecorationColor: 'var(--border)',
-    textUnderlineOffset: '2px'
+  ".cm-wikilink-resolved": {
+    color: "var(--accent)",
+    textDecoration: "underline",
+    textDecorationColor: "var(--border)",
+    textUnderlineOffset: "2px",
   },
-  '.cm-wikilink-resolved:hover': {
-    textDecorationColor: 'var(--accent)'
+  ".cm-wikilink-resolved:hover": {
+    textDecorationColor: "var(--accent)",
   },
-  '.cm-wikilink-faint': {
-    color: 'var(--text-faint)',
-    fontStyle: 'italic',
-    fontFamily: 'var(--font-mono)'
-  }
+  ".cm-wikilink-faint": {
+    color: "var(--text-faint)",
+    fontStyle: "italic",
+    fontFamily: "var(--font-mono)",
+  },
 });

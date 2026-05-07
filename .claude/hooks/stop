@@ -68,7 +68,7 @@ if has_changed "^(web-frontend/src/|web-frontend/tests/|web-frontend/package\.js
         echo "INFO: No frontend files with Prettier-supported extensions changed; skipping frontend format check."
     fi
     run_gate "Frontend build" bash -lc "cd '$ROOT/web-frontend' && pnpm build"
-    run_gate "Frontend unit tests with coverage >= 90%" bash -lc "cd '$ROOT/web-frontend' && pnpm run test:unit:coverage"
+    run_gate "Frontend unit tests with coverage thresholds" bash -lc "cd '$ROOT/web-frontend' && pnpm run test:unit:coverage"
 else
     echo "INFO: No frontend code changes detected; skipping frontend gates."
 fi
