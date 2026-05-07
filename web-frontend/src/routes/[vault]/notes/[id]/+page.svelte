@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { page } from '$app/stores';
-  import { marked } from 'marked';
-  import { apiClient, apiGet } from '$lib/api/client.js';
-  import NeighborPanel from '$lib/components/NeighborPanel.svelte';
-  import CodeMirror from '$lib/editor/CodeMirror.svelte';
+  import { page } from "$app/stores";
+  import { marked } from "marked";
+  import { apiClient, apiGet } from "$lib/api/client.js";
+  import NeighborPanel from "$lib/components/NeighborPanel.svelte";
+  import CodeMirror from "$lib/editor/CodeMirror.svelte";
 
   interface Note {
     note_id: string;
@@ -18,34 +18,50 @@
 
   interface NeighborData {
     note_id: string;
-    outbound: { note_id: string; title: string; type: string; description?: string }[];
-    inbound: { note_id: string; title: string; type: string; description?: string }[];
-    semantic: { note_id: string; title: string; type: string; description?: string; confidence?: number }[];
+    outbound: {
+      note_id: string;
+      title: string;
+      type: string;
+      description?: string;
+    }[];
+    inbound: {
+      note_id: string;
+      title: string;
+      type: string;
+      description?: string;
+    }[];
+    semantic: {
+      note_id: string;
+      title: string;
+      type: string;
+      description?: string;
+      confidence?: number;
+    }[];
   }
 
   let note = $state<Note | null>(null);
   let neighbors = $state<NeighborData | null>(null);
   let loadingNote = $state(true);
   let loadingNeighbors = $state(true);
-  let error = $state('');
-  let renderedBody = $state('');
+  let error = $state("");
+  let renderedBody = $state("");
   let editMode = $state(false);
-  let editorDoc = $state('');
+  let editorDoc = $state("");
 
   let vaultName = $derived($page.params.vault);
   let noteId = $derived($page.params.id);
   let loadToken = 0;
   const dailyNoteIdPattern = /^\d{4}-\d{2}-\d{2}$/;
-  const taskStateOrder = ['[ ]', '[>]', '[x]', '[~]'] as const;
+  const taskStateOrder = ["[ ]", "[>]", "[x]", "[~]"] as const;
   type TaskState = (typeof taskStateOrder)[number];
   const taskStatePattern = /\[(?: |>|x|~)\]/g;
 
   function isTagNoteId(id: string) {
-    return id.startsWith('tag:');
+    return id.startsWith("tag:");
   }
 
   function tagNameFromNoteId(id: string) {
-    return isTagNoteId(id) ? id.slice(4) : '';
+    return isTagNoteId(id) ? id.slice(4) : "";
   }
 
   function tagHref(vault: string, tag: string) {
@@ -53,7 +69,7 @@
   }
 
   function escapeMarkdownLabel(text: string) {
-    return text.replace(/([\\[\]])/g, '\\$1');
+    return text.replace(/([\\[\]])/g, "\\$1");
   }
 
   function tagHue(tag: string) {
@@ -67,7 +83,11 @@
   function hasExcludedAncestor(node: Node) {
     let current = node.parentElement;
     while (current) {
-      if (['A', 'BUTTON', 'CODE', 'PRE', 'SCRIPT', 'STYLE'].includes(current.tagName)) {
+      if (
+        ["A", "BUTTON", "CODE", "PRE", "SCRIPT", "STYLE"].includes(
+          current.tagName,
+        )
+      ) {
         return true;
       }
       current = current.parentElement;
@@ -76,24 +96,24 @@
   }
 
   function taskStateKind(state: string) {
-    if (state === '[>]') return 'wip';
-    if (state === '[x]') return 'done';
-    if (state === '[~]') return 'cancel';
-    return 'todo';
+    if (state === "[>]") return "wip";
+    if (state === "[x]") return "done";
+    if (state === "[~]") return "cancel";
+    return "todo";
   }
 
   function taskStateLabel(state: string) {
-    if (state === '[>]') return '>';
-    if (state === '[x]') return '✓';
-    if (state === '[~]') return '~';
-    return '';
+    if (state === "[>]") return ">";
+    if (state === "[x]") return "✓";
+    if (state === "[~]") return "~";
+    return "";
   }
 
   function taskStateAriaLabel(state: string) {
-    if (state === '[>]') return 'Task status in progress';
-    if (state === '[x]') return 'Task status done';
-    if (state === '[~]') return 'Task status canceled';
-    return 'Task status todo';
+    if (state === "[>]") return "Task status in progress";
+    if (state === "[x]") return "Task status done";
+    if (state === "[~]") return "Task status canceled";
+    return "Task status todo";
   }
 
   function renderTaskStateButton(state: string, index: number) {
@@ -103,18 +123,21 @@
     return `<button type="button" class="note-task-state note-task-state-${kind}" data-task-index="${index}" data-task-state="${state}" aria-label="${ariaLabel}">${label}</button>`;
   }
 
-  function forMarkdownTextSegments(markdown: string, mapText: (segment: string) => string) {
+  function forMarkdownTextSegments(
+    markdown: string,
+    mapText: (segment: string) => string,
+  ) {
     let inFence = false;
-    let fenceMarker = '';
+    let fenceMarker = "";
 
     return markdown
-      .split('\n')
+      .split("\n")
       .map((line) => {
         const trimmed = line.trimStart();
         const fence = trimmed.match(/^(```+|~~~+)/)?.[1];
         if (fence && (!inFence || fence.startsWith(fenceMarker[0]))) {
           inFence = !inFence;
-          fenceMarker = inFence ? fence : '';
+          fenceMarker = inFence ? fence : "";
           return line;
         }
         if (inFence) return line;
@@ -122,19 +145,22 @@
         return line
           .split(/(`[^`]*`)/g)
           .map((segment) => {
-            if (segment.startsWith('`') && segment.endsWith('`')) return segment;
+            if (segment.startsWith("`") && segment.endsWith("`"))
+              return segment;
             return mapText(segment);
           })
-          .join('');
+          .join("");
       })
-      .join('\n');
+      .join("\n");
   }
 
   function withTaskStateButtons(markdown: string) {
     let taskIndex = 0;
 
     return forMarkdownTextSegments(markdown, (segment) =>
-      segment.replace(taskStatePattern, (state) => renderTaskStateButton(state, taskIndex++))
+      segment.replace(taskStatePattern, (state) =>
+        renderTaskStateButton(state, taskIndex++),
+      ),
     );
   }
 
@@ -143,7 +169,11 @@
     return taskStateOrder[(index + 1) % taskStateOrder.length];
   }
 
-  function replaceTaskStateByIndex(markdown: string, targetIndex: number, nextState: TaskState) {
+  function replaceTaskStateByIndex(
+    markdown: string,
+    targetIndex: number,
+    nextState: TaskState,
+  ) {
     let taskIndex = 0;
     let didReplace = false;
 
@@ -156,40 +186,47 @@
         }
         taskIndex += 1;
         return state;
-      })
+      }),
     );
 
     return didReplace ? updated : markdown;
   }
 
-  function appendDecoratedInlineSyntax(fragment: DocumentFragment, text: string, vault: string) {
-    const pattern = /(^|[^\p{L}\p{N}_/-])#([\p{L}\p{N}_][\p{L}\p{N}_/-]*)|\[([^\]\n]+)\]/gu;
+  function appendDecoratedInlineSyntax(
+    fragment: DocumentFragment,
+    text: string,
+    vault: string,
+  ) {
+    const pattern =
+      /(^|[^\p{L}\p{N}_/-])#([\p{L}\p{N}_][\p{L}\p{N}_/-]*)|\[([^\]\n]+)\]/gu;
     let cursor = 0;
     let match: RegExpExecArray | null;
 
     while ((match = pattern.exec(text))) {
       const fullMatch = match[0];
-      const tagPrefix = match[1] ?? '';
+      const tagPrefix = match[1] ?? "";
       const tagName = match[2];
       const bracketText = match[3];
       const syntaxStart = match.index + (tagName ? tagPrefix.length : 0);
       const syntaxText = tagName ? `#${tagName}` : fullMatch;
 
       if (syntaxStart > cursor) {
-        fragment.append(document.createTextNode(text.slice(cursor, syntaxStart)));
+        fragment.append(
+          document.createTextNode(text.slice(cursor, syntaxStart)),
+        );
       }
 
       if (tagName) {
-        const link = document.createElement('a');
-        link.className = 'note-tag-chip';
+        const link = document.createElement("a");
+        link.className = "note-tag-chip";
         link.href = `/${encodeURIComponent(vault)}/notes/${encodeURIComponent(`tag:${tagName}`)}`;
         link.dataset.tag = tagName;
-        link.style.setProperty('--tag-hue', tagHue(tagName));
+        link.style.setProperty("--tag-hue", tagHue(tagName));
         link.textContent = syntaxText;
         fragment.append(link);
       } else if (bracketText) {
-        const highlight = document.createElement('span');
-        highlight.className = 'note-bracket-highlight';
+        const highlight = document.createElement("span");
+        highlight.className = "note-bracket-highlight";
         highlight.textContent = syntaxText;
         fragment.append(highlight);
       }
@@ -203,14 +240,20 @@
   }
 
   function decorateRenderedHtml(html: string, vault: string) {
-    const template = document.createElement('template');
+    const template = document.createElement("template");
     template.innerHTML = html;
-    const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT);
+    const walker = document.createTreeWalker(
+      template.content,
+      NodeFilter.SHOW_TEXT,
+    );
     const textNodes: Text[] = [];
 
     while (walker.nextNode()) {
       const node = walker.currentNode as Text;
-      if (!hasExcludedAncestor(node) && /#[\p{L}\p{N}_]|\[[^\]\n]+\]/u.test(node.data)) {
+      if (
+        !hasExcludedAncestor(node) &&
+        /#[\p{L}\p{N}_]|\[[^\]\n]+\]/u.test(node.data)
+      ) {
         textNodes.push(node);
       }
     }
@@ -227,9 +270,9 @@
   function wikilinkToMarkdownLinks(markdown: string, vault: string) {
     return forMarkdownTextSegments(markdown, (segment) =>
       segment.replace(/\[\[([^\]\n]+)\]\]/g, (match, rawTarget, offset) => {
-        if (segment[offset - 1] === '!') return match;
+        if (segment[offset - 1] === "!") return match;
 
-        const separatorIndex = rawTarget.indexOf('|');
+        const separatorIndex = rawTarget.indexOf("|");
         const target =
           separatorIndex >= 0
             ? rawTarget.slice(0, separatorIndex).trim()
@@ -243,26 +286,35 @@
 
         const href = `/${encodeURIComponent(vault)}/notes/${encodeURIComponent(target)}`;
         return `[${escapeMarkdownLabel(label || target)}](${href})`;
-      })
+      }),
     );
   }
 
   async function renderNoteBody(markdown: string, vault: string) {
     const markdownWithLinks = wikilinkToMarkdownLinks(markdown, vault);
     const markdownWithTaskStates = withTaskStateButtons(markdownWithLinks);
-    const parsedBody = await marked.parse(markdownWithTaskStates, { async: true });
+    const parsedBody = await marked.parse(markdownWithTaskStates, {
+      async: true,
+    });
     return decorateRenderedHtml(parsedBody, vault);
   }
 
   async function saveTaskState(taskIndex: number, currentState: string) {
     if (!note) return;
-    const updatedBody = replaceTaskStateByIndex(note.body ?? '', taskIndex, nextTaskState(currentState));
+    const updatedBody = replaceTaskStateByIndex(
+      note.body ?? "",
+      taskIndex,
+      nextTaskState(currentState),
+    );
     if (updatedBody === note.body) return;
 
-    const response = await apiClient(`/api/v1/vault/${vaultName}/notes/${note.note_id}`, {
-      method: 'PUT',
-      body: JSON.stringify({ body: updatedBody })
-    });
+    const response = await apiClient(
+      `/api/v1/vault/${vaultName}/notes/${note.note_id}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ body: updatedBody }),
+      },
+    );
 
     if (!response.ok) {
       throw new Error(`PUT note task state → ${response.status}`);
@@ -278,11 +330,11 @@
   function handleNoteBodyClick(event: MouseEvent) {
     const target = event.target;
     if (!(target instanceof Element)) return;
-    const button = target.closest('button.note-task-state');
+    const button = target.closest("button.note-task-state");
     if (!(button instanceof HTMLButtonElement)) return;
 
     const taskIndex = Number(button.dataset.taskIndex);
-    const currentState = button.dataset.taskState ?? '[ ]';
+    const currentState = button.dataset.taskState ?? "[ ]";
     if (!Number.isFinite(taskIndex)) return;
 
     event.preventDefault();
@@ -290,12 +342,12 @@
   }
 
   function taskStateClickAction(node: HTMLElement) {
-    node.addEventListener('click', handleNoteBodyClick);
+    node.addEventListener("click", handleNoteBodyClick);
 
     return {
       destroy() {
-        node.removeEventListener('click', handleNoteBodyClick);
-      }
+        node.removeEventListener("click", handleNoteBodyClick);
+      },
     };
   }
 
@@ -305,9 +357,9 @@
     neighbors = null;
     loadingNote = true;
     loadingNeighbors = true;
-    error = '';
-    renderedBody = '';
-    editorDoc = '';
+    error = "";
+    renderedBody = "";
+    editorDoc = "";
     editMode = false;
 
     const noteEndpoint = dailyNoteIdPattern.test(id)
@@ -316,51 +368,59 @@
 
     const [noteResult, neighborsResult] = await Promise.allSettled([
       loadOrCreateNote(vault, id, noteEndpoint),
-      apiGet<NeighborData>(`/api/v1/vault/${vault}/notes/${id}/neighbors`)
+      apiGet<NeighborData>(`/api/v1/vault/${vault}/notes/${id}/neighbors`),
     ]);
 
     if (token !== loadToken) return;
 
-    if (noteResult.status === 'fulfilled') {
+    if (noteResult.status === "fulfilled") {
       const loadedNote = noteResult.value;
-      const loadedBody = loadedNote.body ?? '';
+      const loadedBody = loadedNote.body ?? "";
       const nextRenderedBody = await renderNoteBody(loadedBody, vault);
       if (token !== loadToken) return;
       note = loadedNote;
       editorDoc = loadedBody;
       renderedBody = nextRenderedBody;
     } else {
-      error = isTagNoteId(id) ? 'Tag note not found.' : 'Note not found.';
+      error = isTagNoteId(id) ? "Tag note not found." : "Note not found.";
     }
     loadingNote = false;
 
-    if (neighborsResult.status === 'fulfilled') {
+    if (neighborsResult.status === "fulfilled") {
       neighbors = neighborsResult.value;
     }
     loadingNeighbors = false;
 
     // Track last vault
-    localStorage.setItem('pkm.lastVault', vault);
+    localStorage.setItem("pkm.lastVault", vault);
   }
 
   async function loadOrCreateNote(vault: string, id: string, endpoint: string) {
     try {
       return await apiGet<Note>(endpoint);
     } catch (e) {
-      if (dailyNoteIdPattern.test(id) || isTagNoteId(id) || !isNotFoundError(e)) {
+      if (
+        dailyNoteIdPattern.test(id) ||
+        isTagNoteId(id) ||
+        !isNotFoundError(e)
+      ) {
         throw e;
       }
       const response = await apiClient(
         `/api/v1/vault/${vault}/notes/${encodeURIComponent(id)}/ensure`,
-        { method: 'POST' }
+        { method: "POST" },
       );
-      if (!response.ok) throw new Error(`POST ensure note → ${response.status}`);
+      if (!response.ok)
+        throw new Error(`POST ensure note → ${response.status}`);
       return (await response.json()) as Note;
     }
   }
 
   function isNotFoundError(errorValue: unknown) {
-    return errorValue instanceof Error && /(?:→|->)\s*404\b|404/.test(errorValue.message);
+    return (
+      errorValue instanceof Error &&
+      /(?:→|->)\s*404\b|404/.test(errorValue.message)
+    );
   }
 
   $effect(() => {
@@ -435,8 +495,8 @@
                 class="note-tag-chip note-meta-tag-chip"
                 href={tagHref(vaultName, tag)}
                 data-tag={tag}
-                style={`--tag-hue: ${tagHue(tag)}`}
-              >#{tag}</a>
+                style={`--tag-hue: ${tagHue(tag)}`}>#{tag}</a
+              >
             {/each}
           </p>
         {/if}
@@ -449,15 +509,13 @@
       {:else}
         <!-- Rendered markdown body -->
         <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-        <div class="note-body prose" use:taskStateClickAction>{@html renderedBody}</div>
+        <div class="note-body prose" use:taskStateClickAction>
+          {@html renderedBody}
+        </div>
       {/if}
 
       <!-- Signature NeighborPanel -->
-      <NeighborPanel
-        {vaultName}
-        data={neighbors}
-        loading={loadingNeighbors}
-      />
+      <NeighborPanel {vaultName} data={neighbors} loading={loadingNeighbors} />
     </article>
   {/if}
 </div>
@@ -571,7 +629,7 @@
     font-family: var(--font-display);
     font-size: var(--type-h1-size, 28px);
     font-weight: var(--type-h1-weight, 600);
-    line-height: var(--type-h1-lh, 1.20);
+    line-height: var(--type-h1-lh, 1.2);
     color: var(--text);
     margin-bottom: var(--space-4, 16px);
   }
@@ -580,7 +638,7 @@
     font-family: var(--font-display);
     font-size: var(--type-h2-size, 20px);
     font-weight: var(--type-h2-weight, 600);
-    line-height: var(--type-h2-lh, 1.30);
+    line-height: var(--type-h2-lh, 1.3);
     color: var(--text);
     margin-top: var(--space-6, 32px);
     margin-bottom: var(--space-3, 12px);
@@ -599,7 +657,7 @@
   .prose :global(p) {
     font-family: var(--font-mono);
     font-size: var(--type-body-size, 15px);
-    line-height: var(--type-body-lh, 1.70);
+    line-height: var(--type-body-lh, 1.7);
     color: var(--text);
     margin-bottom: var(--space-4, 16px);
   }
@@ -631,6 +689,13 @@
     white-space: nowrap;
   }
 
+  :global([data-theme="light"]) .note-tag-chip,
+  :global([data-theme="light"]) .prose :global(a.note-tag-chip) {
+    --chip-bg: hsl(var(--tag-hue) 72% 92% / 0.88);
+    --chip-border: hsl(var(--tag-hue) 48% 43% / 0.58);
+    --chip-text: hsl(var(--tag-hue) 58% 26%);
+  }
+
   .note-meta-tag-chip {
     font-size: 12px;
   }
@@ -648,6 +713,15 @@
     border-color: hsl(var(--tag-hue) 48% 54% / 0.88);
     background: hsl(var(--tag-hue) 44% 32% / 0.42);
     outline: none;
+  }
+
+  :global([data-theme="light"]) .note-meta-tag-chip:hover,
+  :global([data-theme="light"]) .note-meta-tag-chip:focus-visible,
+  :global([data-theme="light"]) .prose :global(a.note-tag-chip:hover),
+  :global([data-theme="light"]) .prose :global(a.note-tag-chip:focus-visible) {
+    color: hsl(var(--tag-hue) 62% 20%);
+    border-color: hsl(var(--tag-hue) 52% 35% / 0.76);
+    background: hsl(var(--tag-hue) 76% 87% / 0.95);
   }
 
   .prose :global(.note-bracket-highlight) {
@@ -725,19 +799,73 @@
   }
 
   .prose :global(blockquote) {
+    --callout-bg: color-mix(
+      in srgb,
+      var(--surface-raised, var(--bg)) 82%,
+      #000 18%
+    );
+    --callout-text: color-mix(
+      in srgb,
+      var(--text-muted) 76%,
+      var(--text-faint) 24%
+    );
     border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
     border-left: 3px solid color-mix(in srgb, var(--accent) 38%, var(--border));
     border-radius: 6px;
     padding: var(--space-3, 12px) var(--space-4, 16px);
     margin: 0 0 var(--space-4, 16px);
-    background: color-mix(in srgb, var(--surface-raised, var(--bg)) 82%, #000 18%);
-    color: color-mix(in srgb, var(--text-muted) 76%, var(--text-faint) 24%);
+    background: var(--callout-bg);
+    color: var(--callout-text);
     font-style: normal;
+  }
+
+  :global([data-theme="light"]) .prose :global(blockquote) {
+    --callout-bg: color-mix(
+      in srgb,
+      var(--surface-raised, var(--bg)) 88%,
+      var(--accent) 12%
+    );
+    --callout-text: color-mix(in srgb, var(--text-muted) 76%, var(--text) 24%);
   }
 
   .prose :global(blockquote p),
   .prose :global(blockquote li) {
     color: inherit;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :global(:root:not([data-theme="dark"])) .note-tag-chip,
+    :global(:root:not([data-theme="dark"])) .prose :global(a.note-tag-chip) {
+      --chip-bg: hsl(var(--tag-hue) 72% 92% / 0.88);
+      --chip-border: hsl(var(--tag-hue) 48% 43% / 0.58);
+      --chip-text: hsl(var(--tag-hue) 58% 26%);
+    }
+
+    :global(:root:not([data-theme="dark"])) .note-meta-tag-chip:hover,
+    :global(:root:not([data-theme="dark"])) .note-meta-tag-chip:focus-visible,
+    :global(:root:not([data-theme="dark"]))
+      .prose
+      :global(a.note-tag-chip:hover),
+    :global(:root:not([data-theme="dark"]))
+      .prose
+      :global(a.note-tag-chip:focus-visible) {
+      color: hsl(var(--tag-hue) 62% 20%);
+      border-color: hsl(var(--tag-hue) 52% 35% / 0.76);
+      background: hsl(var(--tag-hue) 76% 87% / 0.95);
+    }
+
+    :global(:root:not([data-theme="dark"])) .prose :global(blockquote) {
+      --callout-bg: color-mix(
+        in srgb,
+        var(--surface-raised, var(--bg)) 88%,
+        var(--accent) 12%
+      );
+      --callout-text: color-mix(
+        in srgb,
+        var(--text-muted) 76%,
+        var(--text) 24%
+      );
+    }
   }
 
   .prose :global(blockquote p:last-child) {
@@ -753,7 +881,7 @@
   .prose :global(li) {
     font-family: var(--font-mono);
     font-size: var(--type-body-size, 15px);
-    line-height: var(--type-body-lh, 1.70);
+    line-height: var(--type-body-lh, 1.7);
     color: var(--text);
     list-style: disc;
   }

@@ -98,6 +98,11 @@ pnpm build      # static output → dist/
 pnpm bundle:check  # gzip budget check (≤ 220 KB JS+CSS)
 ```
 
+Quality gates run from the repository Stop hook when code changes are present.
+Frontend changes run Prettier on changed files, `pnpm build`, and Vitest with
+90% coverage thresholds. Browser e2e is intentionally manual; run
+`pnpm run test:e2e` when a change needs Playwright coverage.
+
 ### MCP Server Integration
 
 PKM includes a built-in MCP (Model Context Protocol) server to expose your vault to AI coding assistants (like Claude Desktop, Cursor, or Cline). It includes tools like `pkm_ask` for safe, parameterized natural language queries against your vault.

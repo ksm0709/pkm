@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
+  import { goto } from "$app/navigation";
 
   interface Props {
     vaultName?: string;
@@ -10,11 +10,11 @@
   }
 
   let {
-    vaultName = '',
-    pageName = 'home',
+    vaultName = "",
+    pageName = "home",
     drawerOpen = false,
     toggleDrawer = () => {},
-    openCommandPalette = () => {}
+    openCommandPalette = () => {},
   }: Props = $props();
 
   function openVaultLogger() {
@@ -28,7 +28,9 @@
     <button
       class="drawer-toggle"
       type="button"
-      aria-label={drawerOpen ? 'Close navigation drawer' : 'Open navigation drawer'}
+      aria-label={drawerOpen
+        ? "Close navigation drawer"
+        : "Open navigation drawer"}
       aria-pressed={drawerOpen}
       onclick={toggleDrawer}
     >
@@ -67,34 +69,24 @@
 
 <style>
   .topbar {
-    --bg: #090b0d;
-    --surface: #101419;
-    --text: #e8ecef;
-    --text-muted: #9aa6ad;
-    --text-faint: #5f6970;
-    --border: rgba(159, 177, 188, 0.20);
-    --accent: #ecaa4a;
-    --accent-bg: rgba(236, 170, 74, 0.12);
-    --signal: #ecaa4a;
-    --rail: rgba(236, 170, 74, 0.58);
     position: sticky;
     top: 0;
     z-index: 100;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    height: 48px;
+    height: var(--topbar-height, 48px);
     padding: 0 var(--space-4, 16px);
     background: var(--bg, #090b0d);
-    border-bottom: 1px solid var(--border, rgba(159, 177, 188, 0.20));
+    border-bottom: 1px solid var(--border, rgba(159, 177, 188, 0.2));
     font-family: var(--font-mono);
     font-size: var(--type-chrome-size, 13px);
-    line-height: var(--type-chrome-lh, 1.20);
+    line-height: var(--type-chrome-lh, 1.2);
     font-weight: var(--type-chrome-weight, 400);
   }
 
   .topbar::before {
-    content: '';
+    content: "";
     position: absolute;
     left: 0;
     bottom: -1px;
@@ -130,8 +122,8 @@
     flex: 0 0 auto;
     padding: 0 var(--space-3, 12px) 0 10px;
     color: var(--text-muted, #9aa6ad);
-    background: rgba(159, 177, 188, 0.045);
-    border: 1px solid var(--border, rgba(159, 177, 188, 0.20));
+    background: color-mix(in srgb, var(--text-muted, #9aa6ad) 8%, transparent);
+    border: 1px solid var(--border, rgba(159, 177, 188, 0.2));
     border-left-color: var(--rail, rgba(236, 170, 74, 0.58));
     font-family: var(--font-mono);
     font-size: var(--type-chrome-sm-size, 11px);
@@ -145,7 +137,7 @@
 
   .drawer-toggle:hover,
   .drawer-toggle:focus-visible,
-  .drawer-toggle[aria-pressed='true'] {
+  .drawer-toggle[aria-pressed="true"] {
     color: var(--text, #e8ecef);
     background: var(--accent-bg, rgba(236, 170, 74, 0.12));
     border-color: var(--rail, rgba(236, 170, 74, 0.58));
@@ -161,7 +153,7 @@
     transition: transform var(--dur-base, 200ms) var(--ease-out);
   }
 
-  .drawer-toggle[aria-pressed='true'] .toggle-mark {
+  .drawer-toggle[aria-pressed="true"] .toggle-mark {
     transform: rotate(-45deg);
   }
 
@@ -224,7 +216,7 @@
     height: 28px;
     max-width: 42vw;
     padding: 0 var(--space-2, 8px);
-    border: 1px solid var(--border, rgba(159, 177, 188, 0.20));
+    border: 1px solid var(--border, rgba(159, 177, 188, 0.2));
     color: var(--text-muted, #9aa6ad);
     background: transparent;
     font: inherit;
@@ -235,7 +227,11 @@
 
   .command-button {
     color: var(--signal, var(--accent, #ecaa4a));
-    border-color: rgba(236, 170, 74, 0.32);
+    border-color: color-mix(
+      in srgb,
+      var(--signal, var(--accent, #ecaa4a)) 42%,
+      transparent
+    );
     cursor: pointer;
     transition:
       border-color var(--dur-fast, 120ms) var(--ease-out),
