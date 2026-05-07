@@ -40,6 +40,7 @@
     "@types/node": "^22.0.0",
     "@vitest/coverage-v8": "^2.1.9",
     "axe-core": "^4.10.0",
+    "jsdom": "^29.1.1",
     "playwright": "^1.49.0",
     "prettier": "^3.8.3",
     "prettier-plugin-svelte": "^3.5.1",
