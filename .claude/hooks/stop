@@ -1,27 +1,88 @@
 #!/bin/bash
 
-# Redirect all output to stderr so the LLM sees the messages when exiting with code 2
+# Redirect all output to stderr so the LLM sees the messages when exiting with code 2.
 exec 1>&2
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
-# Check if we should skip the hook (e.g., when agent is waiting for background tasks)
+# Allow an agent to intentionally skip one hook run while waiting for background work.
 if [ -f "$ROOT/.skip-hook" ]; then
     rm "$ROOT/.skip-hook"
     exit 0
 fi
 
-# Check if there are any tracked or untracked changes
-if git diff HEAD --quiet && [ -z "$(git ls-files --others --exclude-standard)" ]; then
+cd "$ROOT" || exit 2
+
+CHANGED_FILES="$(
+    {
+        git diff --name-only HEAD
+        git ls-files --others --exclude-standard
+    } | sort -u
+)"
+
+if [ -z "$CHANGED_FILES" ]; then
     exit 0
 fi
-cd "$ROOT/cli" || exit 2
 
-# Run quality gates — only show output on failure
-FMT_OUT=$(uv run ruff format . 2>&1) || { echo "Formatting failed."; echo "$FMT_OUT"; exit 2; }
-LINT_OUT=$(uv run ruff check --fix . 2>&1) || { echo "Linting failed."; echo "$LINT_OUT"; exit 2; }
-TEST_OUT=$(uv run pytest tests/ -q 2>&1) || { echo "Tests failed."; echo "$TEST_OUT"; exit 2; }
+echo "Running Quality Gates..."
 
-echo "Code changes are present. All quality gates (lint, format, test) PASSED! If no new request has been submitted, commit and push the changes by yourself."
-echo "QUALITY MAINTENANCE ITEM: Ensure that README.md, docs/, and plugin/skills/SKILL.md are updated to reflect your changes before completing the task."
+run_gate() {
+    local label="$1"
+    shift
+    local output
+
+    output=$("$@" 2>&1) || {
+        echo "FAIL: $label failed."
+        echo "$output"
+        exit 2
+    }
+
+    echo "PASS: $label passed."
+}
+
+has_changed() {
+    echo "$CHANGED_FILES" | grep -q -E "$1"
+}
+
+changed_under() {
+    local prefix="$1"
+    local pattern="$2"
+
+    echo "$CHANGED_FILES" | grep -E "^${prefix}${pattern}" | sed "s#^${prefix}##"
+}
+
+if has_changed "^(cli/src/|cli/tests/|cli/pyproject\.toml|cli/uv\.lock)"; then
+    run_gate "CLI format check" bash -lc "cd '$ROOT/cli' && uv run ruff format --check ."
+    run_gate "CLI lint check" bash -lc "cd '$ROOT/cli' && uv run ruff check ."
+    run_gate "CLI tests with coverage >= 90%" bash -lc "cd '$ROOT/cli' && uv run pytest tests/ -q --cov=pkm --cov-report=term-missing --cov-fail-under=90"
+else
+    echo "INFO: No CLI code changes detected; skipping CLI gates."
+fi
+
+if has_changed "^(web-frontend/src/|web-frontend/tests/|web-frontend/package\.json|web-frontend/pnpm-lock\.yaml|web-frontend/prettier\.config\.js|web-frontend/vite\.config\.js|web-frontend/playwright\.config\.ts)"; then
+    WEB_FORMAT_FILES="$(changed_under "web-frontend/" ".*\.(css|html|js|json|svelte|ts)$")"
+    if [ -n "$WEB_FORMAT_FILES" ]; then
+        export WEB_FORMAT_FILES
+        run_gate "Frontend format check" bash -lc "cd '$ROOT/web-frontend' && echo \"\$WEB_FORMAT_FILES\" | xargs pnpm run format:check --"
+    else
+        echo "INFO: No frontend files with Prettier-supported extensions changed; skipping frontend format check."
+    fi
+    run_gate "Frontend build" bash -lc "cd '$ROOT/web-frontend' && pnpm build"
+    run_gate "Frontend unit tests with coverage >= 90%" bash -lc "cd '$ROOT/web-frontend' && pnpm run test:unit:coverage"
+else
+    echo "INFO: No frontend code changes detected; skipping frontend gates."
+fi
+
+if has_changed "^(cli/src/|web-frontend/src/|cli/tests/|web-frontend/tests/|cli/pyproject\.toml|web-frontend/package\.json|web-frontend/prettier\.config\.js|web-frontend/vite\.config\.js)"; then
+    if ! has_changed "^(README\.md|docs/|plugin/skills/)"; then
+        echo "FAIL: Documentation missing. Source or test code changed without updating README.md, docs/, or plugin/skills/."
+        exit 2
+    fi
+    echo "PASS: Documentation check passed."
+else
+    echo "INFO: No source/test changes detected; skipping documentation sync check."
+fi
+
+echo "Code changes are present. All configured quality gates PASSED! If no new request has been submitted, commit and push the changes by yourself."
+echo "Playwright e2e is intentionally not part of this Stop hook; run 'cd web-frontend && pnpm run test:e2e' when a change needs browser-level coverage."
 exit 2

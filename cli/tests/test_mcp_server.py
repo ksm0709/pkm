@@ -326,7 +326,7 @@ class TestMcpE2EProtocol:
         assert "serverInfo" in result or "capabilities" in result
 
     def test_tools_list(self, mcp_process) -> None:
-        """After initialize, tools/list returns 5 tools."""
+        """After initialize, tools/list exposes the expected tool contract."""
         # Initialize first
         self._send_and_recv(
             mcp_process,
@@ -364,22 +364,34 @@ class TestMcpE2EProtocol:
         result = resp.get("result", {})
         tools = result.get("tools", [])
         tool_names = {t["name"] for t in tools}
-        assert "note_add" in tool_names
-        assert "daily_add" in tool_names
-        assert "search" in tool_names
-        assert "index" in tool_names
-        assert "pkm_ask" in tool_names
-        assert "vault_stats" in tool_names
-        assert "list_stale_notes" in tool_names
-        assert "list_orphans" in tool_names
-        assert "find_backlinks_for_note" in tool_names
-        assert "list_tags" in tool_names
-        assert "tag_search" in tool_names
-        assert "list_consolidation_candidates" in tool_names
-        assert "mark_consolidated" in tool_names
-        assert "read_recent_note_activity" in tool_names
-        assert "read_daily_log" in tool_names
-        assert len(tools) == 24
+        expected_tool_names = {
+            "add_wikilink",
+            "create_daily_subnote",
+            "create_hub_note",
+            "daily_add",
+            "find_backlinks_for_note",
+            "find_surprising_connections",
+            "get_note_neighbors",
+            "index",
+            "list_clusters",
+            "list_consolidation_candidates",
+            "list_god_nodes",
+            "list_notes",
+            "list_orphans",
+            "list_stale_notes",
+            "list_tags",
+            "mark_consolidated",
+            "note_add",
+            "pkm_ask",
+            "read_daily_log",
+            "read_note",
+            "read_recent_note_activity",
+            "rename_note",
+            "search",
+            "tag_search",
+            "vault_stats",
+        }
+        assert tool_names == expected_tool_names
 
         # Verify inputSchema exists on each tool
         for tool in tools:
