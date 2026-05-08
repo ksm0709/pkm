@@ -72,6 +72,19 @@ async def test_get_workflow_returns_read_mode_body(app, tmp_vault):
 
 
 @pytest.mark.anyio
+async def test_get_workflow_missing_id_returns_404(app, tmp_vault):
+    """Unknown workflow detail requests return 404 with the missing id."""
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/workflows/nope",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+
+    assert resp.status == 404
+    assert "nope" in resp.reason
+
+
+@pytest.mark.anyio
 async def test_patch_workflow_persists_enabled_state_and_trigger_time(app, tmp_vault):
     """PATCH writes a vault override so workflow enabled and trigger time survive reload."""
     async with TestClient(TestServer(app)) as client:
@@ -103,6 +116,39 @@ async def test_patch_workflow_persists_enabled_state_and_trigger_time(app, tmp_v
 
 
 @pytest.mark.anyio
+async def test_patch_workflow_missing_id_returns_404_without_override(app, tmp_vault):
+    """Unknown workflow updates fail without creating a vault override file."""
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.patch(
+            "/api/v1/vault/test-vault/workflows/nope",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+            json={"enabled": False},
+        )
+
+    assert resp.status == 404
+    assert "nope" in resp.reason
+    assert not (tmp_vault.path / ".pkm" / "workflow.json").exists()
+
+
+@pytest.mark.anyio
+async def test_patch_workflow_noop_returns_detail_without_override(app, tmp_vault):
+    """A PATCH with no editable fields returns detail data and skips persistence."""
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.patch(
+            "/api/v1/vault/test-vault/workflows/daily_task_summary",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+            json={},
+        )
+        assert resp.status == 200
+        data = await resp.json()
+
+    assert data["id"] == "daily_task_summary"
+    assert "body" in data
+    assert "jitter_type" in data
+    assert not (tmp_vault.path / ".pkm" / "workflow.json").exists()
+
+
+@pytest.mark.anyio
 async def test_patch_workflow_rejects_invalid_trigger_time(app, tmp_vault):
     """Invalid trigger time must fail without writing a workflow override."""
     async with TestClient(TestServer(app)) as client:
@@ -114,3 +160,56 @@ async def test_patch_workflow_rejects_invalid_trigger_time(app, tmp_vault):
 
     assert resp.status == 400
     assert not (tmp_vault.path / ".pkm" / "workflow.json").exists()
+
+
+@pytest.mark.anyio
+async def test_patch_workflow_rejects_non_string_trigger_time(app, tmp_vault):
+    """Non-string trigger_time values are rejected before writing overrides."""
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.patch(
+            "/api/v1/vault/test-vault/workflows/daily_task_summary",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+            json={"trigger_time": 7},
+        )
+
+    assert resp.status == 400
+    assert not (tmp_vault.path / ".pkm" / "workflow.json").exists()
+
+
+@pytest.mark.anyio
+async def test_patch_workflow_rejects_out_of_range_schedule_hour(app, tmp_vault):
+    """Out-of-range schedule_hour values fail without writing overrides."""
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.patch(
+            "/api/v1/vault/test-vault/workflows/daily_task_summary",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+            json={"schedule_hour": 24},
+        )
+
+    assert resp.status == 400
+    assert "schedule_hour must be 0-23" in resp.reason
+    assert not (tmp_vault.path / ".pkm" / "workflow.json").exists()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("bad_override", ["{bad json", json.dumps({"id": "old"})])
+async def test_patch_workflow_recovers_from_corrupt_override_file(
+    app, tmp_vault, bad_override: str
+):
+    """Corrupt override state is replaced by a valid workflow override list."""
+    override_path = tmp_vault.path / ".pkm" / "workflow.json"
+    override_path.write_text(bad_override, encoding="utf-8")
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.patch(
+            "/api/v1/vault/test-vault/workflows/daily_task_summary",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+            json={"enabled": False},
+        )
+        assert resp.status == 200
+        data = await resp.json()
+
+    assert data["enabled"] is False
+    assert json.loads(override_path.read_text(encoding="utf-8")) == [
+        {"id": "daily_task_summary", "enabled": False}
+    ]
