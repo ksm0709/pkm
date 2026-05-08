@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
+from click import ClickException
 
 from pkm.config import VaultConfig, WebConfig
 from pkm.web.server import make_app
@@ -69,7 +70,9 @@ def patch_search(monkeypatch):
 
     monkeypatch.setattr(search_engine, "load_index", _load_index)
     monkeypatch.setattr(search_engine, "search", _fake_search)
-    monkeypatch.setattr(search_command, "search_via_daemon", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        search_command, "search_via_daemon", lambda *_args, **_kwargs: None
+    )
     monkeypatch.setattr(search_command, "load_index", _load_index)
     monkeypatch.setattr(search_command, "search_fn", _fake_search)
     return None
@@ -193,6 +196,109 @@ async def test_search_uses_injected_runner_without_command_pipeline(
         assert data["count"] == 1
         assert data["results"][0]["note_id"] == "internal-result"
         assert "Index may be out of date" in data["warning"]
+
+
+@pytest.mark.anyio
+async def test_search_extracts_snippet_from_real_note_body(
+    app, tmp_vault: VaultConfig
+) -> None:
+    """Search results include the first non-empty body line from a matched note."""
+    from pkm.web.app_keys import SEARCH_RUNNER_KEY
+
+    note_path = tmp_vault.notes_dir / "snippet-source.md"
+    note_path.write_text(
+        "---\nid: snippet-source\ntags: []\n---\n\n\n"
+        "  First visible line for snippet.  \nSecond line ignored.\n",
+        encoding="utf-8",
+    )
+
+    async def _runner(query, vault, top=10):
+        assert query == "snippet"
+        assert vault.name == "test-vault"
+        return [
+            _FakeResult(
+                note_id="snippet-source",
+                title="Snippet Source",
+                score=0.87654321,
+                path=str(note_path),
+            )
+        ], None
+
+    app[SEARCH_RUNNER_KEY] = _runner
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/search",
+            params={"q": "snippet"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 200
+        data = await resp.json()
+        first = data["results"][0]
+        assert first["snippet"] == "First visible line for snippet."
+        assert first["score"] == 0.876543
+
+
+@pytest.mark.anyio
+async def test_search_invalid_n_returns_400(app, tmp_vault: VaultConfig) -> None:
+    """Non-integer result limits are rejected before running search."""
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/search",
+            params={"q": "mvcc", "n": "many"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 400
+        assert "'n' must be an integer" in resp.reason
+
+
+@pytest.mark.anyio
+async def test_search_missing_index_returns_404_from_command_pipeline(
+    app, tmp_vault: VaultConfig, monkeypatch
+) -> None:
+    """Search index failures from the command pipeline become index guidance 404s."""
+    from pkm.commands import search as search_command
+
+    def _missing_index(_query, _vault, top=10):
+        raise ClickException("index missing")
+
+    monkeypatch.setattr(search_command, "run_search_pipeline", _missing_index)
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/search",
+            params={"q": "mvcc"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 404
+        assert "Search index not found" in resp.reason
+
+
+@pytest.mark.anyio
+async def test_search_clamps_requested_result_limit(
+    app, tmp_vault: VaultConfig
+) -> None:
+    """The route clamps user-provided result limits before invoking the runner."""
+    from pkm.web.app_keys import SEARCH_RUNNER_KEY
+
+    seen_top: list[int] = []
+
+    async def _runner(query, vault, top=10):
+        seen_top.append(top)
+        return [], None
+
+    app[SEARCH_RUNNER_KEY] = _runner
+
+    async with TestClient(TestServer(app)) as client:
+        for requested in ("0", "999"):
+            resp = await client.get(
+                "/api/v1/vault/test-vault/search",
+                params={"q": "mvcc", "n": requested},
+                headers={"Authorization": f"Bearer {TOKEN}"},
+            )
+            assert resp.status == 200
+
+    assert seen_top == [1, 100]
 
 
 @pytest.mark.anyio
