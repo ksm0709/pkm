@@ -12,6 +12,8 @@ Assertions covered:
 
 from __future__ import annotations
 
+import shutil
+
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
@@ -105,9 +107,20 @@ async def test_list_daily_before_excludes_boundary(
 
 
 @pytest.mark.anyio
-async def test_list_daily_includes_dated_subnotes(
-    app, tmp_vault: VaultConfig
+async def test_list_daily_rejects_bad_before_query(
+    app, vault_with_daily: VaultConfig
 ) -> None:
+    """Malformed before= is rejected before pagination is applied."""
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/daily?before=not-a-date",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 400
+
+
+@pytest.mark.anyio
+async def test_list_daily_includes_dated_subnotes(app, tmp_vault: VaultConfig) -> None:
     """Daily listing includes main daily notes and YYYY-MM-DD-* subnotes from daily/."""
     main = tmp_vault.daily_dir / "2026-04-10.md"
     main.write_text(
@@ -134,6 +147,34 @@ async def test_list_daily_includes_dated_subnotes(
     assert rows["2026-04-10-standup"]["kind"] == "subnote"
     assert rows["2026-04-10-standup"]["date"] == "2026-04-10"
     assert rows["2026-04-10-standup"]["title"] == "Standup Notes"
+
+
+@pytest.mark.anyio
+async def test_list_daily_skips_non_daily_and_broken_markdown(
+    app, tmp_vault: VaultConfig
+) -> None:
+    """Listing ignores non-date markdown and malformed daily files without failing."""
+    shutil.rmtree(tmp_vault.daily_dir)
+    tmp_vault.daily_dir.mkdir()
+    (tmp_vault.daily_dir / "2026-05-01.md").write_text(
+        "---\nid: 2026-05-01\ntags:\n- daily-notes\n---\n\n## Valid\n",
+        encoding="utf-8",
+    )
+    (tmp_vault.daily_dir / "scratch.md").write_text("# Scratch\n", encoding="utf-8")
+    (tmp_vault.daily_dir / "2026-05-02-bad.md").write_text(
+        "---\n: [bad\n---\n## Broken\n",
+        encoding="utf-8",
+    )
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/daily",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 200
+        data = await resp.json()
+
+    assert [item["note_id"] for item in data] == ["2026-05-01"]
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +212,29 @@ async def test_list_daily_snippet_is_first_body_line(
                 f"Snippet is frontmatter field: {snippet!r}"
             )
             assert snippet != "", f"Snippet must not be empty for {date_str}"
+
+
+@pytest.mark.anyio
+async def test_list_daily_empty_body_after_frontmatter_has_empty_snippet(
+    app, tmp_vault: VaultConfig
+) -> None:
+    """A daily note with no body content returns an empty snippet, not frontmatter."""
+    path = tmp_vault.daily_dir / "2026-05-10.md"
+    path.write_text(
+        "---\nid: 2026-05-10\ntags:\n- daily-notes\n---\n",
+        encoding="utf-8",
+    )
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/daily",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 200
+        data = await resp.json()
+
+    rows = {item["note_id"]: item for item in data}
+    assert rows["2026-05-10"]["snippet"] == ""
 
 
 # ---------------------------------------------------------------------------
@@ -240,6 +304,19 @@ async def test_list_daily_limit_capped_at_100(
 
 
 @pytest.mark.anyio
+async def test_list_daily_rejects_non_integer_limit(
+    app, vault_with_daily: VaultConfig
+) -> None:
+    """Non-numeric limit= is rejected with a client error."""
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/daily?limit=abc",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 400
+
+
+@pytest.mark.anyio
 async def test_list_daily_limit_2_returns_two_most_recent(
     app, vault_with_daily: VaultConfig
 ) -> None:
@@ -254,6 +331,24 @@ async def test_list_daily_limit_2_returns_two_most_recent(
         assert len(data) == 2
         assert data[0]["date"] == "2026-04-05"
         assert data[1]["date"] == "2026-04-04"
+
+
+@pytest.mark.anyio
+async def test_list_daily_returns_empty_when_daily_dir_is_absent(
+    app, tmp_vault: VaultConfig
+) -> None:
+    """A vault without daily/ lists no daily notes instead of failing or recreating it."""
+    shutil.rmtree(tmp_vault.daily_dir)
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/daily",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 200
+        assert await resp.json() == []
+
+    assert not tmp_vault.daily_dir.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -300,6 +395,23 @@ async def test_post_daily_entry_appends(app, tmp_vault: VaultConfig) -> None:
 
 
 @pytest.mark.anyio
+async def test_post_daily_today_rejects_malformed_json(
+    app, tmp_vault: VaultConfig
+) -> None:
+    """Malformed JSON bodies are reported as client errors."""
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post(
+            "/api/v1/vault/test-vault/daily/today",
+            data="{",
+            headers={
+                "Authorization": f"Bearer {TOKEN}",
+                "Content-Type": "application/json",
+            },
+        )
+        assert resp.status == 400
+
+
+@pytest.mark.anyio
 async def test_post_daily_subnote_creates_file(app, tmp_vault: VaultConfig) -> None:
     """(f) POST /daily/today type=subnote creates a subnote and returns note_id."""
     async with TestClient(TestServer(app)) as client:
@@ -329,6 +441,34 @@ async def test_post_daily_subnote_missing_title_returns_400(
 
 
 @pytest.mark.anyio
+async def test_post_daily_subnote_empty_sanitized_title_returns_400(
+    app, tmp_vault: VaultConfig
+) -> None:
+    """Subnote titles that sanitize to empty are rejected before file creation."""
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post(
+            "/api/v1/vault/test-vault/daily/today",
+            json={"content": "content", "type": "subnote", "title": "---"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 400
+
+
+@pytest.mark.anyio
+async def test_post_daily_today_rejects_unknown_type(
+    app, tmp_vault: VaultConfig
+) -> None:
+    """Only entry and subnote daily mutations are accepted."""
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post(
+            "/api/v1/vault/test-vault/daily/today",
+            json={"content": "content", "type": "reminder"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 400
+
+
+@pytest.mark.anyio
 async def test_get_daily_date_returns_specific_note(
     app, vault_with_daily: VaultConfig
 ) -> None:
@@ -341,6 +481,19 @@ async def test_get_daily_date_returns_specific_note(
         assert resp.status == 200
         data = await resp.json()
         assert data["note_id"] == "2026-04-03"
+
+
+@pytest.mark.anyio
+async def test_get_daily_date_rejects_non_date_path(
+    app, vault_with_daily: VaultConfig
+) -> None:
+    """Non-YYYY-MM-DD date path segments reach the date route but are rejected."""
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/daily/not-a-date",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 400
 
 
 @pytest.mark.anyio
