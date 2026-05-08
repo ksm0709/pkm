@@ -19,3 +19,12 @@ def test_install_shell_aliases(tmp_path: Path, monkeypatch):
     # Run again, should not add duplicate
     install_shell_aliases()
     assert bashrc.read_text().count("alias pkmcd='cd $(pkm vault where)'") == 1
+
+
+def test_install_shell_aliases_ignores_missing_rc_files(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr("pkm.commands.setup.Path.home", lambda: tmp_path)
+
+    install_shell_aliases()
+
+    assert not (tmp_path / ".bashrc").exists()
+    assert not (tmp_path / ".zshrc").exists()
