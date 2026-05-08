@@ -349,6 +349,30 @@ def test_detect_pkm_mcp_uses_hermes_line_fallback_without_yaml(
     assert hook_mod._detect_pkm_mcp() is True
 
 
+def test_detect_pkm_mcp_hermes_line_fallback_stops_at_next_section(
+    tmp_path, monkeypatch
+) -> None:
+    """The line fallback does not treat later top-level sections as MCP servers."""
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    hermes_dir = tmp_path / ".hermes"
+    hermes_dir.mkdir()
+    (hermes_dir / "config.yaml").write_text(
+        "mcp_servers:\n  other:\n    command: other\nsettings:\n  pkm: false\n",
+        encoding="utf-8",
+    )
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "yaml":
+            raise ImportError("yaml unavailable")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    assert hook_mod._detect_pkm_mcp() is False
+
+
 def test_detect_pkm_mcp_finds_opencode_config(tmp_path, monkeypatch) -> None:
     """OpenCode config with mcp.pkm is recognized."""
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
