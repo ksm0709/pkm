@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import os
 import sys
 from collections import OrderedDict
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -319,3 +321,174 @@ async def test_agent_task_reports_no_auto_models(monkeypatch, tmp_path) -> None:
         "id": "models-1",
         "message": "No API keys found for any supported models.",
     }
+
+
+@pytest.mark.anyio
+async def test_workflow_dispatch_unknown_id_sends_worker_error(monkeypatch, tmp_path):
+    """Unknown workflow ids are reported over IPC without starting an agent."""
+    fake_ipc = _FakeIPC()
+    monkeypatch.setattr(worker, "ipc", fake_ipc)
+    monkeypatch.setattr("pkm.workflows.load_workflows", lambda vault_path: [])
+
+    await worker._dispatch_workflow(
+        task_id="wf-missing",
+        workflow_id="missing",
+        vault_dir=str(tmp_path),
+    )
+
+    assert fake_ipc.messages == [
+        {
+            "type": "error",
+            "id": "wf-missing",
+            "message": "Unknown workflow_id: missing",
+        }
+    ]
+
+
+@pytest.mark.anyio
+async def test_workflow_dispatch_formats_pre_hook_and_propagates_agent_options(
+    monkeypatch, tmp_path
+):
+    """Workflow dispatch builds prompt context and forwards runtime options to agent task."""
+    config = SimpleNamespace(
+        id="weekly",
+        pre_hook="prepare",
+        post_hook=None,
+        system_prompt_template="Today is {today}; focus={focus}",
+    )
+    calls: list[dict[str, Any]] = []
+
+    def fake_resolve_hook(name):
+        if name == "prepare":
+            return lambda _vault, today: {"today": today, "focus": "coverage"}
+        return None
+
+    async def fake_run_agent_task(**kwargs: Any) -> None:
+        calls.append(kwargs)
+
+    monkeypatch.setattr("pkm.workflows.load_workflows", lambda vault_path: [config])
+    monkeypatch.setattr("pkm.workflows.resolve_hook", fake_resolve_hook)
+    monkeypatch.setattr(worker, "_run_agent_task", fake_run_agent_task)
+
+    await worker._dispatch_workflow(
+        task_id="wf-1",
+        workflow_id="weekly",
+        vault_dir=str(tmp_path),
+        model="test/model",
+        env_keys={"OPENAI_API_KEY": "secret"},
+        reasoning_effort="high",
+        cwd=str(tmp_path / "project"),
+    )
+
+    assert len(calls) == 1
+    call = calls[0]
+    assert call["task_id"] == "wf-1"
+    assert call["session_prefix"] == "pkm-weekly"
+    assert call["user_content"] == "Execute the weekly workflow now."
+    assert "focus=coverage" in call["system_prompt"]
+    assert call["model"] == "test/model"
+    assert call["env_keys"] == {"OPENAI_API_KEY": "secret"}
+    assert call["reasoning_effort"] == "high"
+    assert call["cwd"] == str(tmp_path / "project")
+
+
+@pytest.mark.anyio
+async def test_handle_task_dispatches_workflow_and_unknown_type(monkeypatch, tmp_path):
+    """Task dispatch runs sandbox once, routes workflows, and rejects unknown types."""
+    fake_ipc = _FakeIPC()
+    monkeypatch.setattr(worker, "ipc", fake_ipc)
+    monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_path))
+    sandboxed: list[str] = []
+    workflow_calls: list[dict[str, Any]] = []
+
+    monkeypatch.setattr(
+        "pkm.sandbox.setup_sandbox", lambda path: sandboxed.append(path)
+    )
+
+    async def fake_dispatch_workflow(*args: Any, **kwargs: Any) -> None:
+        workflow_calls.append({"args": args, "kwargs": kwargs})
+
+    monkeypatch.setattr(worker, "_dispatch_workflow", fake_dispatch_workflow)
+
+    await worker._handle_task_with_current_env(
+        {
+            "id": "task-wf",
+            "task_type": "workflow",
+            "workflow_id": "weekly",
+            "model": "test/model",
+            "env_keys": {"K": "V"},
+            "reasoning_effort": "medium",
+            "cwd": "cwd",
+        }
+    )
+    await worker._handle_task_with_current_env(
+        {"id": "task-bad", "task_type": "unknown"}
+    )
+
+    assert sandboxed == [str(tmp_path), str(tmp_path)]
+    assert workflow_calls[0]["args"] == (
+        "task-wf",
+        "weekly",
+        str(tmp_path),
+        "test/model",
+        {"K": "V"},
+        "medium",
+        "cwd",
+    )
+    assert fake_ipc.messages[-1] == {
+        "type": "error",
+        "id": "task-bad",
+        "message": "Unknown task type: unknown",
+    }
+
+
+@pytest.mark.anyio
+async def test_main_initializes_sandbox_and_reader_loop(monkeypatch, tmp_path):
+    """Worker main changes into the vault, initializes sandbox, then reads IPC."""
+    monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_path))
+    sandboxed: list[str] = []
+    reader_called = False
+
+    monkeypatch.setattr(
+        "pkm.sandbox.setup_sandbox", lambda path: sandboxed.append(path)
+    )
+
+    async def fake_reader_loop() -> None:
+        nonlocal reader_called
+        reader_called = True
+
+    monkeypatch.setattr(worker.ipc, "reader_loop", fake_reader_loop)
+
+    old_cwd = os.getcwd()
+    try:
+        await worker.main()
+    finally:
+        os.chdir(old_cwd)
+
+    assert sandboxed == [str(tmp_path)]
+    assert reader_called is True
+    assert os.getcwd() == old_cwd
+
+
+@pytest.mark.anyio
+async def test_main_exits_when_sandbox_initialization_fails(monkeypatch, tmp_path):
+    """Startup sandbox failures stop the worker process before reading IPC."""
+    monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_path))
+
+    def fail_sandbox(_path: str) -> None:
+        raise RuntimeError("sandbox denied")
+
+    async def fail_reader_loop() -> None:
+        raise AssertionError("reader loop should not start")
+
+    monkeypatch.setattr("pkm.sandbox.setup_sandbox", fail_sandbox)
+    monkeypatch.setattr(worker.ipc, "reader_loop", fail_reader_loop)
+
+    old_cwd = os.getcwd()
+    try:
+        with pytest.raises(SystemExit) as exc_info:
+            await worker.main()
+    finally:
+        os.chdir(old_cwd)
+
+    assert exc_info.value.code == 1
