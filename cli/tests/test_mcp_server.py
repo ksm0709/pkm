@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import time
+from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import networkx as nx
 import pytest
 
 from pkm.config import VaultConfig
@@ -217,6 +221,161 @@ class TestIndex:
             mock_build.assert_called_once_with(tmp_vault)
             assert result["status"] == "indexed"
             assert result["count"] == 2
+
+
+class TestVaultInspectionTools:
+    def test_lists_vault_stats_stale_orphans_and_activity_log(
+        self, mcp_server, tmp_vault: VaultConfig
+    ) -> None:
+        """Maintenance MCP tools summarize real vault health and activity state."""
+        old_mtime = time.time() - 45 * 86400
+        stale_note = tmp_vault.notes_dir / "isolated-note.md"
+        os.utime(stale_note, (old_mtime, old_mtime))
+
+        stats = mcp_server.vault_stats()
+        assert stats["notes"] >= 5
+        assert stats["dailies"] >= 2
+        assert stats["orphans"] >= 2
+        assert stats["unique_tags"] >= 4
+        assert stats["index"] == "not indexed"
+
+        stale = mcp_server.list_stale_notes(days=30)
+        assert stale["threshold_days"] == 30
+        assert any(item["note"] == "isolated-note.md" for item in stale["stale_notes"])
+
+        orphans = mcp_server.list_orphans()
+        orphan_ids = {item["note_id"] for item in orphans["orphans"]}
+        assert {"isolated-note", "untagged-note"}.issubset(orphan_ids)
+        isolated = next(
+            item for item in orphans["orphans"] if item["note_id"] == "isolated-note"
+        )
+        assert isolated["tags"] == ["untagged"]
+
+        missing_log = mcp_server.read_recent_note_activity()
+        assert missing_log["log"] == []
+        assert "No activity log" in missing_log["message"]
+
+        log_path = tmp_vault.pkm_dir / "log.md"
+        log_path.write_text("one\n\n two \nthree\n", encoding="utf-8")
+        tail = mcp_server.read_recent_note_activity(tail=2)
+        assert tail == {"log": [" two ", "three"], "count": 2}
+
+    def test_reads_backlinks_tags_and_neighbors_from_seeded_vault(
+        self, mcp_server, tmp_vault: VaultConfig
+    ) -> None:
+        """Discovery MCP tools expose link, tag, and graph context scenarios."""
+        backlinks = mcp_server.find_backlinks_for_note("2026-04-01-mvcc")
+        backlink_ids = {item["note_id"] for item in backlinks["backlinks"]}
+        assert {"database-isolation", "concurrency-note"}.issubset(backlink_ids)
+        assert backlinks["count"] >= 2
+
+        tags = mcp_server.list_tags()
+        tag_counts = {item["tag"]: item["count"] for item in tags["tags"]}
+        assert tag_counts["database"] >= 3
+        assert tag_counts["daily-notes"] >= 2
+
+        tag_search = mcp_server.tag_search("database+postgresql")
+        assert tag_search["mode"] == "AND(database, postgresql)"
+        assert [item["path"] for item in tag_search["results"]] == [
+            "2026-04-01-mvcc.md"
+        ]
+
+        no_graph = mcp_server.get_note_neighbors("2026-04-01-mvcc")
+        assert "run pkm index first" in no_graph["error"]
+
+        graph = nx.DiGraph()
+        graph.add_node("2026-04-01-mvcc", type="note", title="MVCC")
+        graph.add_node("database-isolation", type="note", title="Database Isolation")
+        graph.add_node("tag:database", type="tag", title="database")
+        graph.add_edge("2026-04-01-mvcc", "database-isolation", type="wikilink")
+        graph.add_edge("tag:database", "2026-04-01-mvcc", type="has_tag")
+        (tmp_vault.pkm_dir / "graph.json").write_text(
+            json.dumps(nx.node_link_data(graph)), encoding="utf-8"
+        )
+
+        neighbors = mcp_server.get_note_neighbors("2026-04-01-mvcc")
+        assert [item["note_id"] for item in neighbors["outbound"]] == [
+            "database-isolation"
+        ]
+        assert [item["note_id"] for item in neighbors["inbound"]] == ["tag:database"]
+
+    def test_consolidation_mcp_flow_requires_distilled_notes_and_marks_daily(
+        self, mcp_server, tmp_vault: VaultConfig
+    ) -> None:
+        """Consolidation MCP tool refuses unsafe cases and records distilled notes."""
+        candidates = mcp_server.list_consolidation_candidates()
+        candidate_dates = {item["date"] for item in candidates["candidates"]}
+        assert {"2026-04-01", "2026-04-02"}.issubset(candidate_dates)
+        assert all(item["entry_count"] >= 0 for item in candidates["candidates"])
+
+        missing_ids = mcp_server.mark_consolidated("2026-04-01")
+        assert "distilled_note_ids is required" in missing_ids["error"]
+
+        missing_note = mcp_server.mark_consolidated(
+            "2026-04-01", distilled_note_ids=["missing-distilled-note"]
+        )
+        assert "not found" in missing_note["error"]
+
+        today = date.today().isoformat()
+        (tmp_vault.daily_dir / f"{today}.md").write_text(
+            "---\nid: today\ntags: []\n---\n\n- live entry\n", encoding="utf-8"
+        )
+        today_result = mcp_server.mark_consolidated(
+            today, distilled_note_ids=["database-isolation"]
+        )
+        assert "still in use" in today_result["error"]
+
+        result = mcp_server.mark_consolidated(
+            "2026-04-01", distilled_note_ids=["database-isolation"]
+        )
+        assert result == {
+            "status": "consolidated",
+            "date": "2026-04-01",
+            "distilled_to": ["database-isolation"],
+        }
+        updated = (tmp_vault.daily_dir / "2026-04-01.md").read_text(encoding="utf-8")
+        assert "consolidated: true" in updated
+        assert "distilled_to:" in updated
+        assert "database-isolation" in updated
+
+        repeat = mcp_server.mark_consolidated(
+            "2026-04-01", distilled_note_ids=["database-isolation"]
+        )
+        assert repeat == {"status": "already_consolidated", "date": "2026-04-01"}
+
+    def test_gap_cases_for_note_read_list_and_rename(
+        self, mcp_server, tmp_vault: VaultConfig, tmp_path: Path
+    ) -> None:
+        """MCP note wrappers return useful metadata and handle absent/conflict paths."""
+        daily = mcp_server.read_note("2026-04-01")
+        assert str(daily["note_id"]) == "2026-04-01"
+        assert "daily-notes" in daily["tags"]
+        assert daily["created"] is None
+
+        missing = mcp_server.read_note("not-present")
+        assert missing["error"] == "Note 'not-present' not found."
+
+        filtered = mcp_server.list_notes(filter="isolation")
+        assert filtered["count"] == 1
+        assert filtered["notes"][0]["note_id"] == "database-isolation"
+
+        empty_vault = VaultConfig(name="empty", path=tmp_path / "empty")
+        with patch("pkm.mcp_server.get_vault", return_value=empty_vault):
+            assert mcp_server.list_notes(vault="empty") == {"notes": [], "count": 0}
+
+        conflict = mcp_server.rename_note("database-isolation", "2026-04-01-mvcc")
+        assert "already exists" in conflict["error"]
+
+        absent = mcp_server.rename_note("does-not-exist", "new-id")
+        assert "not found" in absent["error"]
+
+    def test_missing_default_vault_raises_before_tool_error_wrapping(
+        self, mcp_server
+    ) -> None:
+        """Unset MCP default vault is a configuration failure, not a tool result."""
+        mcp_server._current_vault = None
+        with pytest.raises(ValueError, match="No vault configured"):
+            mcp_server.vault_stats()
 
 
 # ---------------------------------------------------------------------------
