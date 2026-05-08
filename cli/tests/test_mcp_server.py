@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import subprocess
@@ -11,6 +12,7 @@ from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import click
 import networkx as nx
 import pytest
 
@@ -93,6 +95,63 @@ class TestDailyAdd:
         assert today_file.exists()
         content = today_file.read_text(encoding="utf-8")
         assert "Testing MCP daily add" in content
+
+
+class TestDailySubnote:
+    def test_creates_sanitized_subnote_and_links_from_daily(
+        self, mcp_server, tmp_vault: VaultConfig
+    ) -> None:
+        """MCP subnotes sanitize titles into daily_dir and link from today's note."""
+        result = mcp_server.create_daily_subnote(
+            title="../ Design Session",
+            content="Session body",
+            tags=["session", "mcp"],
+            aliases=["Design Alias"],
+        )
+
+        assert result["status"] == "created"
+        note_path = Path(result["path"])
+        assert note_path.exists()
+        assert str(note_path.resolve()).startswith(str(tmp_vault.daily_dir.resolve()))
+        assert ".." not in note_path.name
+        assert "/" not in result["note_id"]
+
+        note_text = note_path.read_text(encoding="utf-8")
+        assert "Session body" in note_text
+        assert "session" in note_text
+        assert "Design Alias" in note_text
+
+        today = date.today().isoformat()
+        daily_text = (tmp_vault.daily_dir / f"{today}.md").read_text(encoding="utf-8")
+        assert f"[[{result['note_id']}]]" in daily_text
+
+    def test_repeated_subnote_call_links_without_overwriting_body(
+        self, mcp_server, tmp_vault: VaultConfig
+    ) -> None:
+        """The MCP wrapper is idempotent for file body but can add another daily link."""
+        first = mcp_server.create_daily_subnote(
+            title="Retro Notes",
+            content="Original body",
+        )
+        note_path = Path(first["path"])
+        note_path.write_text("customized body\n", encoding="utf-8")
+
+        second = mcp_server.create_daily_subnote(
+            title="Retro Notes",
+            content="Replacement body",
+        )
+
+        assert second["note_id"] == first["note_id"]
+        assert note_path.read_text(encoding="utf-8") == "customized body\n"
+
+        today = date.today().isoformat()
+        daily_text = (tmp_vault.daily_dir / f"{today}.md").read_text(encoding="utf-8")
+        assert daily_text.count(f"[[{first['note_id']}]]") == 2
+
+    def test_empty_sanitized_subnote_title_returns_error(self, mcp_server) -> None:
+        """A title that sanitizes to nothing is rejected before file creation."""
+        result = mcp_server.create_daily_subnote(title="../../", content="body")
+        assert result == {"error": "title cannot be empty"}
 
 
 class TestReadDailyLog:
@@ -207,6 +266,47 @@ class TestSearch:
             call_args = mock_search.call_args
             assert call_args[0][1] == other_vault
 
+    def test_related_note_failure_is_isolated_per_search_result(
+        self, mcp_server
+    ) -> None:
+        """A broken related-note lookup does not discard successful search hits."""
+        mock_result = MagicMock()
+        mock_result.note_id = "test-note"
+        mock_result.title = "Test Note"
+        mock_result.score = 0.91234
+        mock_result.tags = ["test"]
+        mock_result.memory_type = "semantic"
+        mock_result.importance = 7.0
+        mock_result.path = "/fake/path"
+        mock_result.rank = 1
+
+        with (
+            patch("pkm.search_engine.search_via_daemon", return_value=[mock_result]),
+            patch(
+                "pkm.tools.links._get_note_neighbors_data",
+                side_effect=RuntimeError("graph stale"),
+            ),
+        ):
+            result = mcp_server.search(query="test")
+
+        assert result["count"] == 1
+        assert result["results"][0]["score"] == 0.9123
+        assert result["results"][0]["related_notes"] is None
+
+    def test_search_normalizes_click_and_runtime_failures(self, mcp_server) -> None:
+        """Daemon search wrapper converts downstream failures into MCP error dicts."""
+        with patch(
+            "pkm.search_engine.search_via_daemon",
+            side_effect=click.ClickException("bad query"),
+        ):
+            assert mcp_server.search(query="bad") == {"error": "bad query"}
+
+        with patch(
+            "pkm.search_engine.search_via_daemon",
+            side_effect=RuntimeError("index corrupt"),
+        ):
+            assert mcp_server.search(query="bad") == {"error": "index corrupt"}
+
 
 class TestIndex:
     def test_builds_index(self, mcp_server, tmp_vault: VaultConfig) -> None:
@@ -221,6 +321,216 @@ class TestIndex:
             mock_build.assert_called_once_with(tmp_vault)
             assert result["status"] == "indexed"
             assert result["count"] == 2
+
+    def test_index_normalizes_click_and_runtime_failures(self, mcp_server) -> None:
+        """Index wrapper returns MCP error dicts for build failures."""
+        with patch(
+            "pkm.search_engine.build_index",
+            side_effect=click.ClickException("missing embeddings"),
+        ):
+            assert mcp_server.index() == {"error": "missing embeddings"}
+
+        with patch(
+            "pkm.search_engine.build_index",
+            side_effect=RuntimeError("disk full"),
+        ):
+            assert mcp_server.index() == {"error": "disk full"}
+
+
+class FakeAskReader:
+    def __init__(self, payload: bytes):
+        self.payload = payload
+
+    async def readline(self) -> bytes:
+        return self.payload
+
+
+class FakeAskWriter:
+    def __init__(self, *, wait_closed_error: Exception | None = None):
+        self.writes: list[bytes] = []
+        self.closed = False
+        self.wait_closed_error = wait_closed_error
+
+    def write(self, data: bytes) -> None:
+        self.writes.append(data)
+
+    async def drain(self) -> None:
+        return None
+
+    def close(self) -> None:
+        self.closed = True
+
+    async def wait_closed(self) -> None:
+        if self.wait_closed_error:
+            raise self.wait_closed_error
+
+
+class TestPkmAsk:
+    @pytest.mark.anyio
+    async def test_sends_daemon_payload_with_defaults_and_env_keys(
+        self, mcp_server, monkeypatch
+    ) -> None:
+        """pkm_ask sends vault, model, graph depth, and API env keys to daemon."""
+        reader = FakeAskReader(b'{"data": {"response": "answer"}}\n')
+        writer = FakeAskWriter()
+
+        async def open_socket(path: str):
+            assert path.endswith(".config/pkm/daemon.sock")
+            return reader, writer
+
+        monkeypatch.setattr(asyncio, "open_unix_connection", open_socket)
+        monkeypatch.setattr(
+            "pkm.config.load_config",
+            lambda: {"defaults": {"model": "configured-model", "graph-depth": 2}},
+        )
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        monkeypatch.setenv("NOT_A_SECRET", "ignored")
+
+        result = await mcp_server.pkm_ask("What changed?")
+
+        assert result == {"result": "answer"}
+        payload = json.loads(writer.writes[0].decode("utf-8"))
+        assert payload == {
+            "action": "ask",
+            "query": "What changed?",
+            "vault_name": "test-vault",
+            "model": "configured-model",
+            "env_keys": {"OPENAI_API_KEY": "sk-test"},
+            "graph_depth": 2,
+        }
+        assert writer.closed is True
+
+    @pytest.mark.anyio
+    async def test_accepts_top_level_response_and_model_override(
+        self, mcp_server, monkeypatch
+    ) -> None:
+        """pkm_ask accepts legacy top-level responses and explicit model override."""
+        reader = FakeAskReader(b'{"response": "legacy answer"}\n')
+        writer = FakeAskWriter()
+
+        async def open_socket(path: str):
+            return reader, writer
+
+        monkeypatch.setattr(asyncio, "open_unix_connection", open_socket)
+        monkeypatch.setattr("pkm.config.load_config", lambda: {"defaults": {}})
+
+        result = await mcp_server.pkm_ask("Question?", model="override-model")
+
+        assert result == {"result": "legacy answer"}
+        payload = json.loads(writer.writes[0].decode("utf-8"))
+        assert payload["model"] == "override-model"
+        assert payload["graph_depth"] == 0
+
+    @pytest.mark.anyio
+    async def test_reports_daemon_start_failure_after_retrying_once_per_attempt(
+        self, mcp_server, monkeypatch
+    ) -> None:
+        """Daemon startup failure retries quickly and returns a clear MCP error."""
+        attempts = []
+        starts = []
+
+        async def open_socket(path: str):
+            attempts.append(path)
+            raise FileNotFoundError(path)
+
+        async def no_sleep(delay: float) -> None:
+            return None
+
+        monkeypatch.setattr(asyncio, "open_unix_connection", open_socket)
+        monkeypatch.setattr(asyncio, "sleep", no_sleep)
+        monkeypatch.setattr(
+            subprocess, "Popen", lambda *args, **kwargs: starts.append(args)
+        )
+        monkeypatch.setattr("pkm.config.load_config", lambda: {"defaults": {}})
+
+        result = await mcp_server.pkm_ask("Question?")
+
+        assert result == {
+            "error": "Daemon failed to start. Run 'pkm daemon start' manually."
+        }
+        assert len(attempts) == 50
+        assert len(starts) == 1
+
+    @pytest.mark.anyio
+    async def test_reports_no_response_error_and_closes_writer(
+        self, mcp_server, monkeypatch
+    ) -> None:
+        """An empty daemon response is surfaced without leaking the writer."""
+        reader = FakeAskReader(b"")
+        writer = FakeAskWriter()
+
+        async def open_socket(path: str):
+            return reader, writer
+
+        monkeypatch.setattr(asyncio, "open_unix_connection", open_socket)
+        monkeypatch.setattr("pkm.config.load_config", lambda: {"defaults": {}})
+
+        result = await mcp_server.pkm_ask("Question?")
+
+        assert result == {"error": "No response from daemon."}
+        assert writer.closed is True
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize(
+        ("payload", "expected"),
+        [
+            (b'{"type": "error", "message": "agent failed"}\n', "agent failed"),
+            (b'{"error": "bad model"}\n', "bad model"),
+            (
+                b'{"data": {"unexpected": true}}\n',
+                "Invalid response format from daemon.",
+            ),
+        ],
+    )
+    async def test_reports_daemon_error_payloads(
+        self, mcp_server, monkeypatch, payload: bytes, expected: str
+    ) -> None:
+        """Daemon error and malformed-success schemas become MCP error dicts."""
+        reader = FakeAskReader(payload)
+        writer = FakeAskWriter(wait_closed_error=RuntimeError("close already gone"))
+
+        async def open_socket(path: str):
+            return reader, writer
+
+        monkeypatch.setattr(asyncio, "open_unix_connection", open_socket)
+        monkeypatch.setattr("pkm.config.load_config", lambda: {"defaults": {}})
+
+        result = await mcp_server.pkm_ask("Question?")
+
+        assert result == {"error": expected}
+        assert writer.closed is True
+
+    @pytest.mark.anyio
+    async def test_reports_timeout_and_invalid_json_as_errors(
+        self, mcp_server, monkeypatch
+    ) -> None:
+        """Timeouts and malformed JSON take the dedicated/error fallback paths."""
+
+        async def open_socket_timeout(path: str):
+            return FakeAskReader(b"ignored"), FakeAskWriter()
+
+        async def raise_timeout(awaitable, timeout: int):
+            awaitable.close()
+            raise asyncio.TimeoutError
+
+        monkeypatch.setattr(asyncio, "open_unix_connection", open_socket_timeout)
+        monkeypatch.setattr(asyncio, "wait_for", raise_timeout)
+        monkeypatch.setattr("pkm.config.load_config", lambda: {"defaults": {}})
+
+        timeout_result = await mcp_server.pkm_ask("Slow?", timeout=1)
+        assert timeout_result == {"error": "Request timed out after 1 seconds."}
+
+        async def passthrough(awaitable, timeout: int):
+            return await awaitable
+
+        async def open_socket_bad_json(path: str):
+            return FakeAskReader(b"not json\n"), FakeAskWriter()
+
+        monkeypatch.setattr(asyncio, "open_unix_connection", open_socket_bad_json)
+        monkeypatch.setattr(asyncio, "wait_for", passthrough)
+
+        bad_json_result = await mcp_server.pkm_ask("Bad JSON?")
+        assert bad_json_result["error"].startswith("An unexpected error occurred:")
 
 
 class TestVaultInspectionTools:
@@ -376,6 +686,125 @@ class TestVaultInspectionTools:
         mcp_server._current_vault = None
         with pytest.raises(ValueError, match="No vault configured"):
             mcp_server.vault_stats()
+
+    def test_maintenance_wrappers_return_error_dicts(self, mcp_server) -> None:
+        """Maintenance MCP wrappers normalize lower-level exceptions."""
+        with patch(
+            "pkm.commands.maintenance.compute_vault_stats",
+            side_effect=RuntimeError("stats failed"),
+        ):
+            assert mcp_server.vault_stats() == {"error": "stats failed"}
+
+        with patch(
+            "pkm.commands.maintenance.list_stale",
+            side_effect=RuntimeError("stale failed"),
+        ):
+            assert mcp_server.list_stale_notes() == {"error": "stale failed"}
+
+        with patch(
+            "pkm.wikilinks.find_orphans",
+            side_effect=RuntimeError("orphans failed"),
+        ):
+            assert mcp_server.list_orphans() == {"error": "orphans failed"}
+
+    def test_discovery_wrappers_return_error_dicts(self, mcp_server) -> None:
+        """Discovery MCP wrappers do not leak lower-level exceptions."""
+        with patch(
+            "pkm.wikilinks.find_backlinks",
+            side_effect=RuntimeError("backlinks failed"),
+        ):
+            assert mcp_server.find_backlinks_for_note("note") == {
+                "error": "backlinks failed"
+            }
+
+        with patch(
+            "pkm.tools.links._get_note_neighbors_data",
+            side_effect=FileNotFoundError("graph missing"),
+        ):
+            assert mcp_server.get_note_neighbors("note") == {"error": "graph missing"}
+
+        with patch(
+            "pkm.commands.tag_commands.count_all_tags",
+            side_effect=RuntimeError("tags failed"),
+        ):
+            assert mcp_server.list_tags() == {"error": "tags failed"}
+
+        with patch(
+            "pkm.commands.tag_commands.search_by_tag_pattern",
+            side_effect=RuntimeError("tag search failed"),
+        ):
+            assert mcp_server.tag_search("db") == {"error": "tag search failed"}
+
+    def test_graph_search_wrappers_delegate_and_wrap_errors(self, mcp_server) -> None:
+        """Graph/search MCP tools forward arguments and normalize tool failures."""
+        with patch(
+            "pkm.tools.search.find_surprising_connections",
+            new=MagicMock(return_value="surprises"),
+        ) as tool:
+            assert mcp_server.find_surprising_connections(top_n=3) == {
+                "result": "surprises"
+            }
+            tool.assert_called_once_with(top_n=3)
+
+        with patch(
+            "pkm.tools.search.list_clusters",
+            new=MagicMock(return_value="clusters"),
+        ) as tool:
+            assert mcp_server.list_clusters() == {"result": "clusters"}
+            tool.assert_called_once_with()
+
+        with patch(
+            "pkm.tools.search.list_god_nodes",
+            new=MagicMock(return_value="nodes"),
+        ) as tool:
+            assert mcp_server.list_god_nodes(top_n=4) == {"result": "nodes"}
+            tool.assert_called_once_with(top_n=4)
+
+        with patch(
+            "pkm.tools.search.create_hub_note",
+            new=MagicMock(return_value="hub"),
+        ) as tool:
+            assert mcp_server.create_hub_note(
+                cluster_index=2, title="Hub", description="Bridge"
+            ) == {"result": "hub"}
+            tool.assert_called_once_with(
+                cluster_index=2, title="Hub", description="Bridge"
+            )
+
+        with patch(
+            "pkm.tools.links.add_wikilink",
+            new=MagicMock(return_value="linked"),
+        ) as tool:
+            assert mcp_server.add_wikilink(
+                source_note_id="a",
+                target_note_id="b",
+                description="shared context",
+            ) == {"result": "linked"}
+            tool.assert_called_once_with(
+                source_note_id="a",
+                target_note_id="b",
+                description="shared context",
+            )
+
+        wrappers = [
+            (
+                "pkm.tools.search.find_surprising_connections",
+                lambda: mcp_server.find_surprising_connections(),
+            ),
+            ("pkm.tools.search.list_clusters", mcp_server.list_clusters),
+            ("pkm.tools.search.list_god_nodes", mcp_server.list_god_nodes),
+            (
+                "pkm.tools.search.create_hub_note",
+                lambda: mcp_server.create_hub_note(1, "Hub", "Bridge"),
+            ),
+            (
+                "pkm.tools.links.add_wikilink",
+                lambda: mcp_server.add_wikilink("a", "b", "why"),
+            ),
+        ]
+        for target, call_wrapper in wrappers:
+            with patch(target, new=MagicMock(side_effect=RuntimeError("tool failed"))):
+                assert call_wrapper() == {"error": "tool failed"}
 
 
 # ---------------------------------------------------------------------------
