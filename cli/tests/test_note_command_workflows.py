@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import click
 import pytest
 from click.testing import CliRunner
 
@@ -440,6 +441,61 @@ def test_note_auto_link_dry_run_detects_plain_title_without_writing(
     assert result.exit_code == 0
     assert "Would update links in plain-reference" in result.output
     assert target.read_text(encoding="utf-8") == original
+
+
+def test_note_auto_link_callback_writes_links_and_skips_ineligible_offsets(
+    tmp_vault, monkeypatch
+) -> None:
+    """Auto-link mutation links other note titles while skipping self/blank/missing data."""
+    target = tmp_vault.notes_dir / "plain-reference.md"
+    body = "Plain Reference mentions Database Isolation.\n"
+    target.write_text(
+        "---\nid: plain-reference\ntitle: Plain Reference\ntags: []\n---\n\n" + body,
+        encoding="utf-8",
+    )
+    title_note = tmp_vault.notes_dir / "database-isolation-title.md"
+    title_note.write_text(
+        "---\n"
+        "id: database-isolation-title\n"
+        "title: Database Isolation\n"
+        "tags: []\n"
+        "---\n\nBody\n",
+        encoding="utf-8",
+    )
+    missing_metadata_note = tmp_vault.notes_dir / "missing-metadata.md"
+    missing_metadata_note.write_text(
+        "---\nid: missing-metadata\ntitle: Missing Metadata\ntags: []\n---\n\nBody\n",
+        encoding="utf-8",
+    )
+    (tmp_vault.pkm_dir / "ast.db").write_text("", encoding="utf-8")
+
+    class FakeCache:
+        def __init__(self, db_path):
+            self.db_path = db_path
+
+        def get(self, note_id):
+            if note_id == "plain-reference":
+                return SimpleNamespace(
+                    path=str(target),
+                    plain_text_offsets=[
+                        {"text": "   ", "offset": len(body), "length": 3},
+                        {"text": body, "offset": 0, "length": len(body)},
+                    ],
+                )
+            return None
+
+    monkeypatch.setattr("pkm.graph.ASTCache", FakeCache)
+
+    from pkm.commands.notes import auto_link
+
+    with click.Context(auto_link, obj={"vault": tmp_vault}):
+        auto_link.callback(note_id=None, all_notes=True, dry_run=False)
+
+    updated = target.read_text(encoding="utf-8")
+    assert "Plain Reference mentions [[Database Isolation]]." in updated
+    assert "[[Plain Reference]]" not in updated
+    assert "[[Missing Metadata]]" not in updated
+    assert missing_metadata_note.read_text(encoding="utf-8").endswith("Body\n")
 
 
 def test_note_split_requires_target_even_with_dry_run(cli_runner) -> None:
