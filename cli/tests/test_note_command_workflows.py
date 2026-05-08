@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -11,6 +12,7 @@ import pytest
 from click.testing import CliRunner
 
 from pkm.cli import main
+from pkm.config import VaultConfig
 from pkm.search_engine import VectorIndex
 
 
@@ -205,6 +207,160 @@ def test_note_links_table_no_backlinks_message(cli_runner, monkeypatch) -> None:
 
     assert result.exit_code == 0
     assert "No backlinks found" in result.output
+
+
+def test_note_group_without_subcommand_prints_help(cli_runner) -> None:
+    """Bare `pkm note` gives the user command help instead of doing nothing."""
+    result = cli_runner("note")
+
+    assert result.exit_code == 0
+    assert "Manage notes" in result.output
+    assert "add" in result.output
+    assert "show" in result.output
+
+
+def test_note_add_vault_option_writes_to_named_vault(
+    monkeypatch, tmp_path, tmp_vault
+) -> None:
+    """`note add --vault` overrides the active vault for the created note."""
+    other_path = tmp_path / "other-vault"
+    for name in ("daily", "notes", ".pkm"):
+        (other_path / name).mkdir(parents=True)
+    other_vault = VaultConfig(name="other-vault", path=other_path)
+    vaults = {"test-vault": tmp_vault, "other-vault": other_vault}
+    monkeypatch.setattr("pkm.config.discover_vaults", lambda *a, **kw: vaults)
+
+    result = CliRunner().invoke(
+        main,
+        [
+            "--vault",
+            "test-vault",
+            "note",
+            "add",
+            "Routed Note",
+            "--vault",
+            "other-vault",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0
+    today = date.today().isoformat()
+    assert (other_vault.notes_dir / f"{today}-routed-note.md").exists()
+    assert not (tmp_vault.notes_dir / f"{today}-routed-note.md").exists()
+
+
+def test_note_rename_surfaces_lifecycle_errors(cli_runner, monkeypatch) -> None:
+    """Rename command maps lifecycle validation failures to CLI errors."""
+    monkeypatch.setattr(
+        "pkm.commands.notes.rename_note_id",
+        lambda *args: (_ for _ in ()).throw(ValueError("invalid note id")),
+    )
+
+    result = cli_runner("note", "rename", "old", "bad/id", catch_exceptions=True)
+
+    assert result.exit_code != 0
+    assert "invalid note id" in result.output
+
+
+def test_note_show_markdown_no_match_exits_with_human_message(
+    cli_runner,
+) -> None:
+    """Markdown show no-match is a human-facing failure, unlike JSON no-match."""
+    result = cli_runner(
+        "note",
+        "show",
+        "not-present",
+        "--format",
+        "md",
+        catch_exceptions=True,
+    )
+
+    assert result.exit_code != 0
+    assert "No notes found" in result.output
+
+
+def test_note_show_markdown_prints_selected_note(cli_runner) -> None:
+    """Markdown show returns the first matching note body for human reading."""
+    result = cli_runner("note", "show", "mvcc", "--format", "md")
+
+    assert result.exit_code == 0
+    assert "MVCC is a concurrency control technique." in result.output
+    assert "id: 2026-04-01-mvcc" in result.output
+
+
+def test_note_show_json_skips_bad_backlinks_and_includes_graph_context(
+    cli_runner, tmp_vault, monkeypatch
+) -> None:
+    """JSON show keeps usable backlink context and tolerates broken backlink files."""
+    valid = tmp_vault.notes_dir / "valid-show-backlink.md"
+    broken = tmp_vault.notes_dir / "broken-show-backlink.md"
+    valid.write_text(
+        "---\nid: valid-show-backlink\ntitle: Valid Show Backlink\n---\nBody\n",
+        encoding="utf-8",
+    )
+    broken.write_text("---\n: bad: yaml\n---\n", encoding="utf-8")
+
+    from pkm.frontmatter import parse as real_parse
+
+    def fake_parse(path):
+        if Path(path) == broken:
+            raise RuntimeError("bad frontmatter")
+        return real_parse(path)
+
+    monkeypatch.setattr(
+        "pkm.commands.notes.find_backlinks", lambda vault, note_id: [valid, broken]
+    )
+    monkeypatch.setattr("pkm.commands.notes.parse", fake_parse)
+    monkeypatch.setattr(
+        "pkm.search_engine.get_graph_context_via_daemon",
+        lambda note_id, vault, depth: {"note_id": note_id, "depth": depth},
+        raising=False,
+    )
+
+    result = cli_runner("note", "show", "mvcc", "--top", "1", "--depth", "2")
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    note = payload["notes"][0]
+    assert note["backlinks"] == ["Valid Show Backlink"]
+    assert note["graph_context"] == {"note_id": "2026-04-01-mvcc", "depth": 2}
+
+
+def test_note_links_table_renders_valid_backlinks_and_skips_broken_files(
+    cli_runner, tmp_vault, monkeypatch
+) -> None:
+    """Table links presents valid backlinks without failing on corrupt notes."""
+    valid = tmp_vault.notes_dir / "valid-table-backlink.md"
+    broken = tmp_vault.notes_dir / "broken-table-backlink.md"
+    valid.write_text(
+        "---\n"
+        "id: valid-table-backlink\n"
+        "title: Valid Table Backlink\n"
+        "description: Human readable context\n"
+        "---\nBody\n",
+        encoding="utf-8",
+    )
+    broken.write_text("---\n: bad: yaml\n---\n", encoding="utf-8")
+
+    from pkm.frontmatter import parse as real_parse
+
+    def fake_parse(path):
+        if Path(path) == broken:
+            raise RuntimeError("bad frontmatter")
+        return real_parse(path)
+
+    monkeypatch.setattr(
+        "pkm.commands.notes.find_backlinks", lambda vault, note_id: [valid, broken]
+    )
+    monkeypatch.setattr("pkm.commands.notes.parse", fake_parse)
+
+    result = cli_runner("note", "links", "mvcc", "--format", "table")
+
+    assert result.exit_code == 0
+    assert "Valid Table Backlink" in result.output
+    assert "Human readable context" in result.output
+    assert "broken-table-backlink" not in result.output
 
 
 def test_note_edit_nonzero_editor_return_warns_but_exits_zero(

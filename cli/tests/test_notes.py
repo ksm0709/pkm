@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 import yaml
 import pytest
@@ -220,6 +221,35 @@ def test_search_notes_case_insensitive(tmp_vault):
     lower = _search_notes(tmp_vault, "mvcc")
     upper = _search_notes(tmp_vault, "MVCC")
     assert len(lower) == len(upper)
+
+
+def test_search_notes_missing_directory_returns_empty(tmp_path):
+    """Search treats a partially initialized vault with no notes dir as empty."""
+    from pkm.commands.notes import _search_notes
+
+    vault = SimpleNamespace(notes_dir=tmp_path / "missing-notes")
+
+    assert _search_notes(vault, "anything") == []
+
+
+def test_search_notes_skips_unreadable_notes(tmp_vault, monkeypatch):
+    """Search continues returning good matches when one note cannot be parsed."""
+    from pkm.commands.notes import _search_notes
+    from pkm.frontmatter import parse as real_parse
+
+    broken = tmp_vault.notes_dir / "broken-note.md"
+    broken.write_text("---\n: bad: yaml\n---\n", encoding="utf-8")
+
+    def fake_parse(path):
+        if Path(path) == broken:
+            raise RuntimeError("bad frontmatter")
+        return real_parse(path)
+
+    monkeypatch.setattr("pkm.commands.notes.parse", fake_parse)
+
+    matches = _search_notes(tmp_vault, "mvcc")
+
+    assert any(match.id == "2026-04-01-mvcc" for match in matches)
 
 
 # ---------------------------------------------------------------------------
@@ -502,6 +532,45 @@ def test_note_add_dedup_no_index_graceful(cli_runner, tmp_vault):
     assert result.exit_code == 0
 
 
+def test_create_note_uses_daemon_matches_and_survives_index_update_failure(
+    tmp_vault, monkeypatch
+):
+    """Note creation proceeds after daemon dedup and failed async index refresh."""
+    from pkm.commands.notes import create_note
+
+    load_index = []
+    monkeypatch.setattr(
+        "pkm.search_engine.search_via_daemon",
+        lambda *args, **kwargs: [SimpleNamespace(score=0.91)],
+    )
+    monkeypatch.setattr(
+        "pkm.search_engine.load_index",
+        lambda vault: load_index.append(vault),
+    )
+    monkeypatch.setattr(
+        "pkm.search_engine.update_index_via_daemon",
+        lambda vault: (_ for _ in ()).throw(RuntimeError("daemon down")),
+    )
+
+    note_path = create_note(
+        tmp_vault,
+        title="Daemon Dedup Resilience",
+        content="content close enough to trigger daemon similarity",
+    )
+
+    assert note_path.exists()
+    assert note_path.stem.endswith("daemon-dedup-resilience")
+    assert "content close enough" in note_path.read_text(encoding="utf-8")
+    assert load_index == []
+
+
+def test_slugify_preserves_non_ascii_fallback():
+    """Titles with no ASCII slug survive as deterministic filenames."""
+    from pkm.commands.notes import _slugify
+
+    assert _slugify("한글 제목") == "한글-제목"
+
+
 # ---------------------------------------------------------------------------
 # GAP 3: _append_operation_log + pkm note log
 # ---------------------------------------------------------------------------
@@ -542,6 +611,39 @@ def test_note_log_tail_option(cli_runner, tmp_vault):
         cli_runner("note", "add", "--content", f"note number {i}", "--no-dedup")
     result = cli_runner("note", "log", "--tail", "2")
     assert result.exit_code == 0
+
+
+def test_append_operation_log_adds_today_section_to_existing_log(tmp_vault):
+    """Log append preserves old content and creates today's section when missing."""
+    from pkm.commands.notes import _append_operation_log
+
+    log_path = tmp_vault.pkm_dir / "log.md"
+    log_path.write_text(
+        "# Operation Log\n\n## 1999-01-01\n- old entry", encoding="utf-8"
+    )
+
+    _append_operation_log(tmp_vault, "add", "new-note", "New Note")
+
+    text = log_path.read_text(encoding="utf-8")
+    assert "## 1999-01-01" in text
+    assert f"## {date.today().isoformat()}" in text
+    assert '[add] new-note — "New Note"' in text
+
+
+def test_append_operation_log_swallows_filesystem_errors(tmp_vault, monkeypatch):
+    """Logging failures do not fail the note creation workflow."""
+    from pkm.commands.notes import _append_operation_log
+
+    original_mkdir = Path.mkdir
+
+    def fail_for_log_dir(self, *args, **kwargs):
+        if self == tmp_vault.pkm_dir:
+            raise OSError("read only")
+        return original_mkdir(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", fail_for_log_dir)
+
+    _append_operation_log(tmp_vault, "add", "ignored", "Ignored")
 
 
 # ---------------------------------------------------------------------------
