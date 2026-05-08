@@ -135,6 +135,29 @@ async def test_list_notes_includes_description_from_frontmatter(
     )
 
 
+@pytest.mark.anyio
+async def test_list_notes_skips_broken_markdown_file(
+    app, tmp_vault: VaultConfig
+) -> None:
+    """A malformed note file must not break the whole notes listing."""
+    (tmp_vault.notes_dir / "broken-frontmatter.md").write_text(
+        "---\n: [bad\n---\nBroken note\n",
+        encoding="utf-8",
+    )
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/notes",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 200
+        data = await resp.json()
+
+    note_ids = [item["note_id"] for item in data]
+    assert "2026-04-01-mvcc" in note_ids
+    assert "broken-frontmatter" not in note_ids
+
+
 def test_note_description_fallback_skips_frontmatter() -> None:
     """Fallback descriptions must summarize note content, not metadata."""
     body = (

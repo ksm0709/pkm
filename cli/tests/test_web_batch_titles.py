@@ -57,6 +57,29 @@ async def test_batch_titles_some_unresolved(app, tmp_vault: VaultConfig) -> None
 
 
 @pytest.mark.anyio
+async def test_batch_titles_broken_note_maps_to_empty_title(
+    app, tmp_vault: VaultConfig
+) -> None:
+    """A malformed note file does not break batch title resolution."""
+    (tmp_vault.notes_dir / "broken-title.md").write_text(
+        "---\n: [bad\n---\nBroken note\n",
+        encoding="utf-8",
+    )
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post(
+            "/api/v1/vault/test-vault/notes/batch-titles",
+            json={"ids": ["broken-title", "2026-04-01-mvcc"]},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 200
+        data = await resp.json()
+
+    assert data["broken-title"] == ""
+    assert data["2026-04-01-mvcc"] != ""
+
+
+@pytest.mark.anyio
 async def test_batch_titles_auth_required(app, tmp_vault: VaultConfig) -> None:
     """Missing auth token returns 401."""
     async with TestClient(TestServer(app)) as client:
@@ -65,6 +88,21 @@ async def test_batch_titles_auth_required(app, tmp_vault: VaultConfig) -> None:
             json={"ids": ["2026-04-01-mvcc"]},
         )
         assert resp.status == 401
+
+
+@pytest.mark.anyio
+async def test_batch_titles_rejects_malformed_json(app, tmp_vault: VaultConfig) -> None:
+    """Malformed batch-title requests are rejected before ids validation."""
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post(
+            "/api/v1/vault/test-vault/notes/batch-titles",
+            data="{",
+            headers={
+                "Authorization": f"Bearer {TOKEN}",
+                "Content-Type": "application/json",
+            },
+        )
+        assert resp.status == 400
 
 
 @pytest.mark.anyio
