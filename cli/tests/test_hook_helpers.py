@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import builtins
+import json
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -187,3 +190,189 @@ def test_save_session_state_swallows_filesystem_errors(tmp_vault, monkeypatch) -
 def test_extract_user_prompt_covers_platforms_and_fallbacks(payload, expected) -> None:
     """Prompt extraction supports known hook platforms and conservative fallbacks."""
     assert hook_mod._extract_user_prompt(payload) == expected
+
+
+def test_consolidation_trigger_respects_disabled_auto_trigger(tmp_vault) -> None:
+    """Opting out of auto-trigger leaves session state untouched."""
+    result = hook_mod._check_consolidation_trigger(
+        tmp_vault, {"consolidation": {"auto_trigger": False}}
+    )
+
+    assert result is None
+    assert not (tmp_vault.pkm_dir / "session_state.json").exists()
+
+
+def test_consolidation_trigger_persists_below_threshold_count(tmp_vault) -> None:
+    """Below-threshold sessions are counted for a future recommendation."""
+    result = hook_mod._check_consolidation_trigger(
+        tmp_vault, {"consolidation": {"session_threshold": 3}}
+    )
+
+    assert result is None
+    state = json.loads((tmp_vault.pkm_dir / "session_state.json").read_text())
+    assert state["session_count"] == 1
+
+
+def test_consolidation_trigger_honors_naive_datetime_cooldown(tmp_vault) -> None:
+    """Cooldown parsing treats naive timestamps as UTC and suppresses early repeats."""
+    state_path = tmp_vault.pkm_dir / "session_state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "session_count": 5,
+                "last_consolidation_at": datetime.now().isoformat(),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = hook_mod._check_consolidation_trigger(
+        tmp_vault,
+        {"consolidation": {"session_threshold": 2, "cooldown_hours": 24}},
+    )
+
+    assert result is None
+    state = json.loads(state_path.read_text())
+    assert state["session_count"] == 6
+
+
+def test_consolidation_trigger_resets_count_when_no_candidates(
+    tmp_vault, monkeypatch
+) -> None:
+    """Threshold sessions without eligible daily notes reset instead of nagging."""
+    state_path = tmp_vault.pkm_dir / "session_state.json"
+    state_path.write_text(
+        json.dumps({"session_count": 4, "last_consolidation_at": None}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("pkm.commands.consolidate._list_candidate_dates", lambda v: [])
+
+    result = hook_mod._check_consolidation_trigger(
+        tmp_vault, {"consolidation": {"session_threshold": 5}}
+    )
+
+    assert result is None
+    state = json.loads(state_path.read_text())
+    assert state["session_count"] == 0
+
+
+def test_consolidation_trigger_lists_candidates_and_truncates_long_output(
+    tmp_vault, monkeypatch
+) -> None:
+    """A mature session window emits a bounded consolidation recommendation."""
+    state_path = tmp_vault.pkm_dir / "session_state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "session_count": 4,
+                "last_consolidation_at": "not-a-date",
+            }
+        ),
+        encoding="utf-8",
+    )
+    candidates = [f"2026-05-{day:02d}" for day in range(1, 8)]
+    monkeypatch.setattr(
+        "pkm.commands.consolidate._list_candidate_dates", lambda v: candidates
+    )
+
+    result = hook_mod._check_consolidation_trigger(
+        tmp_vault, {"consolidation": {"session_threshold": 5}}
+    )
+
+    assert result is not None
+    assert "7 daily note(s) ready" in result
+    assert "pkm consolidate mark 2026-05-01" in result
+    assert "... and 2 more" in result
+    state = json.loads(state_path.read_text())
+    assert state["session_count"] == 0
+    assert datetime.fromisoformat(state["last_consolidation_at"]).tzinfo is not None
+
+
+def test_consolidation_trigger_swallows_internal_failures(
+    tmp_vault, monkeypatch
+) -> None:
+    """Unexpected state/candidate failures do not break session-start hooks."""
+    monkeypatch.setattr(
+        hook_mod,
+        "_load_session_state",
+        lambda vault: (_ for _ in ()).throw(RuntimeError("state unavailable")),
+    )
+
+    assert hook_mod._check_consolidation_trigger(tmp_vault, {}) is None
+
+
+def test_detect_pkm_mcp_finds_claude_settings(tmp_path, monkeypatch) -> None:
+    """MCP detection checks Claude Code settings first."""
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    (claude_dir / "settings.json").write_text(
+        json.dumps({"mcpServers": {"pkm": {"command": "pkm"}}}),
+        encoding="utf-8",
+    )
+
+    assert hook_mod._detect_pkm_mcp() is True
+
+
+def test_detect_pkm_mcp_finds_hermes_yaml_config(tmp_path, monkeypatch) -> None:
+    """Hermes YAML config with mcp_servers.pkm is recognized."""
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    hermes_dir = tmp_path / ".hermes"
+    hermes_dir.mkdir()
+    (hermes_dir / "config.yaml").write_text(
+        "mcp_servers:\n  pkm:\n    command: pkm\n", encoding="utf-8"
+    )
+
+    assert hook_mod._detect_pkm_mcp() is True
+
+
+def test_detect_pkm_mcp_uses_hermes_line_fallback_without_yaml(
+    tmp_path, monkeypatch
+) -> None:
+    """Hermes detection still works when PyYAML is unavailable."""
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    hermes_dir = tmp_path / ".hermes"
+    hermes_dir.mkdir()
+    (hermes_dir / "config.yaml").write_text(
+        "mcp_servers:\n  pkm:\n    command: pkm\n", encoding="utf-8"
+    )
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "yaml":
+            raise ImportError("yaml unavailable")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    assert hook_mod._detect_pkm_mcp() is True
+
+
+def test_detect_pkm_mcp_finds_opencode_config(tmp_path, monkeypatch) -> None:
+    """OpenCode config with mcp.pkm is recognized."""
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    opencode_dir = tmp_path / ".config" / "opencode"
+    opencode_dir.mkdir(parents=True)
+    (opencode_dir / "opencode.json").write_text(
+        json.dumps({"mcp": {"pkm": {"command": "pkm"}}}),
+        encoding="utf-8",
+    )
+
+    assert hook_mod._detect_pkm_mcp() is True
+
+
+def test_detect_pkm_mcp_returns_false_for_malformed_configs(
+    tmp_path, monkeypatch
+) -> None:
+    """Malformed agent config files are ignored instead of raising."""
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    (tmp_path / ".claude").mkdir()
+    (tmp_path / ".claude" / "settings.json").write_text("{bad", encoding="utf-8")
+    (tmp_path / ".hermes").mkdir()
+    (tmp_path / ".hermes" / "config.yaml").write_text("[", encoding="utf-8")
+    opencode_dir = tmp_path / ".config" / "opencode"
+    opencode_dir.mkdir(parents=True)
+    (opencode_dir / "opencode.json").write_text("{bad", encoding="utf-8")
+
+    assert hook_mod._detect_pkm_mcp() is False
