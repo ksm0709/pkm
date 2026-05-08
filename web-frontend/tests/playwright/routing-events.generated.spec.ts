@@ -1601,6 +1601,12 @@ test.describe("generated routing and event contracts", () => {
     await expect(
       page.getByRole("heading", { name: "Vault Settings" }),
     ).toBeVisible();
+    await expect(page.locator('[data-setting-key="model"]')).toContainText(
+      "auto",
+    );
+    await expect(
+      page.locator('[data-setting-key^="graph-semantic"]'),
+    ).toHaveCount(0);
 
     const openai = page.locator('[data-provider-id="openai"]');
     const anthropic = page.locator('[data-provider-id="anthropic"]');
@@ -2264,6 +2270,39 @@ function resetMockConfigs() {
 
 function configPayload() {
   return {
+    settings: [
+      {
+        key: "default-vault",
+        section: "defaults",
+        internal_key: "vault",
+        description: "Default vault name used when --vault is not specified",
+        value: vaultName,
+        configured: true,
+        input_type: "text",
+        options: [],
+      },
+      {
+        key: "graph-depth",
+        section: "defaults",
+        internal_key: "graph-depth",
+        description:
+          "Default graph traversal depth for search and show commands",
+        value: "2",
+        configured: true,
+        input_type: "number",
+        options: [],
+      },
+      {
+        key: "model",
+        section: "defaults",
+        internal_key: "model",
+        description: "LLM model used by pkm ask (default: auto)",
+        value: "auto",
+        configured: true,
+        input_type: "text",
+        options: [],
+      },
+    ],
     ask_credentials: {
       providers: [
         {
