@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import click
 from pathlib import Path
 
 import pytest
@@ -84,6 +85,40 @@ def test_vault_edit_active_vault(patched_vaults, monkeypatch):
     assert mock_run[0] == ["vim", str(patched_vaults["alpha"].path)]
 
 
+def test_vault_edit_missing_named_vault_returns_error(patched_vaults):
+    """Named edit requests fail before launching an editor for unknown vaults."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["vault", "edit", "missing"])
+    assert result.exit_code != 0
+    assert "Vault 'missing' not found" in result.output
+
+
+def test_vault_where_prints_active_path(patched_vaults, monkeypatch):
+    """vault where reports the resolved active vault path."""
+    monkeypatch.setattr(
+        "pkm.config.get_vault_context", lambda: (patched_vaults["beta"], "config")
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["vault", "where"])
+    assert result.exit_code == 0
+    assert result.output.strip() == str(patched_vaults["beta"].path)
+
+
+def test_vault_where_swallows_missing_context(monkeypatch):
+    """vault where stays quiet when no active vault can be resolved."""
+
+    def fail_context():
+        raise click.ClickException("no active vault")
+
+    monkeypatch.setattr("pkm.config.get_vault_context", fail_context)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["vault", "where"])
+    assert result.exit_code == 0
+    assert result.output == ""
+
+
 def test_vault_list_shows_table(patched_vaults, monkeypatch):
     runner = CliRunner()
     result = runner.invoke(main, ["vault", "list"])
@@ -125,6 +160,54 @@ def test_vault_list_empty(monkeypatch):
     assert result.exit_code == 0
     data = _json.loads(result.output)
     assert data["vaults"] == []
+
+
+def test_vault_list_table_empty_shows_human_guidance(monkeypatch):
+    """Table output gives a next action when no vaults are discovered."""
+    monkeypatch.setattr("pkm.config.discover_vaults", lambda root=None: {})
+    monkeypatch.setattr("pkm.commands.vault.discover_vaults", lambda root=None: {})
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["vault", "list", "--format", "table"])
+    assert result.exit_code == 0
+    assert "No vaults found" in result.output
+    assert "pkm vault add" in result.output
+
+
+def test_vault_list_table_marks_active_source(patched_vaults, monkeypatch):
+    """Table output includes counts and active-vault source context."""
+    monkeypatch.setattr(
+        "pkm.config.get_vault_context", lambda: (patched_vaults["alpha"], "config")
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["vault", "list", "--format", "table"])
+    assert result.exit_code == 0, result.output
+    assert "alpha" in result.output
+    assert "beta" in result.output
+    assert "config" in result.output
+    assert "local" in result.output
+    assert "1" in result.output
+
+
+def test_vault_list_json_still_lists_when_active_context_fails(
+    patched_vaults, monkeypatch
+):
+    """Active-vault resolution failure does not hide discovered vaults."""
+    import json as _json
+
+    def fail_context():
+        raise click.ClickException("no active vault")
+
+    monkeypatch.setattr("pkm.config.get_vault_context", fail_context)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["vault", "list"])
+    assert result.exit_code == 0, result.output
+    data = _json.loads(result.output)
+    assert data["active"] is None
+    assert data["active_source"] == ""
+    assert {item["name"] for item in data["vaults"]} == {"alpha", "beta"}
 
 
 # ---------------------------------------------------------------------------
@@ -514,6 +597,96 @@ def test_vault_unset_migrates_to_parent(tmp_path: Path, monkeypatch):
     assert not (child_project / ".pkm").exists()
 
 
+def test_vault_unset_without_local_config_errors(tmp_path: Path, monkeypatch):
+    """unset requires a local .pkm mapping in the current directory."""
+    runner = CliRunner()
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.chdir(project)
+
+    result = runner.invoke(main, ["vault", "unset"])
+    assert result.exit_code != 0
+    assert "No .pkm file found" in result.output
+
+
+def test_vault_unset_wraps_current_vault_resolution_failure(
+    tmp_path: Path, monkeypatch
+):
+    """Context resolution failures are reported before migration starts."""
+    runner = CliRunner()
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / ".pkm").write_text('vault = "child_vault"')
+    monkeypatch.chdir(project)
+
+    def fail_context():
+        raise click.ClickException("missing child")
+
+    monkeypatch.setattr("pkm.config.get_vault_context", fail_context)
+
+    result = runner.invoke(main, ["vault", "unset"])
+    assert result.exit_code != 0
+    assert "Failed to resolve current vault" in result.output
+    assert "missing child" in result.output
+
+
+def test_vault_unset_without_parent_vault_suggests_remove(tmp_path: Path, monkeypatch):
+    """A standalone local vault requires --remove instead of migration."""
+    runner = CliRunner()
+    child_storage = tmp_path / "child_vault"
+    child_storage.mkdir()
+    (child_storage / "daily").mkdir()
+
+    child_project = tmp_path / "child_project"
+    child_project.mkdir()
+    (child_project / ".pkm").write_text('vault = "child_vault"')
+
+    monkeypatch.setattr("pkm.config.get_vaults_root", lambda: tmp_path)
+    monkeypatch.setattr("pkm.config.get_local_config_vault", lambda: "child_vault")
+    monkeypatch.chdir(child_project)
+
+    result = runner.invoke(main, ["vault", "unset"])
+    assert result.exit_code != 0
+    assert "No root vault" in result.output
+    assert "--remove" in result.output
+
+
+def test_vault_unset_renames_colliding_non_daily_files(tmp_path: Path, monkeypatch):
+    """Non-daily file collisions preserve both files by renaming migrated child files."""
+    runner = CliRunner()
+
+    parent_storage = tmp_path / "parent_vault"
+    (parent_storage / "daily").mkdir(parents=True)
+    (parent_storage / "notes").mkdir()
+    (parent_storage / "notes" / "foo.md").write_text("parent foo", encoding="utf-8")
+
+    child_storage = tmp_path / "child_vault"
+    (child_storage / "daily").mkdir(parents=True)
+    (child_storage / "notes").mkdir()
+    (child_storage / "notes" / "foo.md").write_text("child foo", encoding="utf-8")
+
+    parent_project = tmp_path / "parent_project"
+    parent_project.mkdir()
+    (parent_project / ".pkm").write_text('vault = "parent_vault"')
+
+    child_project = parent_project / "child_project"
+    child_project.mkdir()
+    (child_project / ".pkm").write_text('vault = "child_vault"')
+
+    monkeypatch.setattr("pkm.config.get_vaults_root", lambda: tmp_path)
+    monkeypatch.setattr("pkm.config.get_local_config_vault", lambda: "child_vault")
+    monkeypatch.chdir(child_project)
+
+    result = runner.invoke(main, ["vault", "unset"])
+    assert result.exit_code == 0, result.output
+    assert (parent_storage / "notes" / "foo.md").read_text(encoding="utf-8") == (
+        "parent foo"
+    )
+    migrated = list((parent_storage / "notes").glob("foo_migrated_*.md"))
+    assert len(migrated) == 1
+    assert migrated[0].read_text(encoding="utf-8") == "child foo"
+
+
 def test_vault_unset_merges_daily_notes(tmp_path: Path, monkeypatch):
     """When both vaults have the same daily note, entries are merged by time."""
     runner = CliRunner()
@@ -649,3 +822,29 @@ def test_vault_unset_remove_flag(tmp_path: Path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert "Removed vault child_vault and deleted .pkm" in result.output
     assert not (child_project / ".pkm").exists()
+
+
+def test_vault_helpers_cover_absent_counts_and_default_priority(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Vault list helpers handle missing dirs and default-vault priority rules."""
+    from pkm.commands.vault import _count_md, _default_vault_name
+
+    alpha = VaultConfig(name="alpha", path=tmp_path / "alpha")
+    beta = VaultConfig(name="beta", path=tmp_path / "beta")
+
+    assert _count_md(tmp_path / "does-not-exist") == 0
+
+    monkeypatch.setenv("PKM_DEFAULT_VAULT", "beta")
+    monkeypatch.setattr("pkm.commands.vault.load_config", lambda: {})
+    assert _default_vault_name({"alpha": alpha, "beta": beta}) == "beta"
+
+    monkeypatch.setenv("PKM_DEFAULT_VAULT", "missing")
+    monkeypatch.setattr(
+        "pkm.commands.vault.load_config", lambda: {"defaults": {"vault": "alpha"}}
+    )
+    assert _default_vault_name({"alpha": alpha, "beta": beta}) == "alpha"
+
+    monkeypatch.setattr("pkm.commands.vault.load_config", lambda: {})
+    assert _default_vault_name({"alpha": alpha, "beta": beta}) == "alpha"
+    assert _default_vault_name({}) is None
