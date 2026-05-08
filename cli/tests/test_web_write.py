@@ -81,6 +81,63 @@ async def test_create_note_missing_title_returns_400(
 
 
 @pytest.mark.anyio
+async def test_create_note_rejects_malformed_json(app, tmp_vault: VaultConfig) -> None:
+    """POST /notes reports malformed JSON bodies as client errors."""
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post(
+            "/api/v1/vault/test-vault/notes",
+            data="{",
+            headers={
+                "Authorization": f"Bearer {TOKEN}",
+                "Content-Type": "application/json",
+            },
+        )
+        assert resp.status == 400
+
+
+@pytest.mark.anyio
+async def test_create_note_maps_lifecycle_conflict_to_409(
+    app, tmp_vault: VaultConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Lifecycle duplicate errors surface as HTTP conflicts."""
+    from pkm.commands import notes as notes_cmd
+
+    def duplicate_note(*_args, **_kwargs):
+        raise FileExistsError("duplicate note")
+
+    monkeypatch.setattr(notes_cmd, "create_note", duplicate_note)
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post(
+            "/api/v1/vault/test-vault/notes",
+            json={"title": "Duplicate Note"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 409
+
+
+@pytest.mark.anyio
+async def test_create_note_maps_lifecycle_validation_to_400(
+    app, tmp_vault: VaultConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Lifecycle validation errors remain client errors at the REST boundary."""
+    from pkm.commands import notes as notes_cmd
+
+    def invalid_note(*_args, **_kwargs):
+        raise ValueError("invalid note")
+
+    monkeypatch.setattr(notes_cmd, "create_note", invalid_note)
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post(
+            "/api/v1/vault/test-vault/notes",
+            json={"title": "Invalid Note"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 400
+
+
+@pytest.mark.anyio
 async def test_create_note_unknown_vault_returns_404(
     app, tmp_vault: VaultConfig
 ) -> None:
@@ -126,6 +183,31 @@ async def test_ensure_note_creates_blank_note_with_exact_id(
     assert data["note_id"] == "new-unresolved-note"
     assert data["title"] == "new unresolved note"
     assert data["body"] == ""
+
+
+@pytest.mark.anyio
+async def test_ensure_note_existing_note_is_idempotent(
+    app, tmp_vault: VaultConfig
+) -> None:
+    """Ensuring an already-resolved note returns it without overwriting content."""
+    note_path = tmp_vault.notes_dir / "existing-target.md"
+    note_path.write_text(
+        "---\nid: existing-target\ntitle: Existing Target\ntags: []\n---\n\nKeep me.\n",
+        encoding="utf-8",
+    )
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post(
+            "/api/v1/vault/test-vault/notes/existing-target/ensure",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 200
+        data = await resp.json()
+
+    assert data["note_id"] == "existing-target"
+    assert data["title"] == "Existing Target"
+    assert data["body"] == "Keep me.\n"
+    assert "Keep me." in note_path.read_text(encoding="utf-8")
 
 
 @pytest.mark.anyio
@@ -188,6 +270,36 @@ async def test_update_note_can_set_tags(app, tmp_vault: VaultConfig) -> None:
         assert resp.status == 200
         data = await resp.json()
         assert "newtag" in data["tags"]
+
+
+@pytest.mark.anyio
+async def test_update_note_can_set_title(app, tmp_vault: VaultConfig) -> None:
+    """PUT /notes/{id} with title updates frontmatter and response title."""
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.put(
+            "/api/v1/vault/test-vault/notes/2026-04-01-mvcc",
+            json={"title": "Updated MVCC Title"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["title"] == "Updated MVCC Title"
+        assert "Today" not in data["title"]
+
+
+@pytest.mark.anyio
+async def test_update_note_rejects_malformed_json(app, tmp_vault: VaultConfig) -> None:
+    """PUT /notes/{id} reports malformed JSON bodies as client errors."""
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.put(
+            "/api/v1/vault/test-vault/notes/2026-04-01-mvcc",
+            data="{",
+            headers={
+                "Authorization": f"Bearer {TOKEN}",
+                "Content-Type": "application/json",
+            },
+        )
+        assert resp.status == 400
 
 
 @pytest.mark.anyio

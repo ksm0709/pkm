@@ -11,6 +11,7 @@ _get_note_neighbors_data, the SEMANTIC group will be empty and these tests fail.
 from __future__ import annotations
 
 import json
+import shutil
 
 import networkx as nx
 import pytest
@@ -43,7 +44,9 @@ def vault_with_graphs(tmp_vault: VaultConfig) -> VaultConfig:
         "database-isolation",
         title="Database Isolation",
         type="note",
-        meta={"description": "Isolation-level tradeoffs and transaction anomaly notes."},
+        meta={
+            "description": "Isolation-level tradeoffs and transaction anomaly notes."
+        },
     )
     G.add_edge("2026-04-01-mvcc", "database-isolation")
     (tmp_vault.pkm_dir / "graph.json").write_text(
@@ -57,7 +60,9 @@ def vault_with_graphs(tmp_vault: VaultConfig) -> VaultConfig:
         "database-isolation",
         title="Database Isolation",
         type="note",
-        meta={"description": "Isolation-level tradeoffs and transaction anomaly notes."},
+        meta={
+            "description": "Isolation-level tradeoffs and transaction anomaly notes."
+        },
     )
     EG.add_edge(
         "2026-04-01-mvcc",
@@ -175,3 +180,145 @@ async def test_neighbors_no_graph_returns_404(
             headers={"Authorization": f"Bearer {TOKEN}"},
         )
         assert resp.status == 404
+
+
+@pytest.mark.anyio
+async def test_tag_neighbors_scan_without_graph_skips_broken_and_missing_dirs(
+    web_cfg: WebConfig, tmp_vault: VaultConfig
+) -> None:
+    """Tag neighbors fall back to filesystem scan when graph.json is absent."""
+    shutil.rmtree(tmp_vault.daily_dir)
+    (tmp_vault.notes_dir / "todo-note.md").write_text(
+        "---\nid: todo-note\ntitle: Todo Note\ntags:\n- TODO\n---\n\nFollow up.\n",
+        encoding="utf-8",
+    )
+    (tmp_vault.notes_dir / "broken-tagged.md").write_text(
+        "---\n: [bad\n---\n#TODO Broken\n",
+        encoding="utf-8",
+    )
+
+    app = make_app(web_config=web_cfg)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/notes/tag:TODO/neighbors",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 200
+        data = await resp.json()
+
+    assert data["note_id"] == "tag:TODO"
+    inbound_ids = {item["note_id"] for item in data["inbound"]}
+    assert inbound_ids == {"todo-note"}
+
+
+@pytest.mark.anyio
+async def test_tag_neighbors_scan_deduplicates_notes_across_dirs(
+    web_cfg: WebConfig, tmp_vault: VaultConfig
+) -> None:
+    """The tag scan reports a note id only once when it appears in notes/ and daily/."""
+    for base_dir in (tmp_vault.notes_dir, tmp_vault.daily_dir):
+        (base_dir / "shared-tagged.md").write_text(
+            "---\nid: shared-tagged\ntitle: Shared Tagged\ntags:\n- TODO\n---\n\nBody.\n",
+            encoding="utf-8",
+        )
+
+    app = make_app(web_config=web_cfg)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/notes/tag:TODO/neighbors",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 200
+        data = await resp.json()
+
+    inbound_ids = [item["note_id"] for item in data["inbound"]]
+    assert inbound_ids.count("shared-tagged") == 1
+
+
+@pytest.mark.anyio
+async def test_tag_neighbors_merge_graph_and_filesystem_scan(
+    web_cfg: WebConfig, tmp_vault: VaultConfig
+) -> None:
+    """A graph tag node is enriched with newly scanned tagged notes without duplicates."""
+    graph_note = tmp_vault.notes_dir / "graph-tagged.md"
+    graph_note.write_text(
+        "---\nid: graph-tagged\ntitle: Graph Tagged\ntags:\n- TODO\n---\n\nGraph note.\n",
+        encoding="utf-8",
+    )
+    scanned_note = tmp_vault.notes_dir / "scanned-tagged.md"
+    scanned_note.write_text(
+        "---\nid: scanned-tagged\ntitle: Scanned Tagged\ntags:\n- TODO\n---\n\nScanned note.\n",
+        encoding="utf-8",
+    )
+
+    graph = nx.DiGraph()
+    graph.add_node("tag:TODO", title="TODO", type="tag")
+    graph.add_node("graph-tagged", title="Graph Tagged", type="note")
+    graph.add_edge("graph-tagged", "tag:TODO")
+    (tmp_vault.pkm_dir / "graph.json").write_text(
+        json.dumps(nx.node_link_data(graph)), encoding="utf-8"
+    )
+
+    app = make_app(web_config=web_cfg)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/notes/tag:TODO/neighbors",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 200
+        data = await resp.json()
+
+    inbound_ids = [item["note_id"] for item in data["inbound"]]
+    assert inbound_ids.count("graph-tagged") == 1
+    assert "scanned-tagged" in inbound_ids
+
+
+@pytest.mark.anyio
+async def test_semantic_neighbors_ignore_wrong_type_and_unrelated_edges(
+    web_cfg: WebConfig, tmp_vault: VaultConfig
+) -> None:
+    """Only semantic_similar edges attached to the requested note appear."""
+    graph = nx.DiGraph()
+    graph.add_node("source-note", title="Source", type="note")
+    (tmp_vault.pkm_dir / "graph.json").write_text(
+        json.dumps(nx.node_link_data(graph)), encoding="utf-8"
+    )
+
+    enriched = nx.Graph()
+    enriched.add_node("source-note", title="Source", type="note")
+    enriched.add_node("semantic-target", title="Semantic Target", type="note")
+    enriched.add_node("wrong-type-target", title="Wrong Type", type="note")
+    enriched.add_node("unrelated-a", title="Unrelated A", type="note")
+    enriched.add_node("unrelated-b", title="Unrelated B", type="note")
+    enriched.add_edge(
+        "source-note",
+        "semantic-target",
+        type="semantic_similar",
+        confidence=0.91,
+    )
+    enriched.add_edge(
+        "source-note",
+        "wrong-type-target",
+        type="wikilink",
+        confidence=0.99,
+    )
+    enriched.add_edge(
+        "unrelated-a",
+        "unrelated-b",
+        type="semantic_similar",
+        confidence=0.88,
+    )
+    (tmp_vault.pkm_dir / "graph_enriched.json").write_text(
+        json.dumps(nx.node_link_data(enriched)), encoding="utf-8"
+    )
+
+    app = make_app(web_config=web_cfg)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/notes/source-note/neighbors",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 200
+        data = await resp.json()
+
+    assert [item["note_id"] for item in data["semantic"]] == ["semantic-target"]
