@@ -537,3 +537,175 @@ def test_note_split_one_part_note_is_noop(cli_runner, tmp_vault) -> None:
 
     assert result.exit_code == 0
     assert result.output == ""
+
+
+def test_note_split_callback_semantic_dry_run_uses_embedding_boundaries(
+    tmp_vault, monkeypatch, capsys
+) -> None:
+    """Semantic split planning groups adjacent similar blocks and splits distant ones."""
+    note_path = tmp_vault.notes_dir / "semantic-source.md"
+    note_path.write_text(
+        "---\nid: semantic-source\ntitle: Semantic Source\ntags: []\n---\n\n"
+        "Alpha topic.\n\nBeta topic.\n\nBeta detail.\n",
+        encoding="utf-8",
+    )
+    (tmp_vault.pkm_dir / "ast.db").write_text("", encoding="utf-8")
+
+    class FakeCache:
+        def __init__(self, db_path):
+            self.db_path = db_path
+
+        def get(self, note_id):
+            if note_id == "semantic-source":
+                return SimpleNamespace(
+                    path=str(note_path),
+                    plain_text_offsets=[
+                        {"text": "Alpha topic.", "offset": 0, "length": 12},
+                        {"text": "Beta topic.", "offset": 14, "length": 11},
+                        {"text": "Beta detail.", "offset": 27, "length": 12},
+                    ],
+                )
+            return None
+
+    class FakeModel:
+        def encode(self, blocks, show_progress_bar=False):
+            assert blocks == ["Alpha topic.", "Beta topic.", "Beta detail."]
+            return [[0.0, 0.0], [0.0, 1.0], [0.0, 2.0]]
+
+    monkeypatch.setattr("pkm.graph.ASTCache", FakeCache)
+    monkeypatch.setattr(
+        "pkm.search_engine._require_transformers", lambda model_name: FakeModel()
+    )
+
+    from pkm.commands.notes import split_note
+
+    with click.Context(split_note, obj={"vault": tmp_vault}):
+        split_note.callback(note_id="semantic-source", all_notes=False, dry_run=True)
+
+    assert "Would split semantic-source into 2 notes" in capsys.readouterr().out
+    assert "Alpha topic." in note_path.read_text(encoding="utf-8")
+
+
+def test_note_split_callback_transformer_failure_falls_back_to_headings(
+    tmp_vault, monkeypatch, capsys
+) -> None:
+    """Embedding failures still allow heading-based split planning."""
+    note_path = tmp_vault.notes_dir / "fallback-source.md"
+    note_path.write_text(
+        "---\nid: fallback-source\ntitle: Fallback Source\ntags: []\n---\n\n"
+        "Intro\n\n## First\nA\n\n## Second\nB\n",
+        encoding="utf-8",
+    )
+    (tmp_vault.pkm_dir / "ast.db").write_text("", encoding="utf-8")
+
+    class FakeCache:
+        def __init__(self, db_path):
+            self.db_path = db_path
+
+        def get(self, note_id):
+            if note_id == "fallback-source":
+                return SimpleNamespace(
+                    path=str(note_path),
+                    plain_text_offsets=[
+                        {"text": "Intro", "offset": 0, "length": 5},
+                        {"text": "First", "offset": 9, "length": 5},
+                    ],
+                )
+            return None
+
+    monkeypatch.setattr("pkm.graph.ASTCache", FakeCache)
+    monkeypatch.setattr(
+        "pkm.search_engine._require_transformers",
+        lambda model_name: (_ for _ in ()).throw(RuntimeError("model unavailable")),
+    )
+
+    from pkm.commands.notes import split_note
+
+    with click.Context(split_note, obj={"vault": tmp_vault}):
+        split_note.callback(note_id="fallback-source", all_notes=False, dry_run=True)
+
+    assert "Would split fallback-source into 3 notes" in capsys.readouterr().out
+    assert "## First" in note_path.read_text(encoding="utf-8")
+
+
+def test_note_split_callback_heading_write_creates_backup_and_child_notes(
+    tmp_vault, capsys
+) -> None:
+    """Non-dry-run heading split backs up the source and writes child notes."""
+    note_path = tmp_vault.notes_dir / "write-source.md"
+    note_path.write_text(
+        "---\nid: write-source\ntitle: Write Source\ntags:\n  - split\n---\n\n"
+        "Intro\n\n## ###\nUntitled\n\n## First Child\nA\n\n## Second Child\nB\n",
+        encoding="utf-8",
+    )
+
+    from pkm.commands.notes import split_note
+
+    with click.Context(split_note, obj={"vault": tmp_vault}):
+        split_note.callback(note_id="write-source", all_notes=False, dry_run=False)
+
+    output = capsys.readouterr().out
+
+    backup = tmp_vault.notes_dir / "write-source.md.bak"
+    untitled_child = tmp_vault.notes_dir / "write-source-part-1.md"
+    first_child = tmp_vault.notes_dir / "write-source-first-child.md"
+    second_child = tmp_vault.notes_dir / "write-source-second-child.md"
+
+    assert backup.exists()
+    assert "## First Child" in backup.read_text(encoding="utf-8")
+    assert "Intro" in note_path.read_text(encoding="utf-8")
+    assert "## First Child" not in note_path.read_text(encoding="utf-8")
+    assert untitled_child.exists()
+    assert first_child.exists()
+    assert second_child.exists()
+    assert "source: write-source" in first_child.read_text(encoding="utf-8")
+    assert "## First Child" in first_child.read_text(encoding="utf-8")
+    assert "Created child note write-source-first-child" in output
+
+
+def test_note_split_callback_semantic_write_preserves_plain_child_blocks(
+    tmp_vault, monkeypatch
+) -> None:
+    """Semantic non-dry-run writes child blocks without adding heading markup."""
+    note_path = tmp_vault.notes_dir / "semantic-write.md"
+    note_path.write_text(
+        "---\nid: semantic-write\ntitle: Semantic Write\ntags: []\n---\n\n"
+        "Alpha topic.\n\nBeta topic.\n",
+        encoding="utf-8",
+    )
+    (tmp_vault.pkm_dir / "ast.db").write_text("", encoding="utf-8")
+
+    class FakeCache:
+        def __init__(self, db_path):
+            self.db_path = db_path
+
+        def get(self, note_id):
+            if note_id == "semantic-write":
+                return SimpleNamespace(
+                    path=str(note_path),
+                    plain_text_offsets=[
+                        {"text": "Alpha topic.", "offset": 0, "length": 12},
+                        {"text": "Beta topic.", "offset": 14, "length": 11},
+                    ],
+                )
+            return None
+
+    class FakeModel:
+        def encode(self, blocks, show_progress_bar=False):
+            return [[1.0, 0.0], [0.0, 1.0]]
+
+    monkeypatch.setattr("pkm.graph.ASTCache", FakeCache)
+    monkeypatch.setattr(
+        "pkm.search_engine._require_transformers", lambda model_name: FakeModel()
+    )
+
+    from pkm.commands.notes import split_note
+
+    with click.Context(split_note, obj={"vault": tmp_vault}):
+        split_note.callback(note_id="semantic-write", all_notes=False, dry_run=False)
+
+    child = tmp_vault.notes_dir / "semantic-write-beta-topic.md"
+    assert child.exists()
+    child_text = child.read_text(encoding="utf-8")
+    assert "Beta topic." in child_text
+    assert "## Beta topic." not in child_text
