@@ -75,6 +75,11 @@ pkm ask "what was that idea about X?"
 ### Reasoning Display
 When using capable models with reasoning enabled (e.g. via `--reasoning-effort`), the daemon will automatically stream the model's internal thinking/reasoning chunks directly to your terminal. Reasoning is displayed in a subtle dim, italic style to separate it clearly from the final answer.
 
+The CLI stream renderer treats daemon events as user-facing status: reasoning is
+shown transiently, internal lifecycle tools are hidden, task updates are shown as
+compact status rows, PKM tool calls are highlighted by name, and daemon protocol
+errors exit non-zero with an actionable message.
+
 ## Requirements
 
 The `ask` command requires the PKM daemon to be running. Start it with:
