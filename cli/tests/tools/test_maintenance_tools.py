@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 
 
 from pkm.tools.maintenance import (
@@ -139,3 +140,48 @@ def test_list_stale_notes_structure(tmp_vault, monkeypatch):
         assert "note" in item
         assert "last_modified" in item
         assert "days_ago" in item
+
+
+def test_maintenance_tools_report_command_errors(tmp_vault, monkeypatch):
+    monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
+    monkeypatch.setattr(
+        "pkm.commands.maintenance.compute_vault_stats",
+        lambda vault: (_ for _ in ()).throw(RuntimeError("stats failed")),
+    )
+    assert _run(vault_stats()) == "Error: stats failed"
+
+    monkeypatch.setattr(
+        "pkm.commands.maintenance.list_stale",
+        lambda vault, days: (_ for _ in ()).throw(RuntimeError("stale failed")),
+    )
+    assert _run(list_stale_notes()) == "Error: stale failed"
+
+    monkeypatch.setattr(
+        "pkm.wikilinks.find_orphans",
+        lambda vault: (_ for _ in ()).throw(RuntimeError("orphans failed")),
+    )
+    assert _run(list_orphans()) == "Error: orphans failed"
+
+
+def test_list_malformed_notes_reports_unreadable_repair_failure(tmp_vault, monkeypatch):
+    monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
+    broken = tmp_vault.notes_dir / "broken-frontmatter.md"
+    broken.write_text("---\nid: broken\n---\n\nBody\n", encoding="utf-8")
+    original_read_text = Path.read_text
+
+    def fail_broken(self, *args, **kwargs):
+        if self == broken:
+            raise OSError("cannot read")
+        return original_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fail_broken)
+
+    result = json.loads(_run(list_malformed_notes()))
+    assert result["malformed_notes"] == [
+        {
+            "path": "notes/broken-frontmatter.md",
+            "note_id": "broken-frontmatter",
+            "issue": "frontmatter_parse_error",
+            "repairable": False,
+        }
+    ]

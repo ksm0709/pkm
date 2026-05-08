@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import date
+from pathlib import Path
 
 
 from pkm.tools.consolidate import list_consolidation_candidates, mark_consolidated
@@ -79,3 +80,62 @@ def test_mark_consolidated_idempotent(tmp_vault, monkeypatch):
         mark_consolidated(date_str="2026-04-01", distilled_note_ids=["2026-04-01-mvcc"])
     )
     assert "already" in result.lower() or "consolidated" in result
+
+
+def test_candidates_entry_count_tolerates_unreadable_daily(tmp_vault, monkeypatch):
+    monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
+    original_read_text = Path.read_text
+
+    def fail_one_daily(self, *args, **kwargs):
+        if self.name == "2026-04-01.md":
+            raise OSError("unreadable")
+        return original_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(
+        "pkm.commands.consolidate._list_candidate_dates", lambda vault: ["2026-04-01"]
+    )
+    monkeypatch.setattr(Path, "read_text", fail_one_daily)
+
+    result = json.loads(_run(list_consolidation_candidates()))
+    candidate = next(c for c in result["candidates"] if c["date"] == "2026-04-01")
+    assert candidate["entry_count"] == 0
+
+
+def test_candidates_reports_discovery_errors(tmp_vault, monkeypatch):
+    monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
+    monkeypatch.setattr(
+        "pkm.commands.consolidate._list_candidate_dates",
+        lambda vault: (_ for _ in ()).throw(RuntimeError("candidate scan failed")),
+    )
+
+    result = _run(list_consolidation_candidates())
+    assert result == "Error: candidate scan failed"
+
+
+def test_mark_consolidated_requires_ids_and_existing_daily(tmp_vault, monkeypatch):
+    monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
+
+    no_ids = _run(mark_consolidated(date_str="2026-04-01", distilled_note_ids=[]))
+    missing_daily = _run(
+        mark_consolidated(date_str="1999-01-01", distilled_note_ids=["2026-04-01-mvcc"])
+    )
+
+    assert "distilled_note_ids is required" in no_ids
+    assert "Daily note not found: 1999-01-01.md" in missing_daily
+
+
+def test_mark_consolidated_reports_write_errors(tmp_vault, monkeypatch):
+    monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
+    original_write_text = Path.write_text
+
+    def fail_daily_write(self, *args, **kwargs):
+        if self.name == "2026-04-01.md":
+            raise OSError("daily locked")
+        return original_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", fail_daily_write)
+
+    result = _run(
+        mark_consolidated(date_str="2026-04-01", distilled_note_ids=["2026-04-01-mvcc"])
+    )
+    assert result == "Error: daily locked"
