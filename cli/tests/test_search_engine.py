@@ -21,6 +21,8 @@ from pkm.search_engine import (
     is_index_stale,
     load_index,
     search,
+    search_via_daemon,
+    update_index_via_daemon,
 )
 
 
@@ -71,6 +73,51 @@ def test_build_index_includes_inline_body_tags(tmp_vault: VaultConfig, mock_mode
 
     entry = next(e for e in index.entries if e.note_id == "inline-todo-index")
     assert "TODO" in entry.tags
+
+
+def test_build_index_recovers_from_corrupt_vector_cache(
+    tmp_vault: VaultConfig, mock_model
+):
+    """A corrupt vector.db is discarded and rebuilt instead of blocking indexing."""
+    tmp_vault.pkm_dir.mkdir(parents=True, exist_ok=True)
+    db_path = tmp_vault.pkm_dir / "vector.db"
+    db_path.write_bytes(b"not a sqlite database")
+
+    index = build_index(tmp_vault)
+
+    assert index.entries
+    import sqlite3
+
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute("SELECT note_id FROM vector_cache").fetchall()
+    assert rows
+
+
+def test_build_index_keeps_index_when_cache_prune_fails(
+    tmp_vault: VaultConfig, mock_model, monkeypatch
+):
+    """Post-build stale-cache cleanup is best-effort and must not discard the index."""
+    import sqlite3
+    import pkm.search_engine as search_engine
+
+    real_connect = sqlite3.connect
+    vector_db_calls = 0
+
+    def flaky_connect(*args, **kwargs):
+        nonlocal vector_db_calls
+        db_path = args[0] if args else None
+        if getattr(db_path, "name", "") == "vector.db":
+            vector_db_calls += 1
+        if getattr(db_path, "name", "") == "vector.db" and vector_db_calls == 2:
+            raise sqlite3.Error("temporary prune failure")
+        return real_connect(*args, **kwargs)
+
+    monkeypatch.setattr(search_engine.sqlite3, "connect", flaky_connect)
+
+    index = build_index(tmp_vault)
+
+    assert index.entries
+    assert (tmp_vault.pkm_dir / "index.json").exists()
 
 
 def test_load_index(tmp_vault: VaultConfig, mock_model):
@@ -277,6 +324,34 @@ def test_is_index_stale_current_schema(tmp_vault: VaultConfig):
     )
     # No .md files newer than index
     assert is_index_stale(tmp_vault) is False
+
+
+def test_is_index_stale_returns_true_for_corrupt_index_json(tmp_vault: VaultConfig):
+    """A corrupt index manifest is stale and should be rebuilt."""
+    tmp_vault.pkm_dir.mkdir(parents=True, exist_ok=True)
+    (tmp_vault.pkm_dir / "index.json").write_text("{", encoding="utf-8")
+
+    assert is_index_stale(tmp_vault) is True
+
+
+def test_is_index_stale_skips_missing_content_dirs(tmp_path):
+    """Vaults missing optional content dirs do not crash stale checks."""
+    vault_path = tmp_path / "minimal-vault"
+    (vault_path / ".pkm").mkdir(parents=True)
+    vault = VaultConfig(name="minimal", path=vault_path)
+    (vault.pkm_dir / "index.json").write_text(
+        json.dumps(
+            {
+                "model": "m",
+                "created_at": "2026-04-09",
+                "schema_version": CURRENT_SCHEMA_VERSION,
+                "entries": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert is_index_stale(vault) is False
 
 
 def test_extract_created_at_from_frontmatter(tmp_path):
@@ -489,6 +564,46 @@ def test_search_time_decay(monkeypatch):
     assert score_1h > score_1000h
 
 
+def test_search_flattens_vectors_and_handles_zero_or_invalid_recency(monkeypatch):
+    """Search tolerates cached odd vector shapes, zero vectors, and bad timestamps."""
+    import numpy as np
+
+    class NestedQueryModel:
+        def encode(self, texts, **kwargs):
+            return np.array([[[1.0, 0.0]] for _ in texts])
+
+    monkeypatch.setattr(
+        "pkm.search_engine._require_transformers", lambda name: NestedQueryModel()
+    )
+
+    entries = [
+        IndexEntry(
+            note_id="nested",
+            path="/nested.md",
+            embedding=[[1.0, 0.0]],
+            backlink_count=0,
+            tags=[],
+            title="Nested",
+            importance=10.0,
+            created_at="not-a-date",
+        ),
+        IndexEntry(
+            note_id="zero",
+            path="/zero.md",
+            embedding=[0.0, 0.0],
+            backlink_count=0,
+            tags=[],
+            title="Zero",
+            importance=5.0,
+        ),
+    ]
+
+    results = search("query", _make_index_with_entries(entries), recency_weight=0.5)
+
+    assert [r.note_id for r in results] == ["nested", "zero"]
+    assert results[0].score > results[1].score
+
+
 # ---------------------------------------------------------------------------
 # find_similar
 # ---------------------------------------------------------------------------
@@ -603,6 +718,37 @@ def test_find_similar_no_matches(monkeypatch, clear_model_cache):
     assert result == []
 
 
+def test_find_similar_skips_zero_vectors(monkeypatch, clear_model_cache):
+    """A zero cached embedding is ignored while valid similar notes still match."""
+    index = _make_index(([0.0, 0.0], "Zero Note"), ([1.0, 0.0], "Normal Note"))
+    monkeypatch.setitem(
+        sys.modules, "sentence_transformers", _fake_st_module([1.0, 0.0])
+    )
+
+    results = find_similar("content", index, threshold=0.5)
+
+    assert [r.title for r in results] == ["Normal Note"]
+
+
+def test_find_similar_returns_empty_when_model_encode_fails(
+    monkeypatch, clear_model_cache
+):
+    """Unexpected model failures keep note creation dedup checks fail-open."""
+    fake_mod = types.ModuleType("sentence_transformers")
+
+    class FailingST:
+        def __init__(self, *a, **kw):
+            pass
+
+        def encode(self, texts, **kw):
+            raise RuntimeError("model unavailable")
+
+    fake_mod.SentenceTransformer = FailingST
+    monkeypatch.setitem(sys.modules, "sentence_transformers", fake_mod)
+
+    assert find_similar("content", _make_index(([1.0, 0.0], "Any"))) == []
+
+
 def test_find_similar_returns_search_result_objects(monkeypatch, clear_model_cache):
     """Each result is a SearchResult with score, title, rank populated."""
     emb_a = [1.0, 0.0, 0.0]
@@ -616,6 +762,184 @@ def test_find_similar_returns_search_result_objects(monkeypatch, clear_model_cac
     assert isinstance(r, SearchResult)
     assert r.title == "My Note"
     assert 0.0 <= r.score <= 1.0
+
+
+def _write_minimal_index(vault: VaultConfig) -> None:
+    vault.pkm_dir.mkdir(parents=True, exist_ok=True)
+    (vault.pkm_dir / "index.json").write_text(
+        json.dumps(
+            {
+                "model": "m",
+                "created_at": "2026-04-09",
+                "schema_version": CURRENT_SCHEMA_VERSION,
+                "entries": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+class _FakeSocket:
+    def __init__(
+        self, line: str | None = None, *, connect_error: Exception | None = None
+    ):
+        self.line = line
+        self.connect_error = connect_error
+        self.sent = b""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        return False
+
+    def settimeout(self, _timeout):
+        pass
+
+    def connect(self, _path):
+        if self.connect_error is not None:
+            raise self.connect_error
+
+    def sendall(self, data):
+        self.sent += data
+
+    def makefile(self, *_args, **_kwargs):
+        return self
+
+    def readline(self):
+        return "" if self.line is None else self.line
+
+
+def test_search_via_daemon_returns_none_when_index_missing(tmp_vault: VaultConfig):
+    """Daemon search is skipped until a local index exists."""
+    assert search_via_daemon("query", tmp_vault) is None
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_ids"),
+    [
+        (
+            [
+                {
+                    "note_id": "a",
+                    "title": "A",
+                    "score": 0.9,
+                    "backlink_count": 1,
+                    "tags": ["x"],
+                    "rank": 1,
+                }
+            ],
+            ["a"],
+        ),
+        (
+            {
+                "results": [
+                    {
+                        "note_id": "b",
+                        "title": "B",
+                        "score": 0.8,
+                        "backlink_count": 0,
+                        "tags": [],
+                        "rank": 1,
+                    }
+                ]
+            },
+            ["b"],
+        ),
+    ],
+)
+def test_search_via_daemon_accepts_list_and_wrapped_results(
+    tmp_vault: VaultConfig, monkeypatch, payload, expected_ids
+):
+    """Daemon search accepts both legacy list and wrapped result payloads."""
+    _write_minimal_index(tmp_vault)
+    fake_socket = _FakeSocket(json.dumps(payload) + "\n")
+    monkeypatch.setattr("pkm.search_engine.socket.socket", lambda *_args: fake_socket)
+
+    results = search_via_daemon(
+        "query", tmp_vault, top_n=3, memory_type_filter="semantic"
+    )
+
+    assert [r.note_id for r in results or []] == expected_ids
+    request = json.loads(fake_socket.sent.decode("utf-8"))
+    assert request["query"] == "query"
+    assert request["top_n"] == 3
+    assert request["memory_type_filter"] == "semantic"
+
+
+@pytest.mark.parametrize(
+    "line", ["", json.dumps({"error": "daemon failed"}) + "\n", "{"]
+)
+def test_search_via_daemon_returns_none_for_empty_error_or_bad_payload(
+    tmp_vault: VaultConfig, monkeypatch, line
+):
+    """Empty, error, or malformed daemon responses fall back to local search path."""
+    _write_minimal_index(tmp_vault)
+    monkeypatch.setattr(
+        "pkm.search_engine.socket.socket", lambda *_args: _FakeSocket(line)
+    )
+
+    assert search_via_daemon("query", tmp_vault) is None
+
+
+def test_search_via_daemon_connect_failure_starts_daemon_best_effort(
+    tmp_vault: VaultConfig, tmp_path, monkeypatch
+):
+    """Missing daemon socket returns None after best-effort daemon startup."""
+    _write_minimal_index(tmp_vault)
+    monkeypatch.setattr("pkm.search_engine.Path.home", lambda: tmp_path / "home")
+    monkeypatch.setattr(
+        "pkm.search_engine.socket.socket",
+        lambda *_args: _FakeSocket(connect_error=FileNotFoundError("missing socket")),
+    )
+    monkeypatch.setattr(
+        "pkm.search_engine.subprocess.Popen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("spawn failed")),
+    )
+
+    assert search_via_daemon("query", tmp_vault) is None
+    assert (tmp_path / "home" / ".config" / "pkm").is_dir()
+
+
+@pytest.mark.parametrize(
+    ("line", "expected"),
+    [
+        (json.dumps({"status": "ok"}) + "\n", True),
+        (json.dumps({"status": "error"}) + "\n", False),
+        ("", False),
+        ("{", False),
+    ],
+)
+def test_update_index_via_daemon_protocol_outcomes(
+    tmp_vault: VaultConfig, monkeypatch, line, expected
+):
+    """Index update daemon responses map cleanly to success booleans."""
+    fake_socket = _FakeSocket(line)
+    monkeypatch.setattr("pkm.search_engine.socket.socket", lambda *_args: fake_socket)
+
+    assert update_index_via_daemon(tmp_vault) is expected
+    if line:
+        request = json.loads(fake_socket.sent.decode("utf-8"))
+        assert request["action"] == "update_index"
+        assert request["vault_name"] == tmp_vault.name
+
+
+def test_update_index_via_daemon_connect_failure_starts_daemon_best_effort(
+    tmp_vault: VaultConfig, tmp_path, monkeypatch
+):
+    """Update requests fail closed when daemon startup cannot be kicked off."""
+    monkeypatch.setattr("pkm.search_engine.Path.home", lambda: tmp_path / "home")
+    monkeypatch.setattr(
+        "pkm.search_engine.socket.socket",
+        lambda *_args: _FakeSocket(connect_error=FileNotFoundError("missing socket")),
+    )
+    monkeypatch.setattr(
+        "pkm.search_engine.subprocess.Popen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("spawn failed")),
+    )
+
+    assert update_index_via_daemon(tmp_vault) is False
+    assert (tmp_path / "home" / ".config" / "pkm").is_dir()
 
 
 def test_build_index_missing_search_extras(
