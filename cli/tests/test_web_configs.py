@@ -36,7 +36,31 @@ def secret_store(monkeypatch) -> "_MemorySecretStore":
 
 
 @pytest.fixture
-def app(web_cfg: WebConfig, secret_store: "_MemorySecretStore"):
+def config_store(monkeypatch) -> dict:
+    data = {
+        "defaults": {
+            "vault": "test-vault",
+            "model": "configured-model",
+            "graph-depth": "2",
+            "graph-semantic-score-threshold": "0.7",
+        }
+    }
+
+    def fake_save_config(updated: dict) -> None:
+        data.clear()
+        data.update(updated)
+
+    monkeypatch.setattr(configs_route, "load_config", lambda: data)
+    monkeypatch.setattr(configs_route, "save_config", fake_save_config)
+    return data
+
+
+@pytest.fixture
+def app(
+    web_cfg: WebConfig,
+    secret_store: "_MemorySecretStore",
+    config_store: dict,
+):
     return make_app(web_config=web_cfg)
 
 
@@ -65,6 +89,99 @@ async def test_get_configs_returns_provider_metadata_without_raw_secrets(
     }
     assert [provider["id"] for provider in providers] == ["google", "openai", "anthropic"]
     assert "gemini-secret" not in str(body)
+
+
+@pytest.mark.anyio
+async def test_get_configs_returns_editable_pkm_settings_except_graph_semantic(
+    app, tmp_vault: VaultConfig
+) -> None:
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/configs",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        body = await resp.json()
+
+    assert resp.status == 200
+    settings = {setting["key"]: setting for setting in body["settings"]}
+    assert settings["default-vault"]["value"] == "test-vault"
+    assert settings["model"]["value"] == "configured-model"
+    assert settings["graph-depth"]["input_type"] == "number"
+    assert settings["auto"]["input_type"] == "boolean"
+    assert settings["auto"]["configured"] is False
+    assert "graph-semantic-score-threshold" not in settings
+    assert all(not key.startswith("graph-semantic-") for key in settings)
+
+
+@pytest.mark.anyio
+async def test_patch_config_setting_updates_defaults(
+    app, tmp_vault: VaultConfig, config_store: dict
+) -> None:
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.patch(
+            "/api/v1/vault/test-vault/configs/settings/graph-depth",
+            json={"value": 4},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        body = await resp.json()
+
+    assert resp.status == 200
+    assert body["key"] == "graph-depth"
+    assert body["value"] == "4"
+    assert config_store["defaults"]["graph-depth"] == "4"
+    assert config_store["defaults"]["graph-semantic-score-threshold"] == "0.7"
+
+
+@pytest.mark.anyio
+async def test_patch_config_setting_clears_empty_value(
+    app, tmp_vault: VaultConfig, config_store: dict
+) -> None:
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.patch(
+            "/api/v1/vault/test-vault/configs/settings/model",
+            json={"value": ""},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        body = await resp.json()
+
+    assert resp.status == 200
+    assert body["configured"] is False
+    assert "model" not in config_store["defaults"]
+
+
+@pytest.mark.anyio
+async def test_patch_config_setting_rejects_graph_semantic_key(
+    app, tmp_vault: VaultConfig, config_store: dict
+) -> None:
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.patch(
+            "/api/v1/vault/test-vault/configs/settings/graph-semantic-score-threshold",
+            json={"value": "0.9"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+
+    assert resp.status == 404
+    assert config_store["defaults"]["graph-semantic-score-threshold"] == "0.7"
+
+
+@pytest.mark.anyio
+async def test_patch_config_setting_rejects_no_origin_without_bearer(
+    app, tmp_vault: VaultConfig, config_store: dict
+) -> None:
+    async with TestClient(TestServer(app)) as client:
+        login = await client.post(
+            "/api/v1/auth/login",
+            json={"password": "correct horse"},
+        )
+        assert login.status == 200
+
+        resp = await client.patch(
+            "/api/v1/vault/test-vault/configs/settings/model",
+            json={"value": "bad-csrf-model"},
+        )
+
+    assert resp.status == 403
+    assert config_store["defaults"]["model"] == "configured-model"
 
 
 @pytest.mark.anyio

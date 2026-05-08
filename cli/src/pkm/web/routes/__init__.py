@@ -8,6 +8,7 @@ from pkm.web.routes.ask import get_ask_options, get_ask_run, post_ask
 from pkm.web.routes.configs import (
     delete_ask_credential,
     get_configs,
+    patch_config_setting,
     put_ask_credential,
 )
 from pkm.web.routes.daily import (
@@ -74,6 +75,10 @@ def register_routes(app: web.Application) -> None:
 
     # Configs
     app.router.add_get("/api/v1/vault/{name}/configs", get_configs)
+    app.router.add_patch(
+        "/api/v1/vault/{name}/configs/settings/{key}",
+        patch_config_setting,
+    )
     app.router.add_put(
         "/api/v1/vault/{name}/configs/ask/credentials/{provider}",
         put_ask_credential,

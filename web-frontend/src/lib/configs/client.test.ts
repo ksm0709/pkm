@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiClient, apiGet } from "$lib/api/client.js";
-import { deleteAskCredential, loadConfigs, saveAskCredential } from "./client";
+import {
+  deleteAskCredential,
+  loadConfigs,
+  saveAskCredential,
+  saveConfigSetting,
+} from "./client";
 
 vi.mock("$lib/api/client.js", () => ({
   apiClient: vi.fn(),
@@ -15,6 +20,18 @@ describe("configs client", () => {
 
   it("loads the encoded vault configs endpoint", async () => {
     const configs = {
+      settings: [
+        {
+          key: "model",
+          section: "defaults",
+          internal_key: "model",
+          description: "LLM model",
+          value: "auto",
+          configured: true,
+          input_type: "text",
+          options: [],
+        },
+      ],
       ask_credentials: {
         providers: [
           {
@@ -31,6 +48,43 @@ describe("configs client", () => {
 
     await expect(loadConfigs("work vault")).resolves.toBe(configs);
     expect(apiGet).toHaveBeenCalledWith("/api/v1/vault/work%20vault/configs");
+  });
+
+  it("saves an encoded config setting and returns the updated setting", async () => {
+    const updated = {
+      key: "graph-depth",
+      section: "defaults",
+      internal_key: "graph-depth",
+      description: "Default graph traversal depth",
+      value: "4",
+      configured: true,
+      input_type: "number",
+      options: [],
+    };
+    vi.mocked(apiClient).mockResolvedValueOnce(
+      new Response(JSON.stringify(updated), { status: 200 }),
+    );
+
+    await expect(
+      saveConfigSetting("work vault", "graph-depth", "4"),
+    ).resolves.toEqual(updated);
+    expect(apiClient).toHaveBeenCalledWith(
+      "/api/v1/vault/work%20vault/configs/settings/graph-depth",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ value: "4" }),
+      },
+    );
+  });
+
+  it("surfaces failed config setting saves with the response status", async () => {
+    vi.mocked(apiClient).mockResolvedValueOnce(
+      new Response("forbidden", { status: 403 }),
+    );
+
+    await expect(saveConfigSetting("main", "model", "bad")).rejects.toThrow(
+      "PATCH config setting → 403",
+    );
   });
 
   it("saves an ask credential with encoded vault and provider ids", async () => {

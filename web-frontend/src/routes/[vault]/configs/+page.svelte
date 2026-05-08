@@ -1,34 +1,46 @@
 <script lang="ts">
-  import { page } from '$app/stores';
+  import { page } from "$app/stores";
   import {
     deleteAskCredential,
     loadConfigs,
+    saveConfigSetting,
     saveAskCredential,
-    type AskCredentialProvider
-  } from '$lib/configs/client';
+    type AskCredentialProvider,
+    type ConfigSetting,
+  } from "$lib/configs/client";
 
   let vaultName = $derived($page.params.vault);
+  let settings = $state<ConfigSetting[]>([]);
+  let settingValues = $state<Record<string, string>>({});
+  let settingDirty = $state<Record<string, boolean>>({});
+  let settingMessages = $state<Record<string, string>>({});
+  let settingErrors = $state<Record<string, string>>({});
+  let settingBusy = $state<Record<string, boolean>>({});
   let providers = $state<AskCredentialProvider[]>([]);
   let inputs = $state<Record<string, string>>({});
   let messages = $state<Record<string, string>>({});
   let errors = $state<Record<string, string>>({});
   let busy = $state<Record<string, boolean>>({});
   let loading = $state(true);
-  let loadError = $state('');
+  let loadError = $state("");
   let loadSequence = 0;
-  let loadedVault = '';
+  let loadedVault = "";
 
   async function refreshConfigs(vault: string) {
     const sequence = ++loadSequence;
     loading = true;
-    loadError = '';
+    loadError = "";
     try {
       const configs = await loadConfigs(vault);
       if (sequence !== loadSequence || vaultName !== vault) return;
+      const nextSettings = configs.settings ?? [];
+      settings = nextSettings;
+      syncSettingValues(nextSettings);
       providers = configs.ask_credentials?.providers ?? [];
     } catch (e) {
       if (sequence !== loadSequence || vaultName !== vault) return;
-      loadError = e instanceof Error ? e.message : 'Failed to load configs.';
+      loadError = e instanceof Error ? e.message : "Failed to load configs.";
+      settings = [];
       providers = [];
     } finally {
       if (sequence === loadSequence && vaultName === vault) {
@@ -37,17 +49,101 @@
     }
   }
 
+  function syncSettingValues(nextSettings: ConfigSetting[]) {
+    const nextValues = { ...settingValues };
+    const nextKeys = new Set(nextSettings.map((setting) => setting.key));
+    for (const setting of nextSettings) {
+      if (!settingDirty[setting.key]) {
+        nextValues[setting.key] = setting.value ?? "";
+      }
+    }
+    for (const key of Object.keys(nextValues)) {
+      if (!nextKeys.has(key)) delete nextValues[key];
+    }
+    settingValues = nextValues;
+  }
+
+  function settingValue(setting: ConfigSetting) {
+    return settingValues[setting.key] ?? setting.value ?? "";
+  }
+
+  function updateSettingValue(settingKey: string, value: string) {
+    settingValues = { ...settingValues, [settingKey]: value };
+    settingDirty = { ...settingDirty, [settingKey]: true };
+  }
+
+  function setSettingState(
+    settingKey: string,
+    state: {
+      message?: string;
+      error?: string;
+      busy?: boolean;
+      dirty?: boolean;
+    },
+  ) {
+    if (state.message !== undefined) {
+      settingMessages = { ...settingMessages, [settingKey]: state.message };
+    }
+    if (state.error !== undefined) {
+      settingErrors = { ...settingErrors, [settingKey]: state.error };
+    }
+    if (state.busy !== undefined) {
+      settingBusy = { ...settingBusy, [settingKey]: state.busy };
+    }
+    if (state.dirty !== undefined) {
+      settingDirty = { ...settingDirty, [settingKey]: state.dirty };
+    }
+  }
+
+  async function saveSetting(setting: ConfigSetting) {
+    const vault = vaultName;
+    const value = settingValue(setting);
+    setSettingState(setting.key, { message: "", error: "", busy: true });
+    try {
+      const updated = await saveConfigSetting(
+        vault,
+        setting.key,
+        setting.input_type === "boolean" ? value === "true" : value,
+      );
+      if (vaultName !== vault) return;
+      settings = settings.map((item) =>
+        item.key === updated.key ? updated : item,
+      );
+      settingValues = { ...settingValues, [updated.key]: updated.value ?? "" };
+      setSettingState(updated.key, {
+        message: "Saved",
+        error: "",
+        dirty: false,
+      });
+    } catch {
+      if (vaultName !== vault) return;
+      setSettingState(setting.key, {
+        message: "",
+        error: `Failed to save ${setting.key}.`,
+      });
+    } finally {
+      if (vaultName === vault) {
+        setSettingState(setting.key, { busy: false });
+      }
+    }
+  }
+
   function inputValue(providerId: string) {
-    return inputs[providerId] ?? '';
+    return inputs[providerId] ?? "";
   }
 
   function updateInput(providerId: string, value: string) {
     inputs = { ...inputs, [providerId]: value };
   }
 
-  function setProviderState(providerId: string, state: { message?: string; error?: string; busy?: boolean }) {
-    if (state.message !== undefined) messages = { ...messages, [providerId]: state.message };
-    if (state.error !== undefined) errors = { ...errors, [providerId]: state.error };
+  function setProviderState(
+    providerId: string,
+    state: { message?: string; error?: string; busy?: boolean },
+  ) {
+    if (state.message !== undefined)
+      messages = { ...messages, [providerId]: state.message };
+    if (state.error !== undefined)
+      errors = { ...errors, [providerId]: state.error };
     if (state.busy !== undefined) busy = { ...busy, [providerId]: state.busy };
   }
 
@@ -56,25 +152,25 @@
     const apiKey = inputValue(provider.id);
     if (!apiKey) {
       setProviderState(provider.id, {
-        message: '',
-        error: `${provider.label} API key is required.`
+        message: "",
+        error: `${provider.label} API key is required.`,
       });
       return;
     }
 
-    setProviderState(provider.id, { message: '', error: '', busy: true });
+    setProviderState(provider.id, { message: "", error: "", busy: true });
     try {
       await saveAskCredential(vault, provider.id, apiKey);
       if (vaultName !== vault) return;
-      updateInput(provider.id, '');
+      updateInput(provider.id, "");
       await refreshConfigs(vault);
       if (vaultName !== vault) return;
-      setProviderState(provider.id, { message: 'Saved', error: '' });
+      setProviderState(provider.id, { message: "Saved", error: "" });
     } catch {
       if (vaultName !== vault) return;
       setProviderState(provider.id, {
-        message: '',
-        error: `Failed to save ${provider.label} credential.`
+        message: "",
+        error: `Failed to save ${provider.label} credential.`,
       });
     } finally {
       if (vaultName === vault) {
@@ -85,18 +181,18 @@
 
   async function deleteProvider(provider: AskCredentialProvider) {
     const vault = vaultName;
-    setProviderState(provider.id, { message: '', error: '', busy: true });
+    setProviderState(provider.id, { message: "", error: "", busy: true });
     try {
       await deleteAskCredential(vault, provider.id);
       if (vaultName !== vault) return;
       await refreshConfigs(vault);
       if (vaultName !== vault) return;
-      setProviderState(provider.id, { message: 'Deleted', error: '' });
+      setProviderState(provider.id, { message: "Deleted", error: "" });
     } catch {
       if (vaultName !== vault) return;
       setProviderState(provider.id, {
-        message: '',
-        error: `Failed to delete ${provider.label} credential.`
+        message: "",
+        error: `Failed to delete ${provider.label} credential.`,
       });
     } finally {
       if (vaultName === vault) {
@@ -110,6 +206,11 @@
     if (!vault) return;
     if (loadedVault !== vault) {
       loadedVault = vault;
+      settingValues = {};
+      settingDirty = {};
+      settingMessages = {};
+      settingErrors = {};
+      settingBusy = {};
       inputs = {};
       messages = {};
       errors = {};
@@ -134,6 +235,95 @@
       <h2 id="global-settings-heading">Global Settings</h2>
       <span>user-global</span>
     </div>
+
+    {#if loading}
+      <p class="status-msg">Loading…</p>
+    {:else if loadError}
+      <p class="status-msg error">{loadError}</p>
+    {:else if settings.length === 0}
+      <p class="status-msg faint">No editable PKM settings are available.</p>
+    {:else}
+      <div class="config-ledger" aria-label="PKM config settings">
+        <div class="config-head">
+          <span>KEY</span>
+          <span>VALUE</span>
+          <span>DESCRIPTION</span>
+          <span>STATUS</span>
+          <span>ACTIONS</span>
+        </div>
+        <ul class="config-list">
+          {#each settings as setting (setting.key)}
+            <li class="config-row" data-setting-key={setting.key}>
+              <div class="config-main">
+                <span class="config-key">{setting.key}</span>
+                <label class="config-field">
+                  <span>{setting.key} value</span>
+                  {#if setting.input_type === "boolean"}
+                    <input
+                      type="checkbox"
+                      checked={settingValue(setting) === "true"}
+                      aria-label={`${setting.key} value`}
+                      onchange={(event) =>
+                        updateSettingValue(
+                          setting.key,
+                          (event.currentTarget as HTMLInputElement).checked
+                            ? "true"
+                            : "false",
+                        )}
+                    />
+                  {:else}
+                    <input
+                      type={setting.input_type === "number" ? "number" : "text"}
+                      value={settingValue(setting)}
+                      aria-label={`${setting.key} value`}
+                      list={setting.options.length
+                        ? `${setting.key}-options`
+                        : undefined}
+                      oninput={(event) =>
+                        updateSettingValue(
+                          setting.key,
+                          (event.currentTarget as HTMLInputElement).value,
+                        )}
+                    />
+                    {#if setting.options.length}
+                      <datalist id={`${setting.key}-options`}>
+                        {#each setting.options as option}
+                          <option value={option}></option>
+                        {/each}
+                      </datalist>
+                    {/if}
+                  {/if}
+                </label>
+                <span class="config-description">{setting.description}</span>
+                <span
+                  class:configured={setting.configured}
+                  class="config-status"
+                >
+                  {setting.configured ? "configured" : "not set"}
+                </span>
+                <div class="config-actions">
+                  <button
+                    type="button"
+                    aria-label={`Save ${setting.key}`}
+                    disabled={settingBusy[setting.key] ||
+                      !settingDirty[setting.key]}
+                    onclick={() => void saveSetting(setting)}
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+              {#if settingMessages[setting.key]}
+                <p class="config-message">{settingMessages[setting.key]}</p>
+              {/if}
+              {#if settingErrors[setting.key]}
+                <p class="config-message error">{settingErrors[setting.key]}</p>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      </div>
+    {/if}
 
     <section class="ask-credentials" aria-labelledby="ask-credentials-heading">
       <div class="section-heading nested">
@@ -163,11 +353,14 @@
                 <div class="provider-main">
                   <span class="provider-label">{provider.label}</span>
                   <span class="provider-env">{provider.env_key}</span>
-                  <span class:configured={provider.configured} class="provider-status">
-                    {provider.configured ? 'configured' : 'not configured'}
+                  <span
+                    class:configured={provider.configured}
+                    class="provider-status"
+                  >
+                    {provider.configured ? "configured" : "not configured"}
                   </span>
                   <span class="provider-fingerprint">
-                    {provider.fingerprint ?? 'none'}
+                    {provider.fingerprint ?? "none"}
                   </span>
                   <label class="secret-field">
                     <span>{provider.label} API key</span>
@@ -177,7 +370,10 @@
                       value={inputValue(provider.id)}
                       aria-label={`${provider.label} API key`}
                       oninput={(event) =>
-                        updateInput(provider.id, (event.currentTarget as HTMLInputElement).value)}
+                        updateInput(
+                          provider.id,
+                          (event.currentTarget as HTMLInputElement).value,
+                        )}
                     />
                   </label>
                   <div class="provider-actions">
@@ -213,7 +409,10 @@
     </section>
   </section>
 
-  <section class="settings-section vault-settings" aria-labelledby="vault-settings-heading">
+  <section
+    class="settings-section vault-settings"
+    aria-labelledby="vault-settings-heading"
+  >
     <div class="section-heading">
       <h2 id="vault-settings-heading">Vault Settings</h2>
       <span>{vaultName}</span>
@@ -253,6 +452,12 @@
 
   .meta-rail,
   .section-heading span,
+  .config-head,
+  .config-key,
+  .config-status,
+  .config-field,
+  .config-actions button,
+  .config-message,
   .provider-head,
   .provider-env,
   .provider-status,
@@ -303,6 +508,96 @@
 
   .provider-ledger {
     border-top: 1px solid var(--border);
+  }
+
+  .config-ledger {
+    border-top: 1px solid var(--border);
+    margin-bottom: var(--space-5, 24px);
+  }
+
+  .config-head,
+  .config-main {
+    display: grid;
+    grid-template-columns:
+      minmax(150px, 0.9fr) minmax(190px, 1fr) minmax(260px, 1.4fr)
+      minmax(110px, 0.7fr) 96px;
+    gap: var(--space-4, 16px);
+    align-items: center;
+  }
+
+  .config-head {
+    min-height: 34px;
+    border-bottom: 1px solid var(--border);
+    font-size: var(--type-chrome-sm-size, 11px);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+
+  .config-list {
+    display: flex;
+    flex-direction: column;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .config-row {
+    min-width: 0;
+    padding: var(--space-3, 12px) 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .config-key,
+  .config-description,
+  .config-status {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .config-key {
+    color: var(--text);
+    white-space: nowrap;
+  }
+
+  .config-description,
+  .config-status {
+    font-size: var(--type-chrome-size, 13px);
+    color: var(--text-muted);
+  }
+
+  .config-description {
+    line-height: 1.45;
+  }
+
+  .config-status.configured {
+    color: var(--accent);
+  }
+
+  .config-field {
+    display: grid;
+    gap: var(--space-1, 4px);
+    min-width: 0;
+    font-size: var(--type-chrome-sm-size, 11px);
+    color: var(--text-faint);
+  }
+
+  .config-field input[type="text"],
+  .config-field input[type="number"] {
+    min-width: 0;
+    height: 34px;
+    padding: 0 var(--space-2, 8px);
+    color: var(--text);
+    background: var(--surface, var(--bg));
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+
+  .config-field input[type="checkbox"] {
+    width: 22px;
+    height: 22px;
+    accent-color: var(--accent);
   }
 
   .provider-head,
@@ -381,18 +676,22 @@
     border-radius: 4px;
   }
 
+  .config-field input:focus-visible,
+  .config-actions button:focus-visible,
   .secret-field input:focus-visible,
   .provider-actions button:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
 
+  .config-actions,
   .provider-actions {
     display: flex;
     gap: var(--space-2, 8px);
     justify-content: flex-end;
   }
 
+  .config-actions button,
   .provider-actions button {
     min-height: 34px;
     padding: 0 var(--space-3, 12px);
@@ -403,16 +702,19 @@
     cursor: pointer;
   }
 
+  .config-actions button:hover,
   .provider-actions button:hover {
     border-color: var(--accent);
   }
 
+  .config-actions button:disabled,
   .provider-actions button:disabled {
     cursor: progress;
     opacity: 0.62;
   }
 
   .status-msg,
+  .config-message,
   .provider-message {
     margin: var(--space-2, 8px) 0 0;
     font-size: var(--type-chrome-size, 13px);
@@ -420,6 +722,7 @@
   }
 
   .status-msg.error,
+  .config-message.error,
   .provider-message.error {
     color: var(--signal-danger, #c0392b);
   }
@@ -429,15 +732,18 @@
   }
 
   @media (max-width: 920px) {
+    .config-head,
     .provider-head {
       display: none;
     }
 
+    .config-main,
     .provider-main {
       grid-template-columns: minmax(0, 1fr);
       gap: var(--space-2, 8px);
     }
 
+    .config-actions,
     .provider-actions {
       justify-content: flex-start;
     }
