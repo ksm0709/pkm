@@ -15,9 +15,14 @@ from aiohttp.test_utils import TestClient, TestServer
 from pkm.config import WebConfig
 from pkm.web.auth import (
     SESSION_COOKIE_NAME,
+    SESSION_MAX_AGE_SECONDS,
     SSE_ROUTES,
+    _load_token,
+    create_session_cookie_value,
     hash_password,
     make_auth_middleware,
+    verify_password,
+    verify_session_cookie_value,
 )
 from pkm.web.server import make_app
 
@@ -176,6 +181,31 @@ async def test_wrong_password_returns_401_without_cookie(
 
 
 @pytest.mark.anyio
+async def test_login_rejects_malformed_json(app: _web.Application) -> None:
+    """Malformed login bodies are client errors, not invalid-password attempts."""
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post(
+            "/api/v1/auth/login",
+            data="{",
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status == 400
+
+
+@pytest.mark.anyio
+async def test_logout_clears_browser_session_cookie(app: _web.Application) -> None:
+    """Logout is public and instructs the browser to clear the session cookie."""
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/v1/auth/logout")
+        assert resp.status == 200
+        assert await resp.json() == {"ok": True}
+
+    cookie = resp.cookies[SESSION_COOKIE_NAME]
+    assert cookie.value == ""
+    assert cookie["path"] == "/"
+
+
+@pytest.mark.anyio
 async def test_missing_password_config_fails_browser_login_closed(tmp_path) -> None:
     """Bearer auth can still work, but browser password login is disabled."""
     token_path = tmp_path / "web-token"
@@ -207,3 +237,102 @@ async def test_missing_password_config_fails_browser_login_closed(tmp_path) -> N
 def test_sse_routes_constant_contains_ask() -> None:
     """SSE_ROUTES must include the /ask path template."""
     assert any("ask" in route for route in SSE_ROUTES)
+
+
+def test_load_token_fails_fast_for_missing_or_empty_token_file(tmp_path) -> None:
+    """Server token misconfiguration is reported before accepting protected traffic."""
+    missing = tmp_path / "missing-token"
+    with pytest.raises(RuntimeError, match="Generate one with: pkm setup --web"):
+        _load_token(missing)
+
+    empty = tmp_path / "empty-token"
+    empty.write_text("\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="is empty"):
+        _load_token(empty)
+
+
+def test_password_verifier_rejects_unknown_or_malformed_hashes() -> None:
+    """Password hashes fail closed when the stored format is not trusted."""
+    good_hash = hash_password(PASSWORD, salt=b"0" * 16)
+    _, iterations, salt, digest = good_hash.split("$", 3)
+
+    assert not verify_password(PASSWORD, f"argon2${iterations}${salt}${digest}")
+    assert not verify_password(PASSWORD, "not-a-valid-password-hash")
+
+
+def test_session_cookie_verifier_rejects_malformed_or_out_of_window_tokens() -> None:
+    """Session cookies are bound to format, signature inputs, and max age."""
+    password_hash = hash_password(PASSWORD, salt=b"1" * 16)
+    cookie = create_session_cookie_value(
+        token=TOKEN,
+        password_hash=password_hash,
+        reset_value="",
+        now=1_000,
+    )
+    assert verify_session_cookie_value(
+        cookie,
+        token=TOKEN,
+        password_hash=password_hash,
+        reset_value="",
+        now=1_000,
+    )
+
+    assert not verify_session_cookie_value(
+        cookie.replace("v1$", "v2$", 1),
+        token=TOKEN,
+        password_hash=password_hash,
+        now=1_000,
+    )
+    assert not verify_session_cookie_value(
+        "v1$1000$$bad-signature",
+        token=TOKEN,
+        password_hash=password_hash,
+        now=1_000,
+    )
+    assert not verify_session_cookie_value(
+        "not-a-cookie",
+        token=TOKEN,
+        password_hash=password_hash,
+        now=1_000,
+    )
+
+    future_cookie = create_session_cookie_value(
+        token=TOKEN,
+        password_hash=password_hash,
+        now=2_000,
+    )
+    assert not verify_session_cookie_value(
+        future_cookie,
+        token=TOKEN,
+        password_hash=password_hash,
+        now=1_000,
+    )
+
+    expired_cookie = create_session_cookie_value(
+        token=TOKEN,
+        password_hash=password_hash,
+        now=1_000,
+    )
+    assert not verify_session_cookie_value(
+        expired_cookie,
+        token=TOKEN,
+        password_hash=password_hash,
+        now=1_000 + SESSION_MAX_AGE_SECONDS + 1,
+    )
+
+
+@pytest.mark.anyio
+async def test_session_cookie_is_rejected_after_reset_file_changes(
+    app: _web.Application, web_cfg: WebConfig
+) -> None:
+    """Writing the reset file invalidates existing browser sessions."""
+    async with TestClient(TestServer(app)) as client:
+        login = await client.post(
+            "/api/v1/auth/login",
+            json={"password": PASSWORD},
+        )
+        assert login.status == 200
+
+        web_cfg.session_reset_path.write_text("reset-now", encoding="utf-8")
+        resp = await client.get("/api/v1/health")
+        assert resp.status == 401
