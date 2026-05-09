@@ -81,6 +81,35 @@ describe("configs client", () => {
     );
   });
 
+  it("sends null when resetting a config setting to its default", async () => {
+    const updated = {
+      key: "model",
+      section: "defaults",
+      internal_key: "model",
+      description: "LLM model",
+      value: "auto",
+      default_value: "auto",
+      configured: false,
+      source: "default",
+      input_type: "text",
+      options: [],
+    };
+    vi.mocked(apiClient).mockResolvedValueOnce(
+      new Response(JSON.stringify(updated), { status: 200 }),
+    );
+
+    await expect(saveConfigSetting("main", "model", null)).resolves.toEqual(
+      updated,
+    );
+    expect(apiClient).toHaveBeenCalledWith(
+      "/api/v1/vault/main/configs/settings/model",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ value: null }),
+      },
+    );
+  });
+
   it("surfaces failed config setting saves with the response status", async () => {
     vi.mocked(apiClient).mockResolvedValueOnce(
       new Response("forbidden", { status: 403 }),

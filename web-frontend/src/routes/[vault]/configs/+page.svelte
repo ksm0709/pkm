@@ -128,6 +128,34 @@
     }
   }
 
+  async function resetSetting(setting: ConfigSetting) {
+    const vault = vaultName;
+    setSettingState(setting.key, { message: "", error: "", busy: true });
+    try {
+      const updated = await saveConfigSetting(vault, setting.key, null);
+      if (vaultName !== vault) return;
+      settings = settings.map((item) =>
+        item.key === updated.key ? updated : item,
+      );
+      settingValues = { ...settingValues, [updated.key]: updated.value ?? "" };
+      setSettingState(updated.key, {
+        message: "Reset",
+        error: "",
+        dirty: false,
+      });
+    } catch {
+      if (vaultName !== vault) return;
+      setSettingState(setting.key, {
+        message: "",
+        error: `Failed to reset ${setting.key}.`,
+      });
+    } finally {
+      if (vaultName === vault) {
+        setSettingState(setting.key, { busy: false });
+      }
+    }
+  }
+
   function inputValue(providerId: string) {
     return inputs[providerId] ?? "";
   }
@@ -248,7 +276,6 @@
           <span>KEY</span>
           <span>VALUE</span>
           <span>DESCRIPTION</span>
-          <span>STATUS</span>
           <span>ACTIONS</span>
         </div>
         <ul class="config-list">
@@ -295,17 +322,6 @@
                   {/if}
                 </label>
                 <span class="config-description">{setting.description}</span>
-                <span
-                  class:configured={setting.configured}
-                  class:defaulted={setting.source === "default"}
-                  class="config-status"
-                >
-                  {setting.source === "configured"
-                    ? "configured"
-                    : setting.source === "default"
-                      ? "default"
-                      : "not set"}
-                </span>
                 <div class="config-actions">
                   <button
                     type="button"
@@ -315,6 +331,14 @@
                     onclick={() => void saveSetting(setting)}
                   >
                     Save
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Reset ${setting.key}`}
+                    disabled={settingBusy[setting.key] || !setting.configured}
+                    onclick={() => void resetSetting(setting)}
+                  >
+                    Reset
                   </button>
                 </div>
               </div>
@@ -459,7 +483,6 @@
   .section-heading span,
   .config-head,
   .config-key,
-  .config-status,
   .config-field,
   .config-actions button,
   .config-message,
@@ -525,7 +548,7 @@
     display: grid;
     grid-template-columns:
       minmax(150px, 0.9fr) minmax(190px, 1fr) minmax(260px, 1.4fr)
-      minmax(110px, 0.7fr) 96px;
+      168px;
     gap: var(--space-4, 16px);
     align-items: center;
   }
@@ -554,8 +577,7 @@
   }
 
   .config-key,
-  .config-description,
-  .config-status {
+  .config-description {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -566,22 +588,13 @@
     white-space: nowrap;
   }
 
-  .config-description,
-  .config-status {
+  .config-description {
     font-size: var(--type-chrome-size, 13px);
     color: var(--text-muted);
   }
 
   .config-description {
     line-height: 1.45;
-  }
-
-  .config-status.configured {
-    color: var(--accent);
-  }
-
-  .config-status.defaulted {
-    color: var(--text-muted);
   }
 
   .config-field {
