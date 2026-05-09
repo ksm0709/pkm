@@ -105,10 +105,13 @@ async def test_get_configs_returns_editable_pkm_settings_except_graph_semantic(
     assert resp.status == 200
     settings = {setting["key"]: setting for setting in body["settings"]}
     assert settings["default-vault"]["value"] == "test-vault"
+    assert settings["default-vault"]["source"] == "configured"
     assert settings["model"]["value"] == "configured-model"
     assert settings["graph-depth"]["input_type"] == "number"
-    assert settings["auto"]["input_type"] == "boolean"
-    assert settings["auto"]["configured"] is False
+    assert settings["editor"]["configured"] is False
+    assert settings["editor"]["source"] == "default"
+    assert settings["editor"]["value"]
+    assert "auto" not in settings
     assert "graph-semantic-score-threshold" not in settings
     assert all(not key.startswith("graph-semantic-") for key in settings)
 
@@ -146,6 +149,8 @@ async def test_patch_config_setting_clears_empty_value(
 
     assert resp.status == 200
     assert body["configured"] is False
+    assert body["source"] == "default"
+    assert body["value"] == "auto"
     assert "model" not in config_store["defaults"]
 
 

@@ -297,9 +297,14 @@
                 <span class="config-description">{setting.description}</span>
                 <span
                   class:configured={setting.configured}
+                  class:defaulted={setting.source === "default"}
                   class="config-status"
                 >
-                  {setting.configured ? "configured" : "not set"}
+                  {setting.source === "configured"
+                    ? "configured"
+                    : setting.source === "default"
+                      ? "default"
+                      : "not set"}
                 </span>
                 <div class="config-actions">
                   <button
@@ -573,6 +578,10 @@
 
   .config-status.configured {
     color: var(--accent);
+  }
+
+  .config-status.defaulted {
+    color: var(--text-muted);
   }
 
   .config-field {
