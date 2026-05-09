@@ -6,7 +6,7 @@ from typing import Any
 
 from aiohttp import web
 
-from pkm.commands.config import CONFIG_SCHEMA
+from pkm.commands.config import CONFIG_SCHEMA, config_value_for_key
 from pkm.config import load_config, save_config
 from pkm.credential_store import ASK_CREDENTIAL_PROVIDERS, SecretStore, provider_payload
 from pkm.web.routes.notes import _resolve_vault
@@ -17,7 +17,6 @@ from pkm.web.security import (
 
 _GRAPH_SEMANTIC_PREFIX = "graph-semantic-"
 _CONFIG_INPUT_TYPES = {
-    "auto": "boolean",
     "graph-depth": "number",
 }
 _CONFIG_OPTIONS = {
@@ -25,7 +24,7 @@ _CONFIG_OPTIONS = {
 }
 
 
-def _editable_config_schema() -> dict[str, dict[str, str]]:
+def _editable_config_schema() -> dict[str, dict[str, Any]]:
     return {
         key: schema
         for key, schema in CONFIG_SCHEMA.items()
@@ -67,13 +66,16 @@ def _setting_payload(key: str, defaults: dict[str, Any]) -> dict[str, Any]:
     schema = _editable_config_schema()[key]
     internal_key = schema["internal_key"]
     raw_value = defaults.get(internal_key)
+    value, source = config_value_for_key(key, defaults, unset_label="")
     return {
         "key": key,
         "section": "defaults",
         "internal_key": internal_key,
         "description": schema["description"],
-        "value": "" if raw_value is None else str(raw_value),
+        "value": value,
+        "default_value": value if source == "default" else "",
         "configured": raw_value is not None,
+        "source": source,
         "input_type": _CONFIG_INPUT_TYPES.get(key, "text"),
         "options": _CONFIG_OPTIONS.get(key, []),
     }

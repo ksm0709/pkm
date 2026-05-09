@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from click.testing import CliRunner
@@ -182,6 +183,16 @@ def test_config_get_not_set(monkeypatch):
     assert "not set" in result.output
 
 
+def test_config_get_uses_effective_default_when_available(monkeypatch):
+    monkeypatch.setattr("pkm.commands.config.load_config", lambda: {})
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["config", "get", "model"])
+
+    assert result.exit_code == 0
+    assert result.output.strip() == "auto"
+
+
 def test_config_get_invalid_key():
     runner = CliRunner()
     result = runner.invoke(main, ["config", "get", "bad-key"])
@@ -211,7 +222,10 @@ def test_config_list_empty(monkeypatch):
     runner = CliRunner()
     result = runner.invoke(main, ["config", "list"])
     assert result.exit_code == 0
-    assert result.output.strip() == "{}"
+    data = json.loads(result.output)
+    assert data["model"] == "auto"
+    assert data["graph-depth"] == "0"
+    assert "auto" not in data
 
 
 def test_config_list_empty_table(monkeypatch):
