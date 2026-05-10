@@ -190,6 +190,7 @@ def test_web_systemctl_commands_stream_output_and_exit_codes(monkeypatch):
     for command, systemctl_args in [
         ("start", ["systemctl", "--user", "start", "pkm-web"]),
         ("stop", ["systemctl", "--user", "stop", "pkm-web"]),
+        ("restart", ["systemctl", "--user", "restart", "pkm-web"]),
         ("status", ["systemctl", "--user", "status", "pkm-web", "--no-pager"]),
         ("enable", ["systemctl", "--user", "enable", "pkm-web"]),
     ]:
