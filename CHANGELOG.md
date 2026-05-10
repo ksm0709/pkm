@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v2.75.1 (2026-05-10)
+
+### Bug Fixes
+
+- Update from main when installed from feature worktrees
+  ([`29b01cd`](https://github.com/ksm0709/pkm/commit/29b01cd26c7e722c91a002af12b64a940848eb70))
+
+### Chores
+
+- Let stop hook finish without forcing continuation
+  ([`04c2608`](https://github.com/ksm0709/pkm/commit/04c26087f3a9e2e6f7fe790a3a2d58fa30bb8a0e))
+
+
 ## v2.75.0 (2026-05-10)
 
 ### Bug Fixes
