@@ -10,6 +10,7 @@ from aiohttp import web
 
 from pkm.web.routes.notes import _resolve_vault
 from pkm.workflows import WorkflowConfig, load_workflows
+from pkm.workflows.history import read_workflow_history
 
 _TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):00$")
 
@@ -27,7 +28,9 @@ def _trigger_time(schedule_hour: int) -> str:
     return f"{schedule_hour:02d}:00"
 
 
-def _workflow_payload(config: WorkflowConfig, *, include_body: bool = False) -> dict[str, Any]:
+def _workflow_payload(
+    config: WorkflowConfig, *, include_body: bool = False
+) -> dict[str, Any]:
     payload = {
         "id": config.id,
         "title": _workflow_title(config.id),
@@ -91,6 +94,24 @@ async def list_workflows(request: web.Request) -> web.Response:
     return web.json_response([_workflow_payload(workflow) for workflow in workflows])
 
 
+def _history_limit(request: web.Request) -> int:
+    raw = request.query.get("limit", "20")
+    try:
+        limit = int(raw)
+    except ValueError:
+        raise web.HTTPBadRequest(reason="limit must be an integer")
+    if limit < 1:
+        raise web.HTTPBadRequest(reason="limit must be >= 1")
+    return limit
+
+
+async def list_workflow_history(request: web.Request) -> web.Response:
+    vault = _resolve_vault(request.match_info["name"])
+    return web.json_response(
+        read_workflow_history(vault.path, limit=_history_limit(request))
+    )
+
+
 async def get_workflow(request: web.Request) -> web.Response:
     vault = _resolve_vault(request.match_info["name"])
     workflow_id = request.match_info["id"]
@@ -99,6 +120,21 @@ async def get_workflow(request: web.Request) -> web.Response:
     if workflow is None:
         raise web.HTTPNotFound(reason=f"Workflow '{workflow_id}' not found")
     return web.json_response(_workflow_payload(workflow, include_body=True))
+
+
+async def get_workflow_history(request: web.Request) -> web.Response:
+    vault = _resolve_vault(request.match_info["name"])
+    workflow_id = request.match_info["id"]
+    workflows = _workflow_map(vault.path)
+    if workflow_id not in workflows:
+        raise web.HTTPNotFound(reason=f"Workflow '{workflow_id}' not found")
+    return web.json_response(
+        read_workflow_history(
+            vault.path,
+            workflow_id=workflow_id,
+            limit=_history_limit(request),
+        )
+    )
 
 
 async def update_workflow(request: web.Request) -> web.Response:

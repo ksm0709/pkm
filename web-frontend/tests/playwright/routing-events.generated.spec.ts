@@ -75,8 +75,6 @@ const betaNotes = [
 const workflowBodies: Record<string, string> = {
   zettelkasten_maintenance:
     "Execute the maintenance workflow.\n\n1. Review clusters.\n2. Create hub notes.\n3. Consolidate daily notes.",
-  daily_task_summary:
-    "Create today's task summary subnote using create_daily_subnote.",
 };
 
 let workflowConfigs: Record<
@@ -94,6 +92,20 @@ let workflowConfigs: Record<
     body: string;
     jitter_type: string;
   }
+>;
+let workflowHistories: Record<
+  string,
+  Array<{
+    workflow_id: string;
+    task_id: string;
+    hostname: string;
+    time: string;
+    status: "success" | "failure";
+    source: string;
+    phase: string;
+    error: string | null;
+    result_summary: string;
+  }>
 >;
 
 let askPayloads: Array<{
@@ -1118,7 +1130,7 @@ test.describe("generated routing and event contracts", () => {
     ).toBeVisible();
     await expect(
       menu.getByRole("option", {
-        name: /\/workflow daily_task_summary.*workflow/i,
+        name: /\/workflow zettelkasten_maintenance.*workflow/i,
       }),
     ).toBeVisible();
     await expect(
@@ -1136,28 +1148,28 @@ test.describe("generated routing and event contracts", () => {
       (inputBox?.y ?? 0) + 1,
     );
 
-    await input.fill("/sum");
+    await input.fill("/zettel");
     await expect(menu.getByRole("option").first()).toContainText(
-      "/workflow daily_task_summary",
+      "/workflow zettelkasten_maintenance",
     );
 
     await input.press("ArrowDown");
     await input.press("ArrowUp");
     await input.press("Enter");
 
-    await expect(input).toHaveValue("/workflow daily_task_summary");
+    await expect(input).toHaveValue("/workflow zettelkasten_maintenance");
     await expect(menu).toHaveCount(0);
     await expect(
-      page.getByText("/workflow daily_task_summary", { exact: true }),
+      page.getByText("/workflow zettelkasten_maintenance", { exact: true }),
     ).toHaveCount(0);
 
     await input.press("Control+Enter");
 
     await expect(
-      page.getByText("/workflow daily_task_summary", { exact: true }),
+      page.getByText("/workflow zettelkasten_maintenance", { exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByText("Answer for /workflow daily_task_summary"),
+      page.getByText("Answer for /workflow zettelkasten_maintenance"),
     ).toBeVisible();
     await expect(input).toHaveValue("");
   });
@@ -1371,32 +1383,44 @@ test.describe("generated routing and event contracts", () => {
     await expect(
       page.locator(".ledger-head").getByText("STATE", { exact: true }),
     ).toBeVisible();
-    await expect(page.getByText("daily task summary")).toBeVisible();
-    await expect(page.getByText("08:00")).toBeVisible();
+    await expect(page.getByText("zettelkasten maintenance")).toBeVisible();
+    await expect(page.getByText("02:00")).toBeVisible();
     await expect(
-      page.getByRole("link", { name: /daily task summary/ }),
+      page.getByRole("link", { name: /zettelkasten maintenance/ }),
     ).toContainText("on");
 
-    await page.getByRole("link", { name: /daily task summary/ }).click();
+    await page.getByRole("link", { name: /zettelkasten maintenance/ }).click();
     await expect(page).toHaveURL(
-      new RegExp(`/${vaultName}/workflows/daily_task_summary$`),
+      new RegExp(`/${vaultName}/workflows/zettelkasten_maintenance$`),
     );
-    await expectTopbar(page, vaultName, "workflow:daily_task_summary");
+    await expectTopbar(page, vaultName, "workflow:zettelkasten_maintenance");
     await expect(page.locator(".workflow-header .meta-rail")).toContainText(
       "WORKFLOW",
     );
     await expect(page.locator(".workflow-header .meta-rail")).toContainText(
-      "daily_task_summary",
+      "zettelkasten_maintenance",
     );
     await expect(
-      page.getByText("Create today's task summary subnote"),
+      page.getByText("Execute the maintenance workflow"),
     ).toBeVisible();
+
+    await page.getByRole("button", { name: "Workflow history" }).click();
+    const historyPanel = page.getByRole("dialog", { name: "Workflow history" });
+    await expect(historyPanel).toBeVisible();
+    await expect(historyPanel).toContainText("history-host");
+    await expect(historyPanel).toContainText("success");
+    await expect(historyPanel).toContainText("created hub notes");
+    await expect(historyPanel).toContainText("model failed");
+    await historyPanel
+      .getByRole("button", { name: "Close workflow history" })
+      .click();
+    await expect(historyPanel).toHaveCount(0);
 
     await page.getByRole("button", { name: "Workflow settings" }).click();
     const modal = page.getByRole("dialog", { name: "Workflow settings" });
     await expect(modal).toBeVisible();
     await expect(modal.getByLabel("Enabled")).toBeChecked();
-    await expect(modal.getByLabel("Trigger time")).toHaveValue("08:00");
+    await expect(modal.getByLabel("Trigger time")).toHaveValue("02:00");
 
     await modal.getByLabel("Enabled").uncheck();
     await modal.getByLabel("Trigger time").fill("06:00");
@@ -1405,8 +1429,8 @@ test.describe("generated routing and event contracts", () => {
     await expect(modal).toHaveCount(0);
     await expect(page.getByText("06:00")).toBeVisible();
     await expect(page.getByText("off")).toBeVisible();
-    expect(workflowConfigs.daily_task_summary.enabled).toBe(false);
-    expect(workflowConfigs.daily_task_summary.trigger_time).toBe("06:00");
+    expect(workflowConfigs.zettelkasten_maintenance.enabled).toBe(false);
+    expect(workflowConfigs.zettelkasten_maintenance.trigger_time).toBe("06:00");
   });
 
   test("note body wraps long content within the viewport", async ({ page }) => {
@@ -1567,7 +1591,7 @@ test.describe("generated routing and event contracts", () => {
     await page.getByRole("option", { name: /Open workflows/ }).click();
     await expect(page).toHaveURL(new RegExp(`/${vaultName}/workflows$`));
     await expectTopbar(page, vaultName, "workflows");
-    await expect(page.getByText("daily task summary")).toBeVisible();
+    await expect(page.getByText("zettelkasten maintenance")).toBeVisible();
     await expectNoMissingPage(page);
 
     await page.goto(`/${vaultName}`);
@@ -1775,6 +1799,22 @@ async function mockPkmApi(page: Page) {
           ({ body, jitter_type, ...summary }) => summary,
         ),
       );
+      return;
+    }
+
+    const workflowHistoryMatch = path.match(
+      /^\/api\/v1\/vault\/([^/]+)\/workflows\/([^/]+)\/history$/,
+    );
+    if (workflowHistoryMatch && route.request().method() === "GET") {
+      await json(route, workflowHistories[workflowHistoryMatch[2]] ?? []);
+      return;
+    }
+
+    const allWorkflowHistoryMatch = path.match(
+      /^\/api\/v1\/vault\/([^/]+)\/workflow-history$/,
+    );
+    if (allWorkflowHistoryMatch && route.request().method() === "GET") {
+      await json(route, Object.values(workflowHistories).flat());
       return;
     }
 
@@ -2238,20 +2278,32 @@ function resetMockWorkflows() {
       body: workflowBodies.zettelkasten_maintenance,
       jitter_type: "md5_hostname",
     },
-    daily_task_summary: {
-      id: "daily_task_summary",
-      title: "daily task summary",
-      schedule_hour: 8,
-      trigger_time: "08:00",
-      enabled: true,
-      marker_file: "summary-last-run",
-      pre_hook: "pkm.workflows.hooks:build_daily_summary",
-      post_hook: null,
-      snippet:
-        "Create today's task summary subnote using create_daily_subnote.",
-      body: workflowBodies.daily_task_summary,
-      jitter_type: "md5_hostname_suffix:summary",
-    },
+  };
+  workflowHistories = {
+    zettelkasten_maintenance: [
+      {
+        workflow_id: "zettelkasten_maintenance",
+        task_id: "workflow-2",
+        hostname: "history-host",
+        time: "2026-05-10T02:00:00Z",
+        status: "failure",
+        source: "scheduled",
+        phase: "agent",
+        error: "model failed",
+        result_summary: "agent stopped",
+      },
+      {
+        workflow_id: "zettelkasten_maintenance",
+        task_id: "workflow-1",
+        hostname: "history-host",
+        time: "2026-05-10T01:00:00Z",
+        status: "success",
+        source: "manual",
+        phase: "complete",
+        error: null,
+        result_summary: "created hub notes",
+      },
+    ],
   };
 }
 

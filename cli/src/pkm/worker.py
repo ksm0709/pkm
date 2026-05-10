@@ -5,7 +5,10 @@ import json
 import os
 import logging
 import re
+import socket
 from collections import OrderedDict
+from dataclasses import dataclass
+from datetime import date, datetime, timezone
 from typing import Awaitable, Callable, Dict, Any, Optional, List
 
 # Configure logging to stderr so it doesn't interfere with stdout IPC
@@ -34,6 +37,14 @@ def sync_task_api_keys(env_keys: Optional[Dict[str, str]]) -> None:
         if key.endswith("_API_KEY") and key not in requested_api_keys:
             os.environ.pop(key, None)
     os.environ.update(clean_env_keys)
+
+
+@dataclass
+class AgentTaskOutcome:
+    status: str
+    response: str = ""
+    result_summary: str = ""
+    error: str | None = None
 
 
 def reasoning_kwargs(model: str, effort: str | None) -> dict[str, Any]:
@@ -117,6 +128,34 @@ def _store_agent(cache_key: str, signature: tuple[Any, ...], agent: Any) -> None
         _ASK_AGENT_CACHE.pop(oldest, None)
 
 
+def _stringify_turn_stop_result(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        for key in ("output", "summary", "content", "text", "result"):
+            if key in value:
+                rendered = _stringify_turn_stop_result(value[key])
+                if rendered:
+                    return rendered
+        try:
+            return json.dumps(value, ensure_ascii=False)
+        except TypeError:
+            return str(value)
+    return str(value)
+
+
+def _turn_stop_summary_from_chunk(chunk: dict[str, Any]) -> str:
+    if chunk.get("type") != "tool_end" or chunk.get("name") != "turn_stop":
+        return ""
+    for key in ("result", "content", "output"):
+        rendered = _stringify_turn_stop_result(chunk.get(key))
+        if rendered:
+            return rendered
+    return ""
+
+
 class IPCClient:
     def __init__(self):
         self._abort_event = None
@@ -187,8 +226,8 @@ async def _run_agent_task(
     persistent_session_id: Optional[str] = None,
     mock_response_prefix: str = "Mocked response for:",
 ):
-    async def run() -> None:
-        await _run_agent_task_impl(
+    async def run() -> AgentTaskOutcome:
+        return await _run_agent_task_impl(
             task_id=task_id,
             session_prefix=session_prefix,
             user_content=user_content,
@@ -203,7 +242,7 @@ async def _run_agent_task(
             mock_response_prefix=mock_response_prefix,
         )
 
-    await _run_with_env(env_keys or {}, run)
+    return await _run_with_env(env_keys or {}, run)
 
 
 async def _run_with_env(
@@ -265,7 +304,11 @@ async def _run_agent_task_impl(
                     "data": {"response": mock_res},
                 }
             )
-            return
+            return AgentTaskOutcome(
+                status="success",
+                response=mock_res,
+                result_summary=mock_res,
+            )
 
         from tiny_agent.agent import Agent
         from pkm.tools import get_pkm_tools
@@ -348,8 +391,10 @@ async def _run_agent_task_impl(
                     agent.tasks = []
 
                 response_chunks = []
+                turn_stop_summary = ""
 
                 async def run_agent():
+                    nonlocal turn_stop_summary
                     async for chunk in agent.run(user_content):
                         await ipc.send_message(
                             {"type": "stream", "id": task_id, "chunk": chunk}
@@ -358,6 +403,10 @@ async def _run_agent_task_impl(
                         if chunk.get("type") == "content":
                             content = chunk.get("content", "")
                             response_chunks.append(content)
+                        elif chunk.get("type") == "tool_end":
+                            summary = _turn_stop_summary_from_chunk(chunk)
+                            if summary:
+                                turn_stop_summary = summary
                         elif chunk.get("type") == "error":
                             raise RuntimeError(chunk.get("content"))
 
@@ -383,6 +432,7 @@ async def _run_agent_task_impl(
                         raise exc
 
                 full_response = "".join(response_chunks)
+                result_summary = turn_stop_summary or full_response
 
                 await ipc.send_message(
                     {
@@ -392,7 +442,11 @@ async def _run_agent_task_impl(
                         "data": {"response": full_response},
                     }
                 )
-                return
+                return AgentTaskOutcome(
+                    status="success",
+                    response=full_response,
+                    result_summary=result_summary,
+                )
             except Exception as e:
                 if str(e) == "Task aborted by daemon":
                     raise
@@ -407,6 +461,7 @@ async def _run_agent_task_impl(
         )
     except Exception as e:
         await ipc.send_message({"type": "error", "id": task_id, "message": str(e)})
+        return AgentTaskOutcome(status="failure", error=str(e))
 
 
 async def handle_ask(
@@ -482,38 +537,69 @@ async def _dispatch_workflow(
     env_keys: Optional[Dict[str, str]] = None,
     reasoning_effort: Optional[str] = None,
     cwd: Optional[str] = None,
+    source: str = "unknown",
 ):
     from pathlib import Path
     from pkm.config import VaultConfig
     from pkm.workflows import load_workflows, resolve_hook
-    from datetime import date
+    from pkm.workflows.history import append_workflow_history
+
+    def record_history(
+        *,
+        status: str,
+        phase: str,
+        error: str | None = None,
+        result_summary: str = "",
+    ) -> None:
+        append_workflow_history(
+            vault_dir,
+            {
+                "workflow_id": workflow_id,
+                "task_id": task_id,
+                "hostname": socket.gethostname(),
+                "time": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                "status": status,
+                "source": source or "unknown",
+                "phase": phase,
+                "error": error,
+                "result_summary": result_summary,
+            },
+        )
 
     configs = load_workflows(vault_path=vault_dir)
     config_map = {c.id: c for c in configs}
     config = config_map.get(workflow_id)
     if config is None:
+        message = f"Unknown workflow_id: {workflow_id}"
         await ipc.send_message(
             {
                 "type": "error",
                 "id": task_id,
-                "message": f"Unknown workflow_id: {workflow_id}",
+                "message": message,
             }
         )
+        record_history(status="failure", phase="load", error=message)
         return
 
     vault = VaultConfig(name=Path(vault_dir).name, path=Path(vault_dir))
     today = str(date.today())
 
-    pre_fn = resolve_hook(config.pre_hook)
-    if pre_fn is not None:
-        hook_result = pre_fn(vault, today)
-        system_prompt = config.system_prompt_template.format(**hook_result)
-    else:
-        system_prompt = config.system_prompt_template
+    try:
+        pre_fn = resolve_hook(config.pre_hook)
+        if pre_fn is not None:
+            hook_result = pre_fn(vault, today)
+            system_prompt = config.system_prompt_template.format(**hook_result)
+        else:
+            system_prompt = config.system_prompt_template
+    except Exception as exc:
+        message = str(exc)
+        await ipc.send_message({"type": "error", "id": task_id, "message": message})
+        record_history(status="failure", phase="pre_hook", error=message)
+        return
 
     user_content = f"Execute the {workflow_id} workflow now."
 
-    await _run_agent_task(
+    outcome = await _run_agent_task(
         task_id=task_id,
         session_prefix=f"pkm-{workflow_id}",
         user_content=user_content,
@@ -525,10 +611,38 @@ async def _dispatch_workflow(
         cwd=cwd,
         mock_response_prefix=f"Mocked {workflow_id} response",
     )
+    if outcome is None:
+        outcome = AgentTaskOutcome(status="success")
 
-    post_fn = resolve_hook(config.post_hook)
-    if post_fn is not None:
-        post_fn(vault, None)
+    if outcome.status != "success":
+        record_history(
+            status="failure",
+            phase="agent",
+            error=outcome.error,
+            result_summary=outcome.result_summary,
+        )
+        return
+
+    try:
+        post_fn = resolve_hook(config.post_hook)
+        if post_fn is not None:
+            post_fn(vault, None)
+    except Exception as exc:
+        message = str(exc)
+        await ipc.send_message({"type": "error", "id": task_id, "message": message})
+        record_history(
+            status="failure",
+            phase="post_hook",
+            error=message,
+            result_summary=outcome.result_summary,
+        )
+        return
+
+    record_history(
+        status="success",
+        phase="complete",
+        result_summary=outcome.result_summary,
+    )
 
 
 async def handle_task(msg: Dict[str, Any]):
@@ -572,6 +686,7 @@ async def _handle_task_with_current_env(msg: Dict[str, Any]) -> None:
             msg.get("env_keys"),
             msg.get("reasoning_effort"),
             msg.get("cwd"),
+            msg.get("workflow_source", "unknown"),
         )
     else:
         await ipc.send_message(

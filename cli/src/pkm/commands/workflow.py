@@ -11,6 +11,7 @@ from rich.console import Console
 from rich.table import Table
 
 from pkm.workflows import load_workflows
+from pkm.workflows.history import read_workflow_history
 
 _console = Console()
 
@@ -80,18 +81,24 @@ def workflow_list(vault: str | None, fmt: str):
     _console.print(table)
 
 
+def _workflow_vault_path(ctx: click.Context, vault: str | None = None) -> Path:
+    if vault:
+        return Path(vault)
+    try:
+        vault_obj = ctx.obj.get("vault") if ctx.obj else None
+        if vault_obj:
+            return vault_obj.path
+    except Exception:
+        pass
+    return Path(".")
+
+
 @workflow_group.command(name="run")
 @click.argument("workflow_id")
 @click.pass_context
 def workflow_run(ctx: click.Context, workflow_id: str):
     """Immediately run a workflow by ID via the daemon task queue."""
-    vault_path: Path | None = None
-    try:
-        vault_obj = ctx.obj.get("vault") if ctx.obj else None
-        if vault_obj:
-            vault_path = vault_obj.path
-    except Exception:
-        pass
+    vault_path = _workflow_vault_path(ctx)
 
     configs = load_workflows(vault_path=vault_path)
     config_map = {c.id: c for c in configs}
@@ -117,12 +124,13 @@ def workflow_run(ctx: click.Context, workflow_id: str):
     except Exception:
         queue = []
 
-    vault_dir = str(vault_path) if vault_path else "."
+    vault_dir = str(vault_path)
     task = {
         "type": "task",
         "id": f"{workflow_id}_manual_{int(time.time())}",
         "task_type": "workflow",
         "workflow_id": workflow_id,
+        "workflow_source": "manual",
         "env": {"PKM_VAULT_DIR": vault_dir},
     }
     queue.append(task)
@@ -132,3 +140,69 @@ def workflow_run(ctx: click.Context, workflow_id: str):
     _console.print(
         f"[green]Queued workflow[/green] [bold]{workflow_id}[/bold] → task id: {task['id']}"
     )
+
+
+@workflow_group.command(name="history")
+@click.argument("workflow_id", required=False, default="all")
+@click.option("--vault", "-v", default=None, help="Vault path for history lookup")
+@click.option("--limit", default=20, show_default=True, help="Maximum rows to show")
+@click.option(
+    "--format",
+    "-f",
+    "fmt",
+    default="table",
+    type=click.Choice(["table", "json"]),
+    help="Output format",
+)
+@click.pass_context
+def workflow_history(
+    ctx: click.Context,
+    workflow_id: str,
+    vault: str | None,
+    limit: int,
+    fmt: str,
+):
+    """Show recent workflow execution history."""
+    vault_path = _workflow_vault_path(ctx, vault)
+    selected_workflow = None if workflow_id == "all" else workflow_id
+    records = read_workflow_history(
+        vault_path,
+        workflow_id=selected_workflow,
+        limit=limit,
+    )
+
+    if fmt == "json":
+        click.echo(json.dumps(records, ensure_ascii=False, indent=2))
+        return
+
+    if not records:
+        _console.print("[yellow]No workflow history found.[/yellow]")
+        return
+
+    table = Table(title="PKM Workflow History", show_lines=True)
+    table.add_column("Time", style="dim")
+    table.add_column("Workflow", style="bold cyan")
+    table.add_column("Host", style="dim")
+    table.add_column("Status")
+    table.add_column("Summary / Error")
+
+    for record in records:
+        status = str(record.get("status", ""))
+        status_text = (
+            f"[green]{status}[/green]"
+            if status == "success"
+            else f"[red]{status}[/red]"
+        )
+        details = str(record.get("result_summary") or "")
+        if record.get("error"):
+            error = f"[red]{record['error']}[/red]"
+            details = f"{details}\n{error}" if details else error
+        table.add_row(
+            str(record.get("time", "")),
+            str(record.get("workflow_id", "")),
+            str(record.get("hostname", "")),
+            status_text,
+            details,
+        )
+
+    _console.print(table)

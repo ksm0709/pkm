@@ -8,6 +8,7 @@ Manage PKM daemon workflows — scheduled AI maintenance tasks that run automati
 ## Commands
 - **`list`**: List all configured workflows (bundled defaults + global overrides + vault overrides).
 - **`run WORKFLOW_ID`**: Immediately queue a workflow for execution by the daemon worker.
+- **`history [WORKFLOW_ID|all]`**: Show recent vault-local workflow execution history.
 
 ## Workflow Configuration
 
@@ -55,7 +56,22 @@ Workflows are defined in JSON and merged from three sources (later sources overr
 | ID | Hour | Description |
 |----|------|-------------|
 | `zettelkasten_maintenance` | 3 | Nightly graph maintenance: surprising connections, cluster review, hub notes |
-| `daily_task_summary` | 8 | Morning daily note rollover: carries forward incomplete tasks from yesterday |
+
+`daily_task_summary` is no longer bundled. Existing users can still define a complete custom workflow with that id in global or vault workflow config.
+
+## Workflow History
+
+Workflow runs append JSON Lines records to `{vault}/.pkm/workflow-history.jsonl`.
+
+Each record includes:
+- workflow id and task id
+- hostname
+- UTC time
+- source (`scheduled`, `manual`, or `unknown`)
+- status (`success` or `failure`)
+- phase (`load`, `pre_hook`, `agent`, `post_hook`, or `complete`)
+- error text when present
+- result summary captured from the agent turn output when available
 
 ## Examples
 
@@ -69,8 +85,14 @@ pkm workflow list --vault /path/to/vault
 # Queue zettelkasten maintenance to run now
 pkm workflow run zettelkasten_maintenance
 
-# Queue daily summary for a specific vault
-pkm workflow run daily_task_summary
+# Show recent workflow history for the current directory vault
+pkm workflow history
+
+# Show recent zettelkasten maintenance runs for a specific vault
+pkm workflow history zettelkasten_maintenance --vault /path/to/vault
+
+# Emit history as JSON
+pkm workflow history all --format json --limit 5
 ```
 
 ## Notes

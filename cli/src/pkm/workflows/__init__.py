@@ -5,10 +5,13 @@ from __future__ import annotations
 import hashlib
 import importlib
 import json
+import logging
 import socket
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -32,6 +35,7 @@ def _vault_workflow_path(vault_path: str | Path) -> Path:
 
 
 _BUNDLED_DEFAULTS = Path(__file__).parent / "default_workflows.json"
+_REQUIRED_FIELDS = {"id", "schedule_hour", "marker_file"}
 
 
 def _merge_from_file(path: Path, entries: dict[str, dict[str, Any]]) -> None:
@@ -56,19 +60,29 @@ def load_workflows(vault_path: str | Path | None = None) -> list[WorkflowConfig]
     if vault_path is not None:
         _merge_from_file(_vault_workflow_path(vault_path), entries)
 
-    return [
-        WorkflowConfig(
-            id=e["id"],
-            schedule_hour=int(e["schedule_hour"]),
-            jitter_type=e.get("jitter_type", "md5_hostname"),
-            marker_file=e["marker_file"],
-            system_prompt_template=e.get("system_prompt_template", ""),
-            pre_hook=e.get("pre_hook") or None,
-            post_hook=e.get("post_hook") or None,
-            enabled=bool(e.get("enabled", True)),
+    configs: list[WorkflowConfig] = []
+    for e in entries.values():
+        missing = sorted(field for field in _REQUIRED_FIELDS if field not in e)
+        if missing:
+            logger.warning(
+                "Skipping incomplete workflow config '%s'; missing: %s",
+                e.get("id", "<unknown>"),
+                ", ".join(missing),
+            )
+            continue
+        configs.append(
+            WorkflowConfig(
+                id=e["id"],
+                schedule_hour=int(e["schedule_hour"]),
+                jitter_type=e.get("jitter_type", "md5_hostname"),
+                marker_file=e["marker_file"],
+                system_prompt_template=e.get("system_prompt_template", ""),
+                pre_hook=e.get("pre_hook") or None,
+                post_hook=e.get("post_hook") or None,
+                enabled=bool(e.get("enabled", True)),
+            )
         )
-        for e in entries.values()
-    ]
+    return configs
 
 
 def jitter_minutes(config: WorkflowConfig) -> int:

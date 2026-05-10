@@ -159,6 +159,28 @@ describe("AskInput", () => {
     unmount(component);
   });
 
+  it("ranks workflow title matches ahead of generic skill keywords", async () => {
+    vi.mocked(apiGet).mockResolvedValueOnce([
+      {
+        id: "zettelkasten_maintenance",
+        title: "Zettelkasten Maintenance",
+        snippet: "Execute maintenance workflow",
+        pre_hook: null,
+        post_hook: null,
+      },
+    ]);
+
+    const { target, component } = render({ value: "/zettel" });
+    await flush();
+
+    const firstRow = target.querySelector<HTMLElement>(".slash-row");
+    expect(firstRow?.textContent).toContain(
+      "/workflow zettelkasten_maintenance",
+    );
+
+    unmount(component);
+  });
+
   it("supports keyboard navigation, completion, and escape for slash commands", async () => {
     const { target, component } = render({ value: "/pkm" });
     await flush();

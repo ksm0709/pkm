@@ -30,7 +30,13 @@ from pkm.web.routes.notes import (
 from pkm.web.routes.search import search_notes
 from pkm.web.routes.tags import list_tags, search_tags
 from pkm.web.routes.vault import get_vaults
-from pkm.web.routes.workflows import get_workflow, list_workflows, update_workflow
+from pkm.web.routes.workflows import (
+    get_workflow,
+    get_workflow_history,
+    list_workflow_history,
+    list_workflows,
+    update_workflow,
+)
 
 
 def register_routes(app: web.Application) -> None:
@@ -89,6 +95,11 @@ def register_routes(app: web.Application) -> None:
     )
 
     # Workflows
+    app.router.add_get("/api/v1/vault/{name}/workflow-history", list_workflow_history)
     app.router.add_get("/api/v1/vault/{name}/workflows", list_workflows)
+    app.router.add_get(
+        "/api/v1/vault/{name}/workflows/{id}/history",
+        get_workflow_history,
+    )
     app.router.add_get("/api/v1/vault/{name}/workflows/{id}", get_workflow)
     app.router.add_patch("/api/v1/vault/{name}/workflows/{id}", update_workflow)
