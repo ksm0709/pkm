@@ -87,6 +87,7 @@ def test_web_setup_writes_token_and_unit_when_linger_yes(
     assert "[Service]" in unit_text
     assert "ExecStart=" in unit_text
     assert "Environment=PKM_DAEMON_KEEPALIVE=1" in unit_text
+    assert "Environment=PKM_WORKER_SANDBOX_PROFILE=trusted-native" in unit_text
     assert "pkm daemon run" in unit_text
     assert "WantedBy=default.target" in unit_text
 

@@ -230,6 +230,19 @@ def test_zettelkasten_default_repairs_malformed_notes_at_end(tmp_path, monkeypat
     )
 
 
+def test_zettelkasten_default_prefers_patch_note_for_partial_edits(
+    tmp_path, monkeypatch
+):
+    """Default zettelkasten prompt steers agents away from full-note rewrites."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    configs = load_workflows()
+    prompt = {c.id: c for c in configs}["zettelkasten_maintenance"].system_prompt_template
+
+    assert "patch_note" in prompt
+    assert "Prefer patch_note for partial edits" in prompt
+    assert "update_note only for intentional full-body replacement" in prompt
+
+
 def test_workflow_history_jsonl_reads_newest_filters_limits_and_skips_corrupt_lines(
     tmp_path,
 ):

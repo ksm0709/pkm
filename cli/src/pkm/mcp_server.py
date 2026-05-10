@@ -8,6 +8,7 @@ Runs as a foreground stdio server. An MCP client spawns this process via config:
 from __future__ import annotations
 
 
+from datetime import date, datetime
 from typing import Any
 
 import click
@@ -31,6 +32,18 @@ def _get_vault(vault_name: str | None = None) -> VaultConfig:
     if _current_vault is None:
         raise ValueError("No vault configured for MCP server")
     return _current_vault
+
+
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    return value
 
 
 @mcp.tool()
@@ -437,18 +450,72 @@ def read_note(note_id: str, vault: str | None = None) -> dict[str, Any]:
                 importance_raw = fm.get("importance")
                 importance = int(importance_raw) if importance_raw is not None else None
                 return {
-                    "note_id": note.id,
+                    "note_id": str(note.id),
                     "title": note.title,
                     "body": note.body,
-                    "frontmatter": fm,
+                    "frontmatter": _json_safe(fm),
                     "created": fm.get("created_at") or fm.get("source") or None,
                     "updated": fm.get("updated_at") or None,
                     "tags": note.tags,
                     "importance": importance,
+                    "content_hash": _note_hash(fm, note.body),
                 }
             except Exception as e:
                 return {"error": str(e)}
     return {"error": f"Note '{note_id}' not found."}
+
+
+def _note_hash(meta: dict[str, Any], body: str) -> str:
+    import hashlib
+    from pkm.frontmatter import render
+
+    return hashlib.sha256(render(meta, body).encode("utf-8")).hexdigest()
+
+
+@mcp.tool()
+def patch_note(
+    note_id: str,
+    operation: str,
+    old: str | None = None,
+    new: str | None = None,
+    section: str | None = None,
+    fields: dict[str, Any] | None = None,
+    expected_occurrences: int = 1,
+    base_hash: str | None = None,
+) -> dict[str, Any]:
+    """Patch part of a note without rewriting the full body.
+
+    Use this for partial edits to existing notes: exact replacement, append/prepend,
+    section upsert, or frontmatter updates. Do NOT use this to create notes; use
+    note_add for new atomic notes and daily_add for logs.
+
+    Args:
+        note_id: Note slug without .md.
+        operation: replace, append, prepend, upsert_section, or frontmatter.
+        old: Existing exact body text for replace.
+        new: New body text for replace/append/prepend/upsert_section.
+        section: Markdown section heading for section-scoped operations.
+        fields: Frontmatter fields to merge when operation is frontmatter.
+        expected_occurrences: Required exact match count for replace.
+        base_hash: Optional stale-write guard from read_note content_hash.
+    """
+    from pkm.tools.notes import _patch_note_impl
+
+    target_vault = _get_vault()
+    try:
+        return _patch_note_impl(
+            target_vault,
+            note_id=note_id,
+            operation=operation,  # type: ignore[arg-type]
+            old=old,
+            new=new,
+            section=section,
+            fields=fields,
+            expected_occurrences=expected_occurrences,
+            base_hash=base_hash,
+        )
+    except Exception as e:
+        return {"status": "error", "error": str(e), "summary": str(e)}
 
 
 @mcp.tool()

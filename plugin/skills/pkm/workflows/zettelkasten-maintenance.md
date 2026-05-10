@@ -27,7 +27,8 @@ A fully maintained vault with:
 
 3. **Auto-Linking**
    - Perform semantic searches (`pkm search` or `semantic_search`) and analyze AST-based graph connections (`get_graph_context`) to find related notes that are not currently linked via `[[wikilinks]]`.
-   - Update notes (`pkm note update`) to add missing `[[wikilinks]]` in the "Related" section.
+   - Prefer `patch_note` for partial edits to existing notes, such as adding missing `[[wikilinks]]` or updating a "Related" section.
+   - Use full-note replacement only when intentionally rewriting the whole note after reading the current content.
 
 4. **Health Check & Cleanup**
    - Identify orphaned notes (notes with no incoming or outgoing links) and either link them or flag them.
@@ -40,7 +41,8 @@ A fully maintained vault with:
 
 ## Tools Required
 - `read_note`
-- `update_note`
+- `patch_note`
+- `update_note` (full-body replacement only)
 - `add_note`
 - `search_notes`
 - `semantic_search`

@@ -3,6 +3,7 @@ from pkm.tools.notes import (
     search_notes,
     read_note,
     update_note,
+    patch_note,
     rename_note,
     list_notes,
 )
@@ -38,6 +39,7 @@ def get_pkm_tools(scope: str = "all") -> list:
         read_note,
         list_notes,
         update_note,
+        patch_note,
         rename_note,
         semantic_search,
         find_surprising_connections,
