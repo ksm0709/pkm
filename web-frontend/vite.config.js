@@ -1,11 +1,17 @@
 import { sveltekit } from "@sveltejs/kit/vite";
 import { defineConfig } from "vitest/config";
 
+const isVitest = process.env.VITEST === "true";
+
 export default defineConfig({
   plugins: [sveltekit()],
-  resolve: {
-    conditions: ["browser"],
-  },
+  ...(isVitest
+    ? {
+        resolve: {
+          conditions: ["browser"],
+        },
+      }
+    : {}),
   server: {
     host: "0.0.0.0",
     proxy: {

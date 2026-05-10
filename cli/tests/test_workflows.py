@@ -14,6 +14,7 @@ from pkm.workflows import (
     jitter_minutes,
     resolve_hook,
 )
+from pkm.workflows.history import append_workflow_history, read_workflow_history
 
 
 # ---------------------------------------------------------------------------
@@ -27,7 +28,59 @@ def test_load_workflows_returns_bundled_defaults_when_no_global(tmp_path, monkey
     # Bundled default_workflows.json provides at least zettelkasten_maintenance
     ids = [c.id for c in configs]
     assert "zettelkasten_maintenance" in ids
-    assert "daily_task_summary" in ids
+    assert "daily_task_summary" not in ids
+
+
+def test_load_workflows_allows_full_user_defined_daily_task_summary(
+    tmp_path, monkeypatch
+):
+    """Removing the bundled summary workflow must not reserve or break the id."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    cfg_dir = tmp_path / ".config" / "pkm"
+    cfg_dir.mkdir(parents=True)
+    (cfg_dir / "workflow.json").write_text(
+        json.dumps(
+            [
+                {
+                    "id": "daily_task_summary",
+                    "schedule_hour": 8,
+                    "jitter_type": "md5_hostname_suffix:summary",
+                    "marker_file": "summary-last-run",
+                    "system_prompt_template": "custom summary",
+                    "pre_hook": "pkm.workflows.hooks:build_daily_summary",
+                    "post_hook": None,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    by_id = {workflow.id: workflow for workflow in load_workflows()}
+
+    assert by_id["daily_task_summary"].system_prompt_template == "custom summary"
+    assert by_id["daily_task_summary"].pre_hook == (
+        "pkm.workflows.hooks:build_daily_summary"
+    )
+
+
+def test_load_workflows_skips_partial_legacy_removed_workflow_override(
+    tmp_path, monkeypatch
+):
+    """Partial overrides for removed bundled workflows should not crash loading."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    vault_dir = tmp_path / "vault"
+    override_path = vault_dir / ".pkm" / "workflow.json"
+    override_path.parent.mkdir(parents=True)
+    override_path.write_text(
+        json.dumps([{"id": "daily_task_summary", "enabled": False}]),
+        encoding="utf-8",
+    )
+
+    configs = load_workflows(vault_path=vault_dir)
+    ids = {workflow.id for workflow in configs}
+
+    assert "zettelkasten_maintenance" in ids
+    assert "daily_task_summary" not in ids
 
 
 def test_load_workflows_global(tmp_path, monkeypatch):
@@ -175,6 +228,50 @@ def test_zettelkasten_default_repairs_malformed_notes_at_end(tmp_path, monkeypat
     assert by_id["zettelkasten_maintenance"].post_hook == (
         "pkm.workflows.hooks:repair_malformed_notes"
     )
+
+
+def test_workflow_history_jsonl_reads_newest_filters_limits_and_skips_corrupt_lines(
+    tmp_path,
+):
+    """Workflow history is vault-local, append-only, filterable, and tolerant."""
+    append_workflow_history(
+        tmp_path,
+        {
+            "workflow_id": "weekly",
+            "task_id": "task-1",
+            "hostname": "host-a",
+            "time": "2026-05-10T01:00:00Z",
+            "status": "success",
+            "source": "manual",
+            "phase": "complete",
+            "error": None,
+            "result_summary": "older",
+        },
+    )
+    history_path = tmp_path / ".pkm" / "workflow-history.jsonl"
+    with history_path.open("a", encoding="utf-8") as handle:
+        handle.write("{not-json\n")
+    append_workflow_history(
+        tmp_path,
+        {
+            "workflow_id": "nightly",
+            "task_id": "task-2",
+            "hostname": "host-b",
+            "time": "2026-05-10T02:00:00Z",
+            "status": "failure",
+            "source": "scheduled",
+            "phase": "agent",
+            "error": "model failed",
+            "result_summary": "newer",
+        },
+    )
+
+    all_records = read_workflow_history(tmp_path)
+    assert [record["task_id"] for record in all_records] == ["task-2", "task-1"]
+    assert read_workflow_history(tmp_path, workflow_id="weekly")[0]["task_id"] == (
+        "task-1"
+    )
+    assert read_workflow_history(tmp_path, limit=1) == [all_records[0]]
 
 
 # ---------------------------------------------------------------------------

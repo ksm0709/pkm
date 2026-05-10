@@ -9,6 +9,7 @@ from aiohttp.test_utils import TestClient, TestServer
 
 from pkm.config import WebConfig
 from pkm.web.server import make_app
+from pkm.workflows.history import append_workflow_history
 
 TOKEN = "test-workflow-token"
 
@@ -39,8 +40,8 @@ async def test_list_workflows_returns_readable_workflow_summaries(app, tmp_vault
     first = data[0]
     assert {item["id"] for item in data} >= {
         "zettelkasten_maintenance",
-        "daily_task_summary",
     }
+    assert "daily_task_summary" not in {item["id"] for item in data}
     assert set(first) >= {
         "id",
         "title",
@@ -58,17 +59,17 @@ async def test_get_workflow_returns_read_mode_body(app, tmp_vault):
     """Workflow detail endpoint includes the prompt body needed for read mode."""
     async with TestClient(TestServer(app)) as client:
         resp = await client.get(
-            "/api/v1/vault/test-vault/workflows/daily_task_summary",
+            "/api/v1/vault/test-vault/workflows/zettelkasten_maintenance",
             headers={"Authorization": f"Bearer {TOKEN}"},
         )
         assert resp.status == 200
         data = await resp.json()
 
-    assert data["id"] == "daily_task_summary"
-    assert data["title"] == "daily task summary"
-    assert data["trigger_time"] == "08:00"
+    assert data["id"] == "zettelkasten_maintenance"
+    assert data["title"] == "zettelkasten maintenance"
+    assert data["trigger_time"] == "02:00"
     assert data["enabled"] is True
-    assert "create_daily_subnote" in data["body"]
+    assert "Zettelkasten maintainer" in data["body"]
 
 
 @pytest.mark.anyio
@@ -89,7 +90,7 @@ async def test_patch_workflow_persists_enabled_state_and_trigger_time(app, tmp_v
     """PATCH writes a vault override so workflow enabled and trigger time survive reload."""
     async with TestClient(TestServer(app)) as client:
         resp = await client.patch(
-            "/api/v1/vault/test-vault/workflows/daily_task_summary",
+            "/api/v1/vault/test-vault/workflows/zettelkasten_maintenance",
             headers={"Authorization": f"Bearer {TOKEN}"},
             json={"enabled": False, "trigger_time": "06:00"},
         )
@@ -97,7 +98,7 @@ async def test_patch_workflow_persists_enabled_state_and_trigger_time(app, tmp_v
         data = await resp.json()
 
         detail_resp = await client.get(
-            "/api/v1/vault/test-vault/workflows/daily_task_summary",
+            "/api/v1/vault/test-vault/workflows/zettelkasten_maintenance",
             headers={"Authorization": f"Bearer {TOKEN}"},
         )
         assert detail_resp.status == 200
@@ -111,7 +112,7 @@ async def test_patch_workflow_persists_enabled_state_and_trigger_time(app, tmp_v
     override_path = tmp_vault.path / ".pkm" / "workflow.json"
     overrides = json.loads(override_path.read_text(encoding="utf-8"))
     assert overrides == [
-        {"id": "daily_task_summary", "enabled": False, "schedule_hour": 6}
+        {"id": "zettelkasten_maintenance", "enabled": False, "schedule_hour": 6}
     ]
 
 
@@ -135,14 +136,14 @@ async def test_patch_workflow_noop_returns_detail_without_override(app, tmp_vaul
     """A PATCH with no editable fields returns detail data and skips persistence."""
     async with TestClient(TestServer(app)) as client:
         resp = await client.patch(
-            "/api/v1/vault/test-vault/workflows/daily_task_summary",
+            "/api/v1/vault/test-vault/workflows/zettelkasten_maintenance",
             headers={"Authorization": f"Bearer {TOKEN}"},
             json={},
         )
         assert resp.status == 200
         data = await resp.json()
 
-    assert data["id"] == "daily_task_summary"
+    assert data["id"] == "zettelkasten_maintenance"
     assert "body" in data
     assert "jitter_type" in data
     assert not (tmp_vault.path / ".pkm" / "workflow.json").exists()
@@ -153,7 +154,7 @@ async def test_patch_workflow_rejects_invalid_trigger_time(app, tmp_vault):
     """Invalid trigger time must fail without writing a workflow override."""
     async with TestClient(TestServer(app)) as client:
         resp = await client.patch(
-            "/api/v1/vault/test-vault/workflows/daily_task_summary",
+            "/api/v1/vault/test-vault/workflows/zettelkasten_maintenance",
             headers={"Authorization": f"Bearer {TOKEN}"},
             json={"trigger_time": "25:00"},
         )
@@ -167,7 +168,7 @@ async def test_patch_workflow_rejects_non_string_trigger_time(app, tmp_vault):
     """Non-string trigger_time values are rejected before writing overrides."""
     async with TestClient(TestServer(app)) as client:
         resp = await client.patch(
-            "/api/v1/vault/test-vault/workflows/daily_task_summary",
+            "/api/v1/vault/test-vault/workflows/zettelkasten_maintenance",
             headers={"Authorization": f"Bearer {TOKEN}"},
             json={"trigger_time": 7},
         )
@@ -181,7 +182,7 @@ async def test_patch_workflow_rejects_out_of_range_schedule_hour(app, tmp_vault)
     """Out-of-range schedule_hour values fail without writing overrides."""
     async with TestClient(TestServer(app)) as client:
         resp = await client.patch(
-            "/api/v1/vault/test-vault/workflows/daily_task_summary",
+            "/api/v1/vault/test-vault/workflows/zettelkasten_maintenance",
             headers={"Authorization": f"Bearer {TOKEN}"},
             json={"schedule_hour": 24},
         )
@@ -202,7 +203,7 @@ async def test_patch_workflow_recovers_from_corrupt_override_file(
 
     async with TestClient(TestServer(app)) as client:
         resp = await client.patch(
-            "/api/v1/vault/test-vault/workflows/daily_task_summary",
+            "/api/v1/vault/test-vault/workflows/zettelkasten_maintenance",
             headers={"Authorization": f"Bearer {TOKEN}"},
             json={"enabled": False},
         )
@@ -211,5 +212,76 @@ async def test_patch_workflow_recovers_from_corrupt_override_file(
 
     assert data["enabled"] is False
     assert json.loads(override_path.read_text(encoding="utf-8")) == [
-        {"id": "daily_task_summary", "enabled": False}
+        {"id": "zettelkasten_maintenance", "enabled": False}
     ]
+
+
+@pytest.mark.anyio
+async def test_workflow_history_endpoints_return_all_and_filtered_records(
+    app, tmp_vault
+):
+    """Web history endpoints expose the same vault-local workflow history source."""
+    append_workflow_history(
+        tmp_vault.path,
+        {
+            "workflow_id": "zettelkasten_maintenance",
+            "task_id": "task-1",
+            "hostname": "host-a",
+            "time": "2026-05-10T01:00:00Z",
+            "status": "success",
+            "source": "manual",
+            "phase": "complete",
+            "error": None,
+            "result_summary": "repaired notes",
+        },
+    )
+    append_workflow_history(
+        tmp_vault.path,
+        {
+            "workflow_id": "custom_workflow",
+            "task_id": "task-2",
+            "hostname": "host-b",
+            "time": "2026-05-10T02:00:00Z",
+            "status": "failure",
+            "source": "scheduled",
+            "phase": "agent",
+            "error": "model failed",
+            "result_summary": "stopped early",
+        },
+    )
+
+    async with TestClient(TestServer(app)) as client:
+        all_resp = await client.get(
+            "/api/v1/vault/test-vault/workflow-history",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        filtered_resp = await client.get(
+            "/api/v1/vault/test-vault/workflows/zettelkasten_maintenance/history",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        detail_resp = await client.get(
+            "/api/v1/vault/test-vault/workflows/zettelkasten_maintenance",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        all_records = await all_resp.json()
+        filtered_records = await filtered_resp.json()
+
+    assert all_resp.status == 200
+    assert filtered_resp.status == 200
+    assert detail_resp.status == 200
+
+    assert [record["task_id"] for record in all_records] == ["task-2", "task-1"]
+    assert [record["task_id"] for record in filtered_records] == ["task-1"]
+    assert all_records[0]["error"] == "model failed"
+
+
+@pytest.mark.anyio
+async def test_workflow_history_endpoint_unknown_workflow_returns_404(app, tmp_vault):
+    """Per-workflow history keeps the same unknown-id behavior as workflow detail."""
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/workflows/nope/history",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+
+    assert resp.status == 404

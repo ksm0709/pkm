@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { page } from '$app/stores';
-  import { apiClient, apiGet } from '$lib/api/client.js';
+  import { page } from "$app/stores";
+  import { apiClient, apiGet } from "$lib/api/client.js";
 
   interface WorkflowDetail {
     id: string;
@@ -16,24 +16,42 @@
     jitter_type: string;
   }
 
+  interface WorkflowHistoryRecord {
+    workflow_id: string;
+    task_id: string;
+    hostname: string;
+    time: string;
+    status: "success" | "failure";
+    source: string;
+    phase: string;
+    error: string | null;
+    result_summary: string;
+  }
+
   let vaultName = $derived($page.params.vault);
   let workflowId = $derived($page.params.id);
   let workflow = $state<WorkflowDetail | null>(null);
   let loading = $state(true);
-  let error = $state('');
+  let error = $state("");
   let modalOpen = $state(false);
   let saving = $state(false);
   let enabledDraft = $state(true);
-  let triggerTimeDraft = $state('00:00');
+  let triggerTimeDraft = $state("00:00");
+  let historyOpen = $state(false);
+  let historyLoading = $state(false);
+  let historyError = $state("");
+  let historyEntries = $state<WorkflowHistoryRecord[]>([]);
 
   async function loadWorkflow(vault: string, id: string) {
     workflow = null;
     loading = true;
-    error = '';
+    error = "";
     try {
-      workflow = await apiGet<WorkflowDetail>(`/api/v1/vault/${vault}/workflows/${id}`);
+      workflow = await apiGet<WorkflowDetail>(
+        `/api/v1/vault/${vault}/workflows/${id}`,
+      );
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to load workflow.';
+      error = e instanceof Error ? e.message : "Failed to load workflow.";
     } finally {
       loading = false;
     }
@@ -49,25 +67,43 @@
   async function saveSettings() {
     if (!workflow || saving) return;
     saving = true;
-    error = '';
+    error = "";
     try {
       const response = await apiClient(
         `/api/v1/vault/${vaultName}/workflows/${workflow.id}`,
         {
-          method: 'PATCH',
+          method: "PATCH",
           body: JSON.stringify({
             enabled: enabledDraft,
-            trigger_time: triggerTimeDraft
-          })
-        }
+            trigger_time: triggerTimeDraft,
+          }),
+        },
       );
       if (!response.ok) throw new Error(`PATCH workflow -> ${response.status}`);
       workflow = (await response.json()) as WorkflowDetail;
       modalOpen = false;
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to update workflow.';
+      error = e instanceof Error ? e.message : "Failed to update workflow.";
     } finally {
       saving = false;
+    }
+  }
+
+  async function openHistory() {
+    if (!workflow || historyLoading) return;
+    historyOpen = true;
+    historyLoading = true;
+    historyError = "";
+    try {
+      historyEntries = await apiGet<WorkflowHistoryRecord[]>(
+        `/api/v1/vault/${vaultName}/workflows/${workflow.id}/history`,
+      );
+    } catch (e) {
+      historyError =
+        e instanceof Error ? e.message : "Failed to load workflow history.";
+      historyEntries = [];
+    } finally {
+      historyLoading = false;
     }
   }
 
@@ -92,14 +128,29 @@
         <span>WORKFLOW</span>
         <strong>{workflow.id}</strong>
       </div>
-      <button type="button" class="settings-btn" aria-label="Workflow settings" onclick={openSettings}>
-        settings
-      </button>
+      <div class="workflow-actions">
+        <button
+          type="button"
+          class="settings-btn"
+          aria-label="Workflow history"
+          onclick={openHistory}
+        >
+          history
+        </button>
+        <button
+          type="button"
+          class="settings-btn"
+          aria-label="Workflow settings"
+          onclick={openSettings}
+        >
+          settings
+        </button>
+      </div>
     </header>
 
     <section class="workflow-meta" aria-label="Workflow metadata">
       <span>{workflow.trigger_time}</span>
-      <span>{workflow.enabled ? 'on' : 'off'}</span>
+      <span>{workflow.enabled ? "on" : "off"}</span>
       <span>{workflow.marker_file}</span>
     </section>
 
@@ -115,11 +166,7 @@
 
 {#if modalOpen && workflow}
   <div class="modal-backdrop">
-    <div
-      class="settings-modal"
-      role="dialog"
-      aria-label="Workflow settings"
-    >
+    <div class="settings-modal" role="dialog" aria-label="Workflow settings">
       <form
         class="settings-form"
         onsubmit={(event) => {
@@ -129,7 +176,11 @@
       >
         <div class="modal-row">
           <label for="workflow-enabled">Enabled</label>
-          <input id="workflow-enabled" type="checkbox" bind:checked={enabledDraft} />
+          <input
+            id="workflow-enabled"
+            type="checkbox"
+            bind:checked={enabledDraft}
+          />
         </div>
         <div class="modal-row">
           <label for="workflow-trigger">Trigger time</label>
@@ -141,12 +192,63 @@
           />
         </div>
         <div class="modal-actions">
-          <button type="button" onclick={() => (modalOpen = false)}>Cancel</button>
-          <button type="submit" disabled={saving} aria-label="Save workflow settings">
+          <button type="button" onclick={() => (modalOpen = false)}
+            >Cancel</button
+          >
+          <button
+            type="submit"
+            disabled={saving}
+            aria-label="Save workflow settings"
+          >
             Save
           </button>
         </div>
       </form>
+    </div>
+  </div>
+{/if}
+
+{#if historyOpen && workflow}
+  <div class="modal-backdrop">
+    <div class="history-modal" role="dialog" aria-label="Workflow history">
+      <div class="history-head">
+        <div>
+          <span>HISTORY</span>
+          <strong>{workflow.id}</strong>
+        </div>
+        <button
+          type="button"
+          class="settings-btn"
+          aria-label="Close workflow history"
+          onclick={() => (historyOpen = false)}
+        >
+          close
+        </button>
+      </div>
+
+      {#if historyLoading}
+        <p class="status-msg">Loading…</p>
+      {:else if historyError}
+        <p class="status-msg error">{historyError}</p>
+      {:else if historyEntries.length === 0}
+        <p class="status-msg faint">No workflow history found.</p>
+      {:else}
+        <ol class="history-list">
+          {#each historyEntries as entry (entry.task_id)}
+            <li class:failed={entry.status !== "success"} class="history-entry">
+              <div class="history-entry-main">
+                <span>{entry.time}</span>
+                <strong>{entry.status}</strong>
+                <span>{entry.hostname}</span>
+              </div>
+              <p>{entry.result_summary || entry.phase}</p>
+              {#if entry.error}
+                <pre>{entry.error}</pre>
+              {/if}
+            </li>
+          {/each}
+        </ol>
+      {/if}
     </div>
   </div>
 {/if}
@@ -166,11 +268,19 @@
     margin-bottom: var(--space-4, 16px);
   }
 
+  .workflow-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--space-2, 8px);
+  }
+
   .meta-rail,
   .workflow-meta,
   .settings-btn,
   .status-msg,
-  .settings-modal {
+  .settings-modal,
+  .history-modal {
     font-family: var(--font-mono);
   }
 
@@ -181,7 +291,7 @@
     min-width: 0;
     color: var(--text-faint);
     font-size: var(--type-chrome-sm-size, 11px);
-    letter-spacing: 0.10em;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
   }
 
@@ -232,7 +342,7 @@
     color: var(--text);
     font-family: var(--font-mono);
     font-size: var(--type-body-size, 15px);
-    line-height: var(--type-body-lh, 1.70);
+    line-height: var(--type-body-lh, 1.7);
   }
 
   .status-msg {
@@ -241,6 +351,10 @@
 
   .status-msg.error {
     color: var(--signal-danger, #c0392b);
+  }
+
+  .status-msg.faint {
+    color: var(--text-faint);
   }
 
   .modal-backdrop {
@@ -263,6 +377,94 @@
     color: var(--text);
   }
 
+  .history-modal {
+    width: min(720px, calc(100vw - 32px));
+    max-height: min(720px, calc(100vh - 64px));
+    overflow: auto;
+    padding: var(--space-4, 16px);
+    border: 1px solid var(--border);
+    border-top: 2px solid var(--accent);
+    background: var(--surface, var(--bg));
+    color: var(--text);
+  }
+
+  .history-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-4, 16px);
+    margin-bottom: var(--space-3, 12px);
+    padding-bottom: var(--space-3, 12px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .history-head div {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .history-head span {
+    color: var(--text-faint);
+    font-size: var(--type-chrome-sm-size, 11px);
+    letter-spacing: 0.1em;
+  }
+
+  .history-head strong {
+    overflow-wrap: anywhere;
+    font-size: var(--type-chrome-size, 13px);
+  }
+
+  .history-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3, 12px);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .history-entry {
+    border-left: 2px solid var(--accent);
+    padding-left: var(--space-3, 12px);
+  }
+
+  .history-entry.failed {
+    border-left-color: var(--signal-danger, #c0392b);
+  }
+
+  .history-entry-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(100px, auto);
+    gap: var(--space-3, 12px);
+    color: var(--text-muted);
+    font-size: var(--type-chrome-size, 13px);
+  }
+
+  .history-entry-main span,
+  .history-entry-main strong {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .history-entry-main strong {
+    color: var(--text);
+  }
+
+  .history-entry p {
+    margin: var(--space-2, 8px) 0 0;
+    color: var(--text);
+    line-height: var(--type-body-lh, 1.7);
+  }
+
+  .history-entry pre {
+    margin: var(--space-2, 8px) 0 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--signal-danger, #c0392b);
+  }
+
   .settings-form {
     display: flex;
     flex-direction: column;
@@ -276,7 +478,7 @@
     align-items: center;
   }
 
-  .modal-row input[type='time'] {
+  .modal-row input[type="time"] {
     width: 120px;
     color: var(--text);
     background: transparent;
@@ -295,6 +497,19 @@
   @media (max-width: 760px) {
     .workflow-detail {
       width: min(100%, calc(100vw - 32px));
+    }
+
+    .workflow-header {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .workflow-actions {
+      justify-content: flex-start;
+    }
+
+    .history-entry-main {
+      grid-template-columns: 1fr;
     }
   }
 </style>

@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 
 from pkm import worker
+from pkm.workflows.history import read_workflow_history
 
 
 class _FakeIPC:
@@ -114,6 +115,48 @@ async def test_ipc_client_writes_json_and_reads_control_messages(monkeypatch) ->
 
 
 @pytest.mark.anyio
+async def test_agent_task_outcome_prefers_turn_stop_summary(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Workflow history should use tiny-agent turn_stop output when available."""
+    fake_ipc = _FakeIPC()
+    monkeypatch.setattr(worker, "ipc", fake_ipc)
+    monkeypatch.delenv("PKM_TEST_MOCK_LLM", raising=False)
+    monkeypatch.setattr("pkm.tools.get_pkm_tools", lambda: [])
+
+    import tiny_agent.agent
+
+    class FakeAgent:
+        def __init__(self, **kwargs: Any) -> None:
+            self.hooks = kwargs["hooks"]
+
+        async def run(self, _user_content: str):
+            yield {"type": "content", "content": "verbose progress "}
+            yield {
+                "type": "tool_end",
+                "name": "turn_stop",
+                "result": {"output": "concise completion summary"},
+            }
+            yield {"type": "content", "content": "after stop"}
+
+    monkeypatch.setattr(tiny_agent.agent, "Agent", FakeAgent)
+
+    outcome = await worker._run_agent_task_impl(
+        task_id="agent-summary",
+        session_prefix="pkm-test",
+        user_content="question",
+        system_prompt="system",
+        vault_dir=str(tmp_path),
+        model="test/model",
+    )
+
+    assert outcome.status == "success"
+    assert outcome.response == "verbose progress after stop"
+    assert outcome.result_summary == "concise completion summary"
+    assert fake_ipc.messages[-1]["data"]["response"] == "verbose progress after stop"
+
+
+@pytest.mark.anyio
 async def test_agent_task_fallback_model_tool_stream_and_result(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
@@ -149,7 +192,7 @@ async def test_agent_task_fallback_model_tool_stream_and_result(
 
     monkeypatch.setattr(tiny_agent.agent, "Agent", FakeAgent)
 
-    await worker._run_agent_task_impl(
+    outcome = await worker._run_agent_task_impl(
         task_id="agent-1",
         session_prefix="pkm-test",
         user_content="question",
@@ -175,6 +218,8 @@ async def test_agent_task_fallback_model_tool_stream_and_result(
         "status": "success",
         "data": {"response": "hello world"},
     }
+    assert outcome.status == "success"
+    assert outcome.result_summary == "hello world"
 
 
 @pytest.mark.anyio
@@ -343,6 +388,12 @@ async def test_workflow_dispatch_unknown_id_sends_worker_error(monkeypatch, tmp_
             "message": "Unknown workflow_id: missing",
         }
     ]
+    records = read_workflow_history(tmp_path)
+    assert len(records) == 1
+    assert records[0]["workflow_id"] == "missing"
+    assert records[0]["status"] == "failure"
+    assert records[0]["phase"] == "load"
+    assert records[0]["source"] == "unknown"
 
 
 @pytest.mark.anyio
@@ -363,8 +414,14 @@ async def test_workflow_dispatch_formats_pre_hook_and_propagates_agent_options(
             return lambda _vault, today: {"today": today, "focus": "coverage"}
         return None
 
-    async def fake_run_agent_task(**kwargs: Any) -> None:
+    async def fake_run_agent_task(**kwargs: Any):
         calls.append(kwargs)
+        return SimpleNamespace(
+            status="success",
+            response="ok",
+            result_summary="ok",
+            error=None,
+        )
 
     monkeypatch.setattr("pkm.workflows.load_workflows", lambda vault_path: [config])
     monkeypatch.setattr("pkm.workflows.resolve_hook", fake_resolve_hook)
@@ -390,6 +447,166 @@ async def test_workflow_dispatch_formats_pre_hook_and_propagates_agent_options(
     assert call["env_keys"] == {"OPENAI_API_KEY": "secret"}
     assert call["reasoning_effort"] == "high"
     assert call["cwd"] == str(tmp_path / "project")
+
+
+@pytest.mark.anyio
+async def test_workflow_dispatch_records_success_history(monkeypatch, tmp_path):
+    """A successful workflow records one completion row from the worker boundary."""
+    config = SimpleNamespace(
+        id="weekly",
+        pre_hook=None,
+        post_hook=None,
+        system_prompt_template="Run weekly workflow.",
+    )
+
+    async def fake_run_agent_task(**_kwargs: Any):
+        return SimpleNamespace(
+            status="success",
+            response="verbose response",
+            result_summary="tiny turn summary",
+            error=None,
+        )
+
+    monkeypatch.setattr("pkm.workflows.load_workflows", lambda vault_path: [config])
+    monkeypatch.setattr("pkm.workflows.resolve_hook", lambda _name: None)
+    monkeypatch.setattr(worker, "_run_agent_task", fake_run_agent_task)
+    monkeypatch.setattr(worker.socket, "gethostname", lambda: "history-host")
+
+    await worker._dispatch_workflow(
+        task_id="wf-success",
+        workflow_id="weekly",
+        vault_dir=str(tmp_path),
+        source="manual",
+    )
+
+    records = read_workflow_history(tmp_path)
+    assert len(records) == 1
+    assert records[0]["workflow_id"] == "weekly"
+    assert records[0]["task_id"] == "wf-success"
+    assert records[0]["hostname"] == "history-host"
+    assert records[0]["status"] == "success"
+    assert records[0]["source"] == "manual"
+    assert records[0]["phase"] == "complete"
+    assert records[0]["result_summary"] == "tiny turn summary"
+
+
+@pytest.mark.anyio
+async def test_workflow_dispatch_records_pre_hook_failure(monkeypatch, tmp_path):
+    """A failing pre-hook records a workflow history failure without agent start."""
+    fake_ipc = _FakeIPC()
+    monkeypatch.setattr(worker, "ipc", fake_ipc)
+    config = SimpleNamespace(
+        id="weekly",
+        pre_hook="prepare",
+        post_hook=None,
+        system_prompt_template="Run weekly workflow.",
+    )
+
+    def fake_resolve_hook(name):
+        if name == "prepare":
+            raise RuntimeError("bad hook import")
+        return None
+
+    async def fail_run_agent_task(**_kwargs: Any):
+        raise AssertionError("agent should not start")
+
+    monkeypatch.setattr("pkm.workflows.load_workflows", lambda vault_path: [config])
+    monkeypatch.setattr("pkm.workflows.resolve_hook", fake_resolve_hook)
+    monkeypatch.setattr(worker, "_run_agent_task", fail_run_agent_task)
+
+    await worker._dispatch_workflow(
+        task_id="wf-pre",
+        workflow_id="weekly",
+        vault_dir=str(tmp_path),
+        source="scheduled",
+    )
+
+    records = read_workflow_history(tmp_path)
+    assert records[0]["status"] == "failure"
+    assert records[0]["phase"] == "pre_hook"
+    assert records[0]["source"] == "scheduled"
+    assert "bad hook import" in records[0]["error"]
+    assert fake_ipc.messages[-1]["type"] == "error"
+
+
+@pytest.mark.anyio
+async def test_workflow_dispatch_records_agent_failure(monkeypatch, tmp_path):
+    """A failing tiny-agent turn records an agent-phase workflow failure."""
+    config = SimpleNamespace(
+        id="weekly",
+        pre_hook=None,
+        post_hook=None,
+        system_prompt_template="Run weekly workflow.",
+    )
+
+    async def fake_run_agent_task(**_kwargs: Any):
+        return SimpleNamespace(
+            status="failure",
+            response="",
+            result_summary="",
+            error="model failed",
+        )
+
+    monkeypatch.setattr("pkm.workflows.load_workflows", lambda vault_path: [config])
+    monkeypatch.setattr("pkm.workflows.resolve_hook", lambda _name: None)
+    monkeypatch.setattr(worker, "_run_agent_task", fake_run_agent_task)
+
+    await worker._dispatch_workflow(
+        task_id="wf-agent",
+        workflow_id="weekly",
+        vault_dir=str(tmp_path),
+    )
+
+    records = read_workflow_history(tmp_path)
+    assert records[0]["status"] == "failure"
+    assert records[0]["phase"] == "agent"
+    assert records[0]["source"] == "unknown"
+    assert records[0]["error"] == "model failed"
+
+
+@pytest.mark.anyio
+async def test_workflow_dispatch_records_post_hook_failure(monkeypatch, tmp_path):
+    """Post-hook failure after agent success is the final workflow outcome."""
+    fake_ipc = _FakeIPC()
+    monkeypatch.setattr(worker, "ipc", fake_ipc)
+    config = SimpleNamespace(
+        id="weekly",
+        pre_hook=None,
+        post_hook="finish",
+        system_prompt_template="Run weekly workflow.",
+    )
+
+    def fake_resolve_hook(name):
+        if name == "finish":
+            return lambda _vault, _result: (_ for _ in ()).throw(
+                RuntimeError("post hook failed")
+            )
+        return None
+
+    async def fake_run_agent_task(**_kwargs: Any):
+        return SimpleNamespace(
+            status="success",
+            response="ok",
+            result_summary="agent ok",
+            error=None,
+        )
+
+    monkeypatch.setattr("pkm.workflows.load_workflows", lambda vault_path: [config])
+    monkeypatch.setattr("pkm.workflows.resolve_hook", fake_resolve_hook)
+    monkeypatch.setattr(worker, "_run_agent_task", fake_run_agent_task)
+
+    await worker._dispatch_workflow(
+        task_id="wf-post",
+        workflow_id="weekly",
+        vault_dir=str(tmp_path),
+    )
+
+    records = read_workflow_history(tmp_path)
+    assert records[0]["status"] == "failure"
+    assert records[0]["phase"] == "post_hook"
+    assert records[0]["result_summary"] == "agent ok"
+    assert "post hook failed" in records[0]["error"]
+    assert fake_ipc.messages[-1]["type"] == "error"
 
 
 @pytest.mark.anyio
@@ -434,6 +651,7 @@ async def test_handle_task_dispatches_workflow_and_unknown_type(monkeypatch, tmp
         {"K": "V"},
         "medium",
         "cwd",
+        "unknown",
     )
     assert fake_ipc.messages[-1] == {
         "type": "error",

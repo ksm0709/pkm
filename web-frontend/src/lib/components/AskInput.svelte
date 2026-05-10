@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
-  import { apiGet } from '$lib/api/client.js';
+  import { onMount, tick } from "svelte";
+  import { apiGet } from "$lib/api/client.js";
   import {
     applyInlineSuggestion,
     detectInlineTrigger,
-    fetchInlineSuggestions
-  } from '$lib/inline-suggestions.js';
+    fetchInlineSuggestions,
+  } from "$lib/inline-suggestions.js";
 
   interface Props {
     vaultName: string;
@@ -17,13 +17,13 @@
 
   let {
     vaultName,
-    value = $bindable(''),
+    value = $bindable(""),
     busy = false,
-    modelLabel = 'auto',
-    onsubmit
+    modelLabel = "auto",
+    onsubmit,
   }: Props = $props();
 
-  type SlashKind = 'session' | 'skill' | 'workflow';
+  type SlashKind = "session" | "skill" | "workflow";
 
   type SlashItem = {
     kind: SlashKind;
@@ -45,7 +45,7 @@
   let workflows = $state<WorkflowSummary[]>([]);
   let slashActiveIndex = $state(0);
   let slashCompleting = $state(false);
-  let slashCompletedValue = $state('');
+  let slashCompletedValue = $state("");
   let inlineRows = $state<any[]>([]);
   let inlineActiveIndex = $state(0);
   let inlineTrigger = $state<any | null>(null);
@@ -53,38 +53,47 @@
 
   const staticSlashItems: SlashItem[] = [
     {
-      kind: 'session',
-      command: '/new',
-      label: 'New session',
-      hint: 'clear cached ask context',
-      keywords: ['clear', 'reset', 'fresh', 'context', 'history', 'cache']
+      kind: "session",
+      command: "/new",
+      label: "New session",
+      hint: "clear cached ask context",
+      keywords: ["clear", "reset", "fresh", "context", "history", "cache"],
     },
     {
-      kind: 'skill',
-      command: '/pkm',
-      label: 'PKM skill',
-      hint: 'tiny-agent skill',
-      keywords: ['notes', 'daily', 'search', 'tags', 'wikilinks', 'zettelkasten']
+      kind: "skill",
+      command: "/pkm",
+      label: "PKM skill",
+      hint: "tiny-agent skill",
+      keywords: [
+        "notes",
+        "daily",
+        "search",
+        "tags",
+        "wikilinks",
+        "zettelkasten",
+      ],
     },
     {
-      kind: 'skill',
-      command: '/pkm:diagnosis',
-      label: 'PKM diagnosis workflow',
-      hint: 'tiny-agent skill',
-      keywords: ['diagnosis', 'compliance', 'session', 'audit']
-    }
+      kind: "skill",
+      command: "/pkm:diagnosis",
+      label: "PKM diagnosis workflow",
+      hint: "tiny-agent skill",
+      keywords: ["diagnosis", "compliance", "session", "audit"],
+    },
   ];
 
-  let slashQuery = $derived(value.startsWith('/') ? value.slice(1).trim() : '');
+  let slashQuery = $derived(value.startsWith("/") ? value.slice(1).trim() : "");
   let slashRows = $derived(buildSlashRows(slashQuery, workflows));
   let slashMenuOpen = $derived(
-    value.startsWith('/') &&
+    value.startsWith("/") &&
       !slashCompleting &&
       value !== slashCompletedValue &&
       !busy &&
-      slashRows.length > 0
+      slashRows.length > 0,
   );
-  let inlineMenuOpen = $derived(!busy && inlineTrigger && inlineRows.length > 0);
+  let inlineMenuOpen = $derived(
+    !busy && inlineTrigger && inlineRows.length > 0,
+  );
 
   onMount(() => {
     void loadWorkflows();
@@ -103,7 +112,9 @@
 
   async function loadWorkflows() {
     try {
-      workflows = await apiGet<WorkflowSummary[]>(`/api/v1/vault/${vaultName}/workflows`);
+      workflows = await apiGet<WorkflowSummary[]>(
+        `/api/v1/vault/${vaultName}/workflows`,
+      );
     } catch {
       workflows = [];
     }
@@ -111,46 +122,55 @@
 
   function workflowSlashItems(items: WorkflowSummary[]): SlashItem[] {
     return items.map((workflow) => ({
-      kind: 'workflow' as const,
+      kind: "workflow" as const,
       command: `/workflow ${workflow.id}`,
       label: workflow.title || workflow.id,
-      hint: workflow.snippet || 'workflow',
+      hint: workflow.snippet || "workflow",
       keywords: [
         workflow.id,
-        workflow.title ?? '',
-        workflow.snippet ?? '',
-        workflow.pre_hook ?? '',
-        workflow.post_hook ?? ''
-      ].filter(Boolean)
+        workflow.title ?? "",
+        workflow.snippet ?? "",
+        workflow.pre_hook ?? "",
+        workflow.post_hook ?? "",
+      ].filter(Boolean),
     }));
   }
 
   function normalize(text: string) {
-    return text.toLowerCase().replace(/[_/-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    return text
+      .toLowerCase()
+      .replace(/[_/-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
   }
 
   function scoreSlashItem(item: SlashItem, query: string, index: number) {
     if (!query) return index;
     const q = normalize(query);
     const fields = [
-      item.command,
-      item.command.slice(1),
-      item.label,
-      item.hint,
-      ...item.keywords
-    ].map(normalize);
+      { text: item.command, penalty: 0 },
+      { text: item.command.slice(1), penalty: 0 },
+      { text: item.label, penalty: 0 },
+      { text: item.hint, penalty: 20 },
+      ...item.keywords.map((keyword) => ({ text: keyword, penalty: 40 })),
+    ].map(({ text, penalty }) => ({ text: normalize(text), penalty }));
     let best = Number.POSITIVE_INFINITY;
-    for (const field of fields) {
+    for (const { text: field, penalty } of fields) {
       if (!field) continue;
-      if (field === q) best = Math.min(best, 0);
-      else if (field.startsWith(q)) best = Math.min(best, 10);
+      if (field === q) best = Math.min(best, penalty);
+      else if (field.startsWith(q)) best = Math.min(best, penalty + 10);
       else {
         const includesAt = field.indexOf(q);
-        if (includesAt >= 0) best = Math.min(best, 30 + includesAt);
+        if (includesAt >= 0) best = Math.min(best, penalty + 30 + includesAt);
       }
     }
-    const terms = q.split(' ').filter(Boolean);
-    if (terms.length > 1 && fields.some((field) => terms.every((term) => field.includes(term)))) {
+    const terms = q.split(" ").filter(Boolean);
+    if (
+      terms.length > 1 &&
+      fields.some(({ text: field }) =>
+        terms.every((term) => field.includes(term)),
+      )
+    ) {
       best = Math.min(best, 50);
     }
     return best + index / 100;
@@ -159,15 +179,21 @@
   function buildSlashRows(query: string, workflowList: WorkflowSummary[]) {
     const all = [...staticSlashItems, ...workflowSlashItems(workflowList)];
     return all
-      .map((item, index) => ({ item, score: scoreSlashItem(item, query, index) }))
+      .map((item, index) => ({
+        item,
+        score: scoreSlashItem(item, query, index),
+      }))
       .filter((entry) => Number.isFinite(entry.score))
-      .sort((a, b) => a.score - b.score || a.item.command.localeCompare(b.item.command))
+      .sort(
+        (a, b) =>
+          a.score - b.score || a.item.command.localeCompare(b.item.command),
+      )
       .slice(0, 12)
       .map((entry) => entry.item);
   }
 
   function resetTextareaHeight() {
-    if (textareaEl) textareaEl.style.height = 'auto';
+    if (textareaEl) textareaEl.style.height = "auto";
   }
 
   function completeSlashItem(item: SlashItem) {
@@ -185,9 +211,9 @@
   function submitText(text: string) {
     if (!text || busy) return;
     onsubmit(text);
-    value = '';
+    value = "";
     slashCompleting = false;
-    slashCompletedValue = '';
+    slashCompletedValue = "";
     slashActiveIndex = 0;
     resetTextareaHeight();
   }
@@ -195,11 +221,12 @@
   async function refreshInlineSuggestions(
     currentValue = value,
     cursor = textareaEl?.selectionStart ?? value.length,
-    currentVault = vaultName
+    currentVault = vaultName,
   ) {
     const requestId = ++inlineRequestId;
     const trigger =
-      detectInlineTrigger(currentValue, cursor) || detectInlineTrigger(currentValue, currentValue.length);
+      detectInlineTrigger(currentValue, cursor) ||
+      detectInlineTrigger(currentValue, currentValue.length);
     inlineTrigger = trigger;
     inlineActiveIndex = 0;
     if (!trigger) {
@@ -232,24 +259,25 @@
 
   function handleKeydown(event: KeyboardEvent) {
     if (inlineMenuOpen) {
-      if (event.key === 'ArrowDown') {
+      if (event.key === "ArrowDown") {
         event.preventDefault();
         inlineActiveIndex = (inlineActiveIndex + 1) % inlineRows.length;
         return;
       }
-      if (event.key === 'ArrowUp') {
+      if (event.key === "ArrowUp") {
         event.preventDefault();
-        inlineActiveIndex = (inlineActiveIndex - 1 + inlineRows.length) % inlineRows.length;
+        inlineActiveIndex =
+          (inlineActiveIndex - 1 + inlineRows.length) % inlineRows.length;
         return;
       }
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         event.preventDefault();
         inlineRows = [];
         inlineTrigger = null;
         inlineActiveIndex = 0;
         return;
       }
-      if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey) {
+      if (event.key === "Enter" && !event.metaKey && !event.ctrlKey) {
         event.preventDefault();
         completeInlineRow();
         return;
@@ -257,26 +285,27 @@
     }
 
     if (slashMenuOpen) {
-      if (event.key === 'ArrowDown') {
+      if (event.key === "ArrowDown") {
         event.preventDefault();
         slashActiveIndex = (slashActiveIndex + 1) % slashRows.length;
         return;
       }
-      if (event.key === 'ArrowUp') {
+      if (event.key === "ArrowUp") {
         event.preventDefault();
-        slashActiveIndex = (slashActiveIndex - 1 + slashRows.length) % slashRows.length;
+        slashActiveIndex =
+          (slashActiveIndex - 1 + slashRows.length) % slashRows.length;
         return;
       }
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         event.preventDefault();
-        value = '';
+        value = "";
         slashCompleting = false;
-        slashCompletedValue = '';
+        slashCompletedValue = "";
         slashActiveIndex = 0;
         resetTextareaHeight();
         return;
       }
-      if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey) {
+      if (event.key === "Enter" && !event.metaKey && !event.ctrlKey) {
         event.preventDefault();
         const item = slashRows[slashActiveIndex];
         if (item) completeSlashItem(item);
@@ -284,7 +313,7 @@
       }
     }
 
-    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
       event.preventDefault();
       submitText(value.trim());
     }
@@ -293,11 +322,11 @@
 
   function autoresize() {
     if (!textareaEl) return;
-    textareaEl.style.height = 'auto';
+    textareaEl.style.height = "auto";
     textareaEl.style.height = `${Math.min(textareaEl.scrollHeight, 240)}px`;
-    if (!value.startsWith('/')) {
+    if (!value.startsWith("/")) {
       slashCompleting = false;
-      slashCompletedValue = '';
+      slashCompletedValue = "";
       slashActiveIndex = 0;
     } else if (value !== slashCompletedValue) {
       slashCompleting = false;
@@ -334,7 +363,9 @@
           onmousedown={(event) => event.preventDefault()}
           onclick={() => completeSlashItem(item)}
         >
-          <span class="slash-glyph" aria-hidden="true">{i === slashActiveIndex ? '>' : ''}</span>
+          <span class="slash-glyph" aria-hidden="true"
+            >{i === slashActiveIndex ? ">" : ""}</span
+          >
           <span class="slash-command">{item.command}</span>
           <span class="slash-kind">{item.kind}</span>
           <span class="slash-label">{item.label}</span>
@@ -344,7 +375,11 @@
     </div>
   {/if}
   {#if inlineMenuOpen}
-    <div class="inline-suggest-menu" role="listbox" aria-label="Inline suggestions">
+    <div
+      class="inline-suggest-menu"
+      role="listbox"
+      aria-label="Inline suggestions"
+    >
       {#each inlineRows as row, i (`${row.kind}:${row.label}`)}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <div
@@ -357,7 +392,9 @@
           onmousedown={(event) => event.preventDefault()}
           onclick={() => completeInlineRow(row)}
         >
-          <span class="inline-suggest-glyph" aria-hidden="true">{i === inlineActiveIndex ? '>' : ''}</span>
+          <span class="inline-suggest-glyph" aria-hidden="true"
+            >{i === inlineActiveIndex ? ">" : ""}</span
+          >
           <span class="inline-suggest-label">{row.label}</span>
           <span class="inline-suggest-detail">{row.detail}</span>
         </div>
@@ -370,7 +407,7 @@
     bind:this={textareaEl}
     bind:value
     class="ask-textarea"
-    placeholder={busy ? 'Streaming…' : 'Ask… (⌘↵ to submit, ↵ newline)'}
+    placeholder={busy ? "Streaming…" : "Ask… (⌘↵ to submit, ↵ newline)"}
     rows="1"
     onkeydown={handleKeydown}
     oninput={handleInput}
@@ -471,7 +508,9 @@
 
   .slash-row {
     display: grid;
-    grid-template-columns: 14px minmax(112px, auto) auto minmax(120px, 1fr) minmax(0, 1fr);
+    grid-template-columns:
+      14px minmax(112px, auto) auto minmax(120px, 1fr)
+      minmax(0, 1fr);
     gap: var(--space-2, 8px);
     align-items: center;
     min-height: 34px;
@@ -550,7 +589,7 @@
     max-height: 240px;
     font-family: var(--font-mono);
     font-size: var(--type-body-size, 15px);
-    line-height: var(--type-body-lh, 1.70);
+    line-height: var(--type-body-lh, 1.7);
     color: var(--text);
     background-color: transparent;
     border: none;
