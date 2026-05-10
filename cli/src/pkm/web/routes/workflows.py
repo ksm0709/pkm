@@ -11,6 +11,7 @@ from typing import Any
 
 from aiohttp import web
 
+from pkm.credential_store import agent_credential_env
 from pkm.web.routes.ask import _runtime_daemon_module
 from pkm.web.routes.notes import _resolve_vault
 from pkm.workflows import WorkflowConfig, load_workflows
@@ -192,6 +193,7 @@ async def run_workflow(request: web.Request) -> web.Response:
         "task_type": "workflow",
         "workflow_id": workflow_id,
         "workflow_source": "manual",
+        "env_keys": agent_credential_env(),
         "env": {"PKM_VAULT_DIR": str(vault.path)},
     }
     task_queue.push(task)

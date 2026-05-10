@@ -159,8 +159,21 @@ def ask_credential_env(
     *,
     store: SecretStoreProtocol | None = None,
 ) -> dict[str, str]:
+    return agent_credential_env(store=store, process_env={})
+
+
+def agent_credential_env(
+    *,
+    store: SecretStoreProtocol | None = None,
+    process_env: dict[str, str] | None = None,
+) -> dict[str, str]:
+    source_env = os.environ if process_env is None else process_env
+    env = {
+        key: value
+        for key, value in source_env.items()
+        if key.endswith("_API_KEY") and value
+    }
     secret_store = store or SecretStore()
-    env: dict[str, str] = {}
     for env_key in ASK_CREDENTIAL_PROVIDERS.values():
         value = secret_store.get(env_key)
         if value:

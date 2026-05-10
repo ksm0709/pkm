@@ -130,10 +130,14 @@ def test_workflow_run_queues_task_as_json_array(tmp_path, monkeypatch):
 
 
 def test_workflow_run_queues_task_with_injected_vault_env(tmp_path, monkeypatch):
-    """Direct command use with a vault context queues the workflow for that vault path."""
+    """Direct command queues the vault path and shared agent credentials."""
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     vault = VaultConfig(name="work", path=tmp_path / "vaults" / "work")
     monkeypatch.setattr("pkm.commands.workflow.time.time", lambda: 42)
+    monkeypatch.setattr(
+        "pkm.commands.workflow.agent_credential_env",
+        lambda: {"OPENAI_API_KEY": "saved-openai"},
+    )
 
     runner = CliRunner()
     result = runner.invoke(
@@ -152,6 +156,7 @@ def test_workflow_run_queues_task_with_injected_vault_env(tmp_path, monkeypatch)
             "task_type": "workflow",
             "workflow_id": "zettelkasten_maintenance",
             "workflow_source": "manual",
+            "env_keys": {"OPENAI_API_KEY": "saved-openai"},
             "env": {"PKM_VAULT_DIR": str(vault.path)},
         }
     ]

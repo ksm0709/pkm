@@ -639,7 +639,7 @@ async def test_ask_injects_saved_credentials_and_ignores_body_env_keys(
     monkeypatch.setattr(_daemon, "worker_proxy", fake)
     monkeypatch.setattr(
         ask_route,
-        "ask_credential_env",
+        "agent_credential_env",
         lambda: {"GEMINI_API_KEY": "saved-gemini"},
     )
 
@@ -731,7 +731,7 @@ async def test_get_ask_options_resolves_auto_model_with_saved_credentials(
     )
     monkeypatch.setattr(
         ask_route,
-        "ask_credential_env",
+        "agent_credential_env",
         lambda: {"OPENAI_API_KEY": "saved-openai-key"},
     )
 

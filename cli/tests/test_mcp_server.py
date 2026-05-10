@@ -370,7 +370,7 @@ class TestPkmAsk:
     async def test_sends_daemon_payload_with_defaults_and_env_keys(
         self, mcp_server, monkeypatch
     ) -> None:
-        """pkm_ask sends vault, model, graph depth, and API env keys to daemon."""
+        """pkm_ask sends vault, defaults, and shared agent credentials to daemon."""
         reader = FakeAskReader(b'{"data": {"response": "answer"}}\n')
         writer = FakeAskWriter()
 
@@ -383,8 +383,11 @@ class TestPkmAsk:
             "pkm.config.load_config",
             lambda: {"defaults": {"model": "configured-model", "graph-depth": 2}},
         )
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-        monkeypatch.setenv("NOT_A_SECRET", "ignored")
+        monkeypatch.setattr(
+            mcp_server,
+            "agent_credential_env",
+            lambda: {"OPENAI_API_KEY": "shared-openai"},
+        )
 
         result = await mcp_server.pkm_ask("What changed?")
 
@@ -395,7 +398,7 @@ class TestPkmAsk:
             "query": "What changed?",
             "vault_name": "test-vault",
             "model": "configured-model",
-            "env_keys": {"OPENAI_API_KEY": "sk-test"},
+            "env_keys": {"OPENAI_API_KEY": "shared-openai"},
             "graph_depth": 2,
         }
         assert writer.closed is True

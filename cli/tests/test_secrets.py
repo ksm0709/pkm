@@ -10,6 +10,7 @@ from pkm.credential_store import (
     ASK_CREDENTIAL_PROVIDERS,
     FileSecretStore,
     SecretStore,
+    agent_credential_env,
     ask_credential_env,
     mask_secret,
     provider_payload,
@@ -156,6 +157,22 @@ def test_provider_payload_and_ask_credential_env() -> None:
     }
     assert provider_payload("openai", store=store)["configured"] is False
     assert ask_credential_env(store=store) == {"GEMINI_API_KEY": "gemini-secret"}
+
+
+def test_agent_credential_env_combines_process_and_saved_credentials() -> None:
+    store = _MemoryStore({"OPENAI_API_KEY": "saved-openai"})
+
+    assert agent_credential_env(
+        store=store,
+        process_env={
+            "OPENAI_API_KEY": "process-openai",
+            "CUSTOM_API_KEY": "custom-secret",
+            "NOT_A_SECRET": "ignored",
+        },
+    ) == {
+        "OPENAI_API_KEY": "saved-openai",
+        "CUSTOM_API_KEY": "custom-secret",
+    }
 
 
 class _MemoryStore:

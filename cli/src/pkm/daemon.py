@@ -20,6 +20,7 @@ import networkx as nx
 import yaml
 
 from pkm.config import discover_vaults, get_vault
+from pkm.credential_store import agent_credential_env
 from pkm.workflows import WorkflowConfig, load_workflows, jitter_minutes
 from pkm.frontmatter import parse
 from pkm.search_engine import search, _require_transformers
@@ -809,6 +810,7 @@ async def workflow_checker(config: WorkflowConfig):
                 "task_type": "workflow",
                 "workflow_id": latest_config.id,
                 "workflow_source": "scheduled",
+                "env_keys": agent_credential_env(),
                 "env": {"PKM_VAULT_DIR": str(vault.path)},
             }
             task_queue.push(task)

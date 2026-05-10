@@ -621,6 +621,11 @@ async def test_handle_task_dispatches_workflow_and_unknown_type(monkeypatch, tmp
     monkeypatch.setattr(
         "pkm.sandbox.setup_sandbox", lambda path: sandboxed.append(path)
     )
+    monkeypatch.setattr(
+        worker,
+        "agent_credential_env",
+        lambda: {"OPENAI_API_KEY": "saved-openai"},
+    )
 
     async def fake_dispatch_workflow(*args: Any, **kwargs: Any) -> None:
         workflow_calls.append({"args": args, "kwargs": kwargs})
@@ -639,10 +644,17 @@ async def test_handle_task_dispatches_workflow_and_unknown_type(monkeypatch, tmp
         }
     )
     await worker._handle_task_with_current_env(
+        {
+            "id": "task-wf-fallback",
+            "task_type": "workflow",
+            "workflow_id": "weekly",
+        }
+    )
+    await worker._handle_task_with_current_env(
         {"id": "task-bad", "task_type": "unknown"}
     )
 
-    assert sandboxed == [str(tmp_path), str(tmp_path)]
+    assert sandboxed == [str(tmp_path), str(tmp_path), str(tmp_path)]
     assert workflow_calls[0]["args"] == (
         "task-wf",
         "weekly",
@@ -653,6 +665,7 @@ async def test_handle_task_dispatches_workflow_and_unknown_type(monkeypatch, tmp
         "cwd",
         "unknown",
     )
+    assert workflow_calls[1]["args"][4] == {"OPENAI_API_KEY": "saved-openai"}
     assert fake_ipc.messages[-1] == {
         "type": "error",
         "id": "task-bad",

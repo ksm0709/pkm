@@ -14,6 +14,7 @@ import click
 from mcp.server.fastmcp import FastMCP
 
 from pkm.config import VaultConfig, get_vault
+from pkm.credential_store import agent_credential_env
 
 mcp = FastMCP("pkm")
 
@@ -329,7 +330,6 @@ async def pkm_ask(
     """
     import json
     import asyncio
-    import os
     from pathlib import Path
     from pkm.config import load_config
 
@@ -340,7 +340,7 @@ async def pkm_ask(
     final_model = model or config_model or "auto"
     graph_depth = load_config().get("defaults", {}).get("graph-depth", 0)
 
-    env_keys = {k: v for k, v in os.environ.items() if k.endswith("_API_KEY")}
+    env_keys = agent_credential_env()
 
     reader = None
     writer = None

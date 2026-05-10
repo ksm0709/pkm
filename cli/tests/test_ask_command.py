@@ -205,6 +205,38 @@ def test_model_validation_missing_api_key_exits_before_daemon(
     assert fake_socket.sent_payloads == []
 
 
+def test_model_validation_uses_shared_agent_credentials(
+    monkeypatch, tmp_vault: VaultConfig
+):
+    """Explicit model validation should see the same saved credentials as the task."""
+
+    def validate_environment(_model_id):
+        if __import__("os").environ.get("OPENAI_API_KEY") == "saved-openai":
+            return {"keys_in_environment": True, "missing_keys": []}
+        return {"keys_in_environment": False, "missing_keys": ["OPENAI_API_KEY"]}
+
+    _install_litellm(monkeypatch, validate_environment)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(
+        "pkm.commands.ask.agent_credential_env",
+        lambda: {"OPENAI_API_KEY": "saved-openai"},
+    )
+    fake_socket = FakeSocket([_json_line({"data": {"response": "Vault answer"}})])
+
+    result = _invoke_ask(
+        tmp_vault,
+        ["--model", "openai/gpt-test", "question"],
+        monkeypatch,
+        fake_socket=fake_socket,
+    )
+
+    assert result.exit_code == 0
+    assert fake_socket.sent_payloads[0]["env_keys"] == {
+        "OPENAI_API_KEY": "saved-openai"
+    }
+    assert __import__("os").environ.get("OPENAI_API_KEY") is None
+
+
 def test_ask_sends_daemon_payload_with_config_env_and_reasoning(
     monkeypatch, tmp_vault: VaultConfig
 ):

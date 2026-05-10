@@ -33,7 +33,7 @@ from aiohttp import web
 
 from pkm.config import load_config
 from pkm.models import resolve_auto_models
-from pkm.credential_store import ask_credential_env
+from pkm.credential_store import agent_credential_env
 from pkm.web.keepalive import run_keepalive
 from pkm.web.routes.notes import _resolve_vault
 
@@ -258,7 +258,7 @@ async def get_ask_options(request: web.Request) -> web.Response:
     """GET /api/v1/vault/{name}/ask/options — expose resolved ask defaults."""
     _resolve_vault(request.match_info["name"])
     model, reasoning_effort = _default_ask_options()
-    env_keys = ask_credential_env()
+    env_keys = agent_credential_env()
     return web.json_response(
         {
             "model": model,
@@ -396,7 +396,7 @@ async def post_ask(request: web.Request) -> web.StreamResponse:
             "ask_session_id": ask_session_id,
             "model": model,
             "reasoning_effort": reasoning_effort,
-            "env_keys": ask_credential_env(),
+            "env_keys": agent_credential_env(),
             "env": {"PKM_VAULT_DIR": str(vault.path)},
             "cwd": body.get("cwd"),
         }
