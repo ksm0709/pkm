@@ -33,8 +33,10 @@ from pkm.web.routes.vault import get_vaults
 from pkm.web.routes.workflows import (
     get_workflow,
     get_workflow_history,
+    get_workflow_run_status,
     list_workflow_history,
     list_workflows,
+    run_workflow,
     update_workflow,
 )
 
@@ -101,5 +103,10 @@ def register_routes(app: web.Application) -> None:
         "/api/v1/vault/{name}/workflows/{id}/history",
         get_workflow_history,
     )
+    app.router.add_get(
+        "/api/v1/vault/{name}/workflows/{id}/run-status",
+        get_workflow_run_status,
+    )
+    app.router.add_post("/api/v1/vault/{name}/workflows/{id}/run", run_workflow)
     app.router.add_get("/api/v1/vault/{name}/workflows/{id}", get_workflow)
     app.router.add_patch("/api/v1/vault/{name}/workflows/{id}", update_workflow)

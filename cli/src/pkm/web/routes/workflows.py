@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import json
 import re
+import socket
+import time
+from datetime import datetime, timezone
 from typing import Any
 
 from aiohttp import web
 
+from pkm.web.routes.ask import _runtime_daemon_module
 from pkm.web.routes.notes import _resolve_vault
 from pkm.workflows import WorkflowConfig, load_workflows
-from pkm.workflows.history import read_workflow_history
+from pkm.workflows.history import append_workflow_history, read_workflow_history
 
 _TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):00$")
 
@@ -50,6 +54,29 @@ def _workflow_payload(
 
 def _workflow_map(vault_path) -> dict[str, WorkflowConfig]:
     return {workflow.id: workflow for workflow in load_workflows(vault_path=vault_path)}
+
+
+def _workflow_task_status(workflow_id: str) -> dict[str, Any]:
+    daemon = _runtime_daemon_module()
+    current = getattr(daemon.DaemonState, "current_task", None)
+    if (
+        isinstance(current, dict)
+        and current.get("task_type") == "workflow"
+        and current.get("workflow_id") == workflow_id
+    ):
+        return {"status": "running", "task_id": current.get("id")}
+
+    queue = getattr(getattr(daemon, "task_queue", None), "queue", [])
+    if isinstance(queue, list):
+        for task in queue:
+            if (
+                isinstance(task, dict)
+                and task.get("task_type") == "workflow"
+                and task.get("workflow_id") == workflow_id
+            ):
+                return {"status": "queued", "task_id": task.get("id")}
+
+    return {"status": "idle", "task_id": None}
 
 
 def _read_vault_overrides(path) -> list[dict[str, Any]]:
@@ -135,6 +162,54 @@ async def get_workflow_history(request: web.Request) -> web.Response:
             limit=_history_limit(request),
         )
     )
+
+
+async def get_workflow_run_status(request: web.Request) -> web.Response:
+    vault = _resolve_vault(request.match_info["name"])
+    workflow_id = request.match_info["id"]
+    workflows = _workflow_map(vault.path)
+    if workflow_id not in workflows:
+        raise web.HTTPNotFound(reason=f"Workflow '{workflow_id}' not found")
+    return web.json_response(_workflow_task_status(workflow_id))
+
+
+async def run_workflow(request: web.Request) -> web.Response:
+    vault = _resolve_vault(request.match_info["name"])
+    workflow_id = request.match_info["id"]
+    workflows = _workflow_map(vault.path)
+    if workflow_id not in workflows:
+        raise web.HTTPNotFound(reason=f"Workflow '{workflow_id}' not found")
+
+    daemon = _runtime_daemon_module()
+    task_queue = getattr(daemon, "task_queue", None)
+    if task_queue is None or not hasattr(task_queue, "push"):
+        raise web.HTTPServiceUnavailable(reason="Task queue not initialized")
+
+    task_id = f"{workflow_id}_manual_{time.time_ns()}"
+    task = {
+        "type": "task",
+        "id": task_id,
+        "task_type": "workflow",
+        "workflow_id": workflow_id,
+        "workflow_source": "manual",
+        "env": {"PKM_VAULT_DIR": str(vault.path)},
+    }
+    task_queue.push(task)
+    append_workflow_history(
+        vault.path,
+        {
+            "workflow_id": workflow_id,
+            "task_id": task_id,
+            "hostname": socket.gethostname(),
+            "time": datetime.now(timezone.utc).isoformat(),
+            "status": "queued",
+            "source": "manual",
+            "phase": "queued",
+            "error": None,
+            "result_summary": "Queued manual workflow run from web.",
+        },
+    )
+    return web.json_response({"status": "queued", "task_id": task_id})
 
 
 async def update_workflow(request: web.Request) -> web.Response:

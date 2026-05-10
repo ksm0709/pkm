@@ -9,7 +9,7 @@ from aiohttp.test_utils import TestClient, TestServer
 
 from pkm.config import WebConfig
 from pkm.web.server import make_app
-from pkm.workflows.history import append_workflow_history
+from pkm.workflows.history import append_workflow_history, read_workflow_history
 
 TOKEN = "test-workflow-token"
 
@@ -285,3 +285,104 @@ async def test_workflow_history_endpoint_unknown_workflow_returns_404(app, tmp_v
         )
 
     assert resp.status == 404
+
+
+@pytest.mark.anyio
+async def test_run_workflow_queues_task_and_records_history(app, tmp_vault, monkeypatch):
+    """Manual web runs use the daemon queue and leave an immediate audit record."""
+    from pkm import daemon
+    from pkm.workflows import load_workflows
+
+    class Queue:
+        def __init__(self):
+            self.queue = []
+
+        def push(self, task):
+            self.queue.append(task)
+
+    queue = Queue()
+    workflow_id = load_workflows(vault_path=tmp_vault.path)[0].id
+    monkeypatch.setattr(daemon, "task_queue", queue)
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post(
+            f"/api/v1/vault/test-vault/workflows/{workflow_id}/run",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        data = await resp.json()
+
+    assert resp.status == 200
+    assert data["status"] == "queued"
+    assert data["task_id"].startswith(f"{workflow_id}_manual_")
+    assert queue.queue == [
+        {
+            "type": "task",
+            "id": data["task_id"],
+            "task_type": "workflow",
+            "workflow_id": workflow_id,
+            "workflow_source": "manual",
+            "env": {"PKM_VAULT_DIR": str(tmp_vault.path)},
+        }
+    ]
+    records = read_workflow_history(tmp_vault.path, workflow_id=workflow_id)
+    assert records[0]["task_id"] == data["task_id"]
+    assert records[0]["status"] == "queued"
+    assert records[0]["phase"] == "queued"
+
+
+@pytest.mark.anyio
+async def test_workflow_run_status_reports_running_and_queued(
+    app, tmp_vault, monkeypatch
+):
+    """Run status tells the UI whether this workflow is running, queued, or idle."""
+    from pkm import daemon
+    from pkm.workflows import load_workflows
+
+    workflow_id = load_workflows(vault_path=tmp_vault.path)[0].id
+
+    class Queue:
+        queue = [
+            {
+                "id": "queued-task",
+                "task_type": "workflow",
+                "workflow_id": workflow_id,
+            }
+        ]
+
+    monkeypatch.setattr(daemon, "task_queue", Queue())
+    monkeypatch.setattr(
+        daemon.DaemonState,
+        "current_task",
+        {
+            "id": "running-task",
+            "task_type": "workflow",
+            "workflow_id": "other_workflow",
+        },
+    )
+
+    async with TestClient(TestServer(app)) as client:
+        queued_resp = await client.get(
+            f"/api/v1/vault/test-vault/workflows/{workflow_id}/run-status",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        queued = await queued_resp.json()
+
+    assert queued == {"status": "queued", "task_id": "queued-task"}
+
+    monkeypatch.setattr(
+        daemon.DaemonState,
+        "current_task",
+        {
+            "id": "running-task",
+            "task_type": "workflow",
+            "workflow_id": workflow_id,
+        },
+    )
+    async with TestClient(TestServer(app)) as client:
+        running_resp = await client.get(
+            f"/api/v1/vault/test-vault/workflows/{workflow_id}/run-status",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        running = await running_resp.json()
+
+    assert running == {"status": "running", "task_id": "running-task"}

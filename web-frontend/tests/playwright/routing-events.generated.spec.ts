@@ -100,12 +100,16 @@ let workflowHistories: Record<
     task_id: string;
     hostname: string;
     time: string;
-    status: "success" | "failure";
+    status: "success" | "failure" | "queued" | "running";
     source: string;
     phase: string;
     error: string | null;
     result_summary: string;
   }>
+>;
+let workflowRunStatuses: Record<
+  string,
+  { status: "idle" | "queued" | "running"; task_id: string | null }
 >;
 
 let askPayloads: Array<{
@@ -1361,6 +1365,10 @@ test.describe("generated routing and event contracts", () => {
   test("workflow routes render list, read mode detail, and editable schedule modal", async ({
     page,
   }) => {
+    const workflowId = Object.keys(workflowConfigs)[0];
+    const workflow = workflowConfigs[workflowId];
+    const manualTaskId = `${workflowId}_manual_web`;
+
     await page.goto(`/${vaultName}`);
     await page.waitForLoadState("networkidle").catch(() => {});
     await page.getByRole("button", { name: "Open navigation drawer" }).click();
@@ -1383,30 +1391,41 @@ test.describe("generated routing and event contracts", () => {
     await expect(
       page.locator(".ledger-head").getByText("STATE", { exact: true }),
     ).toBeVisible();
-    await expect(page.getByText("zettelkasten maintenance")).toBeVisible();
-    await expect(page.getByText("02:00")).toBeVisible();
-    await expect(
-      page.getByRole("link", { name: /zettelkasten maintenance/ }),
-    ).toContainText("on");
+    await expect(page.getByText(workflow.title)).toBeVisible();
+    await expect(page.getByText(workflow.trigger_time)).toBeVisible();
+    const workflowLink = page.getByRole("link").filter({
+      hasText: workflow.title,
+    });
+    await expect(workflowLink).toContainText("on");
 
-    await page.getByRole("link", { name: /zettelkasten maintenance/ }).click();
+    await workflowLink.click();
     await expect(page).toHaveURL(
-      new RegExp(`/${vaultName}/workflows/zettelkasten_maintenance$`),
+      new RegExp(`/${vaultName}/workflows/${workflowId}$`),
     );
-    await expectTopbar(page, vaultName, "workflow:zettelkasten_maintenance");
+    await expectTopbar(page, vaultName, `workflow:${workflowId}`);
     await expect(page.locator(".workflow-header .meta-rail")).toContainText(
       "WORKFLOW",
     );
     await expect(page.locator(".workflow-header .meta-rail")).toContainText(
-      "zettelkasten_maintenance",
+      workflowId,
     );
+    await expect(page.getByText(workflow.snippet)).toBeVisible();
+    await expect(page.getByText("idle")).toBeVisible();
+
+    await page.getByRole("button", { name: "Run workflow" }).click();
+    await expect(page.getByText(`Queued ${manualTaskId}`)).toBeVisible();
+    await expect(page.getByText(`queued:${manualTaskId}`)).toBeVisible();
     await expect(
-      page.getByText("Execute the maintenance workflow"),
-    ).toBeVisible();
+      page.getByRole("button", { name: "Run workflow" }),
+    ).toBeDisabled();
 
     await page.getByRole("button", { name: "Workflow history" }).click();
     const historyPanel = page.getByRole("dialog", { name: "Workflow history" });
     await expect(historyPanel).toBeVisible();
+    await expect(historyPanel).toContainText("queued");
+    await expect(historyPanel).toContainText(
+      "Queued manual workflow run from web.",
+    );
     await expect(historyPanel).toContainText("history-host");
     await expect(historyPanel).toContainText("success");
     await expect(historyPanel).toContainText("created hub notes");
@@ -1429,8 +1448,8 @@ test.describe("generated routing and event contracts", () => {
     await expect(modal).toHaveCount(0);
     await expect(page.getByText("06:00")).toBeVisible();
     await expect(page.getByText("off")).toBeVisible();
-    expect(workflowConfigs.zettelkasten_maintenance.enabled).toBe(false);
-    expect(workflowConfigs.zettelkasten_maintenance.trigger_time).toBe("06:00");
+    expect(workflowConfigs[workflowId].enabled).toBe(false);
+    expect(workflowConfigs[workflowId].trigger_time).toBe("06:00");
   });
 
   test("note body wraps long content within the viewport", async ({ page }) => {
@@ -1807,6 +1826,45 @@ async function mockPkmApi(page: Page) {
     );
     if (workflowHistoryMatch && route.request().method() === "GET") {
       await json(route, workflowHistories[workflowHistoryMatch[2]] ?? []);
+      return;
+    }
+
+    const workflowRunStatusMatch = path.match(
+      /^\/api\/v1\/vault\/([^/]+)\/workflows\/([^/]+)\/run-status$/,
+    );
+    if (workflowRunStatusMatch && route.request().method() === "GET") {
+      await json(
+        route,
+        workflowRunStatuses[workflowRunStatusMatch[2]] ?? {
+          status: "idle",
+          task_id: null,
+        },
+      );
+      return;
+    }
+
+    const workflowRunMatch = path.match(
+      /^\/api\/v1\/vault\/([^/]+)\/workflows\/([^/]+)\/run$/,
+    );
+    if (workflowRunMatch && route.request().method() === "POST") {
+      const workflowId = workflowRunMatch[2];
+      const taskId = `${workflowId}_manual_web`;
+      workflowRunStatuses[workflowId] = { status: "queued", task_id: taskId };
+      workflowHistories[workflowId] = [
+        {
+          workflow_id: workflowId,
+          task_id: taskId,
+          hostname: "web-host",
+          time: "2026-05-10T03:00:00Z",
+          status: "queued",
+          source: "manual",
+          phase: "queued",
+          error: null,
+          result_summary: "Queued manual workflow run from web.",
+        },
+        ...(workflowHistories[workflowId] ?? []),
+      ];
+      await json(route, { status: "queued", task_id: taskId });
       return;
     }
 
@@ -2264,10 +2322,11 @@ function resetMockNotes() {
 }
 
 function resetMockWorkflows() {
+  const workflowId = Object.keys(workflowBodies)[0];
   workflowConfigs = {
-    zettelkasten_maintenance: {
-      id: "zettelkasten_maintenance",
-      title: "zettelkasten maintenance",
+    [workflowId]: {
+      id: workflowId,
+      title: workflowId.replaceAll("_", " "),
       schedule_hour: 2,
       trigger_time: "02:00",
       enabled: true,
@@ -2275,14 +2334,14 @@ function resetMockWorkflows() {
       pre_hook: null,
       post_hook: null,
       snippet: "Execute the maintenance workflow.",
-      body: workflowBodies.zettelkasten_maintenance,
+      body: workflowBodies[workflowId],
       jitter_type: "md5_hostname",
     },
   };
   workflowHistories = {
-    zettelkasten_maintenance: [
+    [workflowId]: [
       {
-        workflow_id: "zettelkasten_maintenance",
+        workflow_id: workflowId,
         task_id: "workflow-2",
         hostname: "history-host",
         time: "2026-05-10T02:00:00Z",
@@ -2293,7 +2352,7 @@ function resetMockWorkflows() {
         result_summary: "agent stopped",
       },
       {
-        workflow_id: "zettelkasten_maintenance",
+        workflow_id: workflowId,
         task_id: "workflow-1",
         hostname: "history-host",
         time: "2026-05-10T01:00:00Z",
@@ -2304,6 +2363,9 @@ function resetMockWorkflows() {
         result_summary: "created hub notes",
       },
     ],
+  };
+  workflowRunStatuses = {
+    [workflowId]: { status: "idle", task_id: null },
   };
 }
 

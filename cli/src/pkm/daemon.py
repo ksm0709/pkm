@@ -73,6 +73,7 @@ class DaemonState:
     graph_ready = False
     shutdown_gate = None  # ShutdownGate | None
     web_runner = None  # aiohttp.web.AppRunner | None
+    current_task: Optional[Dict[str, Any]] = None
 
 
 @lru_cache(maxsize=4)
@@ -595,7 +596,11 @@ async def process_background_tasks():
                     task = task_queue.pop()
                     if task:
                         logger.info(f"Processing background task: {task.get('id')}")
-                        await worker_proxy.send_task(task)
+                        DaemonState.current_task = task
+                        try:
+                            await worker_proxy.send_task(task)
+                        finally:
+                            DaemonState.current_task = None
                 except BudgetExhausted:
                     logger.info("Budget exhausted, pausing background tasks")
                     await asyncio.sleep(60)
