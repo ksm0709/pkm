@@ -2,6 +2,144 @@
 
 <!-- version list -->
 
+## v2.75.0 (2026-05-10)
+
+### Bug Fixes
+
+- **cli**: F4-6 correct systemd unit ExecStart (no --foreground flag)
+  ([`8cc16a9`](https://github.com/ksm0709/pkm/commit/8cc16a9d67b35186ff2f335a8f74ae4ef4c61b16))
+
+- **cli/tests**: Restrict anyio to asyncio backend — aiohttp incompatible with trio
+  ([`e256fd2`](https://github.com/ksm0709/pkm/commit/e256fd23d136e78352499679020cb3a4d3333615))
+
+- **web**: F4-8 follow-up — meaningful bundle measure + skip-without-hey + timeline keymap
+  ([`123de61`](https://github.com/ksm0709/pkm/commit/123de61cbd9f319a98c37157ba28ec9d23a84e91))
+
+### Chores
+
+- **web-frontend**: Bump slice-3 bundle budget 290 → 296 KB
+  ([`03a33a4`](https://github.com/ksm0709/pkm/commit/03a33a424beeed07e2c17442f1250a550eb86c1b))
+
+- **web-frontend**: Renegotiate slice-2 bundle budget to 290 KB
+  ([`861c59a`](https://github.com/ksm0709/pkm/commit/861c59ad025f1eead5518ca97ce9f6139b719cba))
+
+### Code Style
+
+- **web**: Apply linter whitespace fix to auth.py
+  ([`d680b8a`](https://github.com/ksm0709/pkm/commit/d680b8ad167700f24c47bcbc9e52c3e680e002e6))
+
+### Documentation
+
+- Add web-frontend to README (repo layout + dev quickstart)
+  ([`8f4a6dc`](https://github.com/ksm0709/pkm/commit/8f4a6dc0dc4dfd1f134d116ce143e57bd999e8c7))
+
+### Features
+
+- **cli**: F4-6 pkm setup --web with Linger gate + pkm web group
+  ([`b8d1ed1`](https://github.com/ksm0709/pkm/commit/b8d1ed17ce3ea62b522f00c5de856600a9343a1a))
+
+- **web**: B1 add aiohttp web extra
+  ([`2ebfc80`](https://github.com/ksm0709/pkm/commit/2ebfc804de48ef64ef4f45c901df2c4ce8733229))
+
+- **web**: B10 search/tags/graph routes
+  ([`2e17340`](https://github.com/ksm0709/pkm/commit/2e17340c36b988595a26f366ceb27b31378dcf8b))
+
+- **web**: B10b batch-titles route
+  ([`c8a369e`](https://github.com/ksm0709/pkm/commit/c8a369e213318228e50d68731cf080b94fe20372))
+
+- **web**: B2 web token config + auth middleware
+  ([`d3316be`](https://github.com/ksm0709/pkm/commit/d3316beecf01c032c14b0489dd67ea98e97b5cb6))
+
+- **web**: B3 aiohttp app factory + ShutdownGate co-resident in daemon
+  ([`252664d`](https://github.com/ksm0709/pkm/commit/252664d3282c24a4c7feb492a487cce5bc65f263))
+
+- **web**: B5 REST routes — 4 GET endpoints + health
+  ([`4e06a07`](https://github.com/ksm0709/pkm/commit/4e06a07ae9b097138049fef9bb2e9451c205f64f))
+
+- **web**: B7 write routes + daily pagination
+  ([`6f93cd1`](https://github.com/ksm0709/pkm/commit/6f93cd1274eac98eb8a5617d932ea94c9c5fce84))
+
+- **web**: B9 SSE ask route + keepalive + drain hook
+  ([`89f2dfe`](https://github.com/ksm0709/pkm/commit/89f2dfe3e1ffa47051ac1ea420ea9eb004ea832f))
+
+- **web**: F4-7 static asset bundling (adapter-static + hatch wheel force-include)
+  ([`257f952`](https://github.com/ksm0709/pkm/commit/257f9522953525444f4dc373c014ce6c7788f58a))
+
+- **web**: F4-8 quality gates (playwright motion+a11y + bundle script + hey perf + docs)
+  ([`a1113b0`](https://github.com/ksm0709/pkm/commit/a1113b033a9be3a7b0f39da1a0e452e273331bd6))
+
+- **web-frontend**: F1-1 scaffold SvelteKit + Vite
+  ([`34b28ec`](https://github.com/ksm0709/pkm/commit/34b28ec3222f6a9a46807ec56853a18fd28db3d1))
+
+- **web-frontend**: F1-2 design tokens + reading column + fonts
+  ([`230592a`](https://github.com/ksm0709/pkm/commit/230592a1fc3207ab2bc25d057f6e218fc0caf296))
+
+- **web-frontend**: F1-3 ThemeProvider + Topbar + Onboarding
+  ([`4d0698e`](https://github.com/ksm0709/pkm/commit/4d0698ef78d4725bb2389be212d1d10bcd830cdb))
+
+- **web-frontend**: F1-4 note view + signature NeighborPanel
+  ([`2ce0557`](https://github.com/ksm0709/pkm/commit/2ce05571e719ecf3189ed7122bb0af99aa8e234a))
+
+- **web-frontend**: F2-1 CodeMirror 6 wrapper + vim
+  ([`2dfc9b8`](https://github.com/ksm0709/pkm/commit/2dfc9b83ac5fdfcb4213f9e5df4ab4e72d94300c))
+
+- **web-frontend**: F2-3 slash menu
+  ([`c94f5c8`](https://github.com/ksm0709/pkm/commit/c94f5c865d1e0a7853aaa01ab98fce70cd604564))
+
+- **web-frontend**: F2-4 FileTreeDrawer + cmd+B toggle
+  ([`f41659a`](https://github.com/ksm0709/pkm/commit/f41659aed23eec711b51c04e8b5dd066169e76e9))
+
+- **web-frontend**: F3-1 cmd+K palette
+  ([`9becd31`](https://github.com/ksm0709/pkm/commit/9becd311e2651847383db71c4d30def1fb4c3a30))
+
+- **web-frontend**: F3-1 ⌘K palette
+  ([`2eebe94`](https://github.com/ksm0709/pkm/commit/2eebe94b39a46a55f1e5a611315062950cf9c595))
+
+- **web-frontend**: F3-2 AskTranscript + AskInput SSE
+  ([`83a4896`](https://github.com/ksm0709/pkm/commit/83a48967daba95f910e58107dbfb773bf1a5d809))
+
+- **web-frontend**: F3-3 NeighborPanel full + EgoConstellation
+  ([`1cdc3f0`](https://github.com/ksm0709/pkm/commit/1cdc3f040c5f2234d8a6451e9db93fe38ed106e6))
+
+- **web-frontend**: F4-1 maximalist live styling
+  (tables/katex-lazy/admonitions/footnotes/checkboxes)
+  ([`a4fe466`](https://github.com/ksm0709/pkm/commit/a4fe466fdce0e7e2153e164448609a1c59930281))
+
+- **web-frontend**: F4-2 WikilinkWidget + batch-coalesced hover preview
+  ([`8d05ea7`](https://github.com/ksm0709/pkm/commit/8d05ea7fa2bdc4c4095b258a2e782a2e5ddc9e7a))
+
+- **web-frontend**: F4-3 FrontmatterByline widget
+  ([`2b17eb4`](https://github.com/ksm0709/pkm/commit/2b17eb49fe429af6f6f78cea7e12d7cdd2ad8042))
+
+- **web-frontend**: F4-4 DailyTimeline route
+  ([`dc67ba4`](https://github.com/ksm0709/pkm/commit/dc67ba4993d22fa0b745b2c260e389b7d3b96a24))
+
+- **web-frontend**: F4-5 vim mappings + tag pill
+  ([`1fe904f`](https://github.com/ksm0709/pkm/commit/1fe904f0c5e5b228e1fdcccf3306b20e2da3fb0c))
+
+### Refactoring
+
+- **tools**: B4 pin read_note JSON schema + add list_notes
+  ([`e3a84ae`](https://github.com/ksm0709/pkm/commit/e3a84aee530c2780b69f1fc20481843d2af0da07))
+
+### Testing
+
+- **cli**: Pin anyio backend to asyncio for aiohttp TestClient
+  ([`2fa1084`](https://github.com/ksm0709/pkm/commit/2fa1084961a722e87ab278e910a459e2c2455857))
+
+- **web**: B11 backend tests slice 3
+  ([`cdc4795`](https://github.com/ksm0709/pkm/commit/cdc479598acc42983815e976aab1051a1fab7012))
+
+- **web**: B6 backend integration tests slice 1
+  ([`f7e7926`](https://github.com/ksm0709/pkm/commit/f7e7926c42e2cb6c145558809f8b1e2879d36adc))
+
+- **web**: B6a long-poll honesty test (xfail until B9 keepalive)
+  ([`e32cc5b`](https://github.com/ksm0709/pkm/commit/e32cc5b844fd9765ae7447bf8d425424d247e766))
+
+- **web**: B8 backend tests slice 2
+  ([`18c66ae`](https://github.com/ksm0709/pkm/commit/18c66ae69c0bd6fc2fd0eeb03215ad8add16eba8))
+
+
 ## v2.74.1 (2026-05-05)
 
 ### Bug Fixes
