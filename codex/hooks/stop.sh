@@ -1,8 +1,7 @@
 #!/bin/bash
-# codex/hooks/stop.sh — Phase 2 intelligent Stop hook for Codex
-# Exit-2 blocking: writes extraction instructions to stderr, exits 2
-# Codex main agent receives stderr as "continuation prompt" and acts on it
-# Codex binary confirms only type: "command" is supported at runtime.
+# codex/hooks/stop.sh — Stop hook for Codex
+# Emit extraction instructions, but exit successfully so the hook itself
+# does not request a continuation via a non-zero status code.
 if ! command -v jq >/dev/null 2>&1; then
   # jq not available — skip processing to avoid silent failures
   exit 0
@@ -21,7 +20,7 @@ if [ -z "$TRANSCRIPT_PATH" ]; then
   exit 0
 fi
 
-# Inject extraction instructions via stderr (exit 2 = "continue working")
+# Emit extraction instructions via stderr while still succeeding.
 cat >&2 << 'EOF'
 KNOWLEDGE EXTRACTION TASK: Before stopping, extract knowledge from this session.
 Use your Read tool to read the session transcript, then:
@@ -32,4 +31,5 @@ Use your Read tool to read the session transcript, then:
 Be selective — skip trivial facts. Quality over quantity.
 Then you may stop.
 EOF
-exit 2
+
+exit 0
