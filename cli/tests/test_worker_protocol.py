@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import io
 import json
 import os
@@ -13,6 +14,13 @@ import pytest
 
 from pkm import worker
 from pkm.workflows.history import read_workflow_history
+
+
+def test_handle_ask_prompt_lists_patch_note_as_partial_edit_tool() -> None:
+    """Worker prompt steers agents to patch_note for partial note edits."""
+    source = inspect.getsource(worker.handle_ask)
+    assert "patch_note(note_id, operation, old, new, section, fields)" in source
+    assert "partial note edits" in source
 
 
 class _FakeIPC:
@@ -699,6 +707,42 @@ async def test_main_initializes_sandbox_and_reader_loop(monkeypatch, tmp_path):
     assert sandboxed == [str(tmp_path)]
     assert reader_called is True
     assert os.getcwd() == old_cwd
+
+
+@pytest.mark.anyio
+async def test_main_applies_trusted_native_sandbox_profile(monkeypatch, tmp_path):
+    """Worker startup honors the sandbox profile used by workflow graph tools."""
+    from pkm import sandbox
+
+    old_state = dict(sandbox._state)
+    sandbox._state.update({"vault_path": None, "installed": False})
+    monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_path))
+    monkeypatch.setenv("PKM_WORKER_SANDBOX_PROFILE", "trusted-native")
+    hooks = []
+    monkeypatch.setattr(sandbox.sys, "addaudithook", lambda hook: hooks.append(hook))
+    monkeypatch.setattr(sandbox, "drop_privileges", lambda: None)
+
+    async def fake_reader_loop() -> None:
+        return None
+
+    monkeypatch.setattr(worker.ipc, "reader_loop", fake_reader_loop)
+
+    old_cwd = os.getcwd()
+    try:
+        await worker.main()
+    finally:
+        os.chdir(old_cwd)
+        sandbox._state.clear()
+        sandbox._state.update(old_state)
+
+    assert hooks
+    hook = hooks[0]
+    hook("ctypes.dlopen", ())
+    hook("ctypes.dlsym", ())
+    with pytest.raises(sandbox.SandboxViolation, match="Command execution blocked"):
+        hook("subprocess.Popen", ())
+    with pytest.raises(sandbox.SandboxViolation, match="Write access denied"):
+        hook("open", (tmp_path.parent / "outside.md", "w"))
 
 
 @pytest.mark.anyio

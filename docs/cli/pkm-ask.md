@@ -90,7 +90,7 @@ pkm daemon start
 
 ## Available Tools
 
-The agent has access to 17 typed tools for vault interaction:
+The agent has access to typed tools for vault interaction, including:
 
 | Tool | When to use |
 |------|-------------|
@@ -100,7 +100,8 @@ The agent has access to 17 typed tools for vault interaction:
 | `search_notes(query)` | Title-substring search |
 | `semantic_search(query, ...)` | Semantic similarity search |
 | `add_note(title, content, ...)` | Create a new atomic note |
-| `update_note(note_id, content, ...)` | Update an existing note |
+| `patch_note(note_id, operation, ...)` | Patch part of an existing note without replacing the full body |
+| `update_note(note_id, content, ...)` | Replace an existing note's full body |
 | `get_note_neighbors(note_id)` | Graph neighbors (outbound/inbound/semantic, daemon-free) |
 | `vault_stats()` | Vault health overview |
 | `list_stale_notes(days)` | Notes not modified in N days |

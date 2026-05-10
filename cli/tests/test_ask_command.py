@@ -375,6 +375,13 @@ def test_ask_stream_renders_tool_task_and_reasoning_events(
     assert "hidden" not in result.output
 
 
+def test_patch_note_is_highlighted_as_pkm_tool() -> None:
+    """ask command treats patch_note as a first-class PKM tool in streams."""
+    from pkm.commands.ask import _PKM_TOOLS
+
+    assert "patch_note" in _PKM_TOOLS
+
+
 def test_ask_reports_daemon_connection_startup_and_protocol_failures(
     monkeypatch, tmp_vault: VaultConfig
 ):

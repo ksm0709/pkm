@@ -114,6 +114,7 @@ After=network.target
 [Service]
 Type=simple
 Environment=PKM_DAEMON_KEEPALIVE=1
+Environment=PKM_WORKER_SANDBOX_PROFILE=trusted-native
 ExecStart=%h/.local/bin/pkm daemon run
 Restart=on-failure
 RestartSec=5

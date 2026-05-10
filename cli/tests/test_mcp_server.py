@@ -79,6 +79,48 @@ class TestNoteAdd:
         assert "already exists" in result["error"]
 
 
+class TestPatchNote:
+    def test_patch_note_delegates_partial_edit(self, mcp_server, tmp_vault) -> None:
+        """MCP patch_note exposes the same partial edit contract as tiny-agent tools."""
+        result = mcp_server.patch_note(
+            note_id="2026-04-01-mvcc",
+            operation="replace",
+            old="MVCC is a concurrency control technique.",
+            new="MVCC keeps snapshots available during writes.",
+        )
+
+        assert result["status"] == "patched"
+        assert result["changed"] is True
+        text = (tmp_vault.notes_dir / "2026-04-01-mvcc.md").read_text(
+            encoding="utf-8"
+        )
+        assert "MVCC keeps snapshots available during writes." in text
+        assert "database-isolation" in text
+
+    def test_patch_note_wraps_failures(self, mcp_server) -> None:
+        """MCP patch_note returns structured tool errors for failed patches."""
+        result = mcp_server.patch_note(
+            note_id="missing-note",
+            operation="append",
+            new="new content",
+        )
+
+        assert result["status"] == "error"
+        assert "not found" in result["summary"]
+
+
+class TestReadNoteDaily:
+    def test_read_note_returns_daily_note_with_string_id_and_content_hash(
+        self, mcp_server
+    ) -> None:
+        """MCP read_note handles date-like daily note ids."""
+        result = mcp_server.read_note("2026-04-01")
+
+        assert result["note_id"] == "2026-04-01"
+        assert isinstance(result["content_hash"], str)
+        assert len(result["content_hash"]) == 64
+
+
 class TestDailyAdd:
     def test_appends_entry(self, mcp_server, tmp_vault: VaultConfig) -> None:
         """daily_add appends a timestamped entry to today's daily note."""
@@ -973,6 +1015,7 @@ class TestMcpE2EProtocol:
             "list_tags",
             "mark_consolidated",
             "note_add",
+            "patch_note",
             "pkm_ask",
             "read_daily_log",
             "read_note",

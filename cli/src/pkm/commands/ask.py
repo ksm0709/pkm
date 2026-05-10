@@ -25,6 +25,7 @@ _PKM_TOOLS = {
     "search_notes",
     "semantic_search",
     "add_note",
+    "patch_note",
     "update_note",
     "rename_note",
     "get_graph_context",

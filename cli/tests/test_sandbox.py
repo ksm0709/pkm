@@ -114,6 +114,30 @@ def test_audit_hook_blocks_command_and_dangerous_operations(
             hook(event, ())
 
 
+def test_trusted_native_profile_allows_native_loads_but_keeps_boundaries(
+    monkeypatch, tmp_path
+) -> None:
+    """trusted-native permits graph library loads without disabling sandbox basics."""
+    hooks = []
+    vault = tmp_path / "vault"
+    outside = tmp_path / "outside.md"
+    vault.mkdir()
+    monkeypatch.setenv("PKM_WORKER_SANDBOX_PROFILE", "trusted-native")
+    monkeypatch.setattr(sandbox.sys, "addaudithook", lambda hook: hooks.append(hook))
+    monkeypatch.setattr(sandbox, "drop_privileges", lambda: None)
+
+    sandbox.setup_sandbox(vault)
+    hook = hooks[0]
+
+    hook("ctypes.dlopen", ())
+    hook("ctypes.dlsym", ())
+
+    with pytest.raises(sandbox.SandboxViolation, match="Command execution blocked"):
+        hook("subprocess.Popen", ())
+    with pytest.raises(sandbox.SandboxViolation, match="Write access denied"):
+        hook("open", (outside, "w"))
+
+
 def test_audit_hook_enforces_write_and_read_boundaries(monkeypatch, tmp_path) -> None:
     """The captured audit hook allows vault/dev/system reads and blocks outside access."""
     hooks = []

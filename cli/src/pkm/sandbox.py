@@ -23,6 +23,8 @@ def drop_privileges() -> None:
 
 
 _state: dict = {"vault_path": None, "installed": False}
+_NATIVE_LOAD_EVENTS = {"ctypes.dlopen", "ctypes.dlsym", "mmap.__new__"}
+_TRUSTED_NATIVE_PROFILES = {"trusted-native", "trusted_native"}
 
 _allowed_read_prefixes = [
     Path(sys.prefix).resolve(),
@@ -37,6 +39,14 @@ _allowed_files = {
     "/etc/resolv.conf",
     "/etc/hosts",
 }
+
+
+def _sandbox_profile() -> str:
+    return os.environ.get("PKM_WORKER_SANDBOX_PROFILE", "strict").strip().lower()
+
+
+def _native_load_allowed() -> bool:
+    return _sandbox_profile() in _TRUSTED_NATIVE_PROFILES
 
 
 def setup_sandbox(vault_dir: Path | str) -> None:
@@ -55,7 +65,7 @@ def setup_sandbox(vault_dir: Path | str) -> None:
         }:
             raise SandboxViolation(f"Command execution blocked: {event}")
 
-        if event in {"ctypes.dlopen", "ctypes.dlsym", "mmap.__new__"}:
+        if event in _NATIVE_LOAD_EVENTS and not _native_load_allowed():
             raise SandboxViolation(f"Dangerous operation blocked: {event}")
 
         if event == "open":
