@@ -126,6 +126,7 @@ def test_web_command_group_registered(runner: CliRunner) -> None:
     out = result.output.lower()
     assert "start" in out
     assert "stop" in out
+    assert "restart" in out
     assert "status" in out
     assert "tunnel" in out
 

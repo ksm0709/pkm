@@ -72,6 +72,13 @@ def web_stop() -> None:
     sys.exit(code)
 
 
+@web_group.command("restart")
+def web_restart() -> None:
+    """Restart the pkm-web user service."""
+    code = _run_systemctl("restart", UNIT_NAME)
+    sys.exit(code)
+
+
 @web_group.command("status")
 def web_status() -> None:
     """Show pkm-web user service status."""

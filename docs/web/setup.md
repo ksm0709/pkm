@@ -96,7 +96,7 @@ sessions — pkm-webapp is single-tenant by design.
 
 ```bash
 pip install -U pkm           # or your preferred install path
-systemctl --user restart pkm-web
+pkm web restart              # wraps: systemctl --user restart pkm-web
 ```
 
 The bundled SPA assets ship inside the wheel under
