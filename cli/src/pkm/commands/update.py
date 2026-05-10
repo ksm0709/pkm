@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from pathlib import Path
 
 import click
 from rich.console import Console
@@ -48,9 +49,78 @@ def _extras_suffix() -> str:
     return f"[{','.join(extras)}]" if extras else ""
 
 
+def _git_stdout(repo_dir: Path, *args: str) -> str | None:
+    result = subprocess.run(
+        ["git", "-C", str(repo_dir), *args],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return None
+    return result.stdout
+
+
+def _current_branch(repo_dir: Path) -> str | None:
+    output = _git_stdout(repo_dir, "branch", "--show-current")
+    if output is None:
+        return None
+    branch = output.strip()
+    return branch or None
+
+
+def _main_worktree_cli_dir(repo_dir: Path) -> Path | None:
+    output = _git_stdout(repo_dir, "worktree", "list", "--porcelain")
+    if output is None:
+        return None
+
+    current_worktree: Path | None = None
+    for line in [*output.splitlines(), ""]:
+        if not line:
+            current_worktree = None
+            continue
+        if line.startswith("worktree "):
+            current_worktree = Path(line.removeprefix("worktree "))
+            continue
+        if line == "branch refs/heads/main" and current_worktree is not None:
+            cli_dir = current_worktree / "cli"
+            if (cli_dir / "pyproject.toml").exists():
+                return cli_dir
+    return None
+
+
+def _select_update_cli_dir(cli_dir: Path, *, dev_current_branch: bool) -> Path:
+    if dev_current_branch:
+        return cli_dir
+
+    repo_dir = cli_dir.parent
+    branch = _current_branch(repo_dir)
+    if branch in (None, "main"):
+        return cli_dir
+
+    main_cli_dir = _main_worktree_cli_dir(repo_dir)
+    if main_cli_dir is not None:
+        console.print(
+            "[dim]Installed from branch "
+            f"'{branch}'. Using main worktree at {main_cli_dir.parent}.[/dim]"
+        )
+        return main_cli_dir
+
+    raise click.ClickException(
+        "pkm update defaults to the main worktree, but this install is running "
+        f"from branch '{branch}' and no main worktree was found.\n"
+        "Run `pkm update --dev-current-branch` to update this development "
+        "worktree, or create/check out a main worktree and retry."
+    )
+
+
 @click.command("update")
 @click.argument("version", default=None, required=False)
-def update_cmd(version: str | None) -> None:
+@click.option(
+    "--dev-current-branch",
+    is_flag=True,
+    help="Development-only: pull/reinstall the currently installed git branch instead of main.",
+)
+def update_cmd(version: str | None, dev_current_branch: bool) -> None:
     """Update pkm to the latest version, or a specific VERSION tag (e.g. v0.3.0)."""
     from pkm import __version__ as prev_version
 
@@ -58,6 +128,9 @@ def update_cmd(version: str | None) -> None:
     in_git_repo = cli_dir is not None and (cli_dir.parent / ".git").exists()
 
     if in_git_repo:
+        cli_dir = _select_update_cli_dir(
+            cli_dir, dev_current_branch=dev_current_branch
+        )
         repo_dir = cli_dir.parent  # type: ignore[union-attr]
 
         if version:

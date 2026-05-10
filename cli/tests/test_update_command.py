@@ -17,6 +17,7 @@ def _make_repo(tmp_path):
     repo = tmp_path / "repo"
     cli_dir = repo / "cli"
     cli_dir.mkdir(parents=True)
+    (cli_dir / "pyproject.toml").write_text("[project]\nname = 'pkm'\n")
     (repo / ".git").mkdir()
     return repo, cli_dir
 
@@ -34,6 +35,8 @@ class CommandDispatcher:
         if handler is None:
             if cmd[:2] == [update_mod.sys.executable, "-c"]:
                 return SimpleNamespace(returncode=1, stdout="", stderr="")
+            if cmd[0] == "git" and cmd[3:] == ["branch", "--show-current"]:
+                return SimpleNamespace(returncode=0, stdout="main\n", stderr="")
             if cmd == ["pkm", "--version"]:
                 return SimpleNamespace(returncode=0, stdout="pkm v9.9.9\n", stderr="")
             raise AssertionError(f"Unexpected subprocess command: {cmd}")
@@ -119,6 +122,151 @@ def test_update_local_git_latest_reinstalls_editable_and_shows_changelog(
     assert "Now running: pkm v9.9.9" in result.output
     assert hooks == ["skills", "aliases"]
     assert ["git", "-C", str(repo), "pull", "--ff-only"] in dispatcher.commands()
+
+
+def test_update_local_git_latest_defaults_to_main_worktree(monkeypatch, tmp_path):
+    """A feature-worktree install updates from the main worktree by default."""
+    feature_repo, feature_cli_dir = _make_repo(tmp_path / "feature")
+    main_repo, main_cli_dir = _make_repo(tmp_path / "main")
+    (main_repo / "CHANGELOG.md").write_text(
+        "\n## v2.74.0\n\n- New feature\n\n## v2.73.1\n\n- Current\n",
+        encoding="utf-8",
+    )
+    hooks = _patch_post_install(monkeypatch)
+    monkeypatch.setattr(update_mod, "find_local_cli_dir", lambda: feature_cli_dir)
+    monkeypatch.setattr("pkm.__version__", "2.73.1")
+
+    dispatcher = CommandDispatcher(
+        {
+            (
+                "git",
+                "-C",
+                str(feature_repo),
+                "branch",
+                "--show-current",
+            ): SimpleNamespace(returncode=0, stdout="feat/pkm-webapp\n", stderr=""),
+            (
+                "git",
+                "-C",
+                str(feature_repo),
+                "worktree",
+                "list",
+                "--porcelain",
+            ): SimpleNamespace(
+                returncode=0,
+                stdout=(
+                    f"worktree {main_repo}\n"
+                    "HEAD abc123\n"
+                    "branch refs/heads/main\n\n"
+                    f"worktree {feature_repo}\n"
+                    "HEAD def456\n"
+                    "branch refs/heads/feat/pkm-webapp\n"
+                ),
+                stderr="",
+            ),
+            ("git", "-C", str(main_repo), "pull", "--ff-only"): SimpleNamespace(
+                returncode=0, stdout="", stderr=""
+            ),
+            (
+                "uv",
+                "tool",
+                "install",
+                "--editable",
+                str(main_cli_dir),
+                "--reinstall-package",
+                "pkm",
+            ): SimpleNamespace(returncode=0, stdout="", stderr=""),
+        }
+    )
+    monkeypatch.setattr(update_mod.subprocess, "run", dispatcher)
+
+    result = _runner().invoke(update_cmd, [])
+
+    assert result.exit_code == 0
+    assert "Using main worktree" in result.output
+    assert ["git", "-C", str(main_repo), "pull", "--ff-only"] in dispatcher.commands()
+    assert ["git", "-C", str(feature_repo), "pull", "--ff-only"] not in dispatcher.commands()
+    assert hooks == ["skills", "aliases"]
+
+
+def test_update_local_git_dev_current_branch_keeps_feature_worktree(
+    monkeypatch, tmp_path
+):
+    """Development updates can still pull the currently installed branch explicitly."""
+    repo, cli_dir = _make_repo(tmp_path)
+    hooks = _patch_post_install(monkeypatch)
+    monkeypatch.setattr(update_mod, "find_local_cli_dir", lambda: cli_dir)
+
+    dispatcher = CommandDispatcher(
+        {
+            ("git", "-C", str(repo), "pull", "--ff-only"): SimpleNamespace(
+                returncode=0, stdout="", stderr=""
+            ),
+            (
+                "uv",
+                "tool",
+                "install",
+                "--editable",
+                str(cli_dir),
+                "--reinstall-package",
+                "pkm",
+            ): SimpleNamespace(returncode=0, stdout="", stderr=""),
+        }
+    )
+    monkeypatch.setattr(update_mod.subprocess, "run", dispatcher)
+
+    result = _runner().invoke(update_cmd, ["--dev-current-branch"])
+
+    assert result.exit_code == 0
+    assert ["git", "-C", str(repo), "pull", "--ff-only"] in dispatcher.commands()
+    assert not any(cmd[:4] == ["git", "-C", str(repo), "branch"] for cmd in dispatcher.commands())
+    assert hooks == ["skills", "aliases"]
+
+
+def test_update_feature_worktree_without_main_worktree_fails_with_dev_hint(
+    monkeypatch, tmp_path
+):
+    """Default update refuses to mutate a feature worktree when main is unavailable."""
+    repo, cli_dir = _make_repo(tmp_path)
+    hooks = _patch_post_install(monkeypatch)
+    monkeypatch.setattr(update_mod, "find_local_cli_dir", lambda: cli_dir)
+
+    dispatcher = CommandDispatcher(
+        {
+            (
+                "git",
+                "-C",
+                str(repo),
+                "branch",
+                "--show-current",
+            ): SimpleNamespace(returncode=0, stdout="feat/pkm-webapp\n", stderr=""),
+            (
+                "git",
+                "-C",
+                str(repo),
+                "worktree",
+                "list",
+                "--porcelain",
+            ): SimpleNamespace(
+                returncode=0,
+                stdout=(
+                    f"worktree {repo}\n"
+                    "HEAD def456\n"
+                    "branch refs/heads/feat/pkm-webapp\n"
+                ),
+                stderr="",
+            ),
+        }
+    )
+    monkeypatch.setattr(update_mod.subprocess, "run", dispatcher)
+
+    result = _runner().invoke(update_cmd, [])
+
+    assert result.exit_code == 1
+    assert "defaults to the main worktree" in result.stderr
+    assert "--dev-current-branch" in result.stderr
+    assert ["git", "-C", str(repo), "pull", "--ff-only"] not in dispatcher.commands()
+    assert hooks == []
 
 
 def test_update_local_git_specific_version_normalizes_checkout_tag(
