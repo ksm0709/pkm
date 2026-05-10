@@ -364,6 +364,7 @@ async def test_process_background_tasks_handles_success_budget_and_task_errors(
     with pytest.raises(asyncio.CancelledError):
         await daemon.process_background_tasks()
     assert worker.sent == [{"id": "ok"}]
+    assert daemon.DaemonState.current_task is None
 
     sleep_calls = 0
     sleep_stop_at = 1
@@ -385,6 +386,7 @@ async def test_process_background_tasks_handles_success_budget_and_task_errors(
     with pytest.raises(asyncio.CancelledError):
         await daemon.process_background_tasks()
     assert failing_queue.popped == [{"id": "bad"}]
+    assert daemon.DaemonState.current_task is None
 
 
 def test_graph_cache_reload_and_preload_helpers(

@@ -73,6 +73,7 @@ class DaemonState:
     graph_ready = False
     shutdown_gate = None  # ShutdownGate | None
     web_runner = None  # aiohttp.web.AppRunner | None
+    current_task: Optional[Dict[str, Any]] = None
 
 
 @lru_cache(maxsize=4)
@@ -131,7 +132,6 @@ class LLMWorkerProxy:
         self.process: Optional[asyncio.subprocess.Process] = None
         self.pending_tasks: Dict[str, asyncio.Future[Any]] = {}
         self.stream_callbacks: Dict[str, Any] = {}
-        self.budget = TokenBudget(max_tokens=1_000_000, window_seconds=60 * 60)
 
     async def start(self, vault_dir: str):
         import sys
@@ -502,7 +502,11 @@ async def process_background_tasks():
                     task = task_queue.pop()
                     if task:
                         logger.info(f"Processing background task: {task.get('id')}")
-                        await worker_proxy.send_task(task)
+                        DaemonState.current_task = task
+                        try:
+                            await worker_proxy.send_task(task)
+                        finally:
+                            DaemonState.current_task = None
                 except Exception:
                     logger.exception(
                         f"Error processing background task: {task.get('id') if task else 'unknown'}"

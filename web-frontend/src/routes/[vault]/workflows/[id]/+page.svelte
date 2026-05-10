@@ -21,11 +21,16 @@
     task_id: string;
     hostname: string;
     time: string;
-    status: "success" | "failure";
+    status: "success" | "failure" | "queued" | "running";
     source: string;
     phase: string;
     error: string | null;
     result_summary: string;
+  }
+
+  interface WorkflowRunStatus {
+    status: "idle" | "queued" | "running";
+    task_id: string | null;
   }
 
   let vaultName = $derived($page.params.vault);
@@ -41,6 +46,14 @@
   let historyLoading = $state(false);
   let historyError = $state("");
   let historyEntries = $state<WorkflowHistoryRecord[]>([]);
+  let runStatus = $state<WorkflowRunStatus>({ status: "idle", task_id: null });
+  let runBusy = $state(false);
+  let runError = $state("");
+  let runMessage = $state("");
+
+  let runUnavailable = $derived(
+    runBusy || runStatus.status === "queued" || runStatus.status === "running",
+  );
 
   async function loadWorkflow(vault: string, id: string) {
     workflow = null;
@@ -50,10 +63,22 @@
       workflow = await apiGet<WorkflowDetail>(
         `/api/v1/vault/${vault}/workflows/${id}`,
       );
+      await loadRunStatus(vault, id);
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load workflow.";
     } finally {
       loading = false;
+    }
+  }
+
+  async function loadRunStatus(vault = vaultName, id = workflow?.id) {
+    if (!vault || !id) return;
+    try {
+      runStatus = await apiGet<WorkflowRunStatus>(
+        `/api/v1/vault/${vault}/workflows/${id}/run-status`,
+      );
+    } catch {
+      runStatus = { status: "idle", task_id: null };
     }
   }
 
@@ -107,9 +132,40 @@
     }
   }
 
+  async function runWorkflow() {
+    if (!workflow || runUnavailable) return;
+    runBusy = true;
+    runError = "";
+    runMessage = "";
+    try {
+      const response = await apiClient(
+        `/api/v1/vault/${vaultName}/workflows/${workflow.id}/run`,
+        { method: "POST" },
+      );
+      if (!response.ok)
+        throw new Error(`POST workflow run -> ${response.status}`);
+      const result = (await response.json()) as WorkflowRunStatus;
+      runStatus = result;
+      runMessage = `Queued ${result.task_id}`;
+      if (historyOpen) await openHistory();
+    } catch (e) {
+      runError = e instanceof Error ? e.message : "Failed to run workflow.";
+    } finally {
+      runBusy = false;
+    }
+  }
+
   $effect(() => {
     if (!vaultName || !workflowId) return;
     void loadWorkflow(vaultName, workflowId);
+  });
+
+  $effect(() => {
+    if (!workflow || runStatus.status === "idle") return;
+    const timer = window.setInterval(() => {
+      void loadRunStatus();
+    }, 3000);
+    return () => window.clearInterval(timer);
   });
 </script>
 
@@ -129,6 +185,19 @@
         <strong>{workflow.id}</strong>
       </div>
       <div class="workflow-actions">
+        <button
+          type="button"
+          class="settings-btn run-btn"
+          aria-label="Run workflow"
+          disabled={runUnavailable}
+          onclick={runWorkflow}
+        >
+          {runBusy
+            ? "queueing"
+            : runStatus.status === "idle"
+              ? "run"
+              : runStatus.status}
+        </button>
         <button
           type="button"
           class="settings-btn"
@@ -151,11 +220,19 @@
     <section class="workflow-meta" aria-label="Workflow metadata">
       <span>{workflow.trigger_time}</span>
       <span>{workflow.enabled ? "on" : "off"}</span>
+      <span class:active-run={runStatus.status !== "idle"}>
+        {runStatus.status}{runStatus.task_id ? `:${runStatus.task_id}` : ""}
+      </span>
       <span>{workflow.marker_file}</span>
     </section>
 
     {#if error}
       <p class="status-msg error">{error}</p>
+    {/if}
+    {#if runError}
+      <p class="status-msg error">{runError}</p>
+    {:else if runMessage}
+      <p class="status-msg">{runMessage}</p>
     {/if}
 
     <article class="workflow-body" aria-label="Workflow body">
@@ -234,8 +311,13 @@
         <p class="status-msg faint">No workflow history found.</p>
       {:else}
         <ol class="history-list">
-          {#each historyEntries as entry (entry.task_id)}
-            <li class:failed={entry.status !== "success"} class="history-entry">
+          {#each historyEntries as entry (`${entry.task_id}:${entry.status}:${entry.phase}:${entry.time}`)}
+            <li
+              class:failed={entry.status === "failure"}
+              class:pending={entry.status === "queued" ||
+                entry.status === "running"}
+              class="history-entry"
+            >
               <div class="history-entry-main">
                 <span>{entry.time}</span>
                 <strong>{entry.status}</strong>
@@ -314,6 +396,16 @@
     cursor: pointer;
   }
 
+  .settings-btn:disabled {
+    color: var(--text-faint);
+    cursor: default;
+    text-decoration: none;
+  }
+
+  .run-btn:not(:disabled) {
+    font-weight: 600;
+  }
+
   .settings-btn:hover,
   .modal-actions button:hover {
     text-decoration: underline;
@@ -327,6 +419,10 @@
     margin-bottom: var(--space-5, 24px);
     color: var(--text-muted);
     font-size: var(--type-chrome-size, 13px);
+  }
+
+  .workflow-meta .active-run {
+    color: var(--accent);
   }
 
   .workflow-body {
@@ -432,6 +528,10 @@
 
   .history-entry.failed {
     border-left-color: var(--signal-danger, #c0392b);
+  }
+
+  .history-entry.pending {
+    border-left-color: var(--text-faint);
   }
 
   .history-entry-main {
