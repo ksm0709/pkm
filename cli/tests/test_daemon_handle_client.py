@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import sys
 from types import SimpleNamespace
 
 import pytest
@@ -304,10 +303,10 @@ async def test_handle_client_ask_builds_context_streams_and_reports_worker_error
 
 
 @pytest.mark.anyio
-async def test_process_background_tasks_handles_success_budget_and_task_errors(
+async def test_process_background_tasks_handles_success_and_task_errors(
     monkeypatch,
 ) -> None:
-    """Background task loop pops queued work, pauses on budgets, and survives errors."""
+    """Background task loop pops queued work, tracks current task, and survives errors."""
     import pkm.daemon as daemon
 
     class Queue:
@@ -325,18 +324,8 @@ async def test_process_background_tasks_handles_success_budget_and_task_errors(
             self.popped.append(task)
             return task
 
-    class Budget:
-        def __init__(self, failures=0):
-            self.failures = failures
-
-        def check_and_consume(self, tokens):
-            if self.failures:
-                self.failures -= 1
-                raise daemon.BudgetExhausted("budget")
-
     class Worker:
         def __init__(self, failures=0):
-            self.budget = Budget()
             self.failures = failures
             self.sent: list[dict] = []
 
@@ -365,17 +354,6 @@ async def test_process_background_tasks_handles_success_budget_and_task_errors(
         await daemon.process_background_tasks()
     assert worker.sent == [{"id": "ok"}]
     assert daemon.DaemonState.current_task is None
-
-    sleep_calls = 0
-    sleep_stop_at = 1
-    budget_queue = Queue([{"id": "budget"}])
-    budget_worker = Worker()
-    budget_worker.budget = Budget(failures=1)
-    monkeypatch.setattr(daemon, "task_queue", budget_queue)
-    monkeypatch.setattr(daemon, "worker_proxy", budget_worker)
-    with pytest.raises(asyncio.CancelledError):
-        await daemon.process_background_tasks()
-    assert budget_queue.popped == []
 
     sleep_calls = 0
     sleep_stop_at = 2
@@ -460,34 +438,14 @@ class FakeStdin:
 
 
 @pytest.mark.anyio
-async def test_worker_stdout_handles_llm_budget_stream_and_results(
+async def test_worker_stdout_handles_stream_and_results(
     monkeypatch,
 ) -> None:
-    """Worker stdout IPC routes LLM, budget, stream, and completion messages."""
+    """Worker stdout IPC routes stream and completion messages."""
     import pkm.daemon as daemon
-
-    class FakeCompletion:
-        choices = [SimpleNamespace(message=SimpleNamespace(content="answer"))]
-        usage = SimpleNamespace(total_tokens=2)
-
-    monkeypatch.setitem(
-        sys.modules,
-        "litellm",
-        SimpleNamespace(completion=lambda model, messages: FakeCompletion()),
-    )
 
     stdout = FakeStdout(
         [
-            json.dumps(
-                {
-                    "type": "llm_request",
-                    "id": "llm1",
-                    "model": "model",
-                    "messages": [{"role": "user", "content": "hi"}],
-                }
-            ).encode()
-            + b"\n",
-            json.dumps({"type": "token_usage", "tokens": 1_000_000}).encode() + b"\n",
             json.dumps({"type": "stream", "id": "task1", "delta": "chunk"}).encode()
             + b"\n",
             json.dumps({"type": "result", "id": "task1", "value": 42}).encode() + b"\n",
@@ -509,61 +467,32 @@ async def test_worker_stdout_handles_llm_budget_stream_and_results(
 
     await proxy._handle_worker_stdout()
 
-    writes = stdin.json_lines
-    assert writes[0] == {"type": "llm_response", "id": "llm1", "content": "answer"}
-    assert writes[1] == {"type": "abort"}
+    assert stdin.json_lines == []
     assert stream_messages == [{"type": "stream", "id": "task1", "delta": "chunk"}]
     assert proxy.pending_tasks == {}
     assert proxy.stream_callbacks == {}
 
 
 @pytest.mark.anyio
-async def test_worker_stdout_reports_llm_errors_and_budget_exhaustion(
-    monkeypatch,
-) -> None:
-    """LLM failures and response-token overages are sent back as llm_error IPC."""
+async def test_worker_stdout_ignores_legacy_llm_messages() -> None:
+    """Legacy LLM proxy messages are ignored after budget/proxy removal."""
     import pkm.daemon as daemon
-
-    class ExpensiveCompletion:
-        choices = [SimpleNamespace(message=SimpleNamespace(content="answer"))]
-        usage = SimpleNamespace(total_tokens=10)
 
     stdin = FakeStdin()
     proxy = daemon.LLMWorkerProxy()
-    proxy.budget = daemon.TokenBudget(max_tokens=1, window_seconds=60)
     proxy.process = SimpleNamespace(
         stdout=FakeStdout(
             [
-                json.dumps({"type": "llm_request", "id": "budget"}).encode() + b"\n",
-                json.dumps({"type": "llm_request", "id": "boom"}).encode() + b"\n",
+                json.dumps({"type": "llm_request", "id": "legacy"}).encode() + b"\n",
+                json.dumps({"type": "token_usage", "tokens": 1}).encode() + b"\n",
             ]
         ),
         stdin=stdin,
     )
-    calls = 0
-
-    def fake_completion(model, messages):
-        nonlocal calls
-        calls += 1
-        if calls == 1:
-            return ExpensiveCompletion()
-        raise RuntimeError("provider down")
-
-    monkeypatch.setitem(
-        sys.modules, "litellm", SimpleNamespace(completion=fake_completion)
-    )
 
     await proxy._handle_worker_stdout()
 
-    writes = stdin.json_lines
-    assert writes[0]["type"] == "llm_error"
-    assert writes[0]["id"] == "budget"
-    assert "Token budget exhausted" in writes[0]["message"]
-    assert writes[1] == {
-        "type": "llm_error",
-        "id": "boom",
-        "message": "provider down",
-    }
+    assert stdin.json_lines == []
 
 
 @pytest.mark.anyio

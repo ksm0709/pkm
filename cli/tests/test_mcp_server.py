@@ -430,6 +430,10 @@ class TestPkmAsk:
             "agent_credential_env",
             lambda: {"OPENAI_API_KEY": "shared-openai"},
         )
+        monkeypatch.setattr(
+            "pkm.models.resolve_model_candidates",
+            lambda model: [model, "fallback-model"],
+        )
 
         result = await mcp_server.pkm_ask("What changed?")
 
@@ -440,6 +444,7 @@ class TestPkmAsk:
             "query": "What changed?",
             "vault_name": "test-vault",
             "model": "configured-model",
+            "model_candidates": ["configured-model", "fallback-model"],
             "env_keys": {"OPENAI_API_KEY": "shared-openai"},
             "graph_depth": 2,
         }

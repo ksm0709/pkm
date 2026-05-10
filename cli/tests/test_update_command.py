@@ -91,6 +91,7 @@ def test_update_local_git_latest_reinstalls_editable_and_shows_changelog(
     )
     hooks = _patch_post_install(monkeypatch)
     monkeypatch.setattr(update_mod, "find_local_cli_dir", lambda: cli_dir)
+    monkeypatch.setattr("pkm.__version__", "2.73.1")
 
     dispatcher = CommandDispatcher(
         {

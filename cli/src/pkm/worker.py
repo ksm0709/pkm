@@ -351,6 +351,7 @@ async def _run_agent_task_impl(
             instruction_dirs.append(cwd)
 
         model_errors: list[str] = []
+        last_model_error: str | None = None
         for resolved_model in models_to_try:
             try:
                 litellm_kwargs = reasoning_kwargs(resolved_model, reasoning_effort)
@@ -452,12 +453,15 @@ async def _run_agent_task_impl(
             except Exception as e:
                 if str(e) == "Task aborted by daemon":
                     raise
+                last_model_error = str(e)
                 model_errors.append(f"{resolved_model}: {e}")
                 logger.warning(
                     "Model %s failed; trying next configured candidate",
                     resolved_model,
                 )
 
+        if len(models_to_try) == 1 and last_model_error:
+            raise RuntimeError(last_model_error)
         raise RuntimeError(
             "All configured LLM model candidates failed: " + "; ".join(model_errors)
         )
