@@ -291,6 +291,7 @@ async def test_workflow_history_endpoint_unknown_workflow_returns_404(app, tmp_v
 async def test_run_workflow_queues_task_and_records_history(app, tmp_vault, monkeypatch):
     """Manual web runs use the daemon queue and leave an immediate audit record."""
     from pkm import daemon
+    from pkm.web.routes import workflows as workflow_routes
     from pkm.workflows import load_workflows
 
     class Queue:
@@ -303,6 +304,11 @@ async def test_run_workflow_queues_task_and_records_history(app, tmp_vault, monk
     queue = Queue()
     workflow_id = load_workflows(vault_path=tmp_vault.path)[0].id
     monkeypatch.setattr(daemon, "task_queue", queue)
+    monkeypatch.setattr(
+        workflow_routes,
+        "agent_credential_env",
+        lambda: {"OPENAI_API_KEY": "saved-openai"},
+    )
 
     async with TestClient(TestServer(app)) as client:
         resp = await client.post(
@@ -321,6 +327,7 @@ async def test_run_workflow_queues_task_and_records_history(app, tmp_vault, monk
             "task_type": "workflow",
             "workflow_id": workflow_id,
             "workflow_source": "manual",
+            "env_keys": {"OPENAI_API_KEY": "saved-openai"},
             "env": {"PKM_VAULT_DIR": str(tmp_vault.path)},
         }
     ]

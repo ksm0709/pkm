@@ -95,7 +95,7 @@ async def test_workflow_checker_skips_when_latest_vault_config_is_disabled(
 
 @pytest.mark.anyio
 async def test_workflow_checker_marks_scheduled_queue_source(monkeypatch, tmp_path):
-    """Scheduled workflow queue entries carry source metadata for history records."""
+    """Scheduled workflow entries carry source metadata and shared credentials."""
     import pkm.daemon as daemon
 
     vault_path = tmp_path / "vault"
@@ -106,6 +106,11 @@ async def test_workflow_checker_marks_scheduled_queue_source(monkeypatch, tmp_pa
     monkeypatch.setattr(daemon, "task_queue", queue)
     monkeypatch.setattr(daemon, "discover_vaults", lambda: {"vault": vault})
     monkeypatch.setattr(daemon, "jitter_minutes", lambda _config: 0)
+    monkeypatch.setattr(
+        daemon,
+        "agent_credential_env",
+        lambda: {"OPENAI_API_KEY": "saved-openai"},
+    )
 
     class FixedDatetime(datetime.datetime):
         @classmethod
@@ -140,3 +145,4 @@ async def test_workflow_checker_marks_scheduled_queue_source(monkeypatch, tmp_pa
     assert len(queue.items) == 1
     assert queue.items[0]["workflow_source"] == "scheduled"
     assert queue.items[0]["workflow_id"] == "wf_scheduled"
+    assert queue.items[0]["env_keys"] == {"OPENAI_API_KEY": "saved-openai"}

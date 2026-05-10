@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Awaitable, Callable, Dict, Any, Optional, List
 
+from pkm.credential_store import agent_credential_env
+
 # Configure logging to stderr so it doesn't interfere with stdout IPC
 logging.basicConfig(
     stream=sys.stderr,
@@ -665,6 +667,9 @@ async def _handle_task_with_current_env(msg: Dict[str, Any]) -> None:
     setup_sandbox(vault_dir)
 
     if task_type == "ask":
+        env_keys = msg.get("env_keys")
+        if not isinstance(env_keys, dict) or not env_keys:
+            env_keys = agent_credential_env()
         await handle_ask(
             task_id,
             msg.get("query", ""),
@@ -672,18 +677,21 @@ async def _handle_task_with_current_env(msg: Dict[str, Any]) -> None:
             vault_dir,
             msg.get("model"),
             msg.get("model_candidates"),
-            msg.get("env_keys"),
+            env_keys,
             msg.get("reasoning_effort"),
             msg.get("cwd"),
             msg.get("ask_session_id"),
         )
     elif task_type == "workflow":
+        env_keys = msg.get("env_keys")
+        if not isinstance(env_keys, dict) or not env_keys:
+            env_keys = agent_credential_env()
         await _dispatch_workflow(
             task_id,
             msg.get("workflow_id", ""),
             vault_dir,
             msg.get("model"),
-            msg.get("env_keys"),
+            env_keys,
             msg.get("reasoning_effort"),
             msg.get("cwd"),
             msg.get("workflow_source", "unknown"),

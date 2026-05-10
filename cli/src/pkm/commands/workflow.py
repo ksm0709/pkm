@@ -10,6 +10,7 @@ import click
 from rich.console import Console
 from rich.table import Table
 
+from pkm.credential_store import agent_credential_env
 from pkm.workflows import load_workflows
 from pkm.workflows.history import read_workflow_history
 
@@ -131,6 +132,7 @@ def workflow_run(ctx: click.Context, workflow_id: str):
         "task_type": "workflow",
         "workflow_id": workflow_id,
         "workflow_source": "manual",
+        "env_keys": agent_credential_env(),
         "env": {"PKM_VAULT_DIR": vault_dir},
     }
     queue.append(task)

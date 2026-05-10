@@ -7,10 +7,14 @@ import os
 import shutil
 import socket
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import click
 from rich.console import Console
+
+from pkm.credential_store import agent_credential_env
 
 console = Console()
 
@@ -53,6 +57,22 @@ _TASK_COLORS = {
     "done": "green",
     "blocked": "red",
 }
+
+
+@contextmanager
+def _temporary_env(env_keys: dict[str, str]) -> Iterator[None]:
+    previous: dict[str, str | None] = {}
+    for key, value in env_keys.items():
+        previous[key] = os.environ.get(key)
+        os.environ[key] = value
+    try:
+        yield
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 @click.command("ask")
@@ -149,11 +169,14 @@ def ask_cmd(
     vault = ctx.obj["vault"]
     query_str = " ".join(query)
 
+    env_keys = agent_credential_env()
+
     if final_model != "auto":
         try:
             import litellm
 
-            validation = litellm.validate_environment(final_model)
+            with _temporary_env(env_keys):
+                validation = litellm.validate_environment(final_model)
             if not validation.get("keys_in_environment", True):
                 missing = validation.get("missing_keys", [])
                 if missing:
@@ -166,10 +189,6 @@ def ask_cmd(
                     sys.exit(1)
         except Exception:
             pass
-
-    from pkm.models import collect_api_keys
-
-    env_keys = collect_api_keys()
 
     sock_path = Path.home() / ".config" / "pkm" / "daemon.sock"
 
