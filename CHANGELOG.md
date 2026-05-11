@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## v2.77.2 (2026-05-11)
+
+### Bug Fixes
+
+- Sync stale global zettelkasten workflow defaults during update
+
+
 ## v2.77.1 (2026-05-11)
 
 ### Bug Fixes

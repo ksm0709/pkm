@@ -13,6 +13,7 @@ from pkm.workflows import (
     load_workflows,
     jitter_minutes,
     resolve_hook,
+    sync_stale_global_workflow_defaults,
 )
 from pkm.workflows.history import append_workflow_history, read_workflow_history
 
@@ -257,6 +258,79 @@ def test_zettelkasten_default_uses_relation_aware_neighbor_workflow(
     assert "daily/ are promotion candidates only" in prompt
     assert "notes/ are canonical graph relations" in prompt
     assert "create_daily_subnote" in prompt
+
+
+def test_sync_stale_global_workflow_defaults_updates_old_zettelkasten_prompt(
+    tmp_path, monkeypatch
+):
+    """pkm update can repair an old copied default prompt without losing schedule."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    cfg_dir = tmp_path / ".config" / "pkm"
+    cfg_dir.mkdir(parents=True)
+    workflow_path = cfg_dir / "workflow.json"
+    workflow_path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "zettelkasten_maintenance",
+                    "schedule_hour": 4,
+                    "jitter_type": "md5_hostname_suffix:local",
+                    "marker_file": "zettelkasten-last-run",
+                    "system_prompt_template": (
+                        "0. CLUSTER DRIFT REVIEW\n"
+                        "Call find_surprising_connections(top_n=15), "
+                        "create_hub_note(), and get_graph_context."
+                    ),
+                    "pre_hook": None,
+                    "post_hook": None,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    synced = sync_stale_global_workflow_defaults()
+
+    assert synced == workflow_path
+    updated = json.loads(workflow_path.read_text(encoding="utf-8"))[0]
+    assert updated["schedule_hour"] == 4
+    assert updated["jitter_type"] == "md5_hostname_suffix:local"
+    assert updated["post_hook"] == "pkm.workflows.hooks:repair_malformed_notes"
+    assert "get_graph_context" not in updated["system_prompt_template"]
+    assert "get_note_neighbors" in updated["system_prompt_template"]
+    assert "&relation [[target]] - reason" in updated["system_prompt_template"]
+    assert list(cfg_dir.glob("workflow.json.bak-*"))
+
+
+def test_sync_stale_global_workflow_defaults_preserves_custom_prompts(
+    tmp_path, monkeypatch
+):
+    """Only recognizable old bundled defaults are automatically rewritten."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    cfg_dir = tmp_path / ".config" / "pkm"
+    cfg_dir.mkdir(parents=True)
+    workflow_path = cfg_dir / "workflow.json"
+    custom_prompt = "Custom maintenance prompt with get_note_neighbors and local rules."
+    workflow_path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "zettelkasten_maintenance",
+                    "schedule_hour": 6,
+                    "marker_file": "zettelkasten-last-run",
+                    "system_prompt_template": custom_prompt,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    synced = sync_stale_global_workflow_defaults()
+
+    assert synced is None
+    updated = json.loads(workflow_path.read_text(encoding="utf-8"))[0]
+    assert updated["system_prompt_template"] == custom_prompt
+    assert not list(cfg_dir.glob("workflow.json.bak-*"))
 
 
 def test_workflow_history_jsonl_reads_newest_filters_limits_and_skips_corrupt_lines(

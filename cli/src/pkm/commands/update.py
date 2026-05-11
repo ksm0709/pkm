@@ -16,6 +16,7 @@ from pkm.commands.setup import (
     sync_existing_web_unit,
 )
 from pkm.version_check import get_recent_versions
+from pkm.workflows import sync_stale_global_workflow_defaults
 
 console = Console()
 
@@ -233,6 +234,9 @@ def update_cmd(version: str | None, dev_current_branch: bool) -> None:
     unit_path = sync_existing_web_unit()
     if unit_path is not None:
         console.print(f"[green]✓ PKM web unit synced:[/green] {unit_path}")
+    workflow_path = sync_stale_global_workflow_defaults()
+    if workflow_path is not None:
+        console.print(f"[green]✓ PKM workflow defaults synced:[/green] {workflow_path}")
 
     try:
         if in_git_repo:

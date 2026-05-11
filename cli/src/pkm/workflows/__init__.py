@@ -8,6 +8,7 @@ import json
 import logging
 import socket
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -36,6 +37,7 @@ def _vault_workflow_path(vault_path: str | Path) -> Path:
 
 _BUNDLED_DEFAULTS = Path(__file__).parent / "default_workflows.json"
 _REQUIRED_FIELDS = {"id", "schedule_hour", "marker_file"}
+_MANAGED_DEFAULT_SYNC_FIELDS = ("system_prompt_template", "pre_hook", "post_hook")
 
 
 def _merge_from_file(path: Path, entries: dict[str, dict[str, Any]]) -> None:
@@ -47,6 +49,92 @@ def _merge_from_file(path: Path, entries: dict[str, dict[str, Any]]) -> None:
             entries[item_id] = {**entries.get(item_id, {}), **item}
     except Exception:
         pass
+
+
+def _load_workflow_items(path: Path) -> list[dict[str, Any]] | None:
+    try:
+        items = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(items, list):
+        return None
+    return [item for item in items if isinstance(item, dict)]
+
+
+def _bundled_workflows_by_id() -> dict[str, dict[str, Any]]:
+    entries: dict[str, dict[str, Any]] = {}
+    _merge_from_file(_BUNDLED_DEFAULTS, entries)
+    return entries
+
+
+def _is_stale_zettelkasten_default(item: dict[str, Any]) -> bool:
+    if item.get("id") != "zettelkasten_maintenance":
+        return False
+
+    prompt = item.get("system_prompt_template")
+    if not isinstance(prompt, str):
+        return False
+
+    old_default_markers = (
+        "CLUSTER DRIFT REVIEW" in prompt
+        and "find_surprising_connections" in prompt
+        and "create_hub_note" in prompt
+    )
+    stale_relation_markers = (
+        "get_graph_context" in prompt
+        or "get_note_neighbors" not in prompt
+        or "&relation [[target]] - reason" not in prompt
+    )
+    return old_default_markers and stale_relation_markers
+
+
+def sync_stale_global_workflow_defaults(path: Path | None = None) -> Path | None:
+    """Refresh stale managed global workflow overrides after package updates.
+
+    Global workflow overrides intentionally win over bundled defaults. Older pkm
+    installs copied the zettelkasten daemon prompt into ~/.config/pkm/workflow.json,
+    so package updates alone cannot repair that prompt. This migration only touches
+    recognizable old bundled defaults and preserves local scheduling choices.
+    """
+    workflow_path = path or _global_workflow_path()
+    if not workflow_path.exists():
+        return None
+
+    items = _load_workflow_items(workflow_path)
+    if items is None:
+        return None
+
+    defaults = _bundled_workflows_by_id()
+    default = defaults.get("zettelkasten_maintenance")
+    if default is None:
+        return None
+
+    changed = False
+    for item in items:
+        if not _is_stale_zettelkasten_default(item):
+            continue
+        for field in _MANAGED_DEFAULT_SYNC_FIELDS:
+            if field in default:
+                item[field] = default[field]
+            else:
+                item.pop(field, None)
+        for field in _REQUIRED_FIELDS:
+            item.setdefault(field, default[field])
+        item.setdefault("jitter_type", default.get("jitter_type", "md5_hostname"))
+        changed = True
+
+    if not changed:
+        return None
+
+    backup = workflow_path.with_name(
+        f"{workflow_path.name}.bak-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    )
+    backup.write_text(workflow_path.read_text(encoding="utf-8"), encoding="utf-8")
+    workflow_path.write_text(
+        json.dumps(items, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return workflow_path
 
 
 def load_workflows(vault_path: str | Path | None = None) -> list[WorkflowConfig]:
