@@ -13,7 +13,13 @@ from pkm.commands.config import (
     config_value_for_key,
 )
 from pkm.config import load_config, save_config
-from pkm.credential_store import ASK_CREDENTIAL_PROVIDERS, SecretStore, provider_payload
+from pkm.credential_store import (
+    ASK_CREDENTIAL_PROVIDERS,
+    SecretStore,
+    agent_credential_env,
+    provider_payload,
+)
+from pkm.models import get_available_models
 from pkm.web.routes.notes import _resolve_vault
 from pkm.web.security import (
     request_credential_access_allowed,
@@ -23,10 +29,16 @@ from pkm.web.security import (
 _GRAPH_SEMANTIC_PREFIX = "graph-semantic-"
 _CONFIG_INPUT_TYPES = {
     "graph-depth": "number",
+    "model": "select",
     "web-port": "number",
 }
 _CONFIG_OPTIONS = {
     "reasoning-effort": ["", "low", "medium", "high"],
+}
+_MODEL_PROVIDER_ENV_KEYS = {
+    "Anthropic": "ANTHROPIC_API_KEY",
+    "Google": "GEMINI_API_KEY",
+    "OpenAI": "OPENAI_API_KEY",
 }
 
 
@@ -73,7 +85,27 @@ def _config_section(data: dict[str, Any], key: str) -> dict[str, Any]:
     return section if isinstance(section, dict) else {}
 
 
-def _setting_payload(key: str, data: dict[str, Any]) -> dict[str, Any]:
+def _ask_model_options(env: dict[str, str]) -> list[str]:
+    options = [
+        model.id
+        for model in get_available_models()
+        if env.get(_MODEL_PROVIDER_ENV_KEYS.get(model.provider, ""))
+    ]
+    return ["auto", *options]
+
+
+def _setting_options(key: str, model_options: list[str] | None) -> list[str]:
+    if key == "model":
+        return model_options or ["auto"]
+    return _CONFIG_OPTIONS.get(key, [])
+
+
+def _setting_payload(
+    key: str,
+    data: dict[str, Any],
+    *,
+    model_options: list[str] | None = None,
+) -> dict[str, Any]:
     schema = _editable_config_schema()[key]
     internal_key = schema["internal_key"]
     section_name = _section_for_key(key)
@@ -90,13 +122,17 @@ def _setting_payload(key: str, data: dict[str, Any]) -> dict[str, Any]:
         "configured": raw_value is not None,
         "source": source,
         "input_type": _CONFIG_INPUT_TYPES.get(key, "text"),
-        "options": _CONFIG_OPTIONS.get(key, []),
+        "options": _setting_options(key, model_options),
     }
 
 
-def _settings_payload(data: dict[str, Any]) -> list[dict[str, Any]]:
+def _settings_payload(
+    data: dict[str, Any],
+    *,
+    model_options: list[str] | None = None,
+) -> list[dict[str, Any]]:
     return [
-        _setting_payload(key, data)
+        _setting_payload(key, data, model_options=model_options)
         for key in sorted(_editable_config_schema().keys())
     ]
 
@@ -105,9 +141,10 @@ async def get_configs(request: web.Request) -> web.Response:
     _resolve_vault(request.match_info["name"])
     data = load_config()
     store = SecretStore()
+    model_options = _ask_model_options(agent_credential_env(store=store))
     return web.json_response(
         {
-            "settings": _settings_payload(data),
+            "settings": _settings_payload(data, model_options=model_options),
             "ask_credentials": {
                 "providers": [
                     provider_payload(provider, store=store)
@@ -152,7 +189,9 @@ async def patch_config_setting(request: web.Request) -> web.Response:
 
     data[section_name] = section
     save_config(data)
-    return web.json_response(_setting_payload(key, data))
+    store = SecretStore()
+    model_options = _ask_model_options(agent_credential_env(store=store))
+    return web.json_response(_setting_payload(key, data, model_options=model_options))
 
 
 async def put_ask_credential(request: web.Request) -> web.Response:

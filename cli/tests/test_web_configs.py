@@ -120,6 +120,36 @@ async def test_get_configs_returns_editable_pkm_settings_except_graph_semantic(
 
 
 @pytest.mark.anyio
+async def test_get_configs_returns_model_select_options_for_configured_credentials(
+    app,
+    tmp_vault: VaultConfig,
+    secret_store: "_MemorySecretStore",
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for env_key in ("GEMINI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
+        monkeypatch.delenv(env_key, raising=False)
+    secret_store.values["OPENAI_API_KEY"] = "openai-secret"
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/configs",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        body = await resp.json()
+
+    assert resp.status == 200
+    settings = {setting["key"]: setting for setting in body["settings"]}
+    assert settings["model"]["input_type"] == "select"
+    assert settings["model"]["options"] == [
+        "auto",
+        "gpt-5.4-nano",
+        "gpt-5-mini",
+        "gpt-5-nano",
+        "gpt-5.4-mini",
+    ]
+
+
+@pytest.mark.anyio
 async def test_patch_config_setting_updates_defaults(
     app, tmp_vault: VaultConfig, config_store: dict
 ) -> None:

@@ -53,6 +53,21 @@ describe("editor markdown decorations", () => {
     expect(view.dom.textContent).toContain("foo#bar");
   });
 
+  it("renders off-line relation vocabulary markers as square chips", () => {
+    const view = createView(
+      "active &source [[raw]]\nbody &depends_on [[target]] and foo&bar\n",
+      [tagPill, tagPillTheme],
+    );
+
+    const relationLabels = [
+      ...view.dom.querySelectorAll(".cm-md-relation"),
+    ].map((node) => node.textContent);
+
+    expect(relationLabels).toEqual(["depends_on"]);
+    expect(view.dom.textContent).toContain("&source");
+    expect(view.dom.textContent).toContain("foo&bar");
+  });
+
   it("decorates off-line footnote references and definition markers without hiding active-line markdown", () => {
     const view = createView(
       "active [^skip]\nBody [^ref]\n[^def]: note with [^inside]\n",

@@ -17,7 +17,7 @@ export interface ConfigSetting {
   default_value: string;
   configured: boolean;
   source: "configured" | "default" | "unset";
-  input_type: "text" | "number" | "boolean";
+  input_type: "text" | "number" | "boolean" | "select";
   options: string[];
 }
 

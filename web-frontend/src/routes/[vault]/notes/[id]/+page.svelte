@@ -4,6 +4,10 @@
   import { apiClient, apiGet } from "$lib/api/client.js";
   import NeighborPanel from "$lib/components/NeighborPanel.svelte";
   import CodeMirror from "$lib/editor/CodeMirror.svelte";
+  import {
+    decorateRenderedHtml,
+    tagHue,
+  } from "$lib/notes/rendered-markdown.js";
 
   interface Note {
     note_id: string;
@@ -70,29 +74,6 @@
 
   function escapeMarkdownLabel(text: string) {
     return text.replace(/([\\[\]])/g, "\\$1");
-  }
-
-  function tagHue(tag: string) {
-    let hash = 0;
-    for (const char of tag) {
-      hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-    }
-    return String(hash % 360);
-  }
-
-  function hasExcludedAncestor(node: Node) {
-    let current = node.parentElement;
-    while (current) {
-      if (
-        ["A", "BUTTON", "CODE", "PRE", "SCRIPT", "STYLE"].includes(
-          current.tagName,
-        )
-      ) {
-        return true;
-      }
-      current = current.parentElement;
-    }
-    return false;
   }
 
   function taskStateKind(state: string) {
@@ -190,81 +171,6 @@
     );
 
     return didReplace ? updated : markdown;
-  }
-
-  function appendDecoratedInlineSyntax(
-    fragment: DocumentFragment,
-    text: string,
-    vault: string,
-  ) {
-    const pattern =
-      /(^|[^\p{L}\p{N}_/-])#([\p{L}\p{N}_][\p{L}\p{N}_/-]*)|\[([^\]\n]+)\]/gu;
-    let cursor = 0;
-    let match: RegExpExecArray | null;
-
-    while ((match = pattern.exec(text))) {
-      const fullMatch = match[0];
-      const tagPrefix = match[1] ?? "";
-      const tagName = match[2];
-      const bracketText = match[3];
-      const syntaxStart = match.index + (tagName ? tagPrefix.length : 0);
-      const syntaxText = tagName ? `#${tagName}` : fullMatch;
-
-      if (syntaxStart > cursor) {
-        fragment.append(
-          document.createTextNode(text.slice(cursor, syntaxStart)),
-        );
-      }
-
-      if (tagName) {
-        const link = document.createElement("a");
-        link.className = "note-tag-chip";
-        link.href = `/${encodeURIComponent(vault)}/notes/${encodeURIComponent(`tag:${tagName}`)}`;
-        link.dataset.tag = tagName;
-        link.style.setProperty("--tag-hue", tagHue(tagName));
-        link.textContent = syntaxText;
-        fragment.append(link);
-      } else if (bracketText) {
-        const highlight = document.createElement("span");
-        highlight.className = "note-bracket-highlight";
-        highlight.textContent = syntaxText;
-        fragment.append(highlight);
-      }
-
-      cursor = match.index + fullMatch.length;
-    }
-
-    if (cursor < text.length) {
-      fragment.append(document.createTextNode(text.slice(cursor)));
-    }
-  }
-
-  function decorateRenderedHtml(html: string, vault: string) {
-    const template = document.createElement("template");
-    template.innerHTML = html;
-    const walker = document.createTreeWalker(
-      template.content,
-      NodeFilter.SHOW_TEXT,
-    );
-    const textNodes: Text[] = [];
-
-    while (walker.nextNode()) {
-      const node = walker.currentNode as Text;
-      if (
-        !hasExcludedAncestor(node) &&
-        /#[\p{L}\p{N}_]|\[[^\]\n]+\]/u.test(node.data)
-      ) {
-        textNodes.push(node);
-      }
-    }
-
-    for (const node of textNodes) {
-      const fragment = document.createDocumentFragment();
-      appendDecoratedInlineSyntax(fragment, node.data, vault);
-      node.replaceWith(fragment);
-    }
-
-    return template.innerHTML;
   }
 
   function wikilinkToMarkdownLinks(markdown: string, vault: string) {
@@ -724,6 +630,35 @@
     background: hsl(var(--tag-hue) 76% 87% / 0.95);
   }
 
+  .prose :global(.note-relation-chip) {
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.45em;
+    padding: 0 0.52em;
+    border: 1px solid color-mix(in srgb, var(--accent) 48%, var(--border));
+    border-radius: 2px;
+    background: color-mix(
+      in srgb,
+      var(--accent) 14%,
+      var(--surface-raised, var(--bg))
+    );
+    color: color-mix(in srgb, var(--accent) 72%, var(--text) 28%);
+    font-family: var(--font-mono);
+    font-size: 0.8em;
+    font-weight: 750;
+    line-height: 1;
+    white-space: nowrap;
+    vertical-align: 0.08em;
+    box-shadow: inset 0 -1px 0 color-mix(in srgb, #000 18%, transparent);
+  }
+
+  :global([data-theme="light"]) .prose :global(.note-relation-chip) {
+    border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+    background: color-mix(in srgb, var(--accent) 11%, #fff);
+    color: color-mix(in srgb, var(--accent) 70%, #111827 30%);
+    box-shadow: inset 0 -1px 0 color-mix(in srgb, #000 8%, transparent);
+  }
+
   .prose :global(.note-bracket-highlight) {
     color: color-mix(in srgb, var(--accent) 76%, var(--text) 24%);
     background: color-mix(in srgb, var(--accent) 12%, transparent);
@@ -865,6 +800,15 @@
         var(--text-muted) 76%,
         var(--text) 24%
       );
+    }
+
+    :global(:root:not([data-theme="dark"]))
+      .prose
+      :global(.note-relation-chip) {
+      border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+      background: color-mix(in srgb, var(--accent) 11%, #fff);
+      color: color-mix(in srgb, var(--accent) 70%, #111827 30%);
+      box-shadow: inset 0 -1px 0 color-mix(in srgb, #000 8%, transparent);
     }
   }
 

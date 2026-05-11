@@ -1,18 +1,18 @@
 /**
- * Tag pill rendering — F4-5.
+ * Tag and relation marker rendering — F4-5.
  *
- * A CM6 ViewPlugin that decorates `#tag` tokens as small rounded pills.
- * Cursor-line-reveal: the active line shows the raw `#tag`; off-cursor
- * lines render the pill (the `#` marker is hidden via Decoration.replace
- * and the tag name is wrapped in a styled mark).
+ * A CM6 ViewPlugin that decorates `#tag` tokens as small rounded pills and
+ * `&relation` tokens as square chips. Cursor-line-reveal: the active line
+ * shows the raw marker; off-cursor lines render the chip.
  *
  * Tag regex: `#[a-zA-Z0-9_/-]+`. We avoid matches preceded by an
  * alphanumeric char so `foo#bar` and inline anchors don't trip.
  */
-import { EditorView, ViewPlugin, Decoration } from '@codemirror/view';
-import { RangeSetBuilder } from '@codemirror/state';
+import { EditorView, ViewPlugin, Decoration } from "@codemirror/view";
+import { RangeSetBuilder } from "@codemirror/state";
 
 const TAG_RE = /(^|[^a-zA-Z0-9_/-])(#[a-zA-Z0-9_/-]+)/g;
+const RELATION_RE = /(^|[^a-zA-Z0-9_&/-])(&[a-zA-Z][a-zA-Z0-9_-]*)/g;
 const HIDE = Decoration.replace({});
 
 /** @param {import('@codemirror/view').EditorView} view */
@@ -27,7 +27,7 @@ function buildTagDecorations(view) {
     while (pos <= to) {
       const line = view.state.doc.lineAt(pos);
       if (line.number !== activeLine) {
-        decorateTagsInLine(builder, line);
+        decorateInlineChipsInLine(builder, line);
       }
       pos = line.to + 1;
       if (line.to >= view.state.doc.length) break;
@@ -40,9 +40,10 @@ function buildTagDecorations(view) {
  * @param {RangeSetBuilder<Decoration>} builder
  * @param {{from:number,to:number,text:string,number:number}} line
  */
-function decorateTagsInLine(builder, line) {
-  TAG_RE.lastIndex = 0;
+function decorateInlineChipsInLine(builder, line) {
   const ranges = [];
+
+  TAG_RE.lastIndex = 0;
   let m;
   while ((m = TAG_RE.exec(line.text)) !== null) {
     const tagStartInLine = m.index + m[1].length;
@@ -54,9 +55,23 @@ function decorateTagsInLine(builder, line) {
     ranges.push({
       from: start + 1,
       to: end,
-      deco: Decoration.mark({ class: 'cm-md-tag' })
+      deco: Decoration.mark({ class: "cm-md-tag" }),
     });
   }
+
+  RELATION_RE.lastIndex = 0;
+  while ((m = RELATION_RE.exec(line.text)) !== null) {
+    const relationStartInLine = m.index + m[1].length;
+    const start = line.from + relationStartInLine;
+    const end = start + m[2].length; // includes leading '&'
+    ranges.push({ from: start, to: start + 1, deco: HIDE });
+    ranges.push({
+      from: start + 1,
+      to: end,
+      deco: Decoration.mark({ class: "cm-md-relation" }),
+    });
+  }
+
   ranges.sort((a, b) => a.from - b.from || a.to - b.to);
   for (const r of ranges) {
     if (r.from === r.to) continue;
@@ -73,26 +88,37 @@ export const tagPill = ViewPlugin.fromClass(
     }
     /** @param {import('@codemirror/view').ViewUpdate} update */
     update(update) {
-      if (
-        update.docChanged ||
-        update.viewportChanged ||
-        update.selectionSet
-      ) {
+      if (update.docChanged || update.viewportChanged || update.selectionSet) {
         this.decorations = buildTagDecorations(update.view);
       }
     }
   },
-  { decorations: (v) => v.decorations }
+  { decorations: (v) => v.decorations },
 );
 
 export const tagPillTheme = EditorView.baseTheme({
-  '.cm-md-tag': {
-    fontFamily: 'var(--font-mono)',
-    fontSize: '0.85em',
-    color: 'var(--text-muted)',
-    backgroundColor: 'var(--bg-elev)',
-    borderRadius: '4px',
-    padding: '0 6px',
-    marginRight: '2px'
-  }
+  ".cm-md-tag": {
+    fontFamily: "var(--font-mono)",
+    fontSize: "0.85em",
+    color: "var(--text-muted)",
+    backgroundColor: "var(--bg-elev)",
+    borderRadius: "4px",
+    padding: "0 6px",
+    marginRight: "2px",
+  },
+  ".cm-md-relation": {
+    fontFamily: "var(--font-mono)",
+    fontSize: "0.82em",
+    color: "color-mix(in srgb, var(--accent) 74%, var(--text) 26%)",
+    backgroundColor:
+      "color-mix(in srgb, var(--accent) 13%, var(--surface-raised, var(--bg)))",
+    border: "1px solid color-mix(in srgb, var(--accent) 46%, var(--border))",
+    borderRadius: "2px",
+    padding: "0 6px",
+    marginRight: "2px",
+    fontWeight: "700",
+  },
+  ".cm-md-relation::before": {
+    content: '"&"',
+  },
 });

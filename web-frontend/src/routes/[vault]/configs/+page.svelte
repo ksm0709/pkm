@@ -298,6 +298,20 @@
                             : "false",
                         )}
                     />
+                  {:else if setting.input_type === "select"}
+                    <select
+                      value={settingValue(setting)}
+                      aria-label={`${setting.key} value`}
+                      onchange={(event) =>
+                        updateSettingValue(
+                          setting.key,
+                          (event.currentTarget as HTMLSelectElement).value,
+                        )}
+                    >
+                      {#each setting.options as option}
+                        <option value={option}>{option}</option>
+                      {/each}
+                    </select>
                   {:else}
                     <input
                       type={setting.input_type === "number" ? "number" : "text"}
@@ -606,7 +620,8 @@
   }
 
   .config-field input[type="text"],
-  .config-field input[type="number"] {
+  .config-field input[type="number"],
+  .config-field select {
     min-width: 0;
     height: 34px;
     padding: 0 var(--space-2, 8px);
@@ -699,6 +714,7 @@
   }
 
   .config-field input:focus-visible,
+  .config-field select:focus-visible,
   .config-actions button:focus-visible,
   .secret-field input:focus-visible,
   .provider-actions button:focus-visible {
