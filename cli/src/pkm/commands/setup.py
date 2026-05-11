@@ -196,8 +196,13 @@ def _set_web_port(port: int | None) -> None:
     save_config(data)
 
 
-def _run_web_setup(*, reset: bool = False, port: int | None = None) -> None:
-    """`pkm setup --web` flow: Linger gate -> token + unit -> print token.
+def run_web_setup(
+    *,
+    reset: bool = False,
+    port: int | None = None,
+    show_next_steps: bool = True,
+) -> None:
+    """Shared web setup flow: Linger gate -> token + unit -> print token.
 
     Fail-closed: if Linger is not enabled (and the user declines remediation),
     exit non-zero with NO files written.
@@ -266,10 +271,11 @@ def _run_web_setup(*, reset: bool = False, port: int | None = None) -> None:
     console.print()
     console.print("Copy this token into your client / Authorization header:")
     click.echo(f"PKM_WEB_TOKEN={token}")
-    console.print()
-    console.print("Next steps:")
-    console.print("  systemctl --user daemon-reload")
-    console.print("  systemctl --user enable --now pkm-web")
+    if show_next_steps:
+        console.print()
+        console.print("Next steps:")
+        console.print("  systemctl --user daemon-reload")
+        console.print("  systemctl --user enable --now pkm-web")
 
 
 @click.command("setup")
@@ -295,7 +301,7 @@ def _run_web_setup(*, reset: bool = False, port: int | None = None) -> None:
 def setup_cmd(web: bool = False, reset: bool = False, port: int | None = None) -> None:
     """Interactive setup wizard: install dependencies, configure vaults."""
     if web:
-        _run_web_setup(reset=reset, port=port)
+        run_web_setup(reset=reset, port=port)
         return
     if port is not None:
         raise click.ClickException("--port can only be used with --web.")

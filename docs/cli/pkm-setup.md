@@ -24,7 +24,9 @@ pkm setup
 pkm setup --web --port 8123
 ```
 
-Run `pkm setup --web` once per machine before using `pkm web start`.
-`pkm update` refreshes an existing web unit after upgrade, but it does not
-create the first `pkm-web.service` because setup must create local auth files
-and verify systemd user lingering.
+For first-time web service installation, prefer `pkm web setup`. It wraps the
+same auth/unit setup flow and then runs `systemctl --user daemon-reload` plus
+`systemctl --user enable --now pkm-web`.
+
+`pkm setup --web` remains available for scripts that want to create the auth
+files and unit without starting the service immediately.

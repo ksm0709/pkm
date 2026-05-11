@@ -223,7 +223,7 @@ def test_web_systemctl_commands_stream_output_and_exit_codes(monkeypatch):
 
 
 def test_web_systemctl_commands_explain_missing_unit(monkeypatch, tmp_path):
-    """Fresh installs need `pkm setup --web` before service commands work."""
+    """Fresh installs need `pkm web setup` before service commands work."""
     run_calls = []
     unit_path = tmp_path / "pkm-web.service"
 
@@ -237,7 +237,7 @@ def test_web_systemctl_commands_explain_missing_unit(monkeypatch, tmp_path):
 
     assert result.exit_code == 5
     assert "pkm-web.service is not installed" in result.output
-    assert "pkm setup --web" in result.output
+    assert "pkm web setup" in result.output
     assert run_calls == []
 
 

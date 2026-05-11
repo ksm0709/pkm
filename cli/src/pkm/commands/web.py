@@ -10,7 +10,7 @@ import sys
 import click
 from rich.console import Console
 
-from pkm.commands.setup import web_unit_path
+from pkm.commands.setup import run_web_setup, web_unit_path
 
 console = Console()
 
@@ -41,8 +41,9 @@ def _run_systemctl(*args: str) -> int:
 def _print_missing_unit_help() -> None:
     console.print("[red]pkm-web.service is not installed.[/red]")
     console.print(
-        "Run [bold cyan]pkm setup --web[/bold cyan] first. "
-        "That command creates the systemd user unit and browser auth files."
+        "Run [bold cyan]pkm web setup[/bold cyan] first. "
+        "That command creates auth files, installs the systemd user unit, "
+        "and starts the service."
     )
     console.print(
         "If setup reports Linger=no, run "
@@ -77,6 +78,34 @@ def _print_cloudflared_install_help() -> None:
 @click.group("web")
 def web_group() -> None:
     """Manage the pkm-web systemd user unit."""
+
+
+@web_group.command("setup")
+@click.option(
+    "--reset",
+    is_flag=True,
+    default=False,
+    help="Reset the browser login password and invalidate existing sessions.",
+)
+@click.option(
+    "--port",
+    type=int,
+    default=None,
+    help="Set the pkm web daemon port in ~/.config/pkm/config.",
+)
+def web_setup(reset: bool = False, port: int | None = None) -> None:
+    """Set up auth, install the user service, and start pkm-web."""
+    run_web_setup(reset=reset, port=port, show_next_steps=False)
+
+    console.print()
+    console.print("[cyan]Reloading and starting pkm-web.service...[/cyan]")
+    code = _run_systemctl("daemon-reload")
+    if code != 0:
+        sys.exit(code)
+    code = _run_systemctl("enable", "--now", UNIT_NAME)
+    if code == 0:
+        console.print("[green]✓ pkm-web.service enabled and started[/green]")
+    sys.exit(code)
 
 
 @web_group.command("start")

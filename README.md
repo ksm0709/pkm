@@ -85,6 +85,7 @@ We have extracted detailed documentation for each CLI command into the `docs/cli
 - [Stats (`pkm stats`)](docs/cli/pkm-stats.md): View vault statistics.
 - [Consolidate (`pkm consolidate`)](docs/cli/pkm-consolidate.md): Nightly knowledge distillation.
 - [Daemon (`pkm daemon`)](docs/cli/pkm-daemon.md): Background ML daemon (Host Daemon + Sandbox Worker) for fast semantic search and LLM tasks.
+- [Web (`pkm web`)](docs/cli/pkm-web.md): Set up and manage the local web service.
 - [Setup (`pkm setup`)](docs/cli/pkm-setup.md): Interactive setup wizard.
 - [Update (`pkm update`)](docs/cli/pkm-update.md): Update the CLI.
 - [MCP Server (`pkm mcp`)](docs/cli/pkm-mcp.md): Start the MCP server for AI agent interactions.

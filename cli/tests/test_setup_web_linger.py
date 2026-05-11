@@ -97,6 +97,39 @@ def test_web_setup_writes_token_and_unit_when_linger_yes(
     assert "PKM_WEB_TOKEN=" in result.output
 
 
+def test_web_setup_command_starts_unit_after_writing_auth(
+    mock_home: Path, runner: CliRunner, monkeypatch
+) -> None:
+    """`pkm web setup` runs the full first-time service installation flow."""
+    run_calls: list[list[str]] = []
+
+    def fake_run(cmd, *args, **kwargs):
+        run_calls.append(list(cmd))
+        result = MagicMock()
+        result.returncode = 0
+        result.stdout = ""
+        result.stderr = ""
+        if isinstance(cmd, (list, tuple)) and len(cmd) > 0 and cmd[0] == "loginctl":
+            result.stdout = "Linger=yes\n"
+        return result
+
+    monkeypatch.setenv("USER", "testuser")
+    monkeypatch.setattr("pkm.commands.setup.subprocess.run", fake_run)
+    monkeypatch.setattr("pkm.commands.web.subprocess.run", fake_run)
+
+    result = runner.invoke(main, ["web", "setup"], input="secret\nsecret\n")
+
+    assert result.exit_code == 0, result.output
+    assert (mock_home / ".config" / "pkm" / "web-token").exists()
+    assert (mock_home / ".config" / "pkm" / "web-password").exists()
+    assert (mock_home / ".config" / "systemd" / "user" / "pkm-web.service").exists()
+    assert ["systemctl", "--user", "daemon-reload"] in run_calls
+    assert ["systemctl", "--user", "enable", "--now", "pkm-web"] in run_calls
+    assert "Reloading and starting pkm-web.service" in result.output
+    assert "pkm-web.service enabled and started" in result.output
+    assert "Next steps:" not in result.output
+
+
 def test_web_setup_reset_rewrites_password_hash_and_invalidates_sessions(
     mock_home: Path, runner: CliRunner, monkeypatch
 ) -> None:
@@ -189,6 +222,7 @@ def test_web_command_group_registered(runner: CliRunner) -> None:
     result = runner.invoke(main, ["web", "--help"])
     assert result.exit_code == 0, result.output
     out = result.output.lower()
+    assert "setup" in out
     assert "start" in out
     assert "stop" in out
     assert "restart" in out

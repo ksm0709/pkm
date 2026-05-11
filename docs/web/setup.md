@@ -14,7 +14,7 @@ CLI (see top-level README) and have at least one vault registered.
   loginctl show-user --property=Linger "$USER"   # → Linger=yes
   ```
 
-  `pkm setup --web` is fail-closed: if `Linger=no` it exits non-zero with a
+  `pkm web setup` is fail-closed: if `Linger=no` it exits non-zero with a
   remediation message and writes nothing.
 
 - `systemd --user` available (any modern Linux desktop / server).
@@ -23,7 +23,7 @@ CLI (see top-level README) and have at least one vault registered.
 ## 2. Run setup
 
 ```bash
-pkm setup --web
+pkm web setup
 ```
 
 Run this once on each machine where you want `pkm-web.service` installed.
@@ -40,12 +40,14 @@ This single command:
    `~/.config/pkm/web-token` (mode `0600`).
 4. Writes a systemd user unit at
    `~/.config/systemd/user/pkm-web.service`.
-5. Prints the token to stdout exactly once for CLI/curl clients.
+5. Runs `systemctl --user daemon-reload`.
+6. Runs `systemctl --user enable --now pkm-web`.
+7. Prints the token to stdout exactly once for CLI/curl clients.
 
 To use a non-default port, persist it in the config during setup:
 
 ```bash
-pkm setup --web --port 8123
+pkm web setup --port 8123
 ```
 
 You can also change it later:
@@ -60,13 +62,16 @@ you need a fresh token. To reset the browser password and invalidate existing
 browser sessions:
 
 ```bash
-pkm setup --web --reset
-systemctl --user restart pkm-web
+pkm web setup --reset
 ```
 
-## 3. Enable + start the unit
+## 3. Manual setup path
+
+`pkm setup --web` remains available for scripts that want to write auth files
+and the unit without starting it immediately. In that mode, run:
 
 ```bash
+pkm setup --web
 systemctl --user daemon-reload
 systemctl --user enable --now pkm-web
 systemctl --user status pkm-web
@@ -104,7 +109,7 @@ single-user owner access. Therefore:
 
 | Threat | Impact | Mitigation |
 |---|---|---|
-| Malicious browser extension reads web storage | Bearer token is not stored; active browser session may still be abused | Tailscale-only access; reset password with `pkm setup --web --reset`; rotate bearer token if exposed |
+| Malicious browser extension reads web storage | Bearer token is not stored; active browser session may still be abused | Tailscale-only access; reset password with `pkm web setup --reset`; rotate bearer token if exposed |
 | Cross-tenant access on shared host | Other users on box read token file | Token mode `0600`; `~/.config/pkm/` is user-private |
 | Lost laptop / device | Persistent attacker has token | Tailscale ACL revocation + token rotation |
 | Network MITM | Read of bearer token in flight | Tailscale provides WireGuard-grade transport encryption |
@@ -119,7 +124,7 @@ pkm update
 pkm web restart              # wraps: systemctl --user restart pkm-web
 ```
 
-On a new machine, run `pkm setup --web` before `pkm web start`; otherwise the
+On a new machine, run `pkm web setup` before `pkm web start`; otherwise the
 systemd user unit does not exist yet.
 
 The bundled SPA assets ship inside the wheel under
