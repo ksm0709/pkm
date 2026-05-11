@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#090b0d" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="pkm" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icons/pwa-192.png" />
+    <link rel="apple-touch-icon" href="/icons/pwa-192.png" />
+    <link href="/_app/immutable/entry/start.BoPOq5eh.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/DtXJChe2.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/CE5peZmo.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/Db0fV-Cg.js" rel="modulepreload">
+		<link href="/_app/immutable/entry/app.BfNBOYWe.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/C1FmrZbK.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/CWj6FrbW.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/uzmr9JW8.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/DlgjB-lQ.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/DtlGWXoi.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/CuhAEqI-.js" rel="modulepreload">
+		<link href="/_app/immutable/nodes/0.dBsiee5v.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/Csj3af04.js" rel="modulepreload">
+
+		<link href="/_app/immutable/assets/0.CsUt9FbV.css" rel="stylesheet">
+  </head>
+  <body data-sveltekit-preload-data="hover">
+    <div style="display: contents">
+			<script>
+				{
+					__sveltekit_124x3va = {
+						base: ""
+					};
+
+					const element = document.currentScript.parentElement;
+
+					Promise.all([
+						import("/_app/immutable/entry/start.BoPOq5eh.js"),
+						import("/_app/immutable/entry/app.BfNBOYWe.js")
+					]).then(([kit, app]) => {
+						kit.start(app, element);
+					});
+
+					if ('serviceWorker' in navigator) {
+						const script_url = '/service-worker.js';
+						const policy = globalThis?.window?.trustedTypes?.createPolicy(
+							'sveltekit-trusted-url',
+							{ createScriptURL(url) { return url; } }
+						);
+						const sanitised = policy?.createScriptURL(script_url) ?? script_url;
+						addEventListener('load', function () {
+							navigator.serviceWorker.register(sanitised);
+						});
+					}
+				}
+			</script>
+		</div>
+  </body>
+</html>

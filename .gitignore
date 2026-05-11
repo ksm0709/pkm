@@ -54,5 +54,6 @@ docs/plans/
 .worktrees/
 .omx/
 
-# Built frontend assets (bundled into wheel at build time)
-cli/src/pkm/web/static/
+# Built frontend assets are tracked so GitHub source archives can build wheels.
+# Source maps are omitted from the packaged web UI to keep source installs small.
+cli/src/pkm/web/static/**/*.map
