@@ -85,7 +85,9 @@ def test_web_setup_writes_token_and_unit_when_linger_yes(
     # Unit content sanity
     unit_text = unit_path.read_text(encoding="utf-8")
     assert "[Service]" in unit_text
-    assert "ExecStart=" in unit_text
+    assert "ExecStart=%h/.local/bin/pkm daemon run" in unit_text
+    assert "--project" not in unit_text
+    assert "--extra" not in unit_text
     assert "Environment=PKM_DAEMON_KEEPALIVE=1" in unit_text
     assert "Environment=PKM_WORKER_SANDBOX_PROFILE=trusted-native" in unit_text
     assert "pkm daemon run" in unit_text
@@ -118,6 +120,68 @@ def test_web_setup_reset_rewrites_password_hash_and_invalidates_sessions(
     assert password_path.read_text(encoding="utf-8") != initial_hash
     assert reset_path.exists()
     assert "Browser login password reset" in second.output
+
+
+def test_web_setup_port_option_writes_web_config(
+    mock_home: Path, runner: CliRunner, monkeypatch
+) -> None:
+    """`pkm setup --web --port` persists the daemon port in [web]."""
+    import tomllib
+    import pkm.config as config_mod
+
+    config_path = mock_home / ".config" / "pkm" / "config"
+    monkeypatch.setattr(config_mod, "CONFIG_PATH", config_path)
+    monkeypatch.setenv("USER", "testuser")
+    monkeypatch.setattr("pkm.commands.setup.subprocess.run", _fake_loginctl("yes"))
+
+    result = runner.invoke(
+        main, ["setup", "--web", "--port", "8123"], input="secret\nsecret\n"
+    )
+
+    assert result.exit_code == 0, result.output
+    with config_path.open("rb") as f:
+        saved = tomllib.load(f)
+    assert saved["web"]["port"] == "8123"
+
+
+def test_web_setup_rejects_invalid_port(
+    mock_home: Path, runner: CliRunner, monkeypatch
+) -> None:
+    """Invalid web ports fail before private files are written."""
+    monkeypatch.setenv("USER", "testuser")
+    monkeypatch.setattr("pkm.commands.setup.subprocess.run", _fake_loginctl("yes"))
+
+    result = runner.invoke(
+        main, ["setup", "--web", "--port", "70000"], input="secret\nsecret\n"
+    )
+
+    assert result.exit_code == 1
+    assert "--port must be an integer" in result.output
+    assert not (mock_home / ".config" / "pkm" / "web-token").exists()
+
+
+def test_sync_existing_web_unit_only_refreshes_installed_unit(
+    mock_home: Path,
+) -> None:
+    """Update migrations refresh stale installed units without creating new ones."""
+    from pkm.commands.setup import sync_existing_web_unit
+
+    unit_path = mock_home / ".config" / "systemd" / "user" / "pkm-web.service"
+    assert sync_existing_web_unit() is None
+    assert not unit_path.exists()
+
+    unit_path.parent.mkdir(parents=True)
+    unit_path.write_text(
+        "ExecStart=%h/.local/bin/uv run --project %h/repos/pkm-webapp/cli --extra search --extra web pkm daemon run\n",
+        encoding="utf-8",
+    )
+
+    assert sync_existing_web_unit() == unit_path
+    unit_text = unit_path.read_text(encoding="utf-8")
+    assert "ExecStart=%h/.local/bin/pkm daemon run" in unit_text
+    assert "pkm-webapp" not in unit_text
+    assert "--project" not in unit_text
+    assert "--extra" not in unit_text
 
 
 def test_web_command_group_registered(runner: CliRunner) -> None:

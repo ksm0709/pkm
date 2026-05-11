@@ -13,7 +13,8 @@ When using JSON format, `pkm search` includes a `related_notes` field for each r
 ## Options
 - `-n, --top INTEGER`: Number of results to return (default: 10).
 - `--format [json|table]`: Output format.
-- `--type [episodic|semantic|procedural]`: Filter by memory type.
+- `--type [episodic|semantic|procedural]`: Filter by memory type. `episodic`
+  remains available for older notes; new session state should live in `daily/`.
 - `--min-importance FLOAT RANGE`: Minimum importance score (1-10).
 - `--recency-weight FLOAT RANGE`: Weight for recency+importance scoring (0=pure semantic) (0-1).
 - `--session TEXT`: Filter by session ID.

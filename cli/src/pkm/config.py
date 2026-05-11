@@ -26,7 +26,7 @@ def load_config() -> dict[str, Any]:
 def save_config(data: dict[str, Any]) -> None:
     """Save data to ~/.config/pkm/config in TOML format."""
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    # Serialize manually — structure is simple ([defaults] section only)
+    # Serialize manually — config is a shallow table-of-tables.
     lines = []
     for section, values in data.items():
         lines.append(f"[{section}]")
@@ -88,6 +88,14 @@ class VaultConfig:
     @property
     def graph_enriched_path(self) -> Path:
         return self.pkm_dir / "graph_enriched.json"
+
+    @property
+    def relations_vocabulary_path(self) -> Path:
+        return self.pkm_dir / "relations-vocabulary.json"
+
+    @property
+    def relations_audit_path(self) -> Path:
+        return self.pkm_dir / "relations-audit.json"
 
 
 def get_vaults_root() -> Path:

@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import subprocess
-import sys
+from importlib.util import find_spec
 from pathlib import Path
 
 import click
 from rich.console import Console
 
 from pkm._install_source import cli_source, find_local_cli_dir
-from pkm.commands.setup import install_shell_aliases, install_skill_files
+from pkm.commands.setup import (
+    install_shell_aliases,
+    install_skill_files,
+    sync_existing_web_unit,
+)
 from pkm.version_check import get_recent_versions
 
 console = Console()
@@ -22,14 +26,8 @@ def _normalize_tag(version: str) -> str:
 
 
 def _extra_installed(import_check: str) -> bool:
-    """Check whether a Python package is importable."""
-    return (
-        subprocess.run(
-            [sys.executable, "-c", f"import {import_check}"],
-            capture_output=True,
-        ).returncode
-        == 0
-    )
+    """Check whether a Python package is installed without importing it."""
+    return find_spec(import_check) is not None
 
 
 # Map of optional extras → the import that proves they are installed.
@@ -232,6 +230,9 @@ def update_cmd(version: str | None, dev_current_branch: bool) -> None:
     # Sync skill and command files — removes stale commands from old versions
     install_skill_files()
     install_shell_aliases()
+    unit_path = sync_existing_web_unit()
+    if unit_path is not None:
+        console.print(f"[green]✓ PKM web unit synced:[/green] {unit_path}")
 
     try:
         if in_git_repo:

@@ -95,11 +95,12 @@ The agent has access to typed tools for vault interaction, including:
 | Tool | When to use |
 |------|-------------|
 | `read_daily_log(date_str)` | Read a daily note |
-| `add_daily_log(text)` | Append to today's daily note |
+| `add_daily_log(text)` | Append time-bound session state to today's daily note |
+| `create_daily_subnote(title, content, ...)` | Create a structured time-bound daily subnote |
 | `read_note(note_id)` | Read an atomic note by ID |
 | `search_notes(query)` | Title-substring search |
 | `semantic_search(query, ...)` | Semantic similarity search |
-| `add_note(title, content, ...)` | Create a new atomic note |
+| `add_note(title, content, ...)` | Create a durable atomic note after the promotion gate |
 | `patch_note(note_id, operation, ...)` | Patch part of an existing note without replacing the full body |
 | `update_note(note_id, content, ...)` | Replace an existing note's full body |
 | `get_note_neighbors(note_id)` | Graph neighbors (outbound/inbound/semantic, daemon-free) |

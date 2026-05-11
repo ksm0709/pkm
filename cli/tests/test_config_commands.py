@@ -281,6 +281,40 @@ def test_config_set_editor_with_args(monkeypatch, tmp_path):
     assert saved["defaults"]["editor"] == "code --wait"
 
 
+def test_config_set_web_port_saves_web_section(monkeypatch, tmp_path):
+    config_path = _patch_config_path(monkeypatch, tmp_path)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["config", "set", "web-port", "8123"])
+
+    assert result.exit_code == 0, result.output
+    assert "8123" in result.output
+    saved = _load(config_path)
+    assert saved["web"]["port"] == "8123"
+
+
+def test_config_set_web_port_validates_range(monkeypatch, tmp_path):
+    _patch_config_path(monkeypatch, tmp_path)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["config", "set", "web-port", "70000"])
+
+    assert result.exit_code != 0
+    assert "web-port must be an integer" in result.output
+
+
+def test_config_get_web_port_reads_web_section(monkeypatch):
+    monkeypatch.setattr(
+        "pkm.commands.config.load_config", lambda: {"web": {"port": "8123"}}
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["config", "get", "web-port"])
+
+    assert result.exit_code == 0
+    assert result.output.strip() == "8123"
+
+
 def test_config_get_editor(monkeypatch):
     monkeypatch.setattr(
         "pkm.commands.config.load_config",
@@ -304,3 +338,17 @@ def test_config_list_includes_editor(monkeypatch):
     assert result.exit_code == 0
     assert "editor" in result.output
     assert "vim" in result.output
+
+
+def test_config_list_includes_configured_web_port(monkeypatch):
+    monkeypatch.setattr(
+        "pkm.commands.config.load_config",
+        lambda: {"defaults": {"vault": "bear"}, "web": {"port": "8123"}},
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["config", "list"])
+
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["web-port"] == "8123"

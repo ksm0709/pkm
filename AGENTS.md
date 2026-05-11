@@ -31,6 +31,15 @@ Terminal-first Personal Knowledge Management CLI for Obsidian vaults. Combines f
 - Plugin skills live under `plugin/skills/pkm/commands/` — update when CLI semantics change.
 - Do not commit to hidden state dirs (`.omc/`, `.omx/`, `.claude/`).
 
+### PKM Note Management Principles
+- Treat capture and promotion as separate operations.
+- Store time-bound memory in `daily/`: session state, progress logs, event notes, transient observations, temporary TODO context, and work-in-flight summaries.
+- Use daily subnotes for time-bound material that needs structure, such as meetings, investigations, long session notes, and project-specific day artifacts.
+- Store only durable knowledge in `notes/`: concepts, entities, processes, principles, patterns, decisions, and index/hub notes.
+- Before creating a note under `notes/`, verify it has a stable definition, long-term scope, at least one meaningful relation or source link, and value without today's date.
+- Do not create ordinary session-state or easily deprecated status memories as `notes/` entries. Log them to daily notes instead.
+- Existing episodic notes remain readable for compatibility, but new agent behavior should prefer `daily add` or `daily subnote` for episodic state.
+
 ### Testing Requirements
 - Run `cd cli && uv run pytest` from repo root to execute the full test suite.
 - Tests use temporary directories; never write vault data to the real `~/pkm` vault.

@@ -6,7 +6,12 @@ from typing import Any
 
 from aiohttp import web
 
-from pkm.commands.config import CONFIG_SCHEMA, config_value_for_key
+from pkm.commands.config import (
+    CONFIG_SCHEMA,
+    _section_for_key,
+    _validate_config_value,
+    config_value_for_key,
+)
 from pkm.config import load_config, save_config
 from pkm.credential_store import ASK_CREDENTIAL_PROVIDERS, SecretStore, provider_payload
 from pkm.web.routes.notes import _resolve_vault
@@ -18,6 +23,7 @@ from pkm.web.security import (
 _GRAPH_SEMANTIC_PREFIX = "graph-semantic-"
 _CONFIG_INPUT_TYPES = {
     "graph-depth": "number",
+    "web-port": "number",
 }
 _CONFIG_OPTIONS = {
     "reasoning-effort": ["", "low", "medium", "high"],
@@ -62,14 +68,21 @@ def _normalise_config_value(value: Any) -> str | None:
     return value
 
 
-def _setting_payload(key: str, defaults: dict[str, Any]) -> dict[str, Any]:
+def _config_section(data: dict[str, Any], key: str) -> dict[str, Any]:
+    section = data.get(_section_for_key(key), {})
+    return section if isinstance(section, dict) else {}
+
+
+def _setting_payload(key: str, data: dict[str, Any]) -> dict[str, Any]:
     schema = _editable_config_schema()[key]
     internal_key = schema["internal_key"]
-    raw_value = defaults.get(internal_key)
-    value, source = config_value_for_key(key, defaults, unset_label="")
+    section_name = _section_for_key(key)
+    section = _config_section(data, key)
+    raw_value = section.get(internal_key)
+    value, source = config_value_for_key(key, section, unset_label="")
     return {
         "key": key,
-        "section": "defaults",
+        "section": section_name,
         "internal_key": internal_key,
         "description": schema["description"],
         "value": value,
@@ -82,11 +95,8 @@ def _setting_payload(key: str, defaults: dict[str, Any]) -> dict[str, Any]:
 
 
 def _settings_payload(data: dict[str, Any]) -> list[dict[str, Any]]:
-    defaults = data.get("defaults", {})
-    if not isinstance(defaults, dict):
-        defaults = {}
     return [
-        _setting_payload(key, defaults)
+        _setting_payload(key, data)
         for key in sorted(_editable_config_schema().keys())
     ]
 
@@ -125,20 +135,24 @@ async def patch_config_setting(request: web.Request) -> web.Response:
 
     value = _normalise_config_value(body["value"])
     data = dict(load_config())
-    defaults = data.get("defaults", {})
-    if not isinstance(defaults, dict):
-        defaults = {}
-    defaults = dict(defaults)
+    section_name = _section_for_key(key)
+    section = data.get(section_name, {})
+    if not isinstance(section, dict):
+        section = {}
+    section = dict(section)
 
     internal_key = schema["internal_key"]
     if value in (None, ""):
-        defaults.pop(internal_key, None)
+        section.pop(internal_key, None)
     else:
-        defaults[internal_key] = value
+        try:
+            section[internal_key] = _validate_config_value(key, value)
+        except Exception as exc:
+            raise web.HTTPBadRequest(reason=str(exc))
 
-    data["defaults"] = defaults
+    data[section_name] = section
     save_config(data)
-    return web.json_response(_setting_payload(key, defaults))
+    return web.json_response(_setting_payload(key, data))
 
 
 async def put_ask_credential(request: web.Request) -> web.Response:

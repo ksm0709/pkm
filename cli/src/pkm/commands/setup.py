@@ -13,7 +13,7 @@ import click
 from rich.console import Console
 
 from pkm.commands.vault import init_vault_dirs
-from pkm.config import CONFIG_PATH, discover_vaults, load_config
+from pkm.config import CONFIG_PATH, discover_vaults, load_config, save_config
 
 console = Console()
 
@@ -124,6 +124,27 @@ WantedBy=default.target
 """
 
 
+def web_unit_path() -> Path:
+    """Return the systemd user unit path for the PKM web service."""
+    return Path.home() / ".config" / "systemd" / "user" / "pkm-web.service"
+
+
+def write_web_unit() -> Path:
+    """Install the current PKM web systemd user unit template."""
+    unit_path = web_unit_path()
+    unit_path.parent.mkdir(parents=True, exist_ok=True)
+    unit_path.write_text(SYSTEMD_UNIT_TEMPLATE, encoding="utf-8")
+    return unit_path
+
+
+def sync_existing_web_unit() -> Path | None:
+    """Refresh the web unit only when a PKM web unit is already installed."""
+    unit_path = web_unit_path()
+    if not unit_path.exists():
+        return None
+    return write_web_unit()
+
+
 def _check_linger() -> str:
     """Return 'yes' or 'no' from `loginctl show-user --property=Linger $USER`."""
     user = os.environ.get("USER") or os.environ.get("LOGNAME") or ""
@@ -159,7 +180,23 @@ def _write_private_file(path: Path, content: str) -> None:
     path.chmod(0o600)
 
 
-def _run_web_setup(*, reset: bool = False) -> None:
+def _validate_web_port(port: int) -> int:
+    if not 1 <= port <= 65535:
+        raise click.ClickException("--port must be an integer from 1 to 65535.")
+    return port
+
+
+def _set_web_port(port: int | None) -> None:
+    if port is None:
+        return
+    data = dict(load_config())
+    web = dict(data.get("web", {}))
+    web["port"] = str(_validate_web_port(port))
+    data["web"] = web
+    save_config(data)
+
+
+def _run_web_setup(*, reset: bool = False, port: int | None = None) -> None:
     """`pkm setup --web` flow: Linger gate -> token + unit -> print token.
 
     Fail-closed: if Linger is not enabled (and the user declines remediation),
@@ -167,6 +204,8 @@ def _run_web_setup(*, reset: bool = False) -> None:
     """
     console.print("[bold]PKM Web Setup[/bold]")
     console.print()
+    if port is not None:
+        _validate_web_port(port)
 
     linger = _check_linger()
     if linger != "yes":
@@ -191,6 +230,7 @@ def _run_web_setup(*, reset: bool = False) -> None:
     from pkm.web.auth import hash_password
 
     password = _prompt_password()
+    _set_web_port(port)
 
     # Generate token and write at ~/.config/pkm/web-token (chmod 600).  Preserve
     # an existing bearer token unless the user explicitly requested reset.
@@ -212,11 +252,7 @@ def _run_web_setup(*, reset: bool = False) -> None:
     if reset:
         _write_private_file(reset_path, str(time.time_ns()))
 
-    # Write systemd user unit.
-    unit_dir = home / ".config" / "systemd" / "user"
-    unit_dir.mkdir(parents=True, exist_ok=True)
-    unit_path = unit_dir / "pkm-web.service"
-    unit_path.write_text(SYSTEMD_UNIT_TEMPLATE, encoding="utf-8")
+    unit_path = write_web_unit()
 
     console.print(f"[green]✓ Token written:[/green] {token_path} (mode 0600)")
     console.print(
@@ -250,11 +286,19 @@ def _run_web_setup(*, reset: bool = False) -> None:
     default=False,
     help="Reset the browser login password and invalidate existing sessions.",
 )
-def setup_cmd(web: bool = False, reset: bool = False) -> None:
+@click.option(
+    "--port",
+    type=int,
+    default=None,
+    help="Set the pkm web daemon port in ~/.config/pkm/config.",
+)
+def setup_cmd(web: bool = False, reset: bool = False, port: int | None = None) -> None:
     """Interactive setup wizard: install dependencies, configure vaults."""
     if web:
-        _run_web_setup(reset=reset)
+        _run_web_setup(reset=reset, port=port)
         return
+    if port is not None:
+        raise click.ClickException("--port can only be used with --web.")
 
     console.print("[bold]PKM Setup Wizard[/bold]")
     console.print()

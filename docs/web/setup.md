@@ -37,6 +37,19 @@ This single command:
    `~/.config/systemd/user/pkm-web.service`.
 5. Prints the token to stdout exactly once for CLI/curl clients.
 
+To use a non-default port, persist it in the config during setup:
+
+```bash
+pkm setup --web --port 8123
+```
+
+You can also change it later:
+
+```bash
+pkm config set web-port 8123
+systemctl --user restart pkm-web
+```
+
 If the token file already exists it is **not** rotated — delete it first if
 you need a fresh token. To reset the browser password and invalidate existing
 browser sessions:
@@ -54,7 +67,8 @@ systemctl --user enable --now pkm-web
 systemctl --user status pkm-web
 ```
 
-The daemon listens on `127.0.0.1:7420` by default. The web UI is served from
+The daemon listens on port `7420` by default. The effective URL and port are
+printed in `journalctl --user -u pkm-web` at startup. The web UI is served from
 the same port under `/`.
 
 ## 4. Where auth state lives
@@ -75,8 +89,9 @@ The browser password and compatibility bearer token both grant full vault
 read/write access. Anyone who can reach the bind address and authenticate has
 single-user owner access. Therefore:
 
-- **Bind to Tailscale.** Set the unit's `bind=` to your `tailscale0` IP
-  (or `100.x.y.z`) so the daemon is unreachable from the public internet.
+- **Bind to Tailscale.** Set `pkm config set web-bind <tailscale-ip>` to your
+  `tailscale0` IP (or `100.x.y.z`) so the daemon is unreachable from the
+  public internet.
 - Do **not** expose `7420` via reverse proxies on the open internet.
 - Treat the token like an SSH key.
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import sys
 from types import SimpleNamespace
 
 from click.testing import CliRunner
@@ -33,8 +34,6 @@ class CommandDispatcher:
         key = tuple(cmd)
         handler = self.handlers.get(key)
         if handler is None:
-            if cmd[:2] == [update_mod.sys.executable, "-c"]:
-                return SimpleNamespace(returncode=1, stdout="", stderr="")
             if cmd[0] == "git" and cmd[3:] == ["branch", "--show-current"]:
                 return SimpleNamespace(returncode=0, stdout="main\n", stderr="")
             if cmd == ["pkm", "--version"]:
@@ -50,12 +49,14 @@ class CommandDispatcher:
 
 def _patch_post_install(monkeypatch):
     calls = []
+    monkeypatch.setattr(update_mod, "_extra_installed", lambda _probe: False)
     monkeypatch.setattr(
         update_mod, "install_skill_files", lambda: calls.append("skills")
     )
     monkeypatch.setattr(
         update_mod, "install_shell_aliases", lambda: calls.append("aliases")
     )
+    monkeypatch.setattr(update_mod, "sync_existing_web_unit", lambda: None)
     return calls
 
 
@@ -64,23 +65,24 @@ def test_update_helpers_normalize_tags_and_detect_installed_extras(monkeypatch):
     assert update_mod._normalize_tag("1.2.3") == "v1.2.3"
     assert update_mod._normalize_tag("v1.2.3") == "v1.2.3"
 
-    dispatcher = CommandDispatcher(
-        {
-            (
-                update_mod.sys.executable,
-                "-c",
-                "import sentence_transformers",
-            ): SimpleNamespace(returncode=0, stdout="", stderr=""),
-        }
-    )
-    monkeypatch.setattr(update_mod.subprocess, "run", dispatcher)
+    monkeypatch.setattr(update_mod, "_extra_installed", lambda _probe: True)
     assert update_mod._extra_installed("sentence_transformers") is True
     assert update_mod._extras_suffix() == "[search]"
 
-    dispatcher = CommandDispatcher()
-    monkeypatch.setattr(update_mod.subprocess, "run", dispatcher)
+    monkeypatch.setattr(update_mod, "_extra_installed", lambda _probe: False)
     assert update_mod._extra_installed("sentence_transformers") is False
     assert update_mod._extras_suffix() == ""
+
+
+def test_update_extra_probe_does_not_import_module(monkeypatch, tmp_path):
+    """Broken optional packages are still preserved when their module exists."""
+    package_dir = tmp_path / "sentence_transformers"
+    package_dir.mkdir()
+    (package_dir / "__init__.py").write_text("raise RuntimeError('broken import')\n")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    sys.modules.pop("sentence_transformers", None)
+
+    assert update_mod._extra_installed("sentence_transformers") is True
 
 
 def test_update_local_git_latest_reinstalls_editable_and_shows_changelog(
@@ -122,6 +124,40 @@ def test_update_local_git_latest_reinstalls_editable_and_shows_changelog(
     assert "Now running: pkm v9.9.9" in result.output
     assert hooks == ["skills", "aliases"]
     assert ["git", "-C", str(repo), "pull", "--ff-only"] in dispatcher.commands()
+
+
+def test_update_syncs_existing_web_unit_after_success(monkeypatch, tmp_path):
+    """Successful updates refresh an installed pkm-web systemd unit."""
+    repo, cli_dir = _make_repo(tmp_path)
+    hooks = _patch_post_install(monkeypatch)
+    unit_path = tmp_path / "pkm-web.service"
+    monkeypatch.setattr(update_mod, "find_local_cli_dir", lambda: cli_dir)
+    monkeypatch.setattr(update_mod, "sync_existing_web_unit", lambda: unit_path)
+
+    dispatcher = CommandDispatcher(
+        {
+            ("git", "-C", str(repo), "pull", "--ff-only"): SimpleNamespace(
+                returncode=0, stdout="", stderr=""
+            ),
+            (
+                "uv",
+                "tool",
+                "install",
+                "--editable",
+                str(cli_dir),
+                "--reinstall-package",
+                "pkm",
+            ): SimpleNamespace(returncode=0, stdout="", stderr=""),
+        }
+    )
+    monkeypatch.setattr(update_mod.subprocess, "run", dispatcher)
+
+    result = _runner().invoke(update_cmd, [])
+
+    assert result.exit_code == 0
+    assert "PKM web unit synced" in result.output
+    assert str(unit_path) in result.output
+    assert hooks == ["skills", "aliases"]
 
 
 def test_update_local_git_latest_defaults_to_main_worktree(monkeypatch, tmp_path):

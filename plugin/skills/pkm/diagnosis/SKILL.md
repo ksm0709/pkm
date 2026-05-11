@@ -46,7 +46,8 @@ Compare your tally against the Knowledge Collection Protocol:
 | Pre-work: neighbors | `get_note_neighbors` ≥ 1 **if** search returned imp≥6 result | ✅ / ❌ / N/A |
 | Pre-work: pkm_ask | `pkm_ask` ≥ 1 **if** a prior-decision question arose mid-task | ✅ / ❌ / N/A |
 | Post-work: daily_add | `mcp__pkm__daily_add` ≥ 1 | ✅ / ❌ |
-| Post-work: note_add | `mcp__pkm__note_add` ≥ 1 **if** reusable insight was produced | ✅ / ❌ / N/A |
+| Post-work: subnote | `mcp__pkm__create_daily_subnote` ≥ 1 **if** structured time-bound material was produced | ✅ / ❌ / N/A |
+| Post-work: note_add | `mcp__pkm__note_add` ≥ 1 **if** durable reusable knowledge was produced | ✅ / ❌ / N/A |
 
 Mark each row before continuing to Step 3.
 
@@ -58,9 +59,13 @@ Mark each row before continuing to Step 3.
 → Summarize this session's work in 1-2 sentences and call `mcp__pkm__daily_add` right now.
    Do not ask the user — just call it.
 
-**note_add is ❌ AND a clearly reusable insight/decision/pattern was produced:**
+**create_daily_subnote is ❌ AND structured time-bound material was produced:**
+→ Draft a daily subnote title and short content summary, then propose it to the user.
+   Do NOT create large subnotes without showing the proposed shape first.
+
+**note_add is ❌ AND a clearly durable insight/decision/pattern was produced:**
 → Draft the note content and propose it to the user. Do NOT call `mcp__pkm__note_add` without
-   showing the proposed content first (content quality matters).
+   showing the proposed content first (definition, durable scope, and relation quality matter).
 
 **Pre-work steps are ❌:**
 → Record in the report — cannot retroactively fix. Recommend corrective action for next session.
@@ -88,6 +93,7 @@ Output the following markdown block (fill in actual values):
 - Pre-work neighbors: {✅ / ❌ / N/A}
 - Pre-work pkm_ask: {✅ / ❌ / N/A}
 - Post-work daily_add: {✅ / ❌}
+- Post-work subnote: {✅ / ❌ / N/A}
 - Post-work note_add: {✅ / ❌ / N/A}
 
 ### Remediated This Diagnosis
@@ -112,5 +118,6 @@ Output the following markdown block (fill in actual values):
 
 **Post-work** (at session end):
 1. `mcp__pkm__daily_add(text=<1-2 line summary>)` — always
-2. `mcp__pkm__note_add(...)` — if reusable insight, decision, or pattern emerged
-3. `mcp__pkm__add_wikilink(...)` — if obvious connection to an existing note
+2. `mcp__pkm__create_daily_subnote(...)` — if structured time-bound material emerged
+3. `mcp__pkm__note_add(...)` — only if durable reusable knowledge emerged
+4. `mcp__pkm__add_wikilink(...)` — if obvious connection to an existing note

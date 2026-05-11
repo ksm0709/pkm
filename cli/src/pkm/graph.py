@@ -17,6 +17,13 @@ import numpy as np
 from pkm.config import VaultConfig, load_config
 from pkm.frontmatter import parse as parse_note
 from pkm.note_summary import note_description
+from pkm.relations import (
+    RelationMarker,
+    collect_relation_state,
+    parse_relation_markers,
+    write_relation_outputs,
+)
+from pkm.wikilinks import extract_links
 
 SEMANTIC_SCORING_DEFAULTS = {
     "candidate_threshold": 0.7325,
@@ -586,6 +593,7 @@ class ASTMetadata:
     tags: list[str]
     headings: list[dict[str, Any]]
     plain_text_offsets: list[dict[str, Any]]
+    relations: list[RelationMarker]
 
 
 def _extract_metadata_from_ast(
@@ -615,8 +623,7 @@ def _extract_metadata_from_ast(
 
         if node_type == "RawText":
             content = node.get("content", "")
-            for match in re.finditer(r"\[\[(.*?)\]\]", content):
-                links.append(match.group(1).split("|")[0])
+            links.extend(extract_links(content))
 
         current_offset = offset
         for child in node.get("children", []):
@@ -641,6 +648,7 @@ def parse_file_ast(file_path: Path, note_id: str) -> ASTMetadata:
         ast_dict = json.loads(renderer.render(doc))
 
     links, headings, plain_text_offsets = _extract_metadata_from_ast(ast_dict)
+    relations = parse_relation_markers(note.body, source_path=str(file_path)).markers
 
     return ASTMetadata(
         note_id=note_id,
@@ -650,10 +658,11 @@ def parse_file_ast(file_path: Path, note_id: str) -> ASTMetadata:
         tags=tags,
         headings=headings,
         plain_text_offsets=plain_text_offsets,
+        relations=relations,
     )
 
 
-_AST_CACHE_VERSION = 3  # bump to invalidate cache after inline tag parsing fixes
+_AST_CACHE_VERSION = 4  # bump to invalidate cache after relation metadata support
 
 
 class ASTCache:
@@ -702,6 +711,9 @@ class ASTCache:
                     tags=data.get("tags", []),
                     headings=data.get("headings", []),
                     plain_text_offsets=data.get("plain_text_offsets", []),
+                    relations=[
+                        RelationMarker(**item) for item in data.get("relations", [])
+                    ],
                 )
         return None
 
@@ -711,6 +723,7 @@ class ASTCache:
             "tags": metadata.tags,
             "headings": metadata.headings,
             "plain_text_offsets": metadata.plain_text_offsets,
+            "relations": [item.__dict__ for item in metadata.relations],
         }
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
@@ -782,6 +795,22 @@ def build_ast_and_graph(vault: VaultConfig) -> None:
                 graph.add_node(link, type="note_or_unresolved", title=link)
             graph.add_edge(note_id, link, type="wikilink")
 
+        if file_path.parent.resolve() == vault.notes_dir.resolve():
+            source_path = file_path.relative_to(vault.path).as_posix()
+            for relation in metadata.relations:
+                if not graph.has_node(relation.target):
+                    graph.add_node(
+                        relation.target,
+                        type="note_or_unresolved",
+                        title=relation.target,
+                    )
+                if not graph.has_edge(note_id, relation.target):
+                    graph.add_edge(note_id, relation.target, type="wikilink")
+                edge = graph.edges[note_id, relation.target]
+                edge.setdefault("relations", []).append(
+                    relation.to_edge_metadata(source_path)
+                )
+
     # Post-process: link tag notes directly to all notes that use that tag.
     # This makes get_note_neighbors(tag_note) return tagged notes as direct neighbors.
     if vault.tags_dir.is_dir():
@@ -806,3 +835,4 @@ def build_ast_and_graph(vault: VaultConfig) -> None:
         json.dumps(graph_data, ensure_ascii=False, indent=2, default=_default),
         encoding="utf-8",
     )
+    write_relation_outputs(vault, collect_relation_state(vault))

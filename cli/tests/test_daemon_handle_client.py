@@ -13,6 +13,26 @@ from pkm.config import VaultConfig
 from pkm.search_engine import SearchResult
 
 
+def test_web_startup_announcement_includes_url_and_port(caplog, capsys) -> None:
+    """Web startup announces the listening port to both logs and systemd stdout."""
+    import pkm.daemon as daemon
+
+    caplog.set_level(logging.INFO, logger="pkm.daemon")
+
+    daemon._announce_web_server_started("127.0.0.1", 7420)
+
+    out = capsys.readouterr().out
+    assert "PKM web server listening on http://127.0.0.1:7420" in out
+    assert "PKM web server listening on http://127.0.0.1:7420" in caplog.text
+
+
+def test_web_listen_url_formats_ipv6_hosts() -> None:
+    """IPv6 bind addresses need brackets in readable URLs."""
+    import pkm.daemon as daemon
+
+    assert daemon._web_listen_url("::1", 7420) == "http://[::1]:7420"
+
+
 class FakeReader:
     def __init__(self, payload: dict | bytes | None):
         self.payload = payload

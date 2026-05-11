@@ -337,17 +337,18 @@ def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None
                 "- If a prior decision or cross-note synthesis is needed: call `mcp__pkm__pkm_ask(query=<question>)`.",
                 "- If continuing prior work or the user references a previous session: call `mcp__pkm__read_daily_log(offset=1)` or an explicit `date_str`.",
                 "- At session end: always call `mcp__pkm__daily_add(text=<1-2 line summary>)`.",
-                "- For reusable insights: search for duplicates first, then call `mcp__pkm__note_add(...)` when the insight is worth keeping.",
+                "- For structured time-bound material: call `mcp__pkm__create_daily_subnote(...)`.",
+                "- For durable knowledge only: search for duplicates first, then call `mcp__pkm__note_add(...)` when the insight has a stable definition, long-term scope, and at least one relation/source link.",
                 "",
                 "Tool reference:",
-                "`mcp__pkm__daily_add` — log decisions, findings, code changes",
+                "`mcp__pkm__daily_add` — log time-bound session state, progress, findings, and code changes",
                 "`mcp__pkm__read_daily_log` — read past daily log (offset=1 yesterday, offset=N N days ago, or date_str=YYYY-MM-DD)",
                 "`mcp__pkm__search` — recall related notes",
                 "`mcp__pkm__get_note_neighbors` — inspect graph links around a relevant note",
                 "`mcp__pkm__pkm_ask` — synthesize answers from vault notes",
-                "`mcp__pkm__note_add` — create atomic notes (importance: 1-3 trivial, 4-6 moderate, 7-8 important, 9-10 critical)",
+                "`mcp__pkm__note_add` — create durable atomic notes only (importance: 1-3 trivial, 4-6 moderate, 7-8 important, 9-10 critical)",
                 "  - Bias importance 7+ for anything the next agent would need. Default 5 if unsure.",
-                "`mcp__pkm__create_daily_subnote` — create linked sub-note + log [[wikilink]] in today's daily",
+                "`mcp__pkm__create_daily_subnote` — create linked time-bound sub-note + log [[wikilink]] in today's daily",
                 "For detailed workflows and usage: `/pkm` skill",
             ]
         )
@@ -361,16 +362,17 @@ def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None
                 '- If a prior decision or cross-note synthesis is needed: run `pkm ask "<question>"`.',
                 "- If continuing prior work or the user references a previous session: run `pkm daily --offset 1` or `pkm daily --date YYYY-MM-DD`.",
                 '- At session end: always run `pkm daily add "<1-2 line summary>"`.',
-                '- For reusable insights: search for duplicates first, then run `pkm note add --content "<insight>" ...` when worth keeping.',
+                '- For structured time-bound material: run `pkm daily subnote "<title>" --content "..."`.',
+                '- For durable knowledge only: search for duplicates first, then run `pkm note add --content "<insight>" ...` when it has a stable definition, long-term scope, and at least one relation/source link.',
                 "",
                 "Tool reference:",
-                '`pkm daily add "<text>"` — log decisions, findings, code changes',
+                '`pkm daily add "<text>"` — log time-bound session state, progress, findings, and code changes',
                 "`pkm daily --offset N` — view a past daily note (1=yesterday, N=N days ago); use `--date YYYY-MM-DD` for explicit date",
-                '`pkm daily subnote "<title>"` — create linked sub-note + log [[wikilink]] in today\'s daily',
+                '`pkm daily subnote "<title>"` — create linked time-bound sub-note + log [[wikilink]] in today\'s daily',
                 '`pkm search "<query>"` — recall related notes',
                 "`pkm graph neighbors <note-id>` — inspect graph links around a relevant note",
                 '`pkm ask "<question>"` — synthesize answers from vault notes',
-                '`pkm note add --content "<insight>" --type semantic --importance 7 --tags tag1,tag2` — atomic note',
+                '`pkm note add --content "<insight>" --type semantic --importance 7 --tags tag1,tag2` — durable atomic note',
                 "  - importance: 1-3 trivial, 4-6 moderate, 7-8 important (arch decisions, bug root causes), 9-10 critical (security, irreversible)",
                 "  - Bias 7+ for anything the next agent would need. Default 5 if unsure.",
                 "`pkm data add <fname> <path-or-url>` — copy local file or download URL into vault data/",
@@ -604,13 +606,16 @@ def _handle_turn_end_exit2(ctx, **_ignored) -> None:
     instructions = """\
 # Knowledge Extraction — complete these steps, then stop:
 1. mcp__pkm__daily_add(text="<1-2 line summary of what was done>")  ← always
-2. Reusable insight, decision, or pattern found?
+2. Structured time-bound material too large for one daily entry?
+   → mcp__pkm__create_daily_subnote(title=..., content=...)
+   Skip this if the daily entry is enough.
+3. Durable insight, decision, pattern, concept, process, or principle found?
    → mcp__pkm__search(query=<topic>) first (check duplicates)
-   → mcp__pkm__note_add(content=..., importance=7+) if no duplicate exists
-   Skip step 2 if nothing non-obvious or reusable was learned.
-3. Obvious connection to an existing note?
+   → mcp__pkm__note_add(content=..., importance=7+) only if it has stable scope and a relation/source link
+   Skip this if the material is only session state, a status update, or otherwise time-bound.
+4. Obvious connection to an existing note?
    → mcp__pkm__add_wikilink(source_note_id=..., target_note_id=..., description="WHY this connects")
-   Skip step 3 if no clear connection exists.
+   Skip this if no clear connection exists.
 Then stop."""
 
     hook_source = payload.get("hook_source", "")

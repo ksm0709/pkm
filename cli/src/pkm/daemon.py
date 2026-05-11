@@ -41,6 +41,19 @@ logging.basicConfig(
 logger = logging.getLogger("pkm.daemon")
 
 
+def _web_listen_url(bind: str, port: int) -> str:
+    """Return a readable local web URL for startup logs."""
+    host = f"[{bind}]" if ":" in bind and not bind.startswith("[") else bind
+    return f"http://{host}:{port}"
+
+
+def _announce_web_server_started(bind: str, port: int) -> None:
+    """Log web startup to both daemon log and systemd journal stdout."""
+    message = f"PKM web server listening on {_web_listen_url(bind, port)}"
+    logger.info(message)
+    print(message, flush=True)
+
+
 def _resolve_graph_path(vault, tier: str = "enriched"):
     """Return best-available graph path. Preferred: enriched, fallback: structural.
 
@@ -791,7 +804,7 @@ async def async_main():
         site = _aiohttp_web.TCPSite(runner, web_cfg.bind, web_cfg.port)
         await site.start()
         DaemonState.web_runner = runner
-        logger.info("Web server started on %s:%d", web_cfg.bind, web_cfg.port)
+        _announce_web_server_started(web_cfg.bind, web_cfg.port)
     except ImportError:
         logger.info("aiohttp not installed — web server disabled (install [web] extra)")
     except Exception:

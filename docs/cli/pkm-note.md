@@ -1,12 +1,20 @@
 # pkm note
 
-Manage atomic notes in the vault.
+Manage durable atomic notes in the vault.
+
+Use `pkm note` for long-lived knowledge: concepts, entities, processes,
+principles, patterns, decisions, and index notes. Use `pkm daily add` or
+`pkm daily subnote` for time-bound session state, progress logs, event notes,
+investigations, and temporary TODO context.
+
+Before adding a note, check that it has a stable definition, long-term scope,
+and at least one meaningful relation or source link.
 
 ## Usage
 `pkm note [OPTIONS] COMMAND [ARGS]...`
 
 ## Commands
-- **`add`**: Create a new atomic note in the vault.
+- **`add`**: Create a new durable atomic note in the vault.
 - **`auto-link`**: Auto-link plain text matching other notes' titles.
 - **`edit`**: Open a note in the editor (search by title, first match).
 - **`links`**: Show backlinks for a note.

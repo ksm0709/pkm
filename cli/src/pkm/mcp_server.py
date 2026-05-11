@@ -59,10 +59,12 @@ def note_add(
 ) -> dict[str, Any]:
     """Create a permanent atomic note for reusable knowledge.
 
-    Use for knowledge that will be referenced again: architectural decisions, bug root causes,
-    API behaviors, patterns, user preferences. Search() first to avoid duplicates —
-    update an existing note if the topic already exists.
-    Do NOT use for ephemeral session logs — use daily_add() instead.
+    Use for durable knowledge that will be referenced again: concepts, entities,
+    processes, principles, patterns, architectural decisions, bug root causes,
+    API behaviors, and user preferences. Search() first to avoid duplicates —
+    update an existing note if the topic already exists. Do NOT use for
+    time-bound session logs, meeting-only facts, or work-in-flight state; use
+    daily_add() or create_daily_subnote() instead.
 
     importance: 1-3 trivial · 4-6 moderate · 7-8 important (arch decisions, bug root causes)
     · 9-10 critical (security, irreversible). Default 5 if unsure. Bias 7+ for anything the
@@ -71,7 +73,9 @@ def note_add(
     Args:
         content: Note body text (required).
         title: Note title. Auto-generated from content if omitted.
-        type: Memory type — semantic (concepts/facts), episodic (events), procedural (how-to).
+        type: Memory type — semantic (concepts/facts) or procedural (how-to).
+            Existing episodic notes are readable for compatibility, but new
+            ordinary session state belongs in daily notes.
         importance: Importance score 1-10 (default 5).
         tags: List of tags.
         meta: Arbitrary key-value metadata added to frontmatter.
@@ -102,11 +106,12 @@ def note_add(
 
 @mcp.tool()
 def daily_add(text: str) -> dict[str, Any]:
-    """Append a timestamped log entry to today's daily note (ephemeral session log).
+    """Append a timestamped log entry to today's daily note (time-bound session log).
 
-    Use for work summaries, observations, and progress notes that don't need independent
-    future reference. This is the lightest PKM write and should be called at the END of
-    every session. Do NOT use for reusable knowledge — use note_add() instead.
+    Use for work summaries, observations, progress notes, temporary TODOs, and
+    session state that doesn't need independent future reference. This is the
+    lightest PKM write and should be called at the END of every session. Do NOT
+    use for reusable durable knowledge — use note_add() after the promotion gate.
     To READ a past daily note, use read_daily_log(offset=N).
 
     Args:
@@ -183,10 +188,11 @@ def create_daily_subnote(
     """Create a dated subnote linked from today's daily note (medium-weight session record).
 
     Use for session-scoped records larger than a daily_add() entry but not warranting
-    a standalone atomic note — meeting notes, investigation logs, design explorations.
+    a standalone atomic note — meeting notes, investigation logs, design explorations,
+    long session notes, and project-specific day artifacts.
     Creates YYYY-MM-DD-{title}.md in the vault daily directory and appends a timestamped
     [[wikilink]] entry to today's daily note.
-    For permanent reusable knowledge, use note_add() instead.
+    For permanent reusable knowledge, promote only the durable findings with note_add().
     To READ a past daily note, use read_daily_log(offset=N).
 
     Args:
@@ -254,7 +260,7 @@ def search(
         query: Free-text concept or topic to search for.
         top: Maximum number of results (default 10, max 50).
         vault: Vault name for cross-vault search. Uses server vault if omitted.
-        memory_type: Filter by type — semantic, episodic, or procedural.
+        memory_type: Filter by type — semantic, procedural, or legacy episodic.
         min_importance: Minimum importance score filter (default 1.0). Use 5.0 to focus on non-trivial notes.
     """
     from pkm.search_engine import search_via_daemon
@@ -496,7 +502,8 @@ def patch_note(
 
     Use this for partial edits to existing notes: exact replacement, append/prepend,
     section upsert, or frontmatter updates. Do NOT use this to create notes; use
-    note_add for new atomic notes and daily_add for logs.
+    note_add for new durable atomic notes, daily_add for short time-bound logs,
+    and create_daily_subnote for structured time-bound records.
 
     Args:
         note_id: Note slug without .md.
@@ -767,8 +774,8 @@ def mark_consolidated(
 ) -> dict[str, Any]:
     """Mark a daily note as consolidated after Zettelkasten distillation.
 
-    Call AFTER creating atomic notes from a daily note's content (note_add()), providing
-    the IDs of the notes created. Part of the zettel-loop workflow:
+    Call AFTER creating durable atomic notes from a daily note's content (note_add()),
+    providing the IDs of the notes created. Part of the zettel-loop workflow:
     list_consolidation_candidates() → distill → note_add() → mark_consolidated().
     Requires distilled_note_ids for auditability — cannot mark without them.
 

@@ -5,7 +5,7 @@ description: "Personal Knowledge Management for Obsidian vaults — Zettelkasten
 
 # PKM — Personal Knowledge Management
 
-Obsidian vault-based Zettelkasten knowledge management system. Uses daily notes as the entry point for knowledge, refines knowledge into atomic notes, and builds a knowledge network with wikilinks.
+Obsidian vault-based Zettelkasten knowledge management system. Uses daily notes as the entry point for knowledge, refines knowledge into atomic notes, and builds a knowledge network with wikilinks and typed relation markers.
 
 ## Vault Structure
 
@@ -28,7 +28,7 @@ When used inside a Git repository, the vault name is automatically assigned in `
 ## Core Workflow
 
 ```
-[experience/learning] → daily/ (chronological record) → repeated/structured value found → notes/ (atomic note promotion)
+[experience/learning/session state] → daily/ (time-bound record) → durable knowledge found → notes/ (knowledge-shaped promotion)
                                                                                          ↕ [[wikilink]] connections
                                                                                     notes/ ↔ notes/ (knowledge network)
                                                                                          |
@@ -37,7 +37,7 @@ When used inside a Git repository, the vault name is automatically assigned in `
 
 ### 1. Daily Note — Entry Point for Knowledge
 
-Record the day's experiences, learning, and ideas in chronological order. It doesn't need to be perfect — capturing it comes first.
+Record the day's experiences, learning, status, and ideas in chronological order. It doesn't need to be perfect — capturing it comes first. Use `daily/` for time-bound memory: session state, progress logs, event notes, transient observations, temporary TODO context, and structured daily subnotes.
 
 ```markdown
 ---
@@ -55,17 +55,19 @@ tags:
 
 ### 2. Atomic Note — Refined Knowledge
 
-Promote knowledge that appears repeatedly in dailies or is worth structuring into an atomic note.
+Promote only durable knowledge that appears repeatedly in dailies or is worth structuring into an atomic note. `notes/` is for concepts, entities, processes, principles, patterns, decisions, and index notes. Do not create ordinary session-state or easily deprecated status memories as `notes/` entries.
 
 **Principles:**
 - **Atomicity**: One note = one topic. Don't mix multiple topics.
 - **Connection**: Every note must be connected to related notes via `[[wikilink]]`. Isolated notes are dead knowledge.
 - **Own words**: Not copy-paste — understand the core and write it concisely.
 - **Flat structure**: Classify with tags, no nested folders inside `notes/`.
+- **Durability**: A note must remain useful without today's date or the current task.
 
 ```markdown
 ---
 id: <filename-without-extension>
+type: concept | entity | process | principle | pattern | decision | index
 aliases:
   - <short alias>
 tags:
@@ -73,12 +75,29 @@ tags:
 description: "one-line summary (optional)"
 ---
 
-Content...
+## Definition
+One short paragraph defining the knowledge unit.
 
-Related: [[YYYY-MM-DD]] (first learned), [[related-concept]]
+## Use When
+- Situations where this note should be retrieved or applied.
+
+## Relations
+&source [[YYYY-MM-DD]] - source daily note
+&related [[related-concept]] - why this connection matters
+&depends_on [[required-concept]] - what requirement the target satisfies
+
+## Evidence / Examples
+- Concrete source, example, code reference, or observed case.
 ```
 
 The `description` field is optional and appears next to the title in backlink lists. If omitted, the system will automatically extract the first 200 characters of the note's body to use as a fallback description.
+
+Use `&relation [[target]] - reason` markers for durable typed knowledge
+relations in `notes/`. Markers in `daily/` are promotion candidates only and do
+not become canonical graph relations. Prefer the built-in vocabulary
+`is_a`, `part_of`, `depends_on`, `enables`, `contrasts_with`, `supersedes`,
+`instance_of`, `related`, and `source`; promote useful observed names with
+`pkm relations promote <relation>`.
 
 ### 3. Knowledge Extraction — Criteria for Promotion
 
@@ -88,13 +107,22 @@ Criteria for deciding when to promote from a daily note to an atomic note:
 - **Reference potential**: Independent knowledge worth referencing in other contexts
 - **Structuring value**: When scattered notes can be organized into a single concept
 - **Connection potential**: When meaningful connections can be made with existing atomic notes
+- **Durable scope**: When the note has a stable definition and remains useful without today's date
+
+Do **not** promote:
+
+- Session progress, work-in-flight state, or current task status
+- Event logs, meeting-only facts, and temporary TODO context
+- Tool output, intermediate debugging traces, or facts already obvious from code/git
+
+If the material is time-bound but too large for one daily entry, use a daily subnote.
 
 ## Interface: MCP Tools
 
 > Use this interface when PKM MCP server is configured (visible as `mcp__pkm__*` tools in your tool list). If MCP tools are available, always prefer them — they are faster and require no shell.
 
 ```
-mcp__pkm__daily_add(text="log decisions, findings, code changes")
+mcp__pkm__daily_add(text="log time-bound session state, findings, code changes")
 mcp__pkm__read_daily_log(offset=1)                  # read yesterday's daily (offset=N for N days ago)
 mcp__pkm__search(query="query string")
 mcp__pkm__note_add(content="insight", type="semantic", importance=7, tags=["tag1", "tag2"])
@@ -130,8 +158,9 @@ When a question arises mid-task about prior decisions, patterns, or the user's p
 ### C. Post-work: Knowledge Capture
 
 1. **Always:** `mcp__pkm__daily_add(text="<1-2 line summary of what was done>")`
-2. **If reusable:** `mcp__pkm__search(query=<topic>)` first (check duplicates), then `mcp__pkm__note_add(content=..., importance=7+)` for decisions or patterns the next agent would need
-3. **If obvious connection:** `mcp__pkm__add_wikilink(source_note_id=..., target_note_id=..., description="WHY — the conceptual bridge")`
+2. **If time-bound but structured:** `mcp__pkm__create_daily_subnote(...)` for meetings, investigations, long session notes, or project-specific day artifacts
+3. **If durable:** `mcp__pkm__search(query=<topic>)` first (check duplicates), then `mcp__pkm__note_add(content=..., importance=7+)` only when the insight passes the promotion gate
+4. **If obvious connection:** `mcp__pkm__add_wikilink(source_note_id=..., target_note_id=..., description="WHY — the conceptual bridge")`
 
 ## Interface: CLI
 
@@ -166,7 +195,7 @@ pkm daily edit                     # Open today's daily note in editor
 pkm daily edit --offset 1          # Open yesterday's note (must already exist)
 
 # Note management
-pkm note add "Note Title" --tags t1,t2  # Create atomic note with frontmatter
+pkm note add "Note Title" --tags t1,t2  # Promote durable knowledge with frontmatter
 pkm note add "Title" --vault <name>     # In specific vault
 pkm note show <query>                   # Show note content + backlinks section
 pkm note edit <query>                   # Open note in editor by title keyword
@@ -181,6 +210,13 @@ pkm tags edit <tag>                # Open tag note in editor
 pkm tags search "python*"          # Glob pattern search
 pkm tags search "python+ml"        # AND: notes with both tags
 pkm tags search "python,rust"      # OR: notes with either tag
+
+# Relation vocabulary and audit
+pkm relations                      # List built-in, vault, and observed relations
+pkm relations show <relation>      # Show definition and usage
+pkm relations observed             # List relation names not yet in vocabulary
+pkm relations audit                # Advisory relation quality report
+pkm relations promote <relation>   # Add observed relation to vault vocabulary
 
 # Data files
 pkm data                           # List data files in vault
@@ -246,7 +282,7 @@ $ pkm daily add "오늘의 작업 내용"
 
 - **Daily entries**: `pkm daily add "<text>"` — ensures [hh:mm:ss] timestamp format and ## Logs section
 - **Sub-notes**: `pkm daily subnote "<title>"` — creates dated sub-note tagged `daily-note` and logs [[wikilink]] in daily
-- **New notes**: `pkm note add "<Title>" --tags t1,t2` — ensures required frontmatter (id, aliases, tags, description)
+- **New notes**: `pkm note add "<Title>" --tags t1,t2` — use only for durable knowledge that passes the promotion gate
 
 **After** the CLI creates the file/entry, using Read/Edit to modify the internal content is fine (e.g., expanding a note body, fixing wording). The gate applies to creation and appending only.
 
@@ -261,6 +297,7 @@ When the user asks for PKM help, follow this flow:
 1. **Identify intent**: daily logging, note creation, knowledge extraction, or maintenance?
 2. **Check vault context**: Run `pkm vault where` to confirm active vault. If wrong, run `pkm vault open <name>` to switch. No need to cd into vault directory.
 3. **Choose vault**: Infer from context if not specified. Use `--vault` flag or `PKM_DEFAULT_VAULT`.
-3. **Check existing notes**: Search before creating — avoid duplicates.
-4. **Maintain connections**: Every new note must link to at least one existing note.
-5. **Use appropriate tool**: CLI as the write gate (creation/append), Read/Edit for subsequent content editing.
+4. **Check existing notes**: Search before creating — avoid duplicates.
+5. **Apply promotion gate**: Use `daily add`/`daily subnote` for time-bound state; use `note add` only for durable knowledge.
+6. **Maintain connections**: Every new note must link to at least one existing note.
+7. **Use appropriate tool**: CLI as the write gate (creation/append), Read/Edit for subsequent content editing.

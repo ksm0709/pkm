@@ -12,6 +12,7 @@ from pkm.commands.daily import daily
 from pkm.commands.notes import note
 from pkm.commands.maintenance import stats
 from pkm.commands.tag_commands import tags
+from pkm.commands.relations import relations
 from pkm.commands.search import index_cmd, search_cmd
 from pkm.commands.ask import ask_cmd
 from pkm.commands.setup import setup_cmd
@@ -108,6 +109,7 @@ main.add_command(index_cmd)
 main.add_command(search_cmd)
 main.add_command(ask_cmd)
 main.add_command(tags)
+main.add_command(relations)
 main.add_command(stats)
 main.add_command(vault)
 main.add_command(config)

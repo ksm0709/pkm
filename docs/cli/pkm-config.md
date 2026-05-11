@@ -16,11 +16,14 @@ Manage PKM configuration.
 - `editor`: Editor command used by `pkm daily edit` (e.g. 'vim', 'code --wait')
 - `graph-depth`: Default graph traversal depth for search and show commands
 - `model`: LLM model used by `pkm ask` (default: auto, e.g. gpt-5.4-nano, gpt-5-mini, gemini/gemini-3-flash-preview)
+- `web-bind`: Bind address used by the pkm web daemon
+- `web-port`: Port used by the pkm web daemon
 
 ## Examples
 ```bash
 pkm config set default-vault work-vault
 pkm config set editor vim
+pkm config set web-port 8123
 pkm config get default-vault
 pkm config list
 ```

@@ -7,9 +7,9 @@ PKM includes a built-in [Model Context Protocol (MCP)](https://modelcontextproto
 The MCP server runs a JSON-RPC 2.0 server over `stdio` and exposes the following tools to the AI assistant:
 
 **Write tools**
-- **`note_add`**: Create a new atomic note in the vault.
-- **`daily_add`**: Append a timestamped log entry or TODO to today's daily note.
-- **`create_daily_subnote`**: Create a dated subnote (`YYYY-MM-DD-{title}.md`) tagged `daily-note` and add a `[[wikilink]]` entry to today's daily note.
+- **`note_add`**: Create a durable atomic note in the vault. Use only for concepts, entities, processes, principles, patterns, decisions, and index-worthy knowledge.
+- **`daily_add`**: Append a timestamped log entry or TODO to today's daily note. Use for time-bound session state, progress, and transient observations.
+- **`create_daily_subnote`**: Create a dated subnote (`YYYY-MM-DD-{title}.md`) tagged `daily-note` and add a `[[wikilink]]` entry to today's daily note. Use for structured time-bound material such as meetings, investigations, and long session notes.
 
 **Search & discovery tools**
 - **`read_daily_log`**: Read a past or present daily note. Use `offset=N` for N days ago (`0`=today, `1`=yesterday) or `date_str=YYYY-MM-DD` for an explicit date (`date_str` wins if both given).
@@ -28,6 +28,11 @@ The MCP server runs a JSON-RPC 2.0 server over `stdio` and exposes the following
 **Zettelkasten workflow tools**
 - **`list_consolidation_candidates`**: List daily notes eligible for distillation (not today, not already consolidated).
 - **`mark_consolidated`**: Mark a daily note as consolidated after distilling insights — requires `distilled_note_ids` for auditability.
+
+**Promotion rule**
+Before using `note_add`, verify the material has a stable definition, long-term
+scope, and at least one meaningful relation or source link. If it only describes
+what happened today, use `daily_add` or `create_daily_subnote`.
 
 **Index & agent tools**
 - **`index`**: Rebuild the semantic search index so the assistant can query recent changes.
@@ -92,3 +97,4 @@ Once registered and the client is restarted, your AI assistant will have access 
 - *"Search my PKM vault for notes about concurrent SQLite writes."*
 - *"Add a daily log entry to my PKM saying I finished the auth refactor."*
 - *"Create a new PKM note about this retry strategy pattern we just implemented."*
+- *"Create a daily subnote for this investigation transcript, then promote only the durable findings."*

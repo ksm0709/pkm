@@ -2,6 +2,10 @@
 
 Manage daily notes.
 
+Daily notes are the home for time-bound memory: session state, progress logs,
+event notes, transient observations, temporary TODO context, and structured
+daily subnotes. Promote only durable knowledge into `notes/`.
+
 ## Usage
 `pkm daily [OPTIONS] COMMAND [ARGS]...`
 
@@ -47,3 +51,6 @@ pkm daily edit --offset 2                     # edit 2 days ago (note must alrea
 
 Sub-notes always include the `daily-note` tag in frontmatter. Tags passed with
 `--tags` are added after it without duplicating `daily-note`.
+
+Use sub-notes for time-bound material too large for one log entry, such as
+meetings, investigations, long session notes, or project-specific day artifacts.

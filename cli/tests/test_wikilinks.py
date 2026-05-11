@@ -22,6 +22,14 @@ def test_extract_aliased_link():
     assert extract_links("See [[note|alias]] for details.") == ["note"]
 
 
+def test_extract_link_target_with_literal_brackets():
+    assert extract_links("See [[[주식분석]xxx]] for details.") == ["[주식분석]xxx"]
+
+
+def test_extract_aliased_link_with_literal_brackets():
+    assert extract_links("See [[[주식분석]xxx|alias [ok]]]") == ["[주식분석]xxx"]
+
+
 def test_extract_ignores_embeds():
     links = extract_links("Embed: ![[image.png]] and [[real-note]]")
     assert "image.png" not in links
@@ -67,6 +75,17 @@ def test_count_backlinks(tmp_vault: VaultConfig):
     assert counts["untagged-note"] == 0
 
 
+def test_count_backlinks_to_note_with_literal_brackets(tmp_vault: VaultConfig):
+    target = tmp_vault.notes_dir / "[주식분석]xxx.md"
+    target.write_text("---\nid: [주식분석]xxx\ntags: []\n---\n", encoding="utf-8")
+    linker = tmp_vault.notes_dir / "bracket-linker.md"
+    linker.write_text("Related: [[[주식분석]xxx]]\n", encoding="utf-8")
+
+    counts = count_backlinks(tmp_vault)
+
+    assert counts["[주식분석]xxx"] == 1
+
+
 def test_find_orphans(tmp_vault: VaultConfig):
     orphans = find_orphans(tmp_vault)
     orphan_names = {p.name for p in orphans}
@@ -93,6 +112,18 @@ def test_rewrite_wikilink_targets_preserves_alias_and_skips_code_blocks():
     assert "[[new-note|With ext]]" in rewritten
     assert "```\n[[old-note]]\n```" in rewritten
     assert "![[old-note]]" in rewritten
+
+
+def test_rewrite_wikilink_target_with_literal_brackets():
+    text = "See [[[주식분석]xxx]] and [[[주식분석]xxx|old alias]]."
+
+    rewritten, count = rewrite_wikilink_targets(
+        text, "[주식분석]xxx", "[주식분석]yyy"
+    )
+
+    assert count == 2
+    assert "[[[주식분석]yyy]]" in rewritten
+    assert "[[[주식분석]yyy|old alias]]" in rewritten
 
 
 def test_rewrite_wikilinks_in_vault_updates_notes_and_daily(tmp_vault: VaultConfig):

@@ -105,6 +105,18 @@ CONFIG_SCHEMA = {
         "description": "Score penalty when finance cross-domain mode is penalize",
         "default": "0.1943",
     },
+    "web-port": {
+        "section": "web",
+        "internal_key": "port",
+        "description": "Port used by the pkm web daemon",
+        "default": "7420",
+    },
+    "web-bind": {
+        "section": "web",
+        "internal_key": "bind",
+        "description": "Bind address used by the pkm web daemon",
+        "default": "0.0.0.0",
+    },
 }
 
 VALID_KEYS = set(CONFIG_SCHEMA.keys())
@@ -118,13 +130,29 @@ def config_default_for_key(key: str) -> str | None:
     return None if default is None else str(default)
 
 
+def _section_for_key(key: str) -> str:
+    return str(CONFIG_SCHEMA[key].get("section", "defaults"))
+
+
+def _validate_config_value(key: str, value: str) -> str:
+    if key == "web-port":
+        try:
+            port = int(value)
+        except ValueError:
+            raise click.ClickException("web-port must be an integer from 1 to 65535.")
+        if not 1 <= port <= 65535:
+            raise click.ClickException("web-port must be an integer from 1 to 65535.")
+        return str(port)
+    return value
+
+
 def config_value_for_key(
-    key: str, defaults: dict[str, Any], *, unset_label: str = "not set"
+    key: str, section_values: dict[str, Any], *, unset_label: str = "not set"
 ) -> tuple[str, str]:
     """Return display value and source: configured, default, or unset."""
     internal_key = CONFIG_SCHEMA[key]["internal_key"]
-    if internal_key in defaults:
-        return str(defaults[internal_key]), "configured"
+    if internal_key in section_values:
+        return str(section_values[internal_key]), "configured"
     default = config_default_for_key(key)
     if default is not None:
         return default, "default"
@@ -172,11 +200,13 @@ def set_config(key: str, value: str) -> None:
         )
 
     data = load_config()
-    defaults = dict(data.get("defaults", {}))
+    section_name = _section_for_key(key)
+    section = dict(data.get(section_name, {}))
     data = dict(data)
 
     schema = CONFIG_SCHEMA[key]
     internal_key = schema["internal_key"]
+    value = _validate_config_value(key, value)
 
     if key == "default-vault":
         vaults = discover_vaults()
@@ -185,10 +215,10 @@ def set_config(key: str, value: str) -> None:
                 f"[yellow]Warning: vault '{value}' not found in discovered vaults.[/yellow]"
             )
 
-    defaults[internal_key] = value
+    section[internal_key] = value
     console.print(f"[green]✓ Set {key} = {value}[/green]")
 
-    data["defaults"] = defaults
+    data[section_name] = section
     save_config(data)
 
 
@@ -201,10 +231,10 @@ def get_config(key: str) -> None:
             f"Unknown key '{key}'. Valid keys: {', '.join(sorted(VALID_KEYS))}"
         )
 
-    defaults = load_config().get("defaults", {})
-    if not isinstance(defaults, dict):
-        defaults = {}
-    value, _source = config_value_for_key(key, defaults)
+    section = load_config().get(_section_for_key(key), {})
+    if not isinstance(section, dict):
+        section = {}
+    value, _source = config_value_for_key(key, section)
     console.print(value)
 
 
@@ -221,14 +251,15 @@ def list_config(output_format: str) -> None:
     """List all configuration settings."""
     data = load_config()
 
-    defaults = data.get("defaults", {})
-    if not isinstance(defaults, dict):
-        defaults = {}
-
     rows = [
         (
             key,
-            *config_value_for_key(key, defaults),
+            *config_value_for_key(
+                key,
+                data.get(_section_for_key(key), {})
+                if isinstance(data.get(_section_for_key(key), {}), dict)
+                else {},
+            ),
             CONFIG_SCHEMA[key]["description"],
         )
         for key in sorted(CONFIG_SCHEMA.keys())

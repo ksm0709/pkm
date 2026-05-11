@@ -2,7 +2,7 @@
 
 **Your Obsidian vault, upgraded into a real workflow.**
 
-PKM is a terminal-first personal knowledge management CLI for people who live in Markdown, think in notes, and want their vault to stay useful over time. It combines fast daily capture, atomic notes, backlinks, tags, semantic search, vault management, and an AI-ready memory layer in one lightweight tool.
+PKM is a terminal-first personal knowledge management CLI for people who live in Markdown, think in notes, and want their vault to stay useful over time. It combines fast daily capture, atomic notes, backlinks, tags, typed relations, semantic search, vault management, and an AI-ready memory layer in one lightweight tool.
 
 Whether you use Obsidian as a personal knowledge base, a work notebook, or a shared context layer for coding agents, PKM helps you capture ideas faster, retrieve them by meaning, and keep your vault organized without leaving the terminal.
 
@@ -21,6 +21,12 @@ Most Markdown note systems start simple and slowly become hard to use:
 PKM is designed to fix that.
 
 It gives you a practical command-line layer for your Obsidian vault: quick capture for humans, durable memory for agents, and structure that scales as your notes grow.
+
+PKM treats capture and promotion as separate steps. `daily/` is the inbox for
+time-bound memory: session state, progress logs, transient observations, and
+structured daily subnotes. `notes/` is the long-term knowledge layer: durable
+concepts, entities, processes, principles, patterns, decisions, and index notes
+that form a wiki-like graph.
 
 ---
 
@@ -72,6 +78,7 @@ We have extracted detailed documentation for each CLI command into the `docs/cli
 - [Index (`pkm index`)](docs/cli/pkm-index.md): Build the semantic search index.
 - [Multi-Vault Management (`pkm vault`)](docs/cli/pkm-vault.md): Manage multiple vaults natively.
 - [Tags (`pkm tags`)](docs/cli/pkm-tags.md): Tag navigation and vault maintenance.
+- [Relations (`pkm relations`)](docs/cli/pkm-relations.md): Typed Markdown relation vocabulary and audit.
 - [Agent Hooks (`pkm hook`)](docs/cli/pkm-hook.md): Agent hooks and integrations for LLM workflows.
 - [Config (`pkm config`)](docs/cli/pkm-config.md): Configuration management.
 - [Data (`pkm data`)](docs/cli/pkm-data.md): Manage data files in the vault.
@@ -118,12 +125,20 @@ A typical PKM flow looks like this:
 1. Run `pkm setup`
 2. Open today’s note with `pkm daily`
 3. Log progress with `pkm daily add "..."`
-4. Turn a useful insight into an atomic note with `pkm note add`
-5. Build the semantic index with `pkm index`
-6. Retrieve the idea later with `pkm search "..."`
-7. Save a durable lesson as a semantic memory for future sessions
+4. Keep large time-bound material in a daily subnote with `pkm daily subnote`
+5. Promote durable knowledge into an atomic note with `pkm note add`
+6. Link the promoted note to related concepts, sources, or index notes
+7. Add typed relation markers such as `&depends_on [[target]] - reason` when
+   the relationship should be queryable as graph metadata
+8. Build the semantic index with `pkm index`
+9. Retrieve the idea later with `pkm search "..."` or inspect relation usage
+   with `pkm relations`
 
 The result is a vault that is easier to write to, easier to search, and more useful tomorrow than it was today.
+
+Before promoting into `notes/`, ask whether the item has a stable definition,
+long-term scope, and at least one meaningful relation. If it only describes
+what happened today, keep it in `daily/`.
 
 ---
 

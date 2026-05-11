@@ -9,9 +9,10 @@ from pathlib import Path
 from pkm.config import VaultConfig
 
 # Skip ![[embeds]] — use negative lookbehind for !
-# Match [[target]] and [[target|alias]] — capture only target
-_LINK_PATTERN = re.compile(r"(?<!\!)\[\[([^\]|]+?)(?:\|[^\]]+?)?\]\]")
-_LINK_REWRITE_PATTERN = re.compile(r"(?<!\!)\[\[([^\]|]+?)(\|[^\]]+?)?\]\]")
+# Match [[target]] and [[target|alias]] — capture only target.
+# Targets may contain literal brackets, e.g. [[[주식분석]xxx]] -> [주식분석]xxx.
+_LINK_PATTERN = re.compile(r"(?<!\!)\[\[([^\n|]+?)(?:\|[^\n]*?)?\]\]")
+_LINK_REWRITE_PATTERN = re.compile(r"(?<!\!)\[\[([^\n|]+?)(\|[^\n]*?)?\]\]")
 _CODE_BLOCK = re.compile(r"```.*?```", re.DOTALL)
 
 
@@ -38,6 +39,14 @@ def normalize_wikilink_target(target: str) -> str:
     """Normalize wikilink targets for matching while preserving stored IDs."""
     target = target.strip()
     return target[:-3] if target.endswith(".md") else target
+
+
+def match_wikilink_at_start(text: str) -> tuple[str, int] | None:
+    """Return normalized target and match end when text starts with a wikilink."""
+    match = _LINK_PATTERN.match(text)
+    if not match:
+        return None
+    return normalize_wikilink_target(match.group(1).strip()), match.end()
 
 
 def _rewrite_wikilinks_segment(text: str, old_target: str, new_target: str) -> tuple[str, int]:
