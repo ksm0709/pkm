@@ -15,6 +15,7 @@ from pkm.commands.setup import (
     install_skill_files,
     sync_existing_web_unit,
 )
+from pkm.config import load_config
 from pkm.version_check import get_recent_versions
 from pkm.workflows import sync_stale_global_workflow_defaults
 
@@ -42,9 +43,30 @@ def _installed_extras() -> list[str]:
     return [name for name, probe in _EXTRAS_PROBE.items() if _extra_installed(probe)]
 
 
+def _truthy_config(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return False
+
+
+def _configured_extras() -> list[str]:
+    """Return optional extras requested by the saved setup configuration."""
+    setup_config = load_config().get("setup", {})
+    if not isinstance(setup_config, dict):
+        return []
+
+    extras: list[str] = []
+    if _truthy_config(setup_config.get("install_search")):
+        extras.append("search")
+    return extras
+
+
 def _extras_suffix() -> str:
     """Build the pip extras suffix, e.g. '[search,mcp]' or ''."""
-    extras = _installed_extras()
+    requested = set(_installed_extras()) | set(_configured_extras())
+    extras = [name for name in _EXTRAS_PROBE if name in requested]
     return f"[{','.join(extras)}]" if extras else ""
 
 

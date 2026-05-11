@@ -27,6 +27,7 @@ from pkm._memory_types import CURRENT_SCHEMA_VERSION, IMPORTANCE_DEFAULT
 from typing import Any
 
 _MODEL_CACHE: dict[str, Any] = {}
+logger = logging.getLogger(__name__)
 
 
 def _require_transformers(model_name: str):
@@ -92,6 +93,16 @@ def _extract_created_at(
     return None
 
 
+def _parse_indexable_notes(md_files: list[Path]) -> list[Any]:
+    notes: list[Any] = []
+    for path in md_files:
+        try:
+            notes.append(parse(path))
+        except Exception as exc:
+            logger.warning("Skipping malformed note during index: %s (%s)", path, exc)
+    return notes
+
+
 def build_index(
     vault: VaultConfig, model_name: str = "all-MiniLM-L6-v2"
 ) -> VectorIndex:
@@ -109,7 +120,7 @@ def build_index(
         if d.is_dir():
             md_files.extend(sorted(d.glob("*.md")))
 
-    notes = [parse(f) for f in md_files]
+    notes = _parse_indexable_notes(md_files)
 
     vault.pkm_dir.mkdir(parents=True, exist_ok=True)
     db_path = vault.pkm_dir / "vector.db"

@@ -2,6 +2,7 @@
 
 import datetime
 import json
+import logging
 import re
 import sqlite3
 from collections import Counter
@@ -24,6 +25,8 @@ from pkm.relations import (
     write_relation_outputs,
 )
 from pkm.wikilinks import extract_links
+
+logger = logging.getLogger(__name__)
 
 SEMANTIC_SCORING_DEFAULTS = {
     "candidate_threshold": 0.7325,
@@ -750,7 +753,13 @@ def build_ast_and_graph(vault: VaultConfig) -> None:
     graph = nx.DiGraph()
 
     for file_path in md_files:
-        note = parse_note(file_path)
+        try:
+            note = parse_note(file_path)
+        except Exception as exc:
+            logger.warning(
+                "Skipping malformed note in graph build: %s (%s)", file_path, exc
+            )
+            continue
         note_id = str(note.id)
 
         mtime = file_path.stat().st_mtime
@@ -759,7 +768,13 @@ def build_ast_and_graph(vault: VaultConfig) -> None:
         if cached and cached.mtime >= mtime:
             metadata = cached
         else:
-            metadata = parse_file_ast(file_path, note_id)
+            try:
+                metadata = parse_file_ast(file_path, note_id)
+            except Exception as exc:
+                logger.warning(
+                    "Skipping note after AST parse failure: %s (%s)", file_path, exc
+                )
+                continue
             cache.set(metadata)
 
         meta = dict(note.meta)
@@ -817,7 +832,15 @@ def build_ast_and_graph(vault: VaultConfig) -> None:
         for file_path in md_files:
             if file_path.parent.resolve() != vault.tags_dir.resolve():
                 continue
-            tag_note_id = str(parse_note(file_path).id)
+            try:
+                tag_note_id = str(parse_note(file_path).id)
+            except Exception as exc:
+                logger.warning(
+                    "Skipping malformed tag note in graph post-processing: %s (%s)",
+                    file_path,
+                    exc,
+                )
+                continue
             tag_hub_id = f"tag:{file_path.stem}"
             if not graph.has_node(tag_hub_id):
                 continue

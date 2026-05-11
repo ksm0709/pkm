@@ -50,6 +50,7 @@ class CommandDispatcher:
 def _patch_post_install(monkeypatch):
     calls = []
     monkeypatch.setattr(update_mod, "_extra_installed", lambda _probe: False)
+    monkeypatch.setattr(update_mod, "load_config", lambda: {})
     monkeypatch.setattr(
         update_mod, "install_skill_files", lambda: calls.append("skills")
     )
@@ -66,6 +67,7 @@ def test_update_helpers_normalize_tags_and_detect_installed_extras(monkeypatch):
     assert update_mod._normalize_tag("1.2.3") == "v1.2.3"
     assert update_mod._normalize_tag("v1.2.3") == "v1.2.3"
 
+    monkeypatch.setattr(update_mod, "load_config", lambda: {})
     monkeypatch.setattr(update_mod, "_extra_installed", lambda _probe: True)
     assert update_mod._extra_installed("sentence_transformers") is True
     assert update_mod._extras_suffix() == "[search]"
@@ -73,6 +75,28 @@ def test_update_helpers_normalize_tags_and_detect_installed_extras(monkeypatch):
     monkeypatch.setattr(update_mod, "_extra_installed", lambda _probe: False)
     assert update_mod._extra_installed("sentence_transformers") is False
     assert update_mod._extras_suffix() == ""
+
+
+def test_update_preserves_search_extra_from_saved_setup_when_probe_missing(
+    monkeypatch,
+):
+    """Saved setup intent preserves search dependencies even if module probing fails."""
+    monkeypatch.setattr(update_mod, "_extra_installed", lambda _probe: False)
+    monkeypatch.setattr(
+        update_mod, "load_config", lambda: {"setup": {"install_search": True}}
+    )
+
+    assert update_mod._extras_suffix() == "[search]"
+
+
+def test_update_preserves_search_extra_from_string_setup_value(monkeypatch):
+    """Config parsed as strings still preserves search extra across updates."""
+    monkeypatch.setattr(update_mod, "_extra_installed", lambda _probe: False)
+    monkeypatch.setattr(
+        update_mod, "load_config", lambda: {"setup": {"install_search": "true"}}
+    )
+
+    assert update_mod._extras_suffix() == "[search]"
 
 
 def test_update_extra_probe_does_not_import_module(monkeypatch, tmp_path):

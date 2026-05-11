@@ -93,6 +93,26 @@ def test_build_index_recovers_from_corrupt_vector_cache(
     assert rows
 
 
+def test_build_index_skips_malformed_frontmatter_note(
+    tmp_vault: VaultConfig, mock_model
+):
+    """One malformed YAML frontmatter block must not abort the whole index build."""
+    broken = tmp_vault.notes_dir / "broken-frontmatter.md"
+    broken.write_text(
+        "---\n"
+        "title: [주식분석]두산에너빌리티\n"
+        "tags: []\n"
+        "---\n\n"
+        "This note has malformed YAML frontmatter.\n",
+        encoding="utf-8",
+    )
+
+    index = build_index(tmp_vault)
+
+    assert index.entries
+    assert "broken-frontmatter" not in {entry.note_id for entry in index.entries}
+
+
 def test_build_index_keeps_index_when_cache_prune_fails(
     tmp_vault: VaultConfig, mock_model, monkeypatch
 ):
