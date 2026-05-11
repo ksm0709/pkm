@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.76.1 (2026-05-11)
+
+### Bug Fixes
+
+- Keep source-archive installs buildable with bundled web assets
+  ([`e35261d`](https://github.com/ksm0709/pkm/commit/e35261dbeb139c736d82f4c01d196503e017fe26))
+
+
 ## v2.76.0 (2026-05-11)
 
 ### Documentation
