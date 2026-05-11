@@ -21,7 +21,7 @@ from pkm.tools.maintenance import (
     list_orphans,
     list_malformed_notes,
 )
-from pkm.tools.links import find_backlinks_for_note, add_wikilink
+from pkm.tools.links import find_backlinks_for_note, add_wikilink, get_note_neighbors
 from pkm.tools.tags import list_tags, tag_search
 from pkm.tools.consolidate import list_consolidation_candidates, mark_consolidated
 from pkm.tools.log import read_recent_note_activity
@@ -55,6 +55,7 @@ def get_pkm_tools(scope: str = "all") -> list:
         list_malformed_notes,
         find_backlinks_for_note,
         add_wikilink,
+        get_note_neighbors,
         list_tags,
         tag_search,
         list_consolidation_candidates,

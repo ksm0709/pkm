@@ -117,6 +117,8 @@ def test_get_pkm_tools_exposes_list_malformed_notes_to_ask_agent():
     tool_names = {tool.__name__ for tool in get_pkm_tools()}
 
     assert "list_malformed_notes" in tool_names
+    assert "get_note_neighbors" in tool_names
+    assert "create_daily_subnote" in tool_names
 
 
 def test_list_stale_notes_days_zero_returns_all(tmp_vault, monkeypatch):

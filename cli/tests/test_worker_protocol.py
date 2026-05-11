@@ -23,6 +23,17 @@ def test_handle_ask_prompt_lists_patch_note_as_partial_edit_tool() -> None:
     assert "partial note edits" in source
 
 
+def test_handle_ask_prompt_matches_relation_neighbor_tool_contract() -> None:
+    """Worker prompt names available relation-aware tools, not stale graph tools."""
+    source = inspect.getsource(worker.handle_ask)
+
+    assert "get_graph_context" not in source
+    assert "get_note_neighbors(note_id, include_semantic)" in source
+    assert "create_daily_subnote(title, content)" in source
+    assert "&relation [[target]] - reason" in source
+    assert "daily relation markers as promotion candidates only" in source
+
+
 class _FakeIPC:
     def __init__(self) -> None:
         self.messages: list[dict[str, Any]] = []

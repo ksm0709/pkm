@@ -243,6 +243,22 @@ def test_zettelkasten_default_prefers_patch_note_for_partial_edits(
     assert "update_note only for intentional full-body replacement" in prompt
 
 
+def test_zettelkasten_default_uses_relation_aware_neighbor_workflow(
+    tmp_path, monkeypatch
+):
+    """Default daemon workflow matches the graph-native relations contract."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    configs = load_workflows()
+    prompt = {c.id: c for c in configs}["zettelkasten_maintenance"].system_prompt_template
+
+    assert "get_graph_context" not in prompt
+    assert "get_note_neighbors" in prompt
+    assert "&relation [[target]] - reason" in prompt
+    assert "daily/ are promotion candidates only" in prompt
+    assert "notes/ are canonical graph relations" in prompt
+    assert "create_daily_subnote" in prompt
+
+
 def test_workflow_history_jsonl_reads_newest_filters_limits_and_skips_corrupt_lines(
     tmp_path,
 ):
