@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.76.2 (2026-05-11)
+
+### Bug Fixes
+
+- Explain first-time web service setup before systemctl
+  ([`8eb7764`](https://github.com/ksm0709/pkm/commit/8eb77648a3499b9ab5bca8cccc6d02d400a5197e))
+
+
 ## v2.76.1 (2026-05-11)
 
 ### Bug Fixes
