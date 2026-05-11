@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.77.1 (2026-05-11)
+
+### Bug Fixes
+
+- Align daemon zettelkasten workflow with relations
+  ([`e8cf607`](https://github.com/ksm0709/pkm/commit/e8cf607921c9b9a6f32a76fbfe66383eabd5b655))
+
+
 ## v2.77.0 (2026-05-11)
 
 ### Features
