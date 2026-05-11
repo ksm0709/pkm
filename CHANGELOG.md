@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v2.76.0 (2026-05-11)
+
+### Documentation
+
+- Define relations as graph-native ontology substrate
+  ([`7e7d91e`](https://github.com/ksm0709/pkm/commit/7e7d91e589fb0fa7655db424cc8e15348d35ddf6))
+
+### Features
+
+- Make PKM relations a graph-native workflow
+  ([`a6ca0ff`](https://github.com/ksm0709/pkm/commit/a6ca0ff267f96421905c1e5c21b3225e050ac77b))
+
+
 ## v2.75.1 (2026-05-10)
 
 ### Bug Fixes
