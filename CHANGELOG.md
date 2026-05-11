@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.78.1 (2026-05-11)
+
+### Bug Fixes
+
+- Preserve search indexing through update and bad frontmatter
+  ([`b160d9a`](https://github.com/ksm0709/pkm/commit/b160d9a9f9f0be6d4aa941fe3277b51558520788))
+
+
 ## v2.78.0 (2026-05-11)
 
 ### Bug Fixes
