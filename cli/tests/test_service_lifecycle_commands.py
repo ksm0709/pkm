@@ -180,6 +180,10 @@ def test_daemon_start_stop_restart_and_logs(monkeypatch, tmp_path):
 def test_web_systemctl_commands_stream_output_and_exit_codes(monkeypatch):
     """Web service commands delegate to systemctl and preserve its status."""
     run_calls = []
+    monkeypatch.setattr(
+        "pkm.commands.web.web_unit_path",
+        lambda: SimpleNamespace(exists=lambda: True),
+    )
 
     def fake_run(cmd, **_kwargs):
         run_calls.append(cmd)
@@ -216,6 +220,25 @@ def test_web_systemctl_commands_stream_output_and_exit_codes(monkeypatch):
     result = _runner().invoke(web_group, ["start"])
     assert result.exit_code == 127
     assert "systemctl not found" in result.stderr
+
+
+def test_web_systemctl_commands_explain_missing_unit(monkeypatch, tmp_path):
+    """Fresh installs need `pkm setup --web` before service commands work."""
+    run_calls = []
+    unit_path = tmp_path / "pkm-web.service"
+
+    monkeypatch.setattr("pkm.commands.web.web_unit_path", lambda: unit_path)
+    monkeypatch.setattr(
+        "pkm.commands.web.subprocess.run",
+        lambda cmd, **_kwargs: run_calls.append(cmd),
+    )
+
+    result = _runner().invoke(web_group, ["start"])
+
+    assert result.exit_code == 5
+    assert "pkm-web.service is not installed" in result.output
+    assert "pkm setup --web" in result.output
+    assert run_calls == []
 
 
 def test_web_tunnel_happy_path_prints_detected_pwa_url(monkeypatch):

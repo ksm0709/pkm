@@ -23,3 +23,8 @@ Guides you through the setup process. It can:
 pkm setup
 pkm setup --web --port 8123
 ```
+
+Run `pkm setup --web` once per machine before using `pkm web start`.
+`pkm update` refreshes an existing web unit after upgrade, but it does not
+create the first `pkm-web.service` because setup must create local auth files
+and verify systemd user lingering.

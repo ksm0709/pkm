@@ -10,6 +10,8 @@ import sys
 import click
 from rich.console import Console
 
+from pkm.commands.setup import web_unit_path
+
 console = Console()
 
 UNIT_NAME = "pkm-web"
@@ -34,6 +36,25 @@ def _run_systemctl(*args: str) -> int:
     elif result.stderr:
         click.echo(result.stderr, nl=False, err=True)
     return result.returncode
+
+
+def _print_missing_unit_help() -> None:
+    console.print("[red]pkm-web.service is not installed.[/red]")
+    console.print(
+        "Run [bold cyan]pkm setup --web[/bold cyan] first. "
+        "That command creates the systemd user unit and browser auth files."
+    )
+    console.print(
+        "If setup reports Linger=no, run "
+        '[bold]sudo loginctl enable-linger "$USER"[/bold] and retry setup.'
+    )
+
+
+def _run_unit_command(*args: str) -> int:
+    if not web_unit_path().exists():
+        _print_missing_unit_help()
+        return 5
+    return _run_systemctl(*args)
 
 
 def _cloudflared_quick_tunnel_args(port: int) -> list[str]:
@@ -61,35 +82,35 @@ def web_group() -> None:
 @web_group.command("start")
 def web_start() -> None:
     """Start the pkm-web user service."""
-    code = _run_systemctl("start", UNIT_NAME)
+    code = _run_unit_command("start", UNIT_NAME)
     sys.exit(code)
 
 
 @web_group.command("stop")
 def web_stop() -> None:
     """Stop the pkm-web user service."""
-    code = _run_systemctl("stop", UNIT_NAME)
+    code = _run_unit_command("stop", UNIT_NAME)
     sys.exit(code)
 
 
 @web_group.command("restart")
 def web_restart() -> None:
     """Restart the pkm-web user service."""
-    code = _run_systemctl("restart", UNIT_NAME)
+    code = _run_unit_command("restart", UNIT_NAME)
     sys.exit(code)
 
 
 @web_group.command("status")
 def web_status() -> None:
     """Show pkm-web user service status."""
-    code = _run_systemctl("status", UNIT_NAME, "--no-pager")
+    code = _run_unit_command("status", UNIT_NAME, "--no-pager")
     sys.exit(code)
 
 
 @web_group.command("enable")
 def web_enable() -> None:
     """Enable pkm-web user service to start on login."""
-    code = _run_systemctl("enable", UNIT_NAME)
+    code = _run_unit_command("enable", UNIT_NAME)
     sys.exit(code)
 
 

@@ -26,6 +26,11 @@ CLI (see top-level README) and have at least one vault registered.
 pkm setup --web
 ```
 
+Run this once on each machine where you want `pkm-web.service` installed.
+`pkm update` upgrades the CLI and refreshes an existing web unit, but it does
+not create the first unit because setup must verify lingering and create local
+browser auth files.
+
 This single command:
 
 1. Verifies user lingering is enabled.
@@ -110,9 +115,12 @@ sessions — pkm-webapp is single-tenant by design.
 ## 7. Updating
 
 ```bash
-pip install -U pkm           # or your preferred install path
+pkm update
 pkm web restart              # wraps: systemctl --user restart pkm-web
 ```
+
+On a new machine, run `pkm setup --web` before `pkm web start`; otherwise the
+systemd user unit does not exist yet.
 
 The bundled SPA assets ship inside the wheel under
 `pkm/web/static/`, so a `pip install -U` updates the frontend in lockstep
