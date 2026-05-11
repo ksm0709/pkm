@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v2.78.0 (2026-05-11)
+
+### Bug Fixes
+
+- Refresh stale zettelkasten workflow overrides
+  ([`224fb98`](https://github.com/ksm0709/pkm/commit/224fb981f6f800179ebde48a788e2279333c3fac))
+
+### Features
+
+- Make web config model choice credential-aware
+  ([`db6706b`](https://github.com/ksm0709/pkm/commit/db6706b9dd3f88a1437183879d737838c0c63daa))
+
+
 ## v2.77.2 (2026-05-11)
 
 ### Bug Fixes
