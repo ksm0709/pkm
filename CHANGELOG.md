@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.77.0 (2026-05-11)
+
+### Features
+
+- Automate first-time web service setup
+  ([`a4bb15a`](https://github.com/ksm0709/pkm/commit/a4bb15a3713acf88d1b6396ef5a6f502faa4430d))
+
+
 ## v2.76.2 (2026-05-11)
 
 ### Bug Fixes
