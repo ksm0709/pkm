@@ -303,6 +303,53 @@ def test_config_set_web_port_validates_range(monkeypatch, tmp_path):
     assert "web-port must be an integer" in result.output
 
 
+def test_config_set_web_window_padding_saves_web_section(monkeypatch, tmp_path):
+    config_path = _patch_config_path(monkeypatch, tmp_path)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["config", "set", "web-window-padding", "64"])
+
+    assert result.exit_code == 0, result.output
+    assert "64" in result.output
+    saved = _load(config_path)
+    assert saved["web"]["window_padding"] == "64"
+
+
+def test_config_set_web_window_padding_accepts_bounds(monkeypatch, tmp_path):
+    config_path = _patch_config_path(monkeypatch, tmp_path)
+    runner = CliRunner()
+
+    for value in ("0", "128"):
+        result = runner.invoke(main, ["config", "set", "web-window-padding", value])
+
+        assert result.exit_code == 0, result.output
+        assert _load(config_path)["web"]["window_padding"] == value
+
+
+def test_config_set_web_window_padding_rejects_invalid_values(monkeypatch, tmp_path):
+    _patch_config_path(monkeypatch, tmp_path)
+    runner = CliRunner()
+
+    for value in ("-1", "129", "1.5", "abc"):
+        args = ["config", "set", "web-window-padding", value]
+        if value.startswith("-"):
+            args.insert(-1, "--")
+        result = runner.invoke(main, args)
+
+        assert result.exit_code != 0
+        assert "web-window-padding must be an integer" in result.output
+
+
+def test_config_get_web_window_padding_reads_default(monkeypatch):
+    monkeypatch.setattr("pkm.commands.config.load_config", lambda: {})
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["config", "get", "web-window-padding"])
+
+    assert result.exit_code == 0
+    assert result.output.strip() == "32"
+
+
 def test_config_get_web_port_reads_web_section(monkeypatch):
     monkeypatch.setattr(
         "pkm.commands.config.load_config", lambda: {"web": {"port": "8123"}}
@@ -352,3 +399,17 @@ def test_config_list_includes_configured_web_port(monkeypatch):
     assert result.exit_code == 0
     data = json.loads(result.output)
     assert data["web-port"] == "8123"
+
+
+def test_config_list_includes_configured_web_window_padding(monkeypatch):
+    monkeypatch.setattr(
+        "pkm.commands.config.load_config",
+        lambda: {"web": {"window_padding": "48"}},
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["config", "list"])
+
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["web-window-padding"] == "48"

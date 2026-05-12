@@ -63,6 +63,27 @@
 
   --reading-width: 70ch;
   --gutter: var(--space-7);
+  --window-padding-raw: 32px;
+  --window-padding: clamp(0px, var(--window-padding-raw), 128px);
+  --vault-content-inline-size: 100vw;
+  --content-available-width: max(
+    0px,
+    calc(
+      var(--vault-content-inline-size) - var(--window-padding) -
+        var(--window-padding)
+    )
+  );
+  --page-max-width: 1180px;
+  --readable-max-width: 860px;
+  --page-content-width: min(
+    var(--page-max-width),
+    var(--content-available-width)
+  );
+  --readable-content-width: min(
+    var(--readable-max-width),
+    var(--content-available-width)
+  );
+  --modal-available-width: var(--content-available-width);
 
   /* Radius — strict, max 2px */
   --radius-none: 0;

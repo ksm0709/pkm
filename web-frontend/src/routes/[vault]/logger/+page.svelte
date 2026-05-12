@@ -388,8 +388,6 @@
 
 <style>
   .logger-page {
-    --logger-content-width: min(1180px, calc(100vw - 64px));
-
     display: flex;
     flex-direction: column;
     height: calc(100vh - var(--topbar-height, 44px));
@@ -406,7 +404,7 @@
 
   .logger-column {
     box-sizing: border-box;
-    width: var(--logger-content-width);
+    width: var(--page-content-width);
     max-width: none;
     padding-top: var(--space-6, 32px);
     padding-right: 0;
@@ -497,9 +495,9 @@
     align-items: center;
     gap: var(--space-2, 8px);
     box-sizing: border-box;
-    width: 100%;
+    width: var(--page-content-width);
     max-width: none;
-    margin: 0;
+    margin: 0 auto;
     min-height: 56px;
     padding: var(--space-2, 8px) var(--space-4, 16px);
     background-color: var(--surface, var(--bg));
@@ -671,10 +669,6 @@
   }
 
   @media (max-width: 640px) {
-    .logger-page {
-      --logger-content-width: min(100%, calc(100vw - 32px));
-    }
-
     .hour-group,
     .log-message {
       display: flex;

@@ -338,7 +338,7 @@
 
 <style>
   .workflow-detail {
-    width: min(1180px, calc(100vw - 64px));
+    width: var(--page-content-width);
     margin: 0 auto;
     padding: var(--space-6, 32px) 0 var(--space-8, 64px);
   }
@@ -455,7 +455,7 @@
   }
 
   .settings-modal {
-    width: min(420px, calc(100vw - 32px));
+    width: min(420px, var(--modal-available-width));
     padding: var(--space-4, 16px);
     border: 1px solid var(--border);
     border-top: 2px solid var(--accent);
@@ -464,7 +464,7 @@
   }
 
   .history-modal {
-    width: min(720px, calc(100vw - 32px));
+    width: min(720px, var(--modal-available-width));
     max-height: min(720px, calc(100vh - 64px));
     overflow: auto;
     padding: var(--space-4, 16px);
@@ -585,10 +585,6 @@
   }
 
   @media (max-width: 760px) {
-    .workflow-detail {
-      width: min(100%, calc(100vw - 32px));
-    }
-
     .workflow-header {
       align-items: flex-start;
       flex-direction: column;

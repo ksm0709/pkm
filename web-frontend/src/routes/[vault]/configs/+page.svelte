@@ -110,6 +110,7 @@
         item.key === updated.key ? updated : item,
       );
       settingValues = { ...settingValues, [updated.key]: updated.value ?? "" };
+      dispatchConfigChange(updated.key, updated.value ?? "");
       setSettingState(updated.key, {
         message: "Saved",
         error: "",
@@ -138,6 +139,7 @@
         item.key === updated.key ? updated : item,
       );
       settingValues = { ...settingValues, [updated.key]: updated.value ?? "" };
+      dispatchConfigChange(updated.key, updated.value ?? "");
       setSettingState(updated.key, {
         message: "Reset",
         error: "",
@@ -162,6 +164,14 @@
 
   function updateInput(providerId: string, value: string) {
     inputs = { ...inputs, [providerId]: value };
+  }
+
+  function dispatchConfigChange(key: string, value: string) {
+    window.dispatchEvent(
+      new CustomEvent("pkm:config-change", {
+        detail: { key, value },
+      }),
+    );
   }
 
   function setProviderState(
@@ -466,7 +476,7 @@
 
 <style>
   .configs-page {
-    width: min(1180px, calc(100vw - 64px));
+    width: var(--page-content-width);
     margin: 0 auto;
     padding: var(--space-6, 32px) 0 var(--space-8, 64px);
   }
@@ -788,10 +798,6 @@
   }
 
   @media (max-width: 760px) {
-    .configs-page {
-      width: min(100%, calc(100vw - 32px));
-    }
-
     .configs-header,
     .section-heading {
       align-items: start;

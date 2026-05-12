@@ -117,6 +117,12 @@ CONFIG_SCHEMA = {
         "description": "Bind address used by the pkm web daemon",
         "default": "0.0.0.0",
     },
+    "web-window-padding": {
+        "section": "web",
+        "internal_key": "window_padding",
+        "description": "Symmetric page window padding in the pkm web app, in px",
+        "default": "32",
+    },
 }
 
 VALID_KEYS = set(CONFIG_SCHEMA.keys())
@@ -136,14 +142,23 @@ def _section_for_key(key: str) -> str:
 
 def _validate_config_value(key: str, value: str) -> str:
     if key == "web-port":
-        try:
-            port = int(value)
-        except ValueError:
-            raise click.ClickException("web-port must be an integer from 1 to 65535.")
-        if not 1 <= port <= 65535:
-            raise click.ClickException("web-port must be an integer from 1 to 65535.")
-        return str(port)
+        return _validate_integer_range(key, value, min_value=1, max_value=65535)
+    if key == "web-window-padding":
+        return _validate_integer_range(key, value, min_value=0, max_value=128)
     return value
+
+
+def _validate_integer_range(
+    key: str, value: str, *, min_value: int, max_value: int
+) -> str:
+    message = f"{key} must be an integer from {min_value} to {max_value}."
+    try:
+        parsed = int(value)
+    except ValueError:
+        raise click.ClickException(message)
+    if not min_value <= parsed <= max_value:
+        raise click.ClickException(message)
+    return str(parsed)
 
 
 def config_value_for_key(

@@ -165,10 +165,11 @@
   }
 
   .ask-column {
-    width: 100%;
-    max-width: min(860px, calc(100vw - 32px));
+    box-sizing: border-box;
+    width: var(--readable-content-width);
+    max-width: none;
     margin: 0 auto;
-    padding: 0 var(--space-4, 16px);
+    padding: 0;
   }
 
   .empty-state {
@@ -189,11 +190,10 @@
   }
 
   .composer-shell .ask-column {
+    width: var(--readable-content-width);
     max-width: none;
-    margin-right: 0;
-    margin-left: 0;
-    padding-right: 0;
-    padding-left: 0;
+    margin: 0 auto;
+    padding: 0;
   }
 
   .task-column {

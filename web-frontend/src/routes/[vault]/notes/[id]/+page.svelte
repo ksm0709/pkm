@@ -492,10 +492,10 @@
 
 <style>
   .note-page {
-    width: 100%;
-    max-width: var(--note-page-width, 1180px);
+    width: var(--page-content-width);
+    max-width: none;
     margin: 0 auto;
-    padding: var(--space-6, 32px) clamp(20px, 4vw, 56px) var(--space-8, 64px);
+    padding: var(--space-6, 32px) 0 var(--space-8, 64px);
   }
 
   .note-article {

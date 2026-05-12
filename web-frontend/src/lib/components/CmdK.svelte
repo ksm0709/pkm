@@ -567,7 +567,7 @@
   }
 
   .cmdk-modal {
-    width: min(var(--palette-width, 560px), calc(100vw - 24px));
+    width: min(var(--palette-width, 560px), var(--modal-available-width));
     max-height: var(--palette-max-height, 60vh);
     background-color: var(--surface, var(--bg));
     border: 1px solid var(--border);

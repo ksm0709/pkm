@@ -104,7 +104,7 @@
 
 <style>
   .tags-page {
-    width: min(860px, calc(100vw - 64px));
+    width: var(--readable-content-width);
     margin: 0 auto;
     padding: var(--space-6, 32px) 0 var(--space-8, 64px);
   }

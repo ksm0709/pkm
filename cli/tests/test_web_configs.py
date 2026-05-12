@@ -111,6 +111,10 @@ async def test_get_configs_returns_editable_pkm_settings_except_graph_semantic(
     assert settings["web-port"]["section"] == "web"
     assert settings["web-port"]["value"] == "7420"
     assert settings["web-port"]["input_type"] == "number"
+    assert settings["web-window-padding"]["section"] == "web"
+    assert settings["web-window-padding"]["value"] == "32"
+    assert settings["web-window-padding"]["default_value"] == "32"
+    assert settings["web-window-padding"]["input_type"] == "number"
     assert settings["editor"]["configured"] is False
     assert settings["editor"]["source"] == "default"
     assert settings["editor"]["value"]
@@ -200,6 +204,41 @@ async def test_patch_web_port_rejects_invalid_value(
 
     assert resp.status == 400
     assert "web-port must be an integer" in resp.reason
+    assert "web" not in config_store
+
+
+@pytest.mark.anyio
+async def test_patch_web_window_padding_updates_web_section(
+    app, tmp_vault: VaultConfig, config_store: dict
+) -> None:
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.patch(
+            "/api/v1/vault/test-vault/configs/settings/web-window-padding",
+            json={"value": 96},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        body = await resp.json()
+
+    assert resp.status == 200
+    assert body["key"] == "web-window-padding"
+    assert body["section"] == "web"
+    assert body["value"] == "96"
+    assert config_store["web"]["window_padding"] == "96"
+
+
+@pytest.mark.anyio
+async def test_patch_web_window_padding_rejects_invalid_value(
+    app, tmp_vault: VaultConfig, config_store: dict
+) -> None:
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.patch(
+            "/api/v1/vault/test-vault/configs/settings/web-window-padding",
+            json={"value": "1.5"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+
+    assert resp.status == 400
+    assert "web-window-padding must be an integer" in resp.reason
     assert "web" not in config_store
 
 

@@ -80,7 +80,7 @@
 
 <style>
   .workflow-page {
-    width: min(1180px, calc(100vw - 64px));
+    width: var(--page-content-width);
     margin: 0 auto;
     padding: var(--space-6, 32px) 0 var(--space-8, 64px);
   }
@@ -175,10 +175,6 @@
   }
 
   @media (max-width: 760px) {
-    .workflow-page {
-      width: min(100%, calc(100vw - 32px));
-    }
-
     .ledger-head {
       display: none;
     }

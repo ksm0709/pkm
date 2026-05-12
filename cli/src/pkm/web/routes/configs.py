@@ -31,6 +31,7 @@ _CONFIG_INPUT_TYPES = {
     "graph-depth": "number",
     "model": "select",
     "web-port": "number",
+    "web-window-padding": "number",
 }
 _CONFIG_OPTIONS = {
     "reasoning-effort": ["", "low", "medium", "high"],

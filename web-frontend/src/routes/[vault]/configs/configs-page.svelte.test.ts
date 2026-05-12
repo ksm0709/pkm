@@ -106,4 +106,122 @@ describe("configs page", () => {
 
     unmount(component);
   });
+
+  it("dispatches config-change after saving window padding", async () => {
+    const listener = vi.fn();
+    window.addEventListener("pkm:config-change", listener);
+    mocks.loadConfigs.mockResolvedValue({
+      settings: [
+        {
+          key: "web-window-padding",
+          section: "web",
+          internal_key: "window_padding",
+          description: "Web window padding",
+          value: "32",
+          default_value: "32",
+          configured: false,
+          source: "default",
+          input_type: "number",
+          options: [],
+        },
+      ],
+      ask_credentials: { providers: [] },
+    });
+    mocks.saveConfigSetting.mockResolvedValue({
+      key: "web-window-padding",
+      section: "web",
+      internal_key: "window_padding",
+      description: "Web window padding",
+      value: "64",
+      default_value: "",
+      configured: true,
+      source: "configured",
+      input_type: "number",
+      options: [],
+    });
+
+    const { target, component } = render();
+    await flush();
+
+    const input = target.querySelector<HTMLInputElement>(
+      'input[aria-label="web-window-padding value"]',
+    );
+    input!.value = "64";
+    input!.dispatchEvent(new Event("input", { bubbles: true }));
+    await tick();
+
+    target
+      .querySelector<HTMLButtonElement>(
+        'button[aria-label="Save web-window-padding"]',
+      )
+      ?.click();
+    await flush();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0][0].detail).toEqual({
+      key: "web-window-padding",
+      value: "64",
+    });
+
+    window.removeEventListener("pkm:config-change", listener);
+    unmount(component);
+  });
+
+  it("dispatches config-change after resetting window padding", async () => {
+    const listener = vi.fn();
+    window.addEventListener("pkm:config-change", listener);
+    mocks.loadConfigs.mockResolvedValue({
+      settings: [
+        {
+          key: "web-window-padding",
+          section: "web",
+          internal_key: "window_padding",
+          description: "Web window padding",
+          value: "64",
+          default_value: "",
+          configured: true,
+          source: "configured",
+          input_type: "number",
+          options: [],
+        },
+      ],
+      ask_credentials: { providers: [] },
+    });
+    mocks.saveConfigSetting.mockResolvedValue({
+      key: "web-window-padding",
+      section: "web",
+      internal_key: "window_padding",
+      description: "Web window padding",
+      value: "32",
+      default_value: "32",
+      configured: false,
+      source: "default",
+      input_type: "number",
+      options: [],
+    });
+
+    const { target, component } = render();
+    await flush();
+
+    target
+      .querySelector<HTMLButtonElement>(
+        'button[aria-label="Reset web-window-padding"]',
+      )
+      ?.click();
+    await flush();
+
+    expect(mocks.saveConfigSetting).toHaveBeenCalledWith(
+      "main",
+      "web-window-padding",
+      null,
+    );
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0][0].detail).toEqual({
+      key: "web-window-padding",
+      value: "32",
+    });
+
+    window.removeEventListener("pkm:config-change", listener);
+    unmount(component);
+  });
 });

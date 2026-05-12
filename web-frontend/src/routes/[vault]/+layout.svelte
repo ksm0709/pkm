@@ -6,6 +6,14 @@
   import AppNavDrawer from "$lib/components/AppNavDrawer.svelte";
   import CmdK from "$lib/components/CmdK.svelte";
   import WikilinkPreview from "$lib/components/WikilinkPreview.svelte";
+  import { loadConfigs } from "$lib/configs/client";
+  import {
+    DEFAULT_WINDOW_PADDING,
+    applyWindowLayoutVars,
+    clearWindowLayoutVars,
+    parseWindowPadding,
+    windowLayoutVars,
+  } from "$lib/layout/window-layout";
   import type { Snippet } from "svelte";
 
   interface Props {
@@ -18,9 +26,14 @@
   let pageName = $derived(pageNameFromPath($page.url.pathname, vaultName));
   let drawerOpen = $state(false);
   let commandPaletteOpenToken = $state(0);
+  let vaultContentEl = $state<HTMLDivElement | null>(null);
+  let contentInlineSize = $state(0);
+  let windowPadding = $state(DEFAULT_WINDOW_PADDING);
   const drawerStorageKey = "pkm.appNavOpen";
   let pendingKey = "";
   let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+  let layoutLoadSequence = 0;
+  let resizeObserver: ResizeObserver | null = null;
 
   onMount(() => {
     try {
@@ -43,11 +56,27 @@
     };
 
     window.addEventListener("keydown", handleKeydown);
+    window.addEventListener("pkm:config-change", handleConfigChange);
+
+    measureVaultContent();
+    if (typeof ResizeObserver !== "undefined" && vaultContentEl) {
+      resizeObserver = new ResizeObserver((entries) => {
+        contentInlineSize =
+          entries[0]?.contentRect.width ?? vaultContentEl?.clientWidth ?? 0;
+      });
+      resizeObserver.observe(vaultContentEl);
+    } else {
+      window.addEventListener("resize", measureVaultContent);
+    }
   });
 
   onDestroy(() => {
     if (typeof window !== "undefined") {
       window.removeEventListener("keydown", handleKeydown);
+      window.removeEventListener("pkm:config-change", handleConfigChange);
+      window.removeEventListener("resize", measureVaultContent);
+      resizeObserver?.disconnect();
+      resizeObserver = null;
       try {
         delete (window as any).__pkmNav;
       } catch {
@@ -58,6 +87,22 @@
         pendingTimer = null;
       }
     }
+    if (typeof document !== "undefined") {
+      clearWindowLayoutVars(document.documentElement);
+    }
+  });
+
+  $effect(() => {
+    applyWindowLayoutVars(
+      document.documentElement,
+      windowLayoutVars({ contentInlineSize, paddingPx: windowPadding }),
+    );
+  });
+
+  $effect(() => {
+    const vault = vaultName;
+    if (!vault) return;
+    void refreshWindowPadding(vault);
   });
 
   function toggleDrawer() {
@@ -81,6 +126,38 @@
   function openCommandPalette() {
     commandPaletteOpenToken += 1;
     return true;
+  }
+
+  async function refreshWindowPadding(vault: string) {
+    const sequence = ++layoutLoadSequence;
+    try {
+      const configs = await loadConfigs(vault);
+      if (sequence !== layoutLoadSequence || vaultName !== vault) return;
+      const setting = configs.settings?.find(
+        (item) => item.key === "web-window-padding",
+      );
+      windowPadding = parseWindowPadding(
+        setting?.value ?? setting?.default_value,
+      );
+    } catch {
+      if (sequence === layoutLoadSequence && vaultName === vault) {
+        windowPadding = DEFAULT_WINDOW_PADDING;
+      }
+    }
+  }
+
+  function measureVaultContent() {
+    contentInlineSize =
+      vaultContentEl?.getBoundingClientRect().width ??
+      vaultContentEl?.clientWidth ??
+      0;
+  }
+
+  function handleConfigChange(event: Event) {
+    const detail = (event as CustomEvent<{ key?: string; value?: unknown }>)
+      .detail;
+    if (detail?.key !== "web-window-padding") return;
+    windowPadding = parseWindowPadding(detail.value);
   }
 
   function pageNameFromPath(pathname: string, vault: string) {
@@ -175,7 +252,7 @@
       onclick={closeDrawer}
     ></button>
   {/if}
-  <div class="vault-content">
+  <div class="vault-content" bind:this={vaultContentEl}>
     {@render children()}
   </div>
 </div>
