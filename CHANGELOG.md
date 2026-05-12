@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.78.2 (2026-05-12)
+
+### Bug Fixes
+
+- Stabilize PKM web editing and validation
+  ([`815c321`](https://github.com/ksm0709/pkm/commit/815c321c5585b8ced0bd8a91ffe5fa18fb061a74))
+
+
 ## v2.78.1 (2026-05-11)
 
 ### Bug Fixes
