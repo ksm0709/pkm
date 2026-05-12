@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.81.0 (2026-05-12)
+
+### Features
+
+- Keep keyboard-driven web tasks visible
+  ([`a6f1eef`](https://github.com/ksm0709/pkm/commit/a6f1eefc17582020c094735e2ebc78ecff52d0de))
+
+
 ## v2.80.0 (2026-05-12)
 
 ### Features
