@@ -245,6 +245,23 @@ async def test_update_note_returns_updated_body(app, tmp_vault: VaultConfig) -> 
 
 
 @pytest.mark.anyio
+async def test_update_note_returns_daily_note_with_string_id(
+    app, tmp_vault: VaultConfig
+) -> None:
+    """PUT /notes/{id} serializes YAML date ids as strings for daily notes."""
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.put(
+            "/api/v1/vault/test-vault/notes/2026-04-01",
+            json={"body": "Updated daily content."},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["body"] == "Updated daily content."
+        assert data["note_id"] == "2026-04-01"
+
+
+@pytest.mark.anyio
 async def test_update_note_preserves_tags(app, tmp_vault: VaultConfig) -> None:
     """PUT /notes/{id} without tags field preserves existing frontmatter tags."""
     async with TestClient(TestServer(app)) as client:

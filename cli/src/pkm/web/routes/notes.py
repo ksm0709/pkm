@@ -281,8 +281,8 @@ def _note_response(path) -> dict:
     importance_raw = fm.get("importance")
     importance = int(importance_raw) if importance_raw is not None else None
     return {
-        "note_id": note.id,
-        "title": note.title,
+        "note_id": str(note.id),
+        "title": str(note.title),
         "body": note.body,
         "frontmatter": _json_safe(fm),
         "created": _json_safe(fm.get("created_at") or fm.get("source") or None),
