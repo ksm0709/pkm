@@ -70,6 +70,8 @@ describe("CmdK", () => {
   async function flush() {
     await Promise.resolve();
     await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
     await tick();
   }
 
@@ -303,6 +305,68 @@ describe("CmdK", () => {
       method: "POST",
     });
     expect(goto).toHaveBeenCalledWith("/main/graph");
+    expect(target.querySelector('[role="dialog"]')).toBeNull();
+
+    unmount(component);
+  });
+
+  it("shows a blocking indexing progress popup until indexing finishes", async () => {
+    let resolveIndex!: (response: Response) => void;
+    const indexPromise = new Promise<Response>((resolve) => {
+      resolveIndex = resolve;
+    });
+    vi.mocked(apiClient).mockReturnValue(indexPromise);
+    const { target, component } = render();
+    await tick();
+    await vi.runOnlyPendingTimersAsync();
+    await tick();
+
+    const indexCommand = [
+      ...target.querySelectorAll<HTMLElement>(".cmdk-row"),
+    ].find((row) => row.textContent?.includes("Index vault"));
+    indexCommand?.click();
+    await flush();
+
+    expect(apiClient).toHaveBeenCalledWith("/api/v1/vault/main/index", {
+      method: "POST",
+    });
+    const progressDialog = target.querySelector(
+      '[role="alertdialog"][aria-label="Indexing vault"]',
+    );
+    expect(progressDialog?.textContent).toContain("Indexing vault");
+    expect(progressDialog?.textContent).toContain("Building search index");
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    await tick();
+    expect(
+      target.querySelector('[role="alertdialog"][aria-label="Indexing vault"]'),
+    ).not.toBeNull();
+
+    target
+      .querySelector<HTMLElement>(".cmdk-backdrop")
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await tick();
+    expect(
+      target.querySelector('[role="alertdialog"][aria-label="Indexing vault"]'),
+    ).not.toBeNull();
+
+    resolveIndex(
+      new Response(JSON.stringify({ status: "ok", count: 3 }), {
+        status: 200,
+      }),
+    );
+    await flush();
+
+    expect(goto).toHaveBeenCalledWith("/main/graph");
+    expect(
+      target.querySelector('[role="alertdialog"][aria-label="Indexing vault"]'),
+    ).toBeNull();
     expect(target.querySelector('[role="dialog"]')).toBeNull();
 
     unmount(component);

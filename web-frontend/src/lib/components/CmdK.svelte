@@ -80,6 +80,9 @@
   let notes = $state<SearchResult[]>([]);
   let tagNotes = $state<TagSearchNote[]>([]);
   let vaultsList = $state<string[]>([]);
+  let indexing = $state(false);
+  let indexProgressMessage = $state("");
+  let indexError = $state("");
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let lastQuery = "";
@@ -125,12 +128,32 @@
   }
 
   async function indexVault() {
-    const response = await apiClient(
-      `/api/v1/vault/${encodeURIComponent(vaultName)}/index`,
-      { method: "POST" },
-    );
-    if (!response.ok) throw new Error(`POST index -> ${response.status}`);
-    await goto(`/${vaultName}/graph`);
+    indexing = true;
+    indexError = "";
+    indexProgressMessage = "Building search index and graph…";
+    try {
+      const response = await apiClient(
+        `/api/v1/vault/${encodeURIComponent(vaultName)}/index`,
+        { method: "POST" },
+      );
+      if (!response.ok) throw new Error(`POST index -> ${response.status}`);
+      const payload = (await response.json().catch(() => ({}))) as {
+        count?: number;
+      };
+      indexProgressMessage =
+        typeof payload.count === "number"
+          ? `Indexed ${payload.count} notes. Opening graph…`
+          : "Index complete. Opening graph…";
+      indexing = false;
+      close({ force: true });
+      await goto(`/${vaultName}/graph`);
+    } catch (error) {
+      indexError =
+        error instanceof Error ? error.message : "Failed to index vault.";
+      throw error;
+    } finally {
+      indexing = false;
+    }
   }
 
   async function loadVaults() {
@@ -396,7 +419,8 @@
     requestAnimationFrame(() => inputEl?.focus());
   }
 
-  function close() {
+  function close(options: { force?: boolean } = {}) {
+    if (indexing && !options.force) return;
     open = false;
     mode = "commands";
     if (debounceTimer) {
@@ -407,7 +431,11 @@
 
   async function execute(row: Row) {
     if (row.kind === "command") {
-      await row.run();
+      try {
+        await row.run();
+      } catch {
+        return;
+      }
       // Most commands navigate; some (theme) keep palette open. Close by default
       // unless the command opens an in-palette chooser or selects the current vault.
       if (
@@ -415,7 +443,7 @@
         row.id !== "cmd:switch" &&
         row.id !== `vault:${vaultName}`
       ) {
-        close();
+        close({ force: row.id === "cmd:index-vault" });
       }
       return;
     }
@@ -453,6 +481,11 @@
 
     if (!open) return;
 
+    if (indexing) {
+      consume();
+      return;
+    }
+
     if (event.key === "Escape") {
       consume();
       close();
@@ -481,6 +514,7 @@
   }
 
   function onBackdropClick(event: MouseEvent) {
+    if (indexing) return;
     if (event.target === event.currentTarget) close();
   }
 
@@ -550,6 +584,25 @@
           <li class="cmdk-empty">No matches.</li>
         {/if}
       </ul>
+      {#if indexError}
+        <p class="cmdk-status error" role="status">{indexError}</p>
+      {/if}
+    </div>
+  </div>
+{/if}
+
+{#if indexing}
+  <div
+    class="indexing-blocker"
+    role="alertdialog"
+    aria-label="Indexing vault"
+    aria-modal="true"
+  >
+    <div class="indexing-popup">
+      <span class="indexing-label">Indexing vault</span>
+      <progress class="indexing-progress" aria-label="Indexing progress"
+      ></progress>
+      <p>{indexProgressMessage}</p>
     </div>
   </div>
 {/if}
@@ -673,6 +726,62 @@
     font-family: var(--font-mono);
     font-size: var(--type-chrome-size, 13px);
     color: var(--text-faint);
+  }
+
+  .cmdk-status {
+    margin: 0;
+    padding: var(--space-3, 12px) var(--space-4, 16px);
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--type-chrome-size, 13px);
+  }
+
+  .cmdk-status.error {
+    color: var(--signal-danger, #ff6b5f);
+  }
+
+  .indexing-blocker {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-4, 16px);
+    background: rgba(9, 11, 13, 0.78);
+  }
+
+  .indexing-popup {
+    width: min(420px, var(--modal-available-width, calc(100vw - 32px)));
+    padding: var(--space-5, 24px);
+    border: 1px solid var(--border);
+    border-top: 2px solid var(--accent);
+    background: var(--surface, var(--bg));
+    color: var(--text);
+    font-family: var(--font-mono);
+  }
+
+  .indexing-label {
+    display: block;
+    margin-bottom: var(--space-3, 12px);
+    color: var(--accent);
+    font-size: var(--type-chrome-sm-size, 11px);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .indexing-progress {
+    width: 100%;
+    height: 8px;
+    accent-color: var(--accent);
+  }
+
+  .indexing-popup p {
+    margin: var(--space-3, 12px) 0 0;
+    color: var(--text-muted);
+    font-size: var(--type-chrome-size, 13px);
   }
 
   @keyframes cmdk-in {

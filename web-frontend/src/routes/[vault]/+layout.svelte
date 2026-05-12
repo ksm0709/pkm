@@ -20,6 +20,50 @@
     children: Snippet;
   }
 
+  type NavAction =
+    | "gotoDaily"
+    | "nextNeighbor"
+    | "prevNeighbor"
+    | "followAtCursor"
+    | "openExternal"
+    | "openPalette";
+
+  interface KeyHintAction {
+    key: string;
+    description: string;
+    navAction: NavAction;
+  }
+
+  const KEY_HINT_TIMEOUT_MS = 1200;
+  const keyHintActions: Record<string, KeyHintAction[]> = {
+    g: [
+      { key: "d", description: "Open daily note", navAction: "gotoDaily" },
+      { key: "n", description: "Next neighbor", navAction: "nextNeighbor" },
+      {
+        key: "p",
+        description: "Previous neighbor",
+        navAction: "prevNeighbor",
+      },
+      {
+        key: "f",
+        description: "Follow link at cursor",
+        navAction: "followAtCursor",
+      },
+      {
+        key: "x",
+        description: "Open external link",
+        navAction: "openExternal",
+      },
+    ],
+    " ": [
+      {
+        key: "k",
+        description: "Open command palette",
+        navAction: "openPalette",
+      },
+    ],
+  };
+
   let { children }: Props = $props();
 
   let vaultName = $derived($page.params.vault ?? "");
@@ -30,10 +74,12 @@
   let contentInlineSize = $state(0);
   let windowPadding = $state(DEFAULT_WINDOW_PADDING);
   const drawerStorageKey = "pkm.appNavOpen";
-  let pendingKey = "";
+  let pendingKey = $state("");
   let pendingTimer: ReturnType<typeof setTimeout> | null = null;
   let layoutLoadSequence = 0;
   let resizeObserver: ResizeObserver | null = null;
+  let activeKeyHints = $derived(keyHintActions[pendingKey] ?? []);
+  let activeKeyHintLabel = $derived(pendingKey === " " ? "Space" : pendingKey);
 
   onMount(() => {
     try {
@@ -82,10 +128,7 @@
       } catch {
         (window as any).__pkmNav = undefined;
       }
-      if (pendingTimer) {
-        clearTimeout(pendingTimer);
-        pendingTimer = null;
-      }
+      clearPendingKeyHint();
     }
     if (typeof document !== "undefined") {
       clearWindowLayoutVars(document.documentElement);
@@ -175,36 +218,70 @@
     return parts[1] || "home";
   }
 
+  function isTypingTarget(target: EventTarget | null) {
+    if (!(target instanceof HTMLElement)) return false;
+    return (
+      target.tagName === "INPUT" ||
+      target.tagName === "TEXTAREA" ||
+      target.tagName === "SELECT" ||
+      target.isContentEditable ||
+      Boolean(target.closest(".cm-editor"))
+    );
+  }
+
+  function hasOpenDialog() {
+    return Boolean(
+      document.querySelector('[role="dialog"], [role="alertdialog"]'),
+    );
+  }
+
+  function clearPendingKeyHint() {
+    pendingKey = "";
+    if (pendingTimer) {
+      clearTimeout(pendingTimer);
+      pendingTimer = null;
+    }
+  }
+
+  function openPendingKeyHint(prefix: string) {
+    pendingKey = prefix;
+    if (pendingTimer) clearTimeout(pendingTimer);
+    pendingTimer = setTimeout(() => {
+      clearPendingKeyHint();
+    }, KEY_HINT_TIMEOUT_MS);
+  }
+
+  function runPendingKeyAction(key: string) {
+    const action = activeKeyHints.find((item) => item.key === key);
+    clearPendingKeyHint();
+    if (!action) return false;
+    const nav = (window as any).__pkmNav as
+      | Partial<Record<NavAction, () => unknown>>
+      | undefined;
+    const fn = nav?.[action.navAction];
+    if (typeof fn !== "function") return false;
+    fn();
+    return true;
+  }
+
   function handleKeydown(event: KeyboardEvent) {
     const key = event.key.toLowerCase();
-    const target = event.target;
-    const isTypingTarget =
-      target instanceof HTMLElement &&
-      (target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.tagName === "SELECT" ||
-        target.isContentEditable);
+    const isTyping = isTypingTarget(event.target);
 
-    if (!isTypingTarget && pendingKey === "g") {
-      pendingKey = "";
-      if (pendingTimer) {
-        clearTimeout(pendingTimer);
-        pendingTimer = null;
-      }
-      if (key === "d") {
+    if (!isTyping && pendingKey) {
+      if (key === "escape") {
         event.preventDefault();
-        goto(`/${vaultName}/notes/${new Date().toISOString().slice(0, 10)}`);
+        clearPendingKeyHint();
         return;
       }
+      if (runPendingKeyAction(key)) {
+        event.preventDefault();
+      }
+      return;
     }
 
-    if (!isTypingTarget && key === "g") {
-      pendingKey = "g";
-      if (pendingTimer) clearTimeout(pendingTimer);
-      pendingTimer = setTimeout(() => {
-        pendingKey = "";
-        pendingTimer = null;
-      }, 800);
+    if (!isTyping && key in keyHintActions && !hasOpenDialog()) {
+      openPendingKeyHint(key);
       return;
     }
 
@@ -259,6 +336,27 @@
 
 <CmdK {vaultName} openToken={commandPaletteOpenToken} />
 
+{#if activeKeyHints.length > 0}
+  <aside
+    class="key-hint"
+    role="status"
+    aria-label="Key sequence hints"
+    data-key-hint
+  >
+    <div class="key-hint-prefix">
+      <kbd>{activeKeyHintLabel}</kbd>
+    </div>
+    <div class="key-hint-list">
+      {#each activeKeyHints as action}
+        <div class="key-hint-row">
+          <kbd>{action.key}</kbd>
+          <span>{action.description}</span>
+        </div>
+      {/each}
+    </div>
+  </aside>
+{/if}
+
 <WikilinkPreview vault={vaultName} />
 
 <style>
@@ -285,6 +383,76 @@
 
   .drawer-scrim {
     display: none;
+  }
+
+  .key-hint {
+    position: fixed;
+    right: max(16px, var(--window-padding, 24px));
+    bottom: 16px;
+    z-index: 120;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--space-3, 12px);
+    max-width: min(320px, calc(100vw - 32px));
+    padding: 10px 12px;
+    color: var(--text);
+    background: color-mix(in srgb, var(--bg-elev) 94%, transparent);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .key-hint-prefix {
+    display: flex;
+    align-items: flex-start;
+    padding-top: 1px;
+  }
+
+  .key-hint-list {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .key-hint-row {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    min-height: 22px;
+    font-size: var(--type-caption-size, 12px);
+    line-height: 1.35;
+  }
+
+  .key-hint kbd {
+    display: inline-grid;
+    min-width: 22px;
+    height: 22px;
+    place-items: center;
+    padding: 0 5px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--accent);
+    background: var(--surface-raised, var(--bg));
+    border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border));
+    border-radius: 2px;
+  }
+
+  .key-hint-prefix kbd {
+    min-width: 44px;
+    color: var(--bg);
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .key-hint-row span {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   @keyframes shell-reveal {
