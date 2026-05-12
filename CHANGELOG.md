@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.78.3 (2026-05-12)
+
+### Bug Fixes
+
+- Prevent daily note editor saves from returning 500
+  ([`dc7ac37`](https://github.com/ksm0709/pkm/commit/dc7ac376ca8465ac549a4693009167052374ea2d))
+
+
 ## v2.78.2 (2026-05-12)
 
 ### Bug Fixes
