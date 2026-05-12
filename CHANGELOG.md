@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.80.0 (2026-05-12)
+
+### Features
+
+- Let web layouts share configurable window padding
+  ([`601dcef`](https://github.com/ksm0709/pkm/commit/601dcefd93a7f84ca6a06535c0b8258dffba03fe))
+
+
 ## v2.79.0 (2026-05-12)
 
 ### Features
