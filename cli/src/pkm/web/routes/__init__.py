@@ -27,7 +27,7 @@ from pkm.web.routes.notes import (
     list_notes,
     update_note,
 )
-from pkm.web.routes.search import search_notes
+from pkm.web.routes.search import index_vault, search_notes
 from pkm.web.routes.tags import list_tags, search_tags
 from pkm.web.routes.vault import get_vaults
 from pkm.web.routes.workflows import (
@@ -66,6 +66,7 @@ def register_routes(app: web.Application) -> None:
     app.router.add_get("/api/v1/vault/{name}/daily", list_daily)
 
     # Search
+    app.router.add_post("/api/v1/vault/{name}/index", index_vault)
     app.router.add_get("/api/v1/vault/{name}/search", search_notes)
 
     # Tags — /search must be registered before generic pattern routes

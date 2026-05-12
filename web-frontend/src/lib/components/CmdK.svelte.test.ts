@@ -276,4 +276,35 @@ describe("CmdK", () => {
 
     unmount(component);
   });
+
+  it("lists Index vault as a command and rebuilds the vault index", async () => {
+    vi.mocked(apiClient).mockResolvedValue(
+      new Response(JSON.stringify({ status: "ok", count: 3 }), {
+        status: 200,
+      }),
+    );
+    const { target, component } = render();
+    await tick();
+    await vi.runOnlyPendingTimersAsync();
+    await tick();
+
+    const labels = [...target.querySelectorAll(".row-label")].map(
+      (node) => node.textContent,
+    );
+    expect(labels).toContain("Index vault");
+
+    const indexCommand = [
+      ...target.querySelectorAll<HTMLElement>(".cmdk-row"),
+    ].find((row) => row.textContent?.includes("Index vault"));
+    indexCommand?.click();
+    await flush();
+
+    expect(apiClient).toHaveBeenCalledWith("/api/v1/vault/main/index", {
+      method: "POST",
+    });
+    expect(goto).toHaveBeenCalledWith("/main/graph");
+    expect(target.querySelector('[role="dialog"]')).toBeNull();
+
+    unmount(component);
+  });
 });

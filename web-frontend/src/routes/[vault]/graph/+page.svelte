@@ -3,6 +3,7 @@
   import { goto } from "$app/navigation";
   import { page } from "$app/stores";
   import { apiClient } from "$lib/api/client.js";
+  import MarkdownRenderer from "$lib/components/MarkdownRenderer.svelte";
   import { focusNeighborhood, graphFocusState } from "$lib/graph/focus.js";
   import { classifyGraphGesture } from "$lib/graph/gestures.js";
   import { hitTestNode } from "$lib/graph/hit-test.js";
@@ -1231,7 +1232,13 @@
               {preview.error}
             </p>
           {:else}
-            <pre class="preview-body">{preview.body}</pre>
+            <div class="preview-body">
+              <MarkdownRenderer
+                markdown={preview.body}
+                vault={vaultName}
+                compact
+              />
+            </div>
           {/if}
         </aside>
       {/if}
@@ -1490,14 +1497,8 @@
 
   .preview-body {
     flex: 1;
-    margin: 0;
     overflow: auto;
     padding: 18px;
-    color: var(--text-muted);
-    font: inherit;
-    line-height: 1.6;
-    white-space: pre-wrap;
-    word-break: break-word;
   }
 
   @media (max-width: 860px) {

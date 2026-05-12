@@ -469,6 +469,93 @@ async def test_workflow_dispatch_formats_pre_hook_and_propagates_agent_options(
 
 
 @pytest.mark.anyio
+async def test_zettelkasten_workflow_reindexes_before_pre_hook_and_agent(
+    monkeypatch, tmp_path
+):
+    """Zettelkasten maintenance refreshes the graph/index before workflow work starts."""
+    config = SimpleNamespace(
+        id="zettelkasten_maintenance",
+        pre_hook="prepare",
+        post_hook=None,
+        system_prompt_template="Today is {today}.",
+    )
+    events: list[str] = []
+
+    def fake_rebuild_index(vault):
+        events.append(f"index:{vault.path}")
+
+    def fake_resolve_hook(name):
+        if name == "prepare":
+            return lambda _vault, today: events.append("pre_hook") or {"today": today}
+        return None
+
+    async def fake_run_agent_task(**_kwargs: Any):
+        events.append("agent")
+        return SimpleNamespace(
+            status="success",
+            response="ok",
+            result_summary="ok",
+            error=None,
+        )
+
+    monkeypatch.setattr("pkm.workflows.load_workflows", lambda vault_path: [config])
+    monkeypatch.setattr("pkm.workflows.resolve_hook", fake_resolve_hook)
+    monkeypatch.setattr(worker, "_rebuild_workflow_index", fake_rebuild_index)
+    monkeypatch.setattr(worker, "_run_agent_task", fake_run_agent_task)
+
+    await worker._dispatch_workflow(
+        task_id="wf-index",
+        workflow_id="zettelkasten_maintenance",
+        vault_dir=str(tmp_path),
+    )
+
+    assert events == [f"index:{tmp_path}", "pre_hook", "agent"]
+
+
+@pytest.mark.anyio
+async def test_zettelkasten_workflow_records_index_failure_without_agent_start(
+    monkeypatch, tmp_path
+):
+    """A failed mandatory zettelkasten reindex stops before pre-hook and agent work."""
+    fake_ipc = _FakeIPC()
+    monkeypatch.setattr(worker, "ipc", fake_ipc)
+    config = SimpleNamespace(
+        id="zettelkasten_maintenance",
+        pre_hook="prepare",
+        post_hook=None,
+        system_prompt_template="Run maintenance.",
+    )
+
+    def fail_rebuild_index(_vault):
+        raise RuntimeError("index failed")
+
+    def fail_resolve_hook(_name):
+        raise AssertionError("pre-hook should not run after index failure")
+
+    async def fail_run_agent_task(**_kwargs: Any):
+        raise AssertionError("agent should not start after index failure")
+
+    monkeypatch.setattr("pkm.workflows.load_workflows", lambda vault_path: [config])
+    monkeypatch.setattr("pkm.workflows.resolve_hook", fail_resolve_hook)
+    monkeypatch.setattr(worker, "_rebuild_workflow_index", fail_rebuild_index)
+    monkeypatch.setattr(worker, "_run_agent_task", fail_run_agent_task)
+
+    await worker._dispatch_workflow(
+        task_id="wf-index-fail",
+        workflow_id="zettelkasten_maintenance",
+        vault_dir=str(tmp_path),
+        source="scheduled",
+    )
+
+    records = read_workflow_history(tmp_path)
+    assert records[0]["status"] == "failure"
+    assert records[0]["phase"] == "index"
+    assert records[0]["source"] == "scheduled"
+    assert "index failed" in records[0]["error"]
+    assert fake_ipc.messages[-1]["type"] == "error"
+
+
+@pytest.mark.anyio
 async def test_workflow_dispatch_records_success_history(monkeypatch, tmp_path):
     """A successful workflow records one completion row from the worker boundary."""
     config = SimpleNamespace(

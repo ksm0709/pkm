@@ -124,6 +124,15 @@
     }
   }
 
+  async function indexVault() {
+    const response = await apiClient(
+      `/api/v1/vault/${encodeURIComponent(vaultName)}/index`,
+      { method: "POST" },
+    );
+    if (!response.ok) throw new Error(`POST index -> ${response.status}`);
+    await goto(`/${vaultName}/graph`);
+  }
+
   async function loadVaults() {
     if (vaultsList.length > 0) return;
     try {
@@ -173,6 +182,13 @@
         label: "Add daily sub-note",
         hint: "daily subnote",
         run: createDailySubnote,
+      },
+      {
+        kind: "command",
+        id: "cmd:index-vault",
+        label: "Index vault",
+        hint: "rebuild search and graph",
+        run: indexVault,
       },
       {
         kind: "command",

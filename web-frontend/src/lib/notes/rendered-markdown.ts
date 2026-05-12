@@ -1,3 +1,6 @@
+import { marked } from "marked";
+import { wikilinksToMarkdownLinks } from "./wikilinks";
+
 export function tagHue(tag: string) {
   let hash = 0;
   for (const char of tag) {
@@ -108,4 +111,19 @@ export function decorateRenderedHtml(
   }
 
   return template.innerHTML;
+}
+
+export async function renderMarkdownHtml(
+  markdown: string,
+  vault: string,
+  doc: Document | undefined = typeof document === "undefined"
+    ? undefined
+    : document,
+) {
+  const markdownWithLinks = wikilinksToMarkdownLinks(markdown, vault);
+  const parsed = await marked.parse(markdownWithLinks, {
+    async: true,
+    gfm: true,
+  });
+  return doc ? decorateRenderedHtml(parsed, vault, doc) : parsed;
 }

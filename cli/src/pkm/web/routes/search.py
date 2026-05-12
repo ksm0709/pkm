@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 from aiohttp import web
@@ -73,3 +74,24 @@ async def search_notes(request: web.Request) -> web.Response:
     if stale_warning:
         payload["warning"] = stale_warning
     return web.json_response(payload)
+
+
+async def index_vault(request: web.Request) -> web.Response:
+    """POST /api/v1/vault/{name}/index — rebuild search index and graphs."""
+    vault = _resolve_vault(request.match_info["name"])
+
+    try:
+        from pkm.search_engine import build_index
+
+        vector_index = await asyncio.to_thread(build_index, vault)
+    except ClickException as exc:
+        raise web.HTTPServiceUnavailable(reason=str(exc))
+
+    return web.json_response(
+        {
+            "status": "ok",
+            "count": len(vector_index.entries),
+            "index_path": str(vault.pkm_dir / "index.json"),
+            "graph_path": str(vault.pkm_dir / "graph.json"),
+        }
+    )

@@ -49,6 +49,13 @@ class AgentTaskOutcome:
     error: str | None = None
 
 
+def _rebuild_workflow_index(vault: Any) -> None:
+    """Rebuild index/graph before graph-dependent workflow execution."""
+    from pkm.search_engine import build_index
+
+    build_index(vault)
+
+
 def reasoning_kwargs(model: str, effort: str | None) -> dict[str, Any]:
     """Translate reasoning_effort to model-compatible litellm kwargs.
 
@@ -593,6 +600,17 @@ async def _dispatch_workflow(
 
     vault = VaultConfig(name=Path(vault_dir).name, path=Path(vault_dir))
     today = str(date.today())
+
+    if workflow_id == "zettelkasten_maintenance":
+        try:
+            await asyncio.to_thread(_rebuild_workflow_index, vault)
+        except Exception as exc:
+            message = str(exc)
+            await ipc.send_message(
+                {"type": "error", "id": task_id, "message": message}
+            )
+            record_history(status="failure", phase="index", error=message)
+            return
 
     try:
         pre_fn = resolve_hook(config.pre_hook)

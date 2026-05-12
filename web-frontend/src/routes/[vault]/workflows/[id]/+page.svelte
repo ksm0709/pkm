@@ -1,6 +1,7 @@
 <script lang="ts">
   import { page } from "$app/stores";
   import { apiClient, apiGet } from "$lib/api/client.js";
+  import MarkdownRenderer from "$lib/components/MarkdownRenderer.svelte";
 
   interface WorkflowDetail {
     id: string;
@@ -236,7 +237,7 @@
     {/if}
 
     <article class="workflow-body" aria-label="Workflow body">
-      <pre>{workflow.body}</pre>
+      <MarkdownRenderer markdown={workflow.body} vault={vaultName} />
     </article>
   {/if}
 </main>
@@ -428,17 +429,6 @@
   .workflow-body {
     border-top: 1px solid var(--border);
     padding-top: var(--space-4, 16px);
-  }
-
-  .workflow-body pre {
-    margin: 0;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-    color: var(--text);
-    font-family: var(--font-mono);
-    font-size: var(--type-body-size, 15px);
-    line-height: var(--type-body-lh, 1.7);
   }
 
   .status-msg {
