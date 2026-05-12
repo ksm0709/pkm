@@ -1,5 +1,5 @@
 <script lang="ts">
-  import EgoConstellation from '$lib/components/EgoConstellation.svelte';
+  import EgoConstellation from "$lib/components/EgoConstellation.svelte";
 
   interface Neighbor {
     note_id: string;
@@ -39,11 +39,11 @@
   let groups = $derived<Group[]>(
     data
       ? [
-          { label: 'OUTBOUND', items: data.outbound },
-          { label: 'SEMANTIC', items: data.semantic },
-          { label: 'INBOUND', items: data.inbound }
+          { label: "OUTBOUND", items: data.outbound },
+          { label: "SEMANTIC", items: data.semantic },
+          { label: "INBOUND", items: data.inbound },
         ].filter((g) => g.items.length > 0)
-      : []
+      : [],
   );
 </script>
 
@@ -65,10 +65,17 @@
             {#each group.items as neighbor (neighbor.note_id)}
               {@const summary = neighborSummary(neighbor)}
               <li class="neighbor-item">
-                <a href="/{vaultName}/notes/{neighbor.note_id}" class="neighbor-link">
-                  <span class="neighbor-title">{neighbor.title || neighbor.note_id}</span>
+                <a
+                  href="/{vaultName}/notes/{neighbor.note_id}"
+                  class="neighbor-link"
+                >
+                  <span class="neighbor-title"
+                    >{neighbor.title || neighbor.note_id}</span
+                  >
                   {#if neighbor.confidence !== undefined}
-                    <span class="confidence">{neighbor.confidence.toFixed(2)}</span>
+                    <span class="confidence"
+                      >{neighbor.confidence.toFixed(2)}</span
+                    >
                   {/if}
                   {#if summary}
                     <span class="neighbor-description">{summary}</span>
@@ -158,7 +165,10 @@
     text-decoration: none;
     border-left: 2px solid transparent;
     padding: var(--space-2, 8px);
-    transition: color var(--dur-fast, 120ms) var(--ease-out), background-color var(--dur-fast, 120ms) var(--ease-out), border-color var(--dur-fast, 120ms) var(--ease-out);
+    transition:
+      color var(--dur-fast, 120ms) var(--ease-out),
+      background-color var(--dur-fast, 120ms) var(--ease-out),
+      border-color var(--dur-fast, 120ms) var(--ease-out);
   }
 
   .neighbor-link:hover,

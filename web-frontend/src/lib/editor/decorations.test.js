@@ -22,6 +22,11 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+/**
+ * @param {string} doc
+ * @param {import("@codemirror/state").Extension[]} extensions
+ * @param {number} [selection]
+ */
 function createView(doc, extensions, selection = 0) {
   const parent = document.createElement("div");
   document.body.appendChild(parent);
@@ -108,7 +113,9 @@ describe("editor markdown decorations", () => {
       checkboxesTheme,
     ]);
 
-    const inputs = [...view.dom.querySelectorAll("input.cm-md-checkbox")];
+    const inputs = /** @type {HTMLInputElement[]} */ ([
+      ...view.dom.querySelectorAll("input.cm-md-checkbox"),
+    ]);
     expect(inputs.map((input) => input.checked)).toEqual([false, true]);
 
     inputs[0].dispatchEvent(

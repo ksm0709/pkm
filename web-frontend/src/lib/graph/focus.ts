@@ -1,9 +1,14 @@
-import type { NormalizedGraph } from './normalize';
+import type { NormalizedGraph } from "./normalize";
 
-export type GraphFocusState = 'focused' | 'neighbor' | 'muted' | 'normal';
+export type GraphFocusState = "focused" | "neighbor" | "muted" | "normal";
 
-export function focusNeighborhood(graph: NormalizedGraph, focusedId: string | null, depth = 1): Set<string> {
-  if (!focusedId || !graph.nodes.some((node) => node.id === focusedId)) return new Set();
+export function focusNeighborhood(
+  graph: NormalizedGraph,
+  focusedId: string | null,
+  depth = 1,
+): Set<string> {
+  if (!focusedId || !graph.nodes.some((node) => node.id === focusedId))
+    return new Set();
 
   const adjacency = graphAdjacency(graph);
   const visited = new Set([focusedId]);
@@ -26,23 +31,25 @@ export function focusNeighborhood(graph: NormalizedGraph, focusedId: string | nu
 export function graphFocusState(
   graph: NormalizedGraph,
   focusedId: string | null,
-  depth = 1
+  depth = 1,
 ): Map<string, GraphFocusState> {
   const neighborhood = focusNeighborhood(graph, focusedId, depth);
   const states = new Map<string, GraphFocusState>();
 
   for (const node of graph.nodes) {
-    if (!focusedId) states.set(node.id, 'normal');
-    else if (node.id === focusedId) states.set(node.id, 'focused');
-    else if (neighborhood.has(node.id)) states.set(node.id, 'neighbor');
-    else states.set(node.id, 'muted');
+    if (!focusedId) states.set(node.id, "normal");
+    else if (node.id === focusedId) states.set(node.id, "focused");
+    else if (neighborhood.has(node.id)) states.set(node.id, "neighbor");
+    else states.set(node.id, "muted");
   }
 
   return states;
 }
 
 function graphAdjacency(graph: NormalizedGraph): Map<string, string[]> {
-  const adjacency = new Map(graph.nodes.map((node) => [node.id, [] as string[]]));
+  const adjacency = new Map(
+    graph.nodes.map((node) => [node.id, [] as string[]]),
+  );
 
   for (const edge of graph.edges) {
     adjacency.get(edge.source)?.push(edge.target);

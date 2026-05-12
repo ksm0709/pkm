@@ -1,4 +1,8 @@
-import { screenToWorld, type GraphPoint, type GraphTransform } from './viewport';
+import {
+  screenToWorld,
+  type GraphPoint,
+  type GraphTransform,
+} from "./viewport";
 
 export type HittableGraphNode = {
   id: string;
@@ -12,7 +16,7 @@ export function hitTestNode<T extends HittableGraphNode>(
   nodes: T[],
   screenPoint: GraphPoint,
   transform: GraphTransform,
-  padding = 4
+  padding = 4,
 ): T | null {
   const world = screenToWorld(screenPoint, transform);
   let best: { node: T; distance: number } | null = null;

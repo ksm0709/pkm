@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
-  import { afterNavigate } from '$app/navigation';
-  import { page } from '$app/stores';
-  import AskTranscript from '$lib/components/AskTranscript.svelte';
-  import AskInput from '$lib/components/AskInput.svelte';
-  import { getAskSession, type ManagedTask } from '$lib/ask/session.svelte';
+  import { onMount, tick } from "svelte";
+  import { afterNavigate } from "$app/navigation";
+  import { page } from "$app/stores";
+  import AskTranscript from "$lib/components/AskTranscript.svelte";
+  import AskInput from "$lib/components/AskInput.svelte";
+  import { getAskSession, type ManagedTask } from "$lib/ask/session.svelte";
 
   let vaultName = $derived($page.params.vault);
   let askSession = $derived(getAskSession(vaultName));
@@ -12,7 +12,7 @@
   let busy = $derived(askSession.busy);
   let modelLabel = $derived(askSession.modelLabel);
   let managedTasks = $derived(askSession.managedTasks);
-  let inputValue = $state('');
+  let inputValue = $state("");
   let scrollEl: HTMLDivElement | null = $state(null);
   let tasksCollapsed = $state(false);
 
@@ -23,10 +23,10 @@
   }
 
   function taskMarker(task: ManagedTask) {
-    if (task.checked) return '✓';
-    if (task.status === 'in_progress') return '>';
-    if (task.status === 'cancelled') return '~';
-    return '';
+    if (task.checked) return "✓";
+    if (task.status === "in_progress") return ">";
+    if (task.status === "cancelled") return "~";
+    return "";
   }
 
   onMount(() => {
@@ -51,8 +51,8 @@
   });
 
   function maybeSubmitQueryParam() {
-    const q = $page.url.searchParams.get('q');
-    const trimmed = q?.trim() ?? '';
+    const q = $page.url.searchParams.get("q");
+    const trimmed = q?.trim() ?? "";
     if (trimmed && askSession.claimQueryParam(trimmed)) {
       inputValue = trimmed;
       void tick().then(() => askSession.submit(trimmed));
@@ -79,26 +79,38 @@
   <div class="composer-shell">
     {#if managedTasks.length}
       <div class="ask-column task-column">
-        <section class="ask-task-list" class:collapsed={tasksCollapsed} aria-label="Managed tasks">
+        <section
+          class="ask-task-list"
+          class:collapsed={tasksCollapsed}
+          aria-label="Managed tasks"
+        >
           <button
             type="button"
             class="task-list-toggle"
             aria-expanded={!tasksCollapsed}
             aria-controls="ask-managed-tasks"
-            aria-label={`${tasksCollapsed ? 'Expand' : 'Collapse'} managed tasks`}
+            aria-label={`${tasksCollapsed ? "Expand" : "Collapse"} managed tasks`}
             onclick={() => (tasksCollapsed = !tasksCollapsed)}
           >
-            <span class="task-list-caret" aria-hidden="true">{tasksCollapsed ? '>' : 'v'}</span>
+            <span class="task-list-caret" aria-hidden="true"
+              >{tasksCollapsed ? ">" : "v"}</span
+            >
             <span class="task-list-label">TASKS</span>
-            <span class="task-list-count" aria-hidden="true">{managedTasks.length}</span>
+            <span class="task-list-count" aria-hidden="true"
+              >{managedTasks.length}</span
+            >
           </button>
-          <div id="ask-managed-tasks" class="task-items" hidden={tasksCollapsed}>
+          <div
+            id="ask-managed-tasks"
+            class="task-items"
+            hidden={tasksCollapsed}
+          >
             {#each managedTasks as task (task.id)}
               <div
                 class="task-item"
                 class:done={task.checked}
-                class:progress={task.status === 'in_progress'}
-                class:cancelled={task.status === 'cancelled'}
+                class:progress={task.status === "in_progress"}
+                class:cancelled={task.status === "cancelled"}
               >
                 <span
                   class="task-box"

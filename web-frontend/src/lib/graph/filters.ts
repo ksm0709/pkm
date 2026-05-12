@@ -24,7 +24,7 @@ export interface GraphTypeFilters {
   edgeTypes: ReadonlySet<string>;
 }
 
-const UNKNOWN_TYPE = 'unknown';
+const UNKNOWN_TYPE = "unknown";
 
 export function graphNodeType(node: GraphNode): string {
   return normalizeType(node.type);
@@ -35,7 +35,7 @@ export function graphEdgeType(link: GraphLink): string {
 }
 
 export function graphEndpointId(endpoint: string | GraphNode): string {
-  return typeof endpoint === 'string' ? endpoint : endpoint.id;
+  return typeof endpoint === "string" ? endpoint : endpoint.id;
 }
 
 export function collectGraphTypes(graph: GraphData | null | undefined) {
@@ -52,35 +52,45 @@ export function collectGraphTypes(graph: GraphData | null | undefined) {
 
   return {
     nodeTypes: [...nodeTypes].sort(compareTypes),
-    edgeTypes: [...edgeTypes].sort(compareTypes)
+    edgeTypes: [...edgeTypes].sort(compareTypes),
   };
 }
 
-export function defaultGraphTypeFilters(graph: GraphData | null | undefined): GraphTypeFilters {
+export function defaultGraphTypeFilters(
+  graph: GraphData | null | undefined,
+): GraphTypeFilters {
   const { nodeTypes, edgeTypes } = collectGraphTypes(graph);
   return {
     nodeTypes: new Set(nodeTypes),
-    edgeTypes: new Set(edgeTypes)
+    edgeTypes: new Set(edgeTypes),
   };
 }
 
 export function applyGraphTypeFilters(
   graph: GraphData | null | undefined,
-  filters: GraphTypeFilters
+  filters: GraphTypeFilters,
 ): GraphData {
   if (!graph) return { nodes: [], links: [] };
 
-  const nodes = graph.nodes.filter((node) => filters.nodeTypes.has(graphNodeType(node)));
+  const nodes = graph.nodes.filter((node) =>
+    filters.nodeTypes.has(graphNodeType(node)),
+  );
   const visibleNodeIds = new Set(nodes.map((node) => node.id));
   const links = graph.links.filter((link) => {
     if (!filters.edgeTypes.has(graphEdgeType(link))) return false;
-    return visibleNodeIds.has(graphEndpointId(link.source)) && visibleNodeIds.has(graphEndpointId(link.target));
+    return (
+      visibleNodeIds.has(graphEndpointId(link.source)) &&
+      visibleNodeIds.has(graphEndpointId(link.target))
+    );
   });
 
   return { ...graph, nodes, links };
 }
 
-export function toggleGraphType(types: ReadonlySet<string>, type: string): Set<string> {
+export function toggleGraphType(
+  types: ReadonlySet<string>,
+  type: string,
+): Set<string> {
   const next = new Set(types);
   if (next.has(type)) {
     next.delete(type);

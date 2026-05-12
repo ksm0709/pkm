@@ -7,8 +7,8 @@
 function getToken() {
   try {
     return (
-      localStorage.getItem('pkm.token') ||
-      sessionStorage.getItem('pkm.token') ||
+      localStorage.getItem("pkm.token") ||
+      sessionStorage.getItem("pkm.token") ||
       null
     );
   } catch {
@@ -28,27 +28,27 @@ export async function apiClient(path, opts = {}) {
   const token = overrideToken ?? getToken();
 
   const headers = {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
     ...(fetchOpts.headers ?? {}),
-    ...(token ? { Authorization: `Bearer ${token}` } : {})
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
   const response = await fetch(path, {
-    credentials: 'same-origin',
+    credentials: "same-origin",
     ...fetchOpts,
-    headers
+    headers,
   });
 
   if (response.status === 401) {
     // Clear any legacy stale token and redirect to login.
     try {
-      localStorage.removeItem('pkm.token');
-      sessionStorage.removeItem('pkm.token');
+      localStorage.removeItem("pkm.token");
+      sessionStorage.removeItem("pkm.token");
     } catch {
       // ignore
     }
-    if (typeof window !== 'undefined') {
-      window.location.href = '/';
+    if (typeof window !== "undefined") {
+      window.location.href = "/";
     }
   }
 
@@ -64,7 +64,7 @@ export async function apiClient(path, opts = {}) {
  * @returns {Promise<T>}
  */
 export async function apiGet(path, opts = {}) {
-  const res = await apiClient(path, { method: 'GET', ...opts });
+  const res = await apiClient(path, { method: "GET", ...opts });
   if (!res.ok) throw new Error(`GET ${path} → ${res.status}`);
   return res.json();
 }

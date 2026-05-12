@@ -2,11 +2,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mount, tick, unmount } from "svelte";
 import { goto } from "$app/navigation";
-import { apiGet } from "$lib/api/client.js";
+import { apiClient, apiGet } from "$lib/api/client.js";
 import CmdK from "./CmdK.svelte";
 
 vi.mock("$app/navigation", () => ({ goto: vi.fn() }));
-vi.mock("$lib/api/client.js", () => ({ apiGet: vi.fn() }));
+vi.mock("$lib/api/client.js", () => ({ apiClient: vi.fn(), apiGet: vi.fn() }));
 
 describe("CmdK", () => {
   beforeEach(() => {
@@ -48,6 +48,7 @@ describe("CmdK", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    vi.mocked(apiClient).mockReset();
     vi.mocked(goto).mockReset();
     vi.mocked(apiGet).mockReset();
     document.body.innerHTML = "";
@@ -64,6 +65,12 @@ describe("CmdK", () => {
       },
     });
     return { target, component };
+  }
+
+  async function flush() {
+    await Promise.resolve();
+    await Promise.resolve();
+    await tick();
   }
 
   it("opens from its token, renders command rows, and navigates selected static commands", async () => {
@@ -126,6 +133,57 @@ describe("CmdK", () => {
     unmount(component);
   });
 
+  it("falls back to the note list when backend search is unavailable", async () => {
+    vi.mocked(apiGet).mockImplementation(async (path: string) => {
+      if (path === "/api/v1/vaults") return ["main"];
+      if (path.includes("/search?q=research")) {
+        throw new Error("GET search -> 404");
+      }
+      if (path === "/api/v1/vault/main/notes") {
+        return [
+          {
+            note_id: "fallback-research-note",
+            title: "Fallback Research Note",
+            path: "notes/fallback-research-note.md",
+            description: "Searchable note from fallback.",
+            tags: ["research"],
+          },
+          {
+            note_id: "unrelated",
+            title: "Unrelated",
+            path: "notes/unrelated.md",
+            description: "Different note.",
+            tags: [],
+          },
+        ];
+      }
+      return [];
+    });
+    const { target, component } = render();
+    await tick();
+    await vi.runOnlyPendingTimersAsync();
+    await tick();
+
+    const input = target.querySelector<HTMLInputElement>(".cmdk-input");
+    input!.value = "research";
+    input!.dispatchEvent(new Event("input", { bubbles: true }));
+    await tick();
+    await vi.advanceTimersByTimeAsync(120);
+    await flush();
+
+    expect(apiGet).toHaveBeenCalledWith("/api/v1/vault/main/search?q=research");
+    expect(apiGet).toHaveBeenCalledWith("/api/v1/vault/main/notes");
+    expect(
+      target.querySelector(".cmdk-row[data-note-id='fallback-research-note']")
+        ?.textContent,
+    ).toContain("Fallback Research Note");
+    expect(
+      target.querySelector(".cmdk-row[data-note-id='unrelated']"),
+    ).toBeNull();
+
+    unmount(component);
+  });
+
   it("searches tag rows and routes their note result", async () => {
     const { target, component } = render();
     await tick();
@@ -174,6 +232,48 @@ describe("CmdK", () => {
     expect(listener.mock.calls[0][0].detail).toEqual({ theme: "light" });
 
     window.removeEventListener("pkm:theme-change", listener);
+    unmount(component);
+  });
+
+  it("lists Add daily sub-note as a command and opens the created note", async () => {
+    vi.stubGlobal(
+      "prompt",
+      vi.fn(() => "meeting notes"),
+    );
+    vi.mocked(apiClient).mockResolvedValue(
+      new Response(JSON.stringify({ note_id: "2026-05-12-meeting-notes" }), {
+        status: 201,
+      }),
+    );
+    const { target, component } = render();
+    await tick();
+    await vi.runOnlyPendingTimersAsync();
+    await tick();
+
+    const labels = [...target.querySelectorAll(".row-label")].map(
+      (node) => node.textContent,
+    );
+    expect(labels).toContain("Add daily sub-note");
+
+    const subnoteCommand = [
+      ...target.querySelectorAll<HTMLElement>(".cmdk-row"),
+    ].find((row) => row.textContent?.includes("Add daily sub-note"));
+    subnoteCommand?.click();
+    await flush();
+
+    expect(prompt).toHaveBeenCalledWith("Subnote title");
+    expect(apiClient).toHaveBeenCalledWith("/api/v1/vault/main/daily/today", {
+      method: "POST",
+      body: JSON.stringify({
+        type: "subnote",
+        title: "meeting notes",
+        content: "",
+      }),
+    });
+    expect(goto).toHaveBeenCalledWith("/main/notes/2026-05-12-meeting-notes");
+    await flush();
+    expect(target.querySelector('[role="dialog"]')).toBeNull();
+
     unmount(component);
   });
 });

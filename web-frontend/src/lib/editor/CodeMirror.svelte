@@ -9,36 +9,53 @@
    * Two-way binding via Svelte 5 `$bindable()` for the doc value.
    * onMount creates the EditorView, onDestroy disposes it.
    */
-  import { onMount, onDestroy } from 'svelte';
-  import { EditorState, type Extension } from '@codemirror/state';
-  import { EditorView, keymap, lineNumbers, highlightActiveLine } from '@codemirror/view';
-  import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
-  import { startCompletion } from '@codemirror/autocomplete';
-  import { vim } from '@replit/codemirror-vim';
-  import { detectInlineTrigger } from '$lib/inline-suggestions.js';
-  import { pkmTheme } from './theme.js';
-  import { installVimMappings } from './vim.js';
-  import { liveStyling, liveStylingTheme } from './live-styling.js';
-  import { slashCommands } from './slash-commands.js';
-  import { markdownWithGfm } from './markdown-extensions.js';
-  import { katexLazy, katexLazyTheme } from './katex-lazy.js';
-  import { admonitions, admonitionsTheme } from './admonitions.js';
-  import { footnotes, footnotesTheme } from './footnotes.js';
-  import { checkboxes, checkboxesTheme } from './checkboxes.js';
-  import { frontmatterByline, frontmatterBylineTheme } from './frontmatter-byline.js';
-  import { tagPill, tagPillTheme } from './tag-pill.js';
-  import { wikilinkWidget, wikilinkWidgetTheme } from './wikilink-widget.js';
+  import { onMount, onDestroy } from "svelte";
+  import { EditorState, Prec, type Extension } from "@codemirror/state";
+  import {
+    EditorView,
+    keymap,
+    lineNumbers,
+    highlightActiveLine,
+  } from "@codemirror/view";
+  import {
+    defaultKeymap,
+    history,
+    historyKeymap,
+    undo,
+  } from "@codemirror/commands";
+  import { startCompletion } from "@codemirror/autocomplete";
+  import { vim } from "@replit/codemirror-vim";
+  import { detectInlineTrigger } from "$lib/inline-suggestions.js";
+  import { pkmTheme } from "./theme.js";
+  import { installVimMappings } from "./vim.js";
+  import { liveStyling, liveStylingTheme } from "./live-styling.js";
+  import { slashCommands } from "./slash-commands.js";
+  import { markdownWithGfm } from "./markdown-extensions.js";
+  import { katexLazy, katexLazyTheme } from "./katex-lazy.js";
+  import { admonitions, admonitionsTheme } from "./admonitions.js";
+  import { footnotes, footnotesTheme } from "./footnotes.js";
+  import { checkboxes, checkboxesTheme } from "./checkboxes.js";
+  import {
+    frontmatterByline,
+    frontmatterBylineTheme,
+  } from "./frontmatter-byline.js";
+  import { tagPill, tagPillTheme } from "./tag-pill.js";
+  import { wikilinkWidget, wikilinkWidgetTheme } from "./wikilink-widget.js";
 
   interface Props {
     doc?: string;
     extensions?: Extension[];
     readOnly?: boolean;
+    vimMode?: boolean;
+    onSave?: () => void | Promise<void>;
   }
 
   let {
-    doc = $bindable(''),
+    doc = $bindable(""),
     extensions = [],
-    readOnly = false
+    readOnly = false,
+    vimMode = true,
+    onSave,
   }: Props = $props();
 
   let host: HTMLDivElement | null = $state(null);
@@ -48,11 +65,33 @@
   let suppressNext = false;
 
   onMount(() => {
-    installVimMappings();
+    if (vimMode) installVimMappings();
+
+    const editorKeymap = Prec.highest(
+      keymap.of([
+        {
+          key: "Mod-s",
+          preventDefault: true,
+          run: () => {
+            void onSave?.();
+            return true;
+          },
+        },
+        {
+          key: "Mod-z",
+          preventDefault: true,
+          run: (activeView) => {
+            undo(activeView);
+            return true;
+          },
+        },
+      ]),
+    );
 
     const baseExtensions: Extension[] = [
-      // Vim must come first to bind keys before defaultKeymap claims them.
-      vim(),
+      editorKeymap,
+      // Vim must come before defaultKeymap when enabled.
+      ...(vimMode ? [vim()] : []),
       history(),
       lineNumbers(),
       highlightActiveLine(),
@@ -99,12 +138,12 @@
           });
         }
       }),
-      ...extensions
+      ...extensions,
     ];
 
     view = new EditorView({
       state: EditorState.create({ doc, extensions: baseExtensions }),
-      parent: host!
+      parent: host!,
     });
   });
 
@@ -118,7 +157,7 @@
     const current = view.state.doc.toString();
     if (current === doc) return;
     view.dispatch({
-      changes: { from: 0, to: current.length, insert: doc }
+      changes: { from: 0, to: current.length, insert: doc },
     });
   });
 

@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import { streamSse } from './sse.js';
+import { describe, expect, it, vi } from "vitest";
+import { streamSse } from "./sse.js";
 
 /** @param {string[]} chunks */
 function responseFromChunks(chunks) {
@@ -9,42 +9,46 @@ function responseFromChunks(chunks) {
       start(controller) {
         for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
         controller.close();
-      }
+      },
     }),
-    { status: 200 }
+    { status: 200 },
   );
 }
 
-describe('streamSse', () => {
-  it('ignores heartbeat comments and parses result events', async () => {
+describe("streamSse", () => {
+  it("ignores heartbeat comments and parses result events", async () => {
     vi.stubGlobal(
-      'fetch',
+      "fetch",
       vi.fn(async () =>
         responseFromChunks([
-          ': heartbeat\n\n',
+          ": heartbeat\n\n",
           'event: content\ndata: {"type":"content","content":"hi"}\n\n',
-          ': heartbeat\n\n',
-          'event: result\ndata: {"response":"done"}\n\n'
-        ])
-      )
+          ": heartbeat\n\n",
+          'event: result\ndata: {"response":"done"}\n\n',
+        ]),
+      ),
     );
     /** @type {Array<{ event: string, data: unknown }>} */
     const events = [];
 
-    await streamSse('/api/v1/vault/test/ask', { query: 'hi' }, (event, data) => {
-      events.push({ event, data });
-    });
+    await streamSse(
+      "/api/v1/vault/test/ask",
+      { query: "hi" },
+      (event, data) => {
+        events.push({ event, data });
+      },
+    );
 
     expect(events).toEqual([
-      { event: 'content', data: { type: 'content', content: 'hi' } },
-      { event: 'result', data: { response: 'done' } }
+      { event: "content", data: { type: "content", content: "hi" } },
+      { event: "result", data: { response: "done" } },
     ]);
     vi.unstubAllGlobals();
   });
 
-  it('normalizes abrupt stream failures to an interrupted connection error', async () => {
+  it("normalizes abrupt stream failures to an interrupted connection error", async () => {
     vi.stubGlobal(
-      'fetch',
+      "fetch",
       vi.fn(async () => {
         let reads = 0;
         return new Response(
@@ -52,20 +56,20 @@ describe('streamSse', () => {
             pull(controller) {
               reads += 1;
               if (reads === 1) {
-                controller.enqueue(new TextEncoder().encode(': heartbeat\n\n'));
+                controller.enqueue(new TextEncoder().encode(": heartbeat\n\n"));
                 return;
               }
-              throw new TypeError('network changed');
-            }
+              throw new TypeError("network changed");
+            },
           }),
-          { status: 200 }
+          { status: 200 },
         );
-      })
+      }),
     );
 
     await expect(
-      streamSse('/api/v1/vault/test/ask', { query: 'hi' }, () => {})
-    ).rejects.toThrow('Ask stream interrupted');
+      streamSse("/api/v1/vault/test/ask", { query: "hi" }, () => {}),
+    ).rejects.toThrow("Ask stream interrupted");
     vi.unstubAllGlobals();
   });
 });

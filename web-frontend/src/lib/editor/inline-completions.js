@@ -1,5 +1,8 @@
-import { EditorView } from '@codemirror/view';
-import { detectInlineTrigger, fetchInlineSuggestions } from '../inline-suggestions.js';
+import { EditorView } from "@codemirror/view";
+import {
+  detectInlineTrigger,
+  fetchInlineSuggestions,
+} from "../inline-suggestions.js";
 
 /** @typedef {import('../inline-suggestions.js').InlineSuggestion} InlineSuggestion */
 
@@ -23,26 +26,26 @@ export async function inlineCompletionSource(context) {
     filter: false,
     options: suggestions.map((/** @type {InlineSuggestion} */ suggestion) => ({
       label: suggestion.label,
-      detail: suggestion.kind === 'note' ? suggestion.title : suggestion.detail,
-      type: suggestion.kind === 'tag' ? 'keyword' : 'text',
-      apply: suggestion.insert
-    }))
+      detail: suggestion.kind === "note" ? suggestion.title : suggestion.detail,
+      type: suggestion.kind === "tag" ? "keyword" : "text",
+      apply: suggestion.insert,
+    })),
   };
 }
 
 function currentVault() {
-  if (typeof location === 'undefined') return '';
-  const seg = location.pathname.split('/').filter(Boolean);
-  return seg[0] ?? '';
+  if (typeof location === "undefined") return "";
+  const seg = location.pathname.split("/").filter(Boolean);
+  return seg[0] ?? "";
 }
 
 export const inlineCompletionTheme = EditorView.baseTheme({
-  '.cm-tooltip.cm-tooltip-autocomplete': {
-    backgroundColor: 'var(--surface, var(--bg))',
-    border: '1px solid var(--border)',
-    borderRadius: 'var(--radius-sm, 2px)',
-    boxShadow: 'none',
-    color: 'var(--text)',
-    fontFamily: 'var(--font-mono)'
-  }
+  ".cm-tooltip.cm-tooltip-autocomplete": {
+    backgroundColor: "var(--surface, var(--bg))",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius-sm, 2px)",
+    boxShadow: "none",
+    color: "var(--text)",
+    fontFamily: "var(--font-mono)",
+  },
 });

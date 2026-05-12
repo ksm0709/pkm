@@ -31,8 +31,8 @@ import {
 import { RangeSetBuilder, StateEffect } from "@codemirror/state";
 import { apiClient } from "../api/client.js";
 
-// Single-line, single capture group. Disallow ']' and newline inside id.
-const WIKILINK_RE = /\[\[([^\]\n]+)\]\]/g;
+// Single-line, single capture group. Literal brackets are valid inside ids.
+const WIKILINK_RE = /\[\[([^\n|]+?)(?:\|[^\n]*?)?\]\]/g;
 
 // Hover delay before requesting preview (ms).
 const HOVER_DELAY_MS = 200;

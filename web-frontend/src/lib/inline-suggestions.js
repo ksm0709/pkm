@@ -1,4 +1,4 @@
-import { apiGet } from './api/client.js';
+import { apiGet } from "./api/client.js";
 
 const MAX_ROWS = 8;
 
@@ -18,23 +18,23 @@ export function detectInlineTrigger(value, cursor = value.length) {
   const before = value.slice(0, cursor);
   const wiki = before.match(/\[\[([^\]\[\n]*)$/);
   if (wiki) {
-    const query = wiki[1] ?? '';
+    const query = wiki[1] ?? "";
     return {
-      kind: 'note',
+      kind: "note",
       query,
       from: cursor - query.length - 2,
-      to: cursor
+      to: cursor,
     };
   }
 
   const tag = before.match(/(^|[\s([{])#([\p{L}\p{N}_/-]*)$/u);
   if (tag) {
-    const query = tag[2] ?? '';
+    const query = tag[2] ?? "";
     return {
-      kind: 'tag',
+      kind: "tag",
       query,
       from: cursor - query.length - 1,
-      to: cursor
+      to: cursor,
     };
   }
 
@@ -48,44 +48,53 @@ export function detectInlineTrigger(value, cursor = value.length) {
  */
 export async function fetchInlineSuggestions(vaultName, trigger) {
   if (!trigger || !vaultName) return [];
-  if (trigger.kind === 'note') {
+  if (trigger.kind === "note") {
     const q = trigger.query.trim();
     const data = q
       ? await apiGet(
-          `/api/v1/vault/${encodeURIComponent(vaultName)}/search?q=${encodeURIComponent(q)}`
+          `/api/v1/vault/${encodeURIComponent(vaultName)}/search?q=${encodeURIComponent(q)}`,
         )
       : await apiGet(`/api/v1/vault/${encodeURIComponent(vaultName)}/notes`);
-    const results = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : [];
+    const results = Array.isArray(data?.results)
+      ? data.results
+      : Array.isArray(data)
+        ? data
+        : [];
     return results
       .map((/** @type {NoteResult} */ note, /** @type {number} */ index) => ({
-        kind: 'note',
-        label: String(note.note_id ?? note.title ?? ''),
-        title: String(note.title ?? note.note_id ?? ''),
-        detail: String(note.snippet ?? note.description ?? note.path ?? 'note'),
-        insert: `[[${String(note.note_id ?? note.title ?? '')}]]`,
+        kind: "note",
+        label: String(note.note_id ?? note.title ?? ""),
+        title: String(note.title ?? note.note_id ?? ""),
+        detail: String(note.snippet ?? note.description ?? note.path ?? "note"),
+        insert: `[[${String(note.note_id ?? note.title ?? "")}]]`,
         score: scoreCandidate(
           [note.note_id, note.title, note.path, note.snippet],
           trigger.query,
-          index
-        )
+          index,
+        ),
       }))
       .filter((/** @type {InlineSuggestion} */ item) => item.label)
       .sort(compareSuggestions)
       .slice(0, MAX_ROWS);
   }
 
-  const data = await apiGet(`/api/v1/vault/${encodeURIComponent(vaultName)}/tags`);
+  const data = await apiGet(
+    `/api/v1/vault/${encodeURIComponent(vaultName)}/tags`,
+  );
   const tags = Array.isArray(data?.tags) ? data.tags : [];
   return tags
     .map((/** @type {TagResult} */ item, /** @type {number} */ index) => ({
-      kind: 'tag',
-      label: `#${String(item.tag ?? '')}`,
-      title: `#${String(item.tag ?? '')}`,
-      detail: `${Number(item.count ?? 0)} note${Number(item.count ?? 0) === 1 ? '' : 's'}`,
-      insert: `#${String(item.tag ?? '')}`,
-      score: scoreCandidate([item.tag], trigger.query, index)
+      kind: "tag",
+      label: `#${String(item.tag ?? "")}`,
+      title: `#${String(item.tag ?? "")}`,
+      detail: `${Number(item.count ?? 0)} note${Number(item.count ?? 0) === 1 ? "" : "s"}`,
+      insert: `#${String(item.tag ?? "")}`,
+      score: scoreCandidate([item.tag], trigger.query, index),
     }))
-    .filter((/** @type {InlineSuggestion} */ item) => item.label.length > 1 && Number.isFinite(item.score))
+    .filter(
+      (/** @type {InlineSuggestion} */ item) =>
+        item.label.length > 1 && Number.isFinite(item.score),
+    )
     .sort(compareSuggestions)
     .slice(0, MAX_ROWS);
 }
@@ -119,7 +128,7 @@ function scoreCandidate(fields, query, index) {
   if (!q) return index / 100;
   let best = Number.POSITIVE_INFINITY;
   for (const field of fields) {
-    const candidate = normalize(String(field ?? ''));
+    const candidate = normalize(String(field ?? ""));
     if (!candidate) continue;
     if (candidate === q) best = Math.min(best, 0);
     else if (candidate.startsWith(q)) best = Math.min(best, 10);
@@ -133,5 +142,9 @@ function scoreCandidate(fields, query, index) {
 
 /** @param {unknown} text */
 function normalize(text) {
-  return String(text).toLowerCase().replace(/[_/-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return String(text)
+    .toLowerCase()
+    .replace(/[_/-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }

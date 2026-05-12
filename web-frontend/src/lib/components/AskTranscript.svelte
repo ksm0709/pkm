@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte';
-  import { marked } from 'marked';
-  import type { AskItem, AskTurn } from '$lib/ask/session.svelte';
+  import { onDestroy, onMount } from "svelte";
+  import { marked } from "marked";
+  import type { AskItem, AskTurn } from "$lib/ask/session.svelte";
 
   export type Turn = AskTurn;
 
@@ -10,7 +10,16 @@
   }
 
   let { turns = [] }: Props = $props();
-  const activityFrames = ['[=   ]', '[==  ]', '[ ===]', '[  ==]', '[   =]', '[  ==]', '[ ===]', '[==  ]'];
+  const activityFrames = [
+    "[=   ]",
+    "[==  ]",
+    "[ ===]",
+    "[  ==]",
+    "[   =]",
+    "[  ==]",
+    "[ ===]",
+    "[==  ]",
+  ];
   let activityFrame = $state(0);
   let activityTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -31,7 +40,7 @@
     return marked.parse(text, { async: false }) as string;
   }
 
-  function toolLabel(item: Extract<AskItem, { kind: 'tool_call' }>) {
+  function toolLabel(item: Extract<AskItem, { kind: "tool_call" }>) {
     return item.tool;
   }
 </script>
@@ -46,30 +55,34 @@
 
       <section class="assistant-stream" aria-label="Assistant events">
         {#each turn.items as item, ii (`${ii}-${item.kind}`)}
-          {#if item.kind === 'reasoning'}
+          {#if item.kind === "reasoning"}
             <details class="chat-event disclosure thinking">
               <summary aria-label="Thinking details">
-                <span class="event-icon" aria-label="Thinking" title="Thinking">⋯</span>
+                <span class="event-icon" aria-label="Thinking" title="Thinking"
+                  >⋯</span
+                >
                 <span>thinking</span>
               </summary>
               <pre class="event-detail">{item.text}</pre>
             </details>
-          {:else if item.kind === 'tool_call'}
+          {:else if item.kind === "tool_call"}
             <details class="chat-event disclosure tool-use">
               <summary aria-label={`Tool use details ${toolLabel(item)}`}>
-                <span class="event-icon" aria-label="Tool use" title="Tool use">⌘</span>
+                <span class="event-icon" aria-label="Tool use" title="Tool use"
+                  >⌘</span
+                >
                 <span>{toolLabel(item)}</span>
               </summary>
               {#if item.args}
                 <pre class="event-detail">{item.args}</pre>
               {/if}
             </details>
-          {:else if item.kind === 'task'}
+          {:else if item.kind === "task"}
             <div class="chat-event task">
               <span class="event-icon" aria-label="Task" title="Task">☑</span>
               <span>{item.text}</span>
             </div>
-          {:else if item.kind === 'error'}
+          {:else if item.kind === "error"}
             <div class="chat-event error">
               <span class="event-icon" aria-label="Error" title="Error">!</span>
               <span>{item.message}</span>
@@ -84,10 +97,15 @@
         {/if}
 
         {#if !turn.done}
-          <div class="chat-event agent-activity" aria-live="polite" aria-label="Agent turn in progress">
+          <div
+            class="chat-event agent-activity"
+            aria-live="polite"
+            aria-label="Agent turn in progress"
+          >
             <span class="event-icon" aria-hidden="true">::</span>
             <span>
-              <span class="activity-frame">{activityFrames[activityFrame]}</span>
+              <span class="activity-frame">{activityFrames[activityFrame]}</span
+              >
               <span class="activity-label">agent turn</span>
             </span>
           </div>

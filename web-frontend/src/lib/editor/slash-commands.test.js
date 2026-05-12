@@ -22,6 +22,9 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+/**
+ * @param {string} doc
+ */
 function createView(doc) {
   const parent = document.createElement("div");
   document.body.appendChild(parent);
@@ -33,6 +36,9 @@ function createView(doc) {
   return view;
 }
 
+/**
+ * @param {string} label
+ */
 function command(label) {
   const item = slashCommandItems.find((candidate) => candidate.label === label);
   if (!item) throw new Error(`Missing slash command ${label}`);
@@ -42,7 +48,11 @@ function command(label) {
 describe("slash command completions", () => {
   it("offers slash commands only from the start of the current line", () => {
     const matching = EditorState.create({ doc: "/su" });
-    const result = slashSource({ state: matching, pos: 3 });
+    const result = slashSource(
+      /** @type {import("@codemirror/autocomplete").CompletionContext} */ (
+        /** @type {unknown} */ ({ state: matching, pos: 3 })
+      ),
+    );
 
     expect(result).toMatchObject({
       from: 0,
@@ -58,7 +68,16 @@ describe("slash command completions", () => {
     ]);
 
     const embedded = EditorState.create({ doc: "body /su" });
-    expect(slashSource({ state: embedded, pos: "body /su".length })).toBeNull();
+    expect(
+      slashSource(
+        /** @type {import("@codemirror/autocomplete").CompletionContext} */ (
+          /** @type {unknown} */ ({
+            state: embedded,
+            pos: "body /su".length,
+          })
+        ),
+      ),
+    ).toBeNull();
   });
 
   it("inserts daily, note, link, and tag templates with editing selections", () => {
@@ -106,11 +125,15 @@ describe("slash command completions", () => {
       "prompt",
       vi.fn(() => "Meeting notes"),
     );
-    vi.mocked(apiClient).mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ note_id: "2026-05-08-meeting-notes" }),
-    });
+    vi.mocked(apiClient).mockResolvedValue(
+      /** @type {Response} */ (
+        /** @type {unknown} */ ({
+          ok: true,
+          status: 200,
+          json: async () => ({ note_id: "2026-05-08-meeting-notes" }),
+        })
+      ),
+    );
     const view = createView("/subnote");
 
     await command("/subnote").apply(view, null, 0, "/subnote".length);
@@ -143,7 +166,11 @@ describe("slash command completions", () => {
       vi.fn(() => "Broken"),
     );
     vi.stubGlobal("console", { ...console, error: vi.fn() });
-    vi.mocked(apiClient).mockResolvedValue({ ok: false, status: 500 });
+    vi.mocked(apiClient).mockResolvedValue(
+      /** @type {Response} */ (
+        /** @type {unknown} */ ({ ok: false, status: 500 })
+      ),
+    );
     const failed = createView("/subnote");
 
     await command("/subnote").apply(failed, null, 0, "/subnote".length);

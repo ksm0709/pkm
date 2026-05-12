@@ -1,4 +1,8 @@
-import type { NormalizedGraph, NormalizedGraphEdge, NormalizedGraphNode } from './normalize';
+import type {
+  NormalizedGraph,
+  NormalizedGraphEdge,
+  NormalizedGraphNode,
+} from "./normalize";
 
 export interface PositionedGraphNode extends NormalizedGraphNode {
   x: number;
@@ -25,24 +29,40 @@ export interface GraphLayout {
 const DEFAULT_WIDTH = 900;
 const DEFAULT_HEIGHT = 600;
 
-export function semanticEdgeDistance(edge: Pick<NormalizedGraphEdge, 'type' | 'confidence'>): number {
-  if (edge.type !== 'semantic_similar' && edge.type !== 'semantic_similarity') return 120;
+export function semanticEdgeDistance(
+  edge: Pick<NormalizedGraphEdge, "type" | "confidence">,
+): number {
+  if (edge.type !== "semantic_similar" && edge.type !== "semantic_similarity")
+    return 120;
   return 150 - clamp01(edge.confidence) * 125;
 }
 
-export function createGraphLayout(graph: NormalizedGraph, options: GraphLayoutOptions = {}): GraphLayout {
+export function createGraphLayout(
+  graph: NormalizedGraph,
+  options: GraphLayoutOptions = {},
+): GraphLayout {
   const width = options.width ?? DEFAULT_WIDTH;
   const height = options.height ?? DEFAULT_HEIGHT;
-  const seed = options.seed ?? 'graph';
+  const seed = options.seed ?? "graph";
   const attraction = clamp(options.attraction ?? 1, 0.2, 3);
   const repulsion = clamp(options.repulsion ?? 1, 0, 4);
   const collisionPadding = clamp(options.collisionPadding ?? 8, 2, 32);
   const nodes = graph.nodes.map((node) => seedNode(node, width, height, seed));
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const edges = graph.edges
-    .map((edge) => ({ edge, source: byId.get(edge.source), target: byId.get(edge.target) }))
-    .filter((entry): entry is { edge: NormalizedGraphEdge; source: PositionedGraphNode; target: PositionedGraphNode } =>
-      Boolean(entry.source && entry.target)
+    .map((edge) => ({
+      edge,
+      source: byId.get(edge.source),
+      target: byId.get(edge.target),
+    }))
+    .filter(
+      (
+        entry,
+      ): entry is {
+        edge: NormalizedGraphEdge;
+        source: PositionedGraphNode;
+        target: PositionedGraphNode;
+      } => Boolean(entry.source && entry.target),
     );
   const centers = communityCenters(nodes, width, height, seed);
 
@@ -58,17 +78,22 @@ export function createGraphLayout(graph: NormalizedGraph, options: GraphLayoutOp
     },
     nodes() {
       return nodes.map((node) => ({ ...node }));
-    }
+    },
   };
 }
 
-export function settleGraphLayout(graph: NormalizedGraph, options: GraphLayoutOptions = {}): PositionedGraphNode[] {
+export function settleGraphLayout(
+  graph: NormalizedGraph,
+  options: GraphLayoutOptions = {},
+): PositionedGraphNode[] {
   const layout = createGraphLayout(graph, options);
   layout.tick(options.ticks ?? 120);
   return layout.nodes().sort((a, b) => a.id.localeCompare(b.id));
 }
 
-export function serializeGraphPosition(node: Pick<PositionedGraphNode, 'id' | 'x' | 'y'>): string {
+export function serializeGraphPosition(
+  node: Pick<PositionedGraphNode, "id" | "x" | "y">,
+): string {
   return `${node.id}:${node.x.toFixed(2)},${node.y.toFixed(2)}`;
 }
 
@@ -76,10 +101,12 @@ function seedNode(
   node: NormalizedGraphNode,
   width: number,
   height: number,
-  seed: string
+  seed: string,
 ): PositionedGraphNode {
   const communityJitter = randomUnit(`${seed}:${node.community}:${node.id}`);
-  const angle = randomUnit(`${seed}:${node.community}`) * Math.PI * 2 + communityJitter * 0.8;
+  const angle =
+    randomUnit(`${seed}:${node.community}`) * Math.PI * 2 +
+    communityJitter * 0.8;
   const radius = Math.min(width, height) * (0.18 + communityJitter * 0.22);
 
   return {
@@ -87,22 +114,29 @@ function seedNode(
     x: width / 2 + Math.cos(angle) * radius,
     y: height / 2 + Math.sin(angle) * radius,
     vx: 0,
-    vy: 0
+    vy: 0,
   };
 }
 
-function communityCenters(nodes: PositionedGraphNode[], width: number, height: number, seed: string) {
-  const communities = [...new Set(nodes.map((node) => node.community || 'unknown'))].sort((a, b) =>
-    a.localeCompare(b)
-  );
+function communityCenters(
+  nodes: PositionedGraphNode[],
+  width: number,
+  height: number,
+  seed: string,
+) {
+  const communities = [
+    ...new Set(nodes.map((node) => node.community || "unknown")),
+  ].sort((a, b) => a.localeCompare(b));
   const centers = new Map<string, { x: number; y: number }>();
   const ring = Math.min(width, height) * 0.23;
 
   communities.forEach((community, index) => {
-    const angle = (index / Math.max(1, communities.length)) * Math.PI * 2 + randomUnit(`${seed}:${community}`) * 0.4;
+    const angle =
+      (index / Math.max(1, communities.length)) * Math.PI * 2 +
+      randomUnit(`${seed}:${community}`) * 0.4;
     centers.set(community, {
       x: width / 2 + Math.cos(angle) * ring,
-      y: height / 2 + Math.sin(angle) * ring
+      y: height / 2 + Math.sin(angle) * ring,
     });
   });
 
@@ -110,8 +144,12 @@ function communityCenters(nodes: PositionedGraphNode[], width: number, height: n
 }
 
 function applyEdgeForces(
-  edges: Array<{ edge: NormalizedGraphEdge; source: PositionedGraphNode; target: PositionedGraphNode }>,
-  attraction: number
+  edges: Array<{
+    edge: NormalizedGraphEdge;
+    source: PositionedGraphNode;
+    target: PositionedGraphNode;
+  }>,
+  attraction: number,
 ) {
   for (const { edge, source, target } of edges) {
     const dx = target.x - source.x || 0.01;
@@ -120,7 +158,7 @@ function applyEdgeForces(
     const desired = semanticEdgeDistance(edge);
     const strength =
       (0.012 + edge.weight * 0.01 + edge.confidence * 0.01) *
-      (edge.type.includes('semantic') ? 1.8 : 1) *
+      (edge.type.includes("semantic") ? 1.8 : 1) *
       attraction;
     const force = (distance - desired) * strength;
     const fx = (dx / distance) * force;
@@ -161,17 +199,20 @@ function applyRepulsion(nodes: PositionedGraphNode[], repulsion: number) {
 function applyClusterGravity(
   nodes: PositionedGraphNode[],
   centers: Map<string, { x: number; y: number }>,
-  attraction: number
+  attraction: number,
 ) {
   for (const node of nodes) {
-    const center = centers.get(node.community || 'unknown');
+    const center = centers.get(node.community || "unknown");
     if (!center) continue;
     node.vx += (center.x - node.x) * 0.004 * attraction;
     node.vy += (center.y - node.y) * 0.004 * attraction;
   }
 }
 
-function applyCollision(nodes: PositionedGraphNode[], collisionPadding: number) {
+function applyCollision(
+  nodes: PositionedGraphNode[],
+  collisionPadding: number,
+) {
   for (let i = 0; i < nodes.length; i += 1) {
     for (let j = i + 1; j < nodes.length; j += 1) {
       const a = nodes[i];
@@ -193,7 +234,11 @@ function applyCollision(nodes: PositionedGraphNode[], collisionPadding: number) 
   }
 }
 
-function integrate(nodes: PositionedGraphNode[], width: number, height: number) {
+function integrate(
+  nodes: PositionedGraphNode[],
+  width: number,
+  height: number,
+) {
   for (const node of nodes) {
     node.vx *= 0.78;
     node.vy *= 0.78;

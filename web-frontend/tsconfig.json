@@ -10,5 +10,12 @@
     "sourceMap": true,
     "strict": true
   },
-  "include": ["src/**/*", "tests/**/*", "scripts/**/*", "playwright.config.ts", "svelte.config.js", "vite.config.js"]
+  "include": [
+    "src/**/*",
+    "tests/**/*",
+    "scripts/**/*",
+    "playwright.config.ts",
+    "svelte.config.js",
+    "vite.config.js"
+  ]
 }

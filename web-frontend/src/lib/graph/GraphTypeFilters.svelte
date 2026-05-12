@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { toggleGraphType } from './filters';
+  import { toggleGraphType } from "./filters";
 
   interface Props {
     nodeTypes: string[];
@@ -16,12 +16,12 @@
     selectedNodeTypes,
     selectedEdgeTypes,
     onNodeTypesChange = () => {},
-    onEdgeTypesChange = () => {}
+    onEdgeTypesChange = () => {},
   }: Props = $props();
 
   function nodeTypeLabel(type: string) {
-    if (type === 'note_or_unresolved') return 'unresolved';
-    return type.replaceAll('_', ' ');
+    if (type === "note_or_unresolved") return "unresolved";
+    return type.replaceAll("_", " ");
   }
 
   function toggleNodeType(type: string) {
@@ -59,10 +59,10 @@
           <input
             type="checkbox"
             checked={selectedEdgeTypes.has(type)}
-            aria-label={`Show ${type.replaceAll('_', ' ')} edges`}
+            aria-label={`Show ${type.replaceAll("_", " ")} edges`}
             onchange={() => toggleEdgeType(type)}
           />
-          <span>{type.replaceAll('_', ' ')}</span>
+          <span>{type.replaceAll("_", " ")}</span>
         </label>
       {/each}
     </div>

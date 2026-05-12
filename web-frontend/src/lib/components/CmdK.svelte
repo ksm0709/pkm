@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
-  import { apiGet } from '$lib/api/client.js';
-  import { appNavPages } from '$lib/navigation/app-nav';
+  import { onMount } from "svelte";
+  import { goto } from "$app/navigation";
+  import { apiClient, apiGet } from "$lib/api/client.js";
+  import { appNavPages } from "$lib/navigation/app-nav";
 
   interface Props {
     vaultName: string;
@@ -11,11 +11,11 @@
 
   let { vaultName, openToken = 0 }: Props = $props();
 
-  type Theme = 'light' | 'dark' | 'auto';
-  type PaletteMode = 'commands' | 'vaults';
+  type Theme = "light" | "dark" | "auto";
+  type PaletteMode = "commands" | "vaults";
 
   type CommandRow = {
-    kind: 'command';
+    kind: "command";
     id: string;
     label: string;
     hint?: string;
@@ -23,7 +23,7 @@
   };
 
   type NoteRow = {
-    kind: 'note';
+    kind: "note";
     id: string;
     label: string;
     hint?: string;
@@ -45,6 +45,14 @@
     count: number;
   }
 
+  interface NoteListItem {
+    note_id: string;
+    title?: string;
+    path?: string;
+    description?: string | null;
+    tags?: string[];
+  }
+
   interface TagSearchNote {
     note_id: string;
     title: string;
@@ -64,8 +72,8 @@
   }
 
   let open = $state(false);
-  let query = $state('');
-  let mode = $state<PaletteMode>('commands');
+  let query = $state("");
+  let mode = $state<PaletteMode>("commands");
   let activeIndex = $state(0);
   let inputEl: HTMLInputElement | null = $state(null);
 
@@ -74,39 +82,56 @@
   let vaultsList = $state<string[]>([]);
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  let lastQuery = '';
+  let lastQuery = "";
 
   function dispatchTheme(theme: Theme) {
     window.dispatchEvent(
-      new CustomEvent('pkm:theme-change', { detail: { theme } })
+      new CustomEvent("pkm:theme-change", { detail: { theme } }),
     );
   }
 
   function readStoredTheme(): Theme {
     try {
-      const stored = localStorage.getItem('pkm.theme');
-      if (stored === 'light' || stored === 'dark' || stored === 'auto') {
+      const stored = localStorage.getItem("pkm.theme");
+      if (stored === "light" || stored === "dark" || stored === "auto") {
         return stored;
       }
     } catch {
       // ignore
     }
-    return 'auto';
+    return "auto";
   }
 
   function nextTheme(curr: Theme): Theme {
-    if (curr === 'light') return 'dark';
-    if (curr === 'dark') return 'auto';
-    return 'light';
+    if (curr === "light") return "dark";
+    if (curr === "dark") return "auto";
+    return "light";
+  }
+
+  async function createDailySubnote() {
+    const title =
+      typeof window !== "undefined" ? window.prompt("Subnote title") : null;
+    if (!title) return;
+
+    const response = await apiClient(`/api/v1/vault/${vaultName}/daily/today`, {
+      method: "POST",
+      body: JSON.stringify({ type: "subnote", title, content: "" }),
+    });
+    if (!response.ok) throw new Error(`POST daily/today -> ${response.status}`);
+    const payload = (await response.json()) as { note_id?: string };
+    if (payload.note_id) {
+      await goto(`/${vaultName}/notes/${payload.note_id}`);
+    }
   }
 
   async function loadVaults() {
     if (vaultsList.length > 0) return;
     try {
-      const v = await apiGet<Array<string | VaultResponseItem>>('/api/v1/vaults');
+      const v =
+        await apiGet<Array<string | VaultResponseItem>>("/api/v1/vaults");
       vaultsList = Array.isArray(v)
         ? v
-            .map((item) => (typeof item === 'string' ? item : item.name))
+            .map((item) => (typeof item === "string" ? item : item.name))
             .filter((name): name is string => !!name)
         : [];
     } catch {
@@ -116,68 +141,76 @@
 
   function staticCommands(): CommandRow[] {
     const navCommands: CommandRow[] = appNavPages.map((item) => ({
-      kind: 'command',
+      kind: "command",
       id: `nav:${item.id}`,
       label: item.commandLabel,
       hint: item.commandHint,
-      run: () => goto(item.href(vaultName))
+      run: () => goto(item.href(vaultName)),
     }));
 
     const list: CommandRow[] = [
       {
-        kind: 'command',
-        id: 'cmd:jump',
-        label: 'Jump to note…',
-        hint: 'type to search',
+        kind: "command",
+        id: "cmd:jump",
+        label: "Jump to note…",
+        hint: "type to search",
         run: () => {
           // Focus stays in input; user can keep typing
           inputEl?.focus();
-        }
+        },
       },
       {
-        kind: 'command',
-        id: 'cmd:daily',
+        kind: "command",
+        id: "cmd:daily",
         label: "Open today's daily note",
-        hint: 'daily',
-        run: () => goto(`/${vaultName}/notes/${new Date().toISOString().slice(0, 10)}`)
+        hint: "daily",
+        run: () =>
+          goto(`/${vaultName}/notes/${new Date().toISOString().slice(0, 10)}`),
       },
       {
-        kind: 'command',
-        id: 'cmd:ask',
-        label: 'Ask…',
-        hint: 'ask',
+        kind: "command",
+        id: "cmd:daily-subnote",
+        label: "Add daily sub-note",
+        hint: "daily subnote",
+        run: createDailySubnote,
+      },
+      {
+        kind: "command",
+        id: "cmd:ask",
+        label: "Ask…",
+        hint: "ask",
         run: () => {
           const q = query.trim();
           const target = q
             ? `/${vaultName}/ask?q=${encodeURIComponent(q)}`
             : `/${vaultName}/ask`;
           return goto(target);
-        }
+        },
       },
       ...navCommands,
       {
-        kind: 'command',
-        id: 'cmd:switch',
-        label: 'Switch vault…',
-        hint: 'switch',
+        kind: "command",
+        id: "cmd:switch",
+        label: "Switch vault…",
+        hint: "switch",
         run: async () => {
           await loadVaults();
-          mode = 'vaults';
-          query = '';
+          mode = "vaults";
+          query = "";
           activeIndex = 0;
           inputEl?.focus();
-        }
+        },
       },
       {
-        kind: 'command',
-        id: 'cmd:theme',
-        label: 'Toggle theme',
-        hint: 'theme',
+        kind: "command",
+        id: "cmd:theme",
+        label: "Toggle theme",
+        hint: "theme",
         run: () => {
           const t = nextTheme(readStoredTheme());
           dispatchTheme(t);
-        }
-      }
+        },
+      },
     ];
     return list;
   }
@@ -186,17 +219,17 @@
     return vaultsList
       .filter((v) => v.toLowerCase().includes(query.trim().toLowerCase()))
       .map((v) => ({
-        kind: 'command' as const,
+        kind: "command" as const,
         id: `vault:${v}`,
         label: v,
-        hint: v === vaultName ? 'current vault' : 'vault',
+        hint: v === vaultName ? "current vault" : "vault",
         run: () => {
           if (v === vaultName) {
             inputEl?.focus();
             return;
           }
           return goto(`/${v}/logger`);
-        }
+        },
       }));
   }
 
@@ -206,9 +239,9 @@
     const lower = q.toLowerCase();
     return all.filter(
       (c) =>
-        c.id === 'cmd:ask' ||
+        c.id === "cmd:ask" ||
         c.label.toLowerCase().includes(lower) ||
-        (c.hint?.toLowerCase().includes(lower) ?? false)
+        (c.hint?.toLowerCase().includes(lower) ?? false),
     );
   }
 
@@ -218,10 +251,10 @@
     q: string,
     notesList: SearchResult[],
     tagNotesList: TagSearchNote[],
-    currentMode: PaletteMode
+    currentMode: PaletteMode,
   ): Row[] {
     const trimmed = q.trim();
-    if (currentMode === 'vaults') {
+    if (currentMode === "vaults") {
       return vaultSwitchRows();
     }
 
@@ -229,22 +262,22 @@
       return staticCommands();
     }
 
-    if (trimmed.startsWith('#')) {
+    if (trimmed.startsWith("#")) {
       return tagNotesList.map((n) => ({
-        kind: 'note' as const,
+        kind: "note" as const,
         id: `tagnote:${n.note_id}`,
         label: n.title || n.note_id,
-        hint: n.tags?.length ? n.tags.map((t) => `#${t}`).join(' ') : undefined,
-        note_id: n.note_id
+        hint: n.tags?.length ? n.tags.map((t) => `#${t}`).join(" ") : undefined,
+        note_id: n.note_id,
       }));
     }
 
     const noteRows: NoteRow[] = notesList.map((n) => ({
-      kind: 'note',
+      kind: "note",
       id: `note:${n.note_id}`,
       label: n.title || n.note_id,
       hint: n.snippet,
-      note_id: n.note_id
+      note_id: n.note_id,
     }));
 
     const cmdRows: CommandRow[] = commandsForQuery(trimmed);
@@ -259,7 +292,7 @@
       return;
     }
 
-    if (trimmed.startsWith('#')) {
+    if (trimmed.startsWith("#")) {
       const pattern = trimmed.slice(1);
       if (!pattern) {
         notes = [];
@@ -268,7 +301,7 @@
       }
       try {
         const data = await apiGet<TagSearchResponse>(
-          `/api/v1/vault/${vaultName}/tags/search?pattern=${encodeURIComponent(pattern)}`
+          `/api/v1/vault/${vaultName}/tags/search?pattern=${encodeURIComponent(pattern)}`,
         );
         tagNotes = data.results ?? [];
       } catch {
@@ -280,13 +313,41 @@
 
     try {
       const data = await apiGet<SearchResponse>(
-        `/api/v1/vault/${vaultName}/search?q=${encodeURIComponent(trimmed)}`
+        `/api/v1/vault/${vaultName}/search?q=${encodeURIComponent(trimmed)}`,
       );
       notes = data.results ?? [];
     } catch {
-      notes = [];
+      notes = await searchNotesListFallback(trimmed);
     }
     tagNotes = [];
+  }
+
+  async function searchNotesListFallback(q: string): Promise<SearchResult[]> {
+    const lower = q.toLowerCase();
+    try {
+      const list = await apiGet<NoteListItem[]>(
+        `/api/v1/vault/${vaultName}/notes`,
+      );
+      return list
+        .filter((note) =>
+          [
+            note.note_id,
+            note.title ?? "",
+            note.path ?? "",
+            note.description ?? "",
+            ...(note.tags ?? []),
+          ].some((value) => value.toLowerCase().includes(lower)),
+        )
+        .slice(0, 10)
+        .map((note) => ({
+          note_id: note.note_id,
+          title: note.title || note.note_id,
+          snippet: note.description || note.path || "note",
+          score: 0,
+        }));
+    } catch {
+      return [];
+    }
   }
 
   function scheduleSearch(q: string) {
@@ -302,18 +363,18 @@
     const target = e.target as HTMLInputElement;
     query = target.value;
     activeIndex = 0;
-    if (mode === 'vaults') return;
+    if (mode === "vaults") return;
     scheduleSearch(query);
   }
 
   function openPalette() {
     open = true;
-    query = '';
-    mode = 'commands';
+    query = "";
+    mode = "commands";
     activeIndex = 0;
     notes = [];
     tagNotes = [];
-    lastQuery = '';
+    lastQuery = "";
     // Pre-fetch vault list so vault switch is instant
     void loadVaults();
     requestAnimationFrame(() => inputEl?.focus());
@@ -321,7 +382,7 @@
 
   function close() {
     open = false;
-    mode = 'commands';
+    mode = "commands";
     if (debounceTimer) {
       clearTimeout(debounceTimer);
       debounceTimer = null;
@@ -329,16 +390,20 @@
   }
 
   async function execute(row: Row) {
-    if (row.kind === 'command') {
+    if (row.kind === "command") {
       await row.run();
       // Most commands navigate; some (theme) keep palette open. Close by default
       // unless the command opens an in-palette chooser or selects the current vault.
-      if (row.id !== 'cmd:jump' && row.id !== 'cmd:switch' && row.id !== `vault:${vaultName}`) {
+      if (
+        row.id !== "cmd:jump" &&
+        row.id !== "cmd:switch" &&
+        row.id !== `vault:${vaultName}`
+      ) {
         close();
       }
       return;
     }
-    if (row.kind === 'note') {
+    if (row.kind === "note") {
       await goto(`/${vaultName}/notes/${row.note_id}`);
       close();
     }
@@ -351,8 +416,19 @@
       event.stopImmediatePropagation();
     }
 
+    function eventStartedInEditor() {
+      const target = event.target;
+      if (!(target instanceof Element)) return false;
+      return Boolean(
+        target.closest(
+          'input, textarea, select, [contenteditable="true"], .cm-editor',
+        ),
+      );
+    }
+
     // Global ⌘K toggle
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      if (!open && eventStartedInEditor()) return;
       consume();
       if (open) close();
       else openPalette();
@@ -361,27 +437,27 @@
 
     if (!open) return;
 
-    if (event.key === 'Escape') {
+    if (event.key === "Escape") {
       consume();
       close();
       return;
     }
 
-    if (event.key === 'ArrowDown') {
+    if (event.key === "ArrowDown") {
       consume();
       if (rows.length === 0) return;
       activeIndex = (activeIndex + 1) % rows.length;
       return;
     }
 
-    if (event.key === 'ArrowUp') {
+    if (event.key === "ArrowUp") {
       consume();
       if (rows.length === 0) return;
       activeIndex = (activeIndex - 1 + rows.length) % rows.length;
       return;
     }
 
-    if (event.key === 'Enter') {
+    if (event.key === "Enter") {
       consume();
       const row = rows[activeIndex];
       if (row) void execute(row);
@@ -398,8 +474,9 @@
 
   onMount(() => {
     const handler = () => openPalette();
-    window.addEventListener('pkm:open-command-palette', handler);
-    return () => window.removeEventListener('pkm:open-command-palette', handler);
+    window.addEventListener("pkm:open-command-palette", handler);
+    return () =>
+      window.removeEventListener("pkm:open-command-palette", handler);
   });
 </script>
 
@@ -416,12 +493,16 @@
       aria-label="Command palette"
       aria-modal="true"
     >
-      <div class="console-label">{mode === 'vaults' ? 'VAULT SWITCHER' : 'COMMAND CONSOLE'}</div>
+      <div class="console-label">
+        {mode === "vaults" ? "VAULT SWITCHER" : "COMMAND CONSOLE"}
+      </div>
       <input
         bind:this={inputEl}
         class="cmdk-input"
         type="text"
-        placeholder={mode === 'vaults' ? 'Choose vault…' : 'Search notes, run commands, #tag…'}
+        placeholder={mode === "vaults"
+          ? "Choose vault…"
+          : "Search notes, run commands, #tag…"}
         value={query}
         oninput={onInput}
         autocomplete="off"
@@ -434,14 +515,14 @@
             class="cmdk-row"
             class:active={i === activeIndex}
             data-kind={row.kind}
-            data-note-id={row.kind === 'note' ? row.note_id : undefined}
+            data-note-id={row.kind === "note" ? row.note_id : undefined}
             role="option"
             aria-selected={i === activeIndex}
             onmousemove={() => (activeIndex = i)}
             onclick={() => execute(row)}
           >
             <span class="row-glyph" aria-hidden="true">
-              {i === activeIndex ? '→' : ''}
+              {i === activeIndex ? "→" : ""}
             </span>
             <span class="row-label">{row.label}</span>
             {#if row.hint}
@@ -505,7 +586,8 @@
     border: none;
     border-bottom: 1px solid var(--accent);
     border-radius: 0;
-    padding: var(--space-3, 12px) var(--space-4, 16px) var(--space-3, 12px) var(--space-5, 24px);
+    padding: var(--space-3, 12px) var(--space-4, 16px) var(--space-3, 12px)
+      var(--space-5, 24px);
     outline: none;
     caret-color: var(--accent);
   }
@@ -531,11 +613,14 @@
     padding: 0 var(--space-4, 16px) 0 var(--space-5, 24px);
     font-family: var(--font-mono);
     font-size: var(--type-chrome-size, 13px);
-    line-height: var(--type-chrome-lh, 1.20);
+    line-height: var(--type-chrome-lh, 1.2);
     color: var(--text);
     cursor: pointer;
     border-left: 2px solid transparent;
-    transition: background-color var(--dur-fast, 120ms) var(--ease-out), border-color var(--dur-fast, 120ms) var(--ease-out), color var(--dur-fast, 120ms) var(--ease-out);
+    transition:
+      background-color var(--dur-fast, 120ms) var(--ease-out),
+      border-color var(--dur-fast, 120ms) var(--ease-out),
+      color var(--dur-fast, 120ms) var(--ease-out);
   }
 
   .cmdk-row.active {

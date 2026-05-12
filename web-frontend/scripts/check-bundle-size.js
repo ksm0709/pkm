@@ -20,14 +20,15 @@
  *   imported on first $-match and excluded from the eager+route sum.
  */
 
-import { readdir, readFile } from 'node:fs/promises';
-import { join, relative, sep } from 'node:path';
-import { gzip } from 'node:zlib';
-import { promisify } from 'node:util';
+import { readdir, readFile } from "node:fs/promises";
+import { join, relative, sep } from "node:path";
+import { gzip } from "node:zlib";
+import { promisify } from "node:util";
 
 const gzipAsync = promisify(gzip);
 
-const STATIC_DIR = new URL('../../cli/src/pkm/web/static', import.meta.url).pathname;
+const STATIC_DIR = new URL("../../cli/src/pkm/web/static", import.meta.url)
+  .pathname;
 const BUDGET_KB = 330;
 
 /** @param {string} dir @returns {Promise<string[]>} */
@@ -53,18 +54,18 @@ async function walk(dir) {
 
 /** @param {string} file */
 function isFontPath(file) {
-  const norm = file.split(sep).join('/');
+  const norm = file.split(sep).join("/");
   return (
-    norm.includes('/fonts/') ||
-    norm.endsWith('.woff2') ||
-    norm.endsWith('.woff') ||
-    norm.endsWith('.ttf')
+    norm.includes("/fonts/") ||
+    norm.endsWith(".woff2") ||
+    norm.endsWith(".woff") ||
+    norm.endsWith(".ttf")
   );
 }
 
 /** @param {string} file */
 function isJsOrCss(file) {
-  return file.endsWith('.js') || file.endsWith('.css');
+  return file.endsWith(".js") || file.endsWith(".css");
 }
 
 /** @param {string} absPath */
@@ -76,7 +77,7 @@ async function gzippedSize(absPath) {
 
 /** Parse `<link rel="modulepreload|stylesheet" href="...">` hrefs from index.html. */
 async function parseEagerHrefs(/** @type {string} */ htmlPath) {
-  const html = await readFile(htmlPath, 'utf8');
+  const html = await readFile(htmlPath, "utf8");
   /** @type {Set<string>} */
   const hrefs = new Set();
   const re1 = /<link[^>]+href="([^"]+)"[^>]+rel="(modulepreload|stylesheet)"/g;
@@ -87,7 +88,7 @@ async function parseEagerHrefs(/** @type {string} */ htmlPath) {
 }
 
 async function main() {
-  const indexHtml = join(STATIC_DIR, 'index.html');
+  const indexHtml = join(STATIC_DIR, "index.html");
   let eagerHrefs;
   try {
     eagerHrefs = await parseEagerHrefs(indexHtml);
@@ -99,14 +100,16 @@ async function main() {
   const all = await walk(STATIC_DIR);
   const targets = all.filter((f) => isJsOrCss(f) && !isFontPath(f));
   if (targets.length === 0) {
-    console.error('No JS/CSS files found in cli/src/pkm/web/static/. Run `pnpm build` first.');
+    console.error(
+      "No JS/CSS files found in cli/src/pkm/web/static/. Run `pnpm build` first.",
+    );
     process.exit(1);
   }
 
   /** @type {Map<string, number>} relPath -> gzipped bytes */
   const sizes = new Map();
   for (const file of targets) {
-    const rel = '/' + relative(STATIC_DIR, file).split(sep).join('/');
+    const rel = "/" + relative(STATIC_DIR, file).split(sep).join("/");
     sizes.set(rel, await gzippedSize(file));
   }
 
@@ -136,7 +139,7 @@ async function main() {
     if (!id) continue;
     routeBytes.set(id, (routeBytes.get(id) ?? 0) + gz);
   }
-  let worstRouteId = '';
+  let worstRouteId = "";
   let worstRouteBytes = 0;
   for (const [id, b] of routeBytes) {
     if (b > worstRouteBytes) {
@@ -150,7 +153,9 @@ async function main() {
   let lazyBytes = 0;
   for (const [rel, gz] of sizes) {
     if (eagerHrefs.has(rel)) continue;
-    const m = rel.match(/^\/_app\/immutable\/(nodes|assets)\/(\d+)\.[^/]+\.(js|css)$/);
+    const m = rel.match(
+      /^\/_app\/immutable\/(nodes|assets)\/(\d+)\.[^/]+\.(js|css)$/,
+    );
     if (m) continue; // counted in routeBytes above
     lazyBytes += gz;
     lazyRows.push({ rel, kb: gz / 1024 });
@@ -159,14 +164,18 @@ async function main() {
   eagerRows.sort((a, b) => b.kb - a.kb);
   lazyRows.sort((a, b) => b.kb - a.kb);
 
-  console.log('Eager (index.html modulepreload + stylesheet):');
-  for (const row of eagerRows) console.log(`  ${row.kb.toFixed(1).padStart(7)} KB  ${row.rel}`);
-  console.log('');
-  console.log(`Worst route (#${worstRouteId}): ${(worstRouteBytes / 1024).toFixed(1)} KB`);
-  console.log('');
-  console.log('Lazy (dynamic-import-only chunks; not counted):');
-  for (const row of lazyRows) console.log(`  ${row.kb.toFixed(1).padStart(7)} KB  ${row.rel}`);
-  console.log('');
+  console.log("Eager (index.html modulepreload + stylesheet):");
+  for (const row of eagerRows)
+    console.log(`  ${row.kb.toFixed(1).padStart(7)} KB  ${row.rel}`);
+  console.log("");
+  console.log(
+    `Worst route (#${worstRouteId}): ${(worstRouteBytes / 1024).toFixed(1)} KB`,
+  );
+  console.log("");
+  console.log("Lazy (dynamic-import-only chunks; not counted):");
+  for (const row of lazyRows)
+    console.log(`  ${row.kb.toFixed(1).padStart(7)} KB  ${row.rel}`);
+  console.log("");
 
   const eagerKb = eagerBytes / 1024;
   const worstKb = worstRouteBytes / 1024;
@@ -174,14 +183,22 @@ async function main() {
   const totalKb = eagerKb + worstKb;
   console.log(`Eager       : ${eagerKb.toFixed(1)} KB`);
   console.log(`Worst route : ${worstKb.toFixed(1)} KB`);
-  console.log(`Eager+route : ${totalKb.toFixed(1)} KB (budget: ${BUDGET_KB} KB)`);
-  console.log(`Lazy total  : ${lazyKb.toFixed(1)} KB (informational; excluded from cap)`);
+  console.log(
+    `Eager+route : ${totalKb.toFixed(1)} KB (budget: ${BUDGET_KB} KB)`,
+  );
+  console.log(
+    `Lazy total  : ${lazyKb.toFixed(1)} KB (informational; excluded from cap)`,
+  );
 
   if (totalKb > BUDGET_KB) {
-    console.error(`FAIL: ${totalKb.toFixed(1)} KB exceeds ${BUDGET_KB} KB budget`);
+    console.error(
+      `FAIL: ${totalKb.toFixed(1)} KB exceeds ${BUDGET_KB} KB budget`,
+    );
     process.exit(1);
   }
-  console.log(`PASS: ${(BUDGET_KB - totalKb).toFixed(1)} KB headroom remaining`);
+  console.log(
+    `PASS: ${(BUDGET_KB - totalKb).toFixed(1)} KB headroom remaining`,
+  );
 }
 
 main().catch((err) => {

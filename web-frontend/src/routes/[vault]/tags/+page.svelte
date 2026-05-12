@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { page } from '$app/stores';
-  import { apiGet } from '$lib/api/client.js';
+  import { page } from "$app/stores";
+  import { apiGet } from "$lib/api/client.js";
 
   interface TagEntry {
     tag: string;
@@ -14,7 +14,7 @@
 
   let tags = $state<TagEntry[]>([]);
   let loading = $state(true);
-  let error = $state('');
+  let error = $state("");
   let loadedAt = $state<string | null>(null);
   let loadToken = 0;
 
@@ -24,20 +24,22 @@
     const token = ++loadToken;
     tags = [];
     loading = true;
-    error = '';
+    error = "";
     loadedAt = null;
 
     try {
-      const data = await apiGet<TagsResponse>(`/api/v1/vault/${encodeURIComponent(vault)}/tags`);
+      const data = await apiGet<TagsResponse>(
+        `/api/v1/vault/${encodeURIComponent(vault)}/tags`,
+      );
       if (token !== loadToken) return;
       tags = sortTags(data.tags ?? []);
       loadedAt = new Intl.DateTimeFormat(undefined, {
-        hour: '2-digit',
-        minute: '2-digit'
+        hour: "2-digit",
+        minute: "2-digit",
       }).format(new Date());
     } catch (e) {
       if (token !== loadToken) return;
-      error = e instanceof Error ? e.message : 'Failed to load tags.';
+      error = e instanceof Error ? e.message : "Failed to load tags.";
     } finally {
       if (token !== loadToken) return;
       loading = false;
@@ -50,7 +52,9 @@
   });
 
   function sortTags(entries: TagEntry[]) {
-    return [...entries].sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+    return [...entries].sort(
+      (a, b) => b.count - a.count || a.tag.localeCompare(b.tag),
+    );
   }
 
   function tagHref(tag: string) {

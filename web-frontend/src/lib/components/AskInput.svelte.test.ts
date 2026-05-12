@@ -7,6 +7,7 @@ import {
   detectInlineTrigger,
   fetchInlineSuggestions,
 } from "$lib/inline-suggestions.js";
+import type { InlineTrigger } from "$lib/inline-suggestions.js";
 import AskInput from "./AskInput.svelte";
 
 vi.mock("$lib/api/client.js", () => ({ apiGet: vi.fn() }));
@@ -225,7 +226,12 @@ describe("AskInput", () => {
   });
 
   it("applies inline suggestions from click and keyboard selection", async () => {
-    const trigger = { kind: "note", query: "pk", from: 4, to: 8 };
+    const trigger: InlineTrigger = {
+      kind: "note",
+      query: "pk",
+      from: 4,
+      to: 8,
+    };
     vi.mocked(detectInlineTrigger).mockReturnValue(trigger);
     vi.mocked(fetchInlineSuggestions).mockResolvedValue([
       {

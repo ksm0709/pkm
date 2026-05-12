@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
-  import { goto } from '$app/navigation';
-  import { page } from '$app/stores';
-  import Topbar from '$lib/components/Topbar.svelte';
-  import AppNavDrawer from '$lib/components/AppNavDrawer.svelte';
-  import CmdK from '$lib/components/CmdK.svelte';
-  import WikilinkPreview from '$lib/components/WikilinkPreview.svelte';
-  import type { Snippet } from 'svelte';
+  import { onMount, onDestroy } from "svelte";
+  import { goto } from "$app/navigation";
+  import { page } from "$app/stores";
+  import Topbar from "$lib/components/Topbar.svelte";
+  import AppNavDrawer from "$lib/components/AppNavDrawer.svelte";
+  import CmdK from "$lib/components/CmdK.svelte";
+  import WikilinkPreview from "$lib/components/WikilinkPreview.svelte";
+  import type { Snippet } from "svelte";
 
   interface Props {
     children: Snippet;
@@ -14,17 +14,17 @@
 
   let { children }: Props = $props();
 
-  let vaultName = $derived($page.params.vault ?? '');
+  let vaultName = $derived($page.params.vault ?? "");
   let pageName = $derived(pageNameFromPath($page.url.pathname, vaultName));
   let drawerOpen = $state(false);
   let commandPaletteOpenToken = $state(0);
-  const drawerStorageKey = 'pkm.appNavOpen';
-  let pendingKey = '';
+  const drawerStorageKey = "pkm.appNavOpen";
+  let pendingKey = "";
   let pendingTimer: ReturnType<typeof setTimeout> | null = null;
 
   onMount(() => {
     try {
-      drawerOpen = localStorage.getItem(drawerStorageKey) === 'true';
+      drawerOpen = localStorage.getItem(drawerStorageKey) === "true";
     } catch {
       // ignore — SSR or private-browsing restriction
     }
@@ -32,21 +32,22 @@
     // Install global navigation hook used by vim mappings (F4-5).
     // Other actions are stubs here; F4-2/F4-4/F3 wire them in later.
     (window as any).__pkmNav = {
-      gotoDaily: () => goto(`/${vaultName}/notes/${new Date().toISOString().slice(0, 10)}`),
+      gotoDaily: () =>
+        goto(`/${vaultName}/notes/${new Date().toISOString().slice(0, 10)}`),
       gotoNote: (id: string) => goto(`/${vaultName}/notes/${id}`),
       nextNeighbor: () => false,
       prevNeighbor: () => false,
       followAtCursor: () => false,
       openExternal: () => false,
-      openPalette: () => openCommandPalette()
+      openPalette: () => openCommandPalette(),
     };
 
-    window.addEventListener('keydown', handleKeydown);
+    window.addEventListener("keydown", handleKeydown);
   });
 
   onDestroy(() => {
-    if (typeof window !== 'undefined') {
-      window.removeEventListener('keydown', handleKeydown);
+    if (typeof window !== "undefined") {
+      window.removeEventListener("keydown", handleKeydown);
       try {
         delete (window as any).__pkmNav;
       } catch {
@@ -71,7 +72,7 @@
   function closeDrawer() {
     drawerOpen = false;
     try {
-      localStorage.setItem(drawerStorageKey, 'false');
+      localStorage.setItem(drawerStorageKey, "false");
     } catch {
       // ignore
     }
@@ -83,17 +84,18 @@
   }
 
   function pageNameFromPath(pathname: string, vault: string) {
-    if (!vault) return 'pkm';
-    const parts = pathname.split('/').filter(Boolean);
-    if (parts[0] !== vault) return 'home';
-    if (parts.length === 1) return 'notes';
-    if (parts[1] === 'notes' && parts[2]) return decodeURIComponent(parts[2]);
-    if (parts[1] === 'daily') return 'daily';
-    if (parts[1] === 'logger') return 'logger';
-    if (parts[1] === 'workflows' && parts[2]) return `workflow:${decodeURIComponent(parts[2])}`;
-    if (parts[1] === 'workflows') return 'workflows';
-    if (parts[1] === 'ask') return 'ask';
-    return parts[1] || 'home';
+    if (!vault) return "pkm";
+    const parts = pathname.split("/").filter(Boolean);
+    if (parts[0] !== vault) return "home";
+    if (parts.length === 1) return "notes";
+    if (parts[1] === "notes" && parts[2]) return decodeURIComponent(parts[2]);
+    if (parts[1] === "daily") return "daily";
+    if (parts[1] === "logger") return "logger";
+    if (parts[1] === "workflows" && parts[2])
+      return `workflow:${decodeURIComponent(parts[2])}`;
+    if (parts[1] === "workflows") return "workflows";
+    if (parts[1] === "ask") return "ask";
+    return parts[1] || "home";
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -101,47 +103,50 @@
     const target = event.target;
     const isTypingTarget =
       target instanceof HTMLElement &&
-      (target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.tagName === 'SELECT' ||
+      (target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.tagName === "SELECT" ||
         target.isContentEditable);
 
-    if (!isTypingTarget && pendingKey === 'g') {
-      pendingKey = '';
+    if (!isTypingTarget && pendingKey === "g") {
+      pendingKey = "";
       if (pendingTimer) {
         clearTimeout(pendingTimer);
         pendingTimer = null;
       }
-      if (key === 'd') {
+      if (key === "d") {
         event.preventDefault();
         goto(`/${vaultName}/notes/${new Date().toISOString().slice(0, 10)}`);
         return;
       }
     }
 
-    if (!isTypingTarget && key === 'g') {
-      pendingKey = 'g';
+    if (!isTypingTarget && key === "g") {
+      pendingKey = "g";
       if (pendingTimer) clearTimeout(pendingTimer);
       pendingTimer = setTimeout(() => {
-        pendingKey = '';
+        pendingKey = "";
         pendingTimer = null;
       }, 800);
       return;
     }
 
-    if ((event.metaKey || event.ctrlKey) && (key === 'b' || event.code === 'KeyB')) {
+    if (
+      (event.metaKey || event.ctrlKey) &&
+      (key === "b" || event.code === "KeyB")
+    ) {
       event.preventDefault();
       toggleDrawer();
     }
 
     if (
-      event.key === 'Escape' &&
+      event.key === "Escape" &&
       document.querySelector('[role="dialog"][aria-label="Command palette"]')
     ) {
       return;
     }
 
-    if (event.key === 'Escape' && drawerOpen) {
+    if (event.key === "Escape" && drawerOpen) {
       closeDrawer();
     }
   }
@@ -150,15 +155,25 @@
 <Topbar
   {vaultName}
   {pageName}
-  drawerOpen={drawerOpen}
+  {drawerOpen}
   {toggleDrawer}
   {openCommandPalette}
 />
 
 <div class="vault-shell" class:drawer-open={drawerOpen}>
-  <AppNavDrawer {vaultName} open={drawerOpen} {openCommandPalette} {closeDrawer} />
+  <AppNavDrawer
+    {vaultName}
+    open={drawerOpen}
+    {openCommandPalette}
+    {closeDrawer}
+  />
   {#if drawerOpen}
-    <button class="drawer-scrim" type="button" aria-label="Close navigation drawer" onclick={closeDrawer}></button>
+    <button
+      class="drawer-scrim"
+      type="button"
+      aria-label="Close navigation drawer"
+      onclick={closeDrawer}
+    ></button>
   {/if}
   <div class="vault-content">
     {@render children()}

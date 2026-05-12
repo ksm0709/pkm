@@ -123,6 +123,7 @@ let configCredentialStatus: Record<
 >;
 let failNextConfigSaveFor = "";
 let configGetCount = 0;
+let notePutPayloads: { id: string; body: string }[] = [];
 
 const noteBodies: Record<string, unknown> = {
   "project-plan": {
@@ -193,6 +194,7 @@ test.describe("generated routing and event contracts", () => {
     resetMockWorkflows();
     resetMockConfigs();
     askPayloads = [];
+    notePutPayloads = [];
     failNextConfigSaveFor = "";
     configGetCount = 0;
     await mockPkmApi(page);
@@ -1300,6 +1302,15 @@ test.describe("generated routing and event contracts", () => {
     await expect(addLogButton).toHaveText("⌘↵");
     const loggerInputBox = await page.locator(".logger-input").boundingBox();
     expect(loggerInputBox).not.toBeNull();
+    const loggerViewportWidth = await page.evaluate(() => window.innerWidth);
+    expect(Math.abs(loggerInputBox?.x ?? -1)).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(
+        (loggerInputBox?.x ?? 0) +
+          (loggerInputBox?.width ?? 0) -
+          loggerViewportWidth,
+      ),
+    ).toBeLessThanOrEqual(1);
     expect(
       Math.abs((loggerInputBox?.y ?? 0) + (loggerInputBox?.height ?? 0) - 720),
     ).toBeLessThanOrEqual(2);
@@ -1529,6 +1540,84 @@ test.describe("generated routing and event contracts", () => {
     await expect(page.getByRole("option", { name: /#pkm/ })).toBeVisible();
     await page.getByRole("option", { name: /#pkm/ }).click();
     await expect(editor).toContainText("Tag #pkm");
+  });
+
+  test("note edit mode saves normal and daily notes with button and keyboard shortcuts", async ({
+    page,
+  }) => {
+    const modifier = process.platform === "darwin" ? "Meta" : "Control";
+
+    await page.goto(`/${vaultName}/notes/project-plan`);
+    await page.getByRole("button", { name: "Edit" }).click();
+    await page.getByRole("button", { name: "Plain" }).click();
+
+    const editor = page.locator(".cm-content");
+    await editor.click();
+    await page.keyboard.press(`${modifier}+A`);
+    await page.keyboard.type("Saved from plain mode.");
+
+    const saveButton = page.getByRole("button", { name: "Save note" });
+    await expect(saveButton).toBeEnabled();
+    await expect(page.getByText("Unsaved", { exact: true })).toBeVisible();
+    await saveButton.click();
+
+    await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+    expect(notePutPayloads.at(-1)).toEqual({
+      id: "project-plan",
+      body: "Saved from plain mode.",
+    });
+    await page.getByRole("button", { name: "Read" }).click();
+    await expect(page.getByText("Saved from plain mode.")).toBeVisible();
+
+    await page.goto(`/${vaultName}/notes/${today}`);
+    await page.getByRole("button", { name: "Edit" }).click();
+    await page.getByRole("button", { name: "Plain" }).click();
+    await page.locator(".cm-content").click();
+    await page.keyboard.press(`${modifier}+A`);
+    await page.keyboard.type("Daily saved with keyboard shortcut.");
+    await page.keyboard.press(`${modifier}+S`);
+
+    await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+    expect(notePutPayloads.at(-1)).toEqual({
+      id: today,
+      body: "Daily saved with keyboard shortcut.",
+    });
+  });
+
+  test("note editor supports vim visual selection and plain-mode shortcut isolation", async ({
+    page,
+  }) => {
+    await page.goto(`/${vaultName}/notes/project-plan`);
+    await page.getByRole("button", { name: "Edit" }).click();
+
+    const editor = page.locator(".cm-content");
+    await editor.click();
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("v");
+    await page.keyboard.press("l");
+    await page.keyboard.press("l");
+    await page.keyboard.press("j");
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => (window.getSelection()?.toString() ?? "").length > 0,
+        ),
+      )
+      .toBe(true);
+
+    await page.getByRole("button", { name: "Plain" }).click();
+    await page.locator(".cm-content").click();
+    await page.keyboard.press(
+      process.platform === "darwin" ? "Meta+K" : "Control+K",
+    );
+    await expect(
+      page.getByRole("dialog", { name: "Command palette" }),
+    ).toHaveCount(0);
+    await page.keyboard.press("g");
+    await page.keyboard.press("d");
+    await expect(page).toHaveURL(
+      new RegExp(`/${vaultName}/notes/project-plan$`),
+    );
   });
 
   test("command palette static commands never route to missing pages and render target content", async ({
@@ -2163,19 +2252,17 @@ async function mockPkmApi(page: Page) {
         await json(route, created, 201);
         return;
       }
-      if (/^\d{4}-\d{2}-\d{2}$/.test(id)) {
-        await route.fulfill({ status: 404, body: "not found" });
-        return;
-      }
       const note = noteBodies[id];
       if (note) {
         if (route.request().method() === "PUT") {
           const payload = route.request().postDataJSON() as { body?: string };
-          if (note && typeof note === "object" && "body" in note) {
+          const body =
+            payload.body ?? String((note as { body?: unknown }).body ?? "");
+          notePutPayloads.push({ id, body });
+          if (typeof note === "object" && "body" in note) {
             noteBodies[id] = {
               ...note,
-              body:
-                payload.body ?? String((note as { body?: unknown }).body ?? ""),
+              body,
             };
           }
           await json(route, noteBodies[id]);

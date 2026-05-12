@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
-  import Onboarding from '$lib/components/Onboarding.svelte';
+  import { onMount } from "svelte";
+  import { goto } from "$app/navigation";
+  import Onboarding from "$lib/components/Onboarding.svelte";
 
   let checking = $state(true);
 
@@ -14,7 +14,9 @@
   function chooseVault(vaults: VaultEntry[], fallback: string | null) {
     return (
       vaults.find((vault) => vault.is_default || vault.active)?.name ||
-      (fallback && vaults.some((vault) => vault.name === fallback) ? fallback : null) ||
+      (fallback && vaults.some((vault) => vault.name === fallback)
+        ? fallback
+        : null) ||
       vaults[0]?.name ||
       null
     );
@@ -22,12 +24,11 @@
 
   onMount(async () => {
     const token =
-      localStorage.getItem('pkm.token') ||
-      sessionStorage.getItem('pkm.token');
-    const lastVault = localStorage.getItem('pkm.lastVault');
+      localStorage.getItem("pkm.token") || sessionStorage.getItem("pkm.token");
+    const lastVault = localStorage.getItem("pkm.lastVault");
 
     try {
-      const res = await fetch('/api/v1/vaults', { credentials: 'same-origin' });
+      const res = await fetch("/api/v1/vaults", { credentials: "same-origin" });
       if (res.ok) {
         const vaults = await res.json();
         if (Array.isArray(vaults)) {

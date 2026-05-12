@@ -9,7 +9,7 @@
  *     \n
  */
 
-import { apiClient } from './client.js';
+import { apiClient } from "./client.js";
 
 /**
  * Stream SSE events from a POST endpoint. Calls onEvent(event, data) for
@@ -24,13 +24,13 @@ export async function streamSse(path, body, onEvent, signal) {
   let res;
   try {
     res = await apiClient(path, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify(body ?? {}),
-      signal
+      signal,
     });
   } catch (error) {
     throw new Error(
-      `Ask stream interrupted before it opened: ${error instanceof Error ? error.message : String(error)}`
+      `Ask stream interrupted before it opened: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
   if (!res.ok || !res.body) {
@@ -38,8 +38,8 @@ export async function streamSse(path, body, onEvent, signal) {
   }
 
   const reader = res.body.getReader();
-  const decoder = new TextDecoder('utf-8');
-  let buffer = '';
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
 
   while (true) {
     let value;
@@ -48,7 +48,7 @@ export async function streamSse(path, body, onEvent, signal) {
       ({ value, done } = await reader.read());
     } catch (error) {
       throw new Error(
-        `Ask stream interrupted: ${error instanceof Error ? error.message : String(error)}`
+        `Ask stream interrupted: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
     if (done) break;
@@ -56,22 +56,22 @@ export async function streamSse(path, body, onEvent, signal) {
 
     // Split on the SSE block delimiter (blank line).
     let idx;
-    while ((idx = buffer.indexOf('\n\n')) !== -1) {
+    while ((idx = buffer.indexOf("\n\n")) !== -1) {
       const block = buffer.slice(0, idx);
       buffer = buffer.slice(idx + 2);
 
-      let eventName = 'message';
+      let eventName = "message";
       const dataLines = [];
-      for (const line of block.split('\n')) {
-        if (line.startsWith('event:')) {
+      for (const line of block.split("\n")) {
+        if (line.startsWith("event:")) {
           eventName = line.slice(6).trim();
-        } else if (line.startsWith('data:')) {
-          dataLines.push(line.slice(5).replace(/^ /, ''));
+        } else if (line.startsWith("data:")) {
+          dataLines.push(line.slice(5).replace(/^ /, ""));
         }
       }
       if (dataLines.length === 0) continue;
 
-      const raw = dataLines.join('\n');
+      const raw = dataLines.join("\n");
       let data;
       try {
         data = JSON.parse(raw);

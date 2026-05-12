@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { page } from '$app/stores';
-  import { apiGet } from '$lib/api/client.js';
+  import { page } from "$app/stores";
+  import { apiGet } from "$lib/api/client.js";
 
   interface NoteEntry {
     note_id: string;
@@ -15,7 +15,7 @@
 
   let notes = $state<NoteEntry[]>([]);
   let loading = $state(true);
-  let error = $state('');
+  let error = $state("");
   let loadedAt = $state<string | null>(null);
 
   let vaultName = $derived($page.params.vault);
@@ -36,22 +36,24 @@
     const token = ++loadToken;
     notes = [];
     loading = true;
-    error = '';
+    error = "";
     loadedAt = null;
 
     try {
-      const loadedNotes = await apiGet<NoteEntry[]>(`/api/v1/vault/${vault}/notes`);
+      const loadedNotes = await apiGet<NoteEntry[]>(
+        `/api/v1/vault/${vault}/notes`,
+      );
       if (token !== loadToken) return;
       notes = sortNotesByRecentModification(loadedNotes);
       loadedAt = new Intl.DateTimeFormat(undefined, {
-        hour: '2-digit',
-        minute: '2-digit'
+        hour: "2-digit",
+        minute: "2-digit",
       }).format(new Date());
       // Store last visited vault
-      localStorage.setItem('pkm.lastVault', vault);
+      localStorage.setItem("pkm.lastVault", vault);
     } catch (e) {
       if (token !== loadToken) return;
-      error = e instanceof Error ? e.message : 'Failed to load notes.';
+      error = e instanceof Error ? e.message : "Failed to load notes.";
     } finally {
       if (token !== loadToken) return;
       loading = false;
@@ -64,7 +66,10 @@
   });
 
   function sortNotesByRecentModification(entries: NoteEntry[]) {
-    return [...entries].sort((a, b) => noteTime(b) - noteTime(a) || noteLabel(a).localeCompare(noteLabel(b)));
+    return [...entries].sort(
+      (a, b) =>
+        noteTime(b) - noteTime(a) || noteLabel(a).localeCompare(noteLabel(b)),
+    );
   }
 
   function noteTime(note: NoteEntry) {
@@ -75,7 +80,7 @@
   }
 
   function noteLabel(note: NoteEntry) {
-    return note.title || note.note_id || '';
+    return note.title || note.note_id || "";
   }
 </script>
 
@@ -114,9 +119,11 @@
             <li class="note-entry">
               <a href="/{vaultName}/notes/{note.note_id}" class="note-link">
                 <span class="note-title">{note.title || note.note_id}</span>
-                <span class="note-description">{note.description || '—'}</span>
+                <span class="note-description">{note.description || "—"}</span>
                 <span class="note-tags">
-                  {note.tags?.length ? note.tags.map((t) => `#${t}`).join(' ') : '—'}
+                  {note.tags?.length
+                    ? note.tags.map((t) => `#${t}`).join(" ")
+                    : "—"}
                 </span>
               </a>
             </li>
@@ -195,7 +202,10 @@
 
   .ledger-head {
     display: grid;
-    grid-template-columns: minmax(180px, 1.1fr) minmax(160px, 0.9fr) minmax(120px, 0.8fr);
+    grid-template-columns: minmax(180px, 1.1fr) minmax(160px, 0.9fr) minmax(
+        120px,
+        0.8fr
+      );
     gap: var(--space-4, 16px);
     min-height: 34px;
     align-items: center;
@@ -216,7 +226,10 @@
 
   .note-link {
     display: grid;
-    grid-template-columns: minmax(180px, 1.1fr) minmax(160px, 0.9fr) minmax(120px, 0.8fr);
+    grid-template-columns: minmax(180px, 1.1fr) minmax(160px, 0.9fr) minmax(
+        120px,
+        0.8fr
+      );
     gap: var(--space-4, 16px);
     align-items: center;
     min-height: 40px;
@@ -226,7 +239,10 @@
     font-family: var(--font-mono);
     border-left: 2px solid transparent;
     padding: 0 var(--space-3, 12px);
-    transition: color var(--dur-fast, 120ms) var(--ease-out), background-color var(--dur-fast, 120ms) var(--ease-out), border-color var(--dur-fast, 120ms) var(--ease-out);
+    transition:
+      color var(--dur-fast, 120ms) var(--ease-out),
+      background-color var(--dur-fast, 120ms) var(--ease-out),
+      border-color var(--dur-fast, 120ms) var(--ease-out);
   }
 
   .note-link:hover,

@@ -9,17 +9,33 @@ const views = [];
 /** @type {import("vitest").Mock} */
 let apiClient;
 
+/**
+ * @typedef {Window & typeof globalThis & {
+ *   __pkmWikilinkFocusInstalled?: boolean,
+ *   __pkmNav?: { gotoNote: import("vitest").Mock },
+ *   __pkmPreview?: { show: import("vitest").Mock, hide: import("vitest").Mock }
+ * }} PkmTestWindow
+ */
+
+function pkmWindow() {
+  return /** @type {PkmTestWindow} */ (window);
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   apiClient = vi.fn();
-  vi.stubGlobal("requestAnimationFrame", (callback) =>
-    setTimeout(() => callback(performance.now()), 0),
+  vi.stubGlobal(
+    "requestAnimationFrame",
+    (/** @type {FrameRequestCallback} */ callback) =>
+      Number(setTimeout(() => callback(performance.now()), 0)),
   );
-  vi.stubGlobal("cancelAnimationFrame", (id) => clearTimeout(id));
+  vi.stubGlobal("cancelAnimationFrame", (/** @type {number} */ id) =>
+    clearTimeout(id),
+  );
   window.history.pushState({}, "", "/main/notes/current");
-  delete window.__pkmWikilinkFocusInstalled;
-  delete window.__pkmNav;
-  delete window.__pkmPreview;
+  delete pkmWindow().__pkmWikilinkFocusInstalled;
+  delete pkmWindow().__pkmNav;
+  delete pkmWindow().__pkmPreview;
 });
 
 afterEach(() => {
@@ -37,6 +53,11 @@ async function loadModule() {
   return import("./wikilink-widget.js");
 }
 
+/**
+ * @param {string} doc
+ * @param {import("@codemirror/state").Extension[]} extensions
+ * @param {number} [selection]
+ */
 function createView(doc, extensions, selection = 0) {
   const parent = document.createElement("div");
   document.body.appendChild(parent);
@@ -137,8 +158,8 @@ describe("wikilink widget", () => {
       json: async () => ({ alpha: "Alpha Note" }),
     });
     const { wikilinkWidget, wikilinkWidgetTheme } = await loadModule();
-    window.__pkmNav = { gotoNote: vi.fn() };
-    window.__pkmPreview = { show: vi.fn(), hide: vi.fn() };
+    pkmWindow().__pkmNav = { gotoNote: vi.fn() };
+    pkmWindow().__pkmPreview = { show: vi.fn(), hide: vi.fn() };
 
     const view = createView("active [[raw]]\nsee [[alpha]]\n", [
       wikilinkWidget,
@@ -161,7 +182,7 @@ describe("wikilink widget", () => {
     resolved?.dispatchEvent(
       new MouseEvent("click", { bubbles: true, cancelable: true }),
     );
-    expect(window.__pkmNav.gotoNote).toHaveBeenCalledWith("alpha");
+    expect(pkmWindow().__pkmNav?.gotoNote).toHaveBeenCalledWith("alpha");
 
     resolved?.dispatchEvent(
       new MouseEvent("mouseenter", {
@@ -171,10 +192,10 @@ describe("wikilink widget", () => {
       }),
     );
     await vi.advanceTimersByTimeAsync(199);
-    expect(window.__pkmPreview.show).not.toHaveBeenCalled();
+    expect(pkmWindow().__pkmPreview?.show).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(1);
-    expect(window.__pkmPreview.show).toHaveBeenCalledWith({
+    expect(pkmWindow().__pkmPreview?.show).toHaveBeenCalledWith({
       id: "alpha",
       title: "Alpha Note",
       x: 12,
@@ -184,7 +205,7 @@ describe("wikilink widget", () => {
     resolved?.dispatchEvent(
       new MouseEvent("mouseleave", { bubbles: true, cancelable: true }),
     );
-    expect(window.__pkmPreview.hide).toHaveBeenCalledTimes(1);
+    expect(pkmWindow().__pkmPreview?.hide).toHaveBeenCalledTimes(1);
   });
 
   it("shows unresolved wikilinks as faint raw text when the batch lookup fails", async () => {
@@ -200,5 +221,37 @@ describe("wikilink widget", () => {
     const unresolved = view.dom.querySelector('[data-wikilink-id="ghost"]');
     expect(unresolved?.classList.contains("cm-wikilink-faint")).toBe(true);
     expect(unresolved?.textContent).toBe("[[ghost]]");
+  });
+
+  it("resolves wikilinks whose ids contain literal brackets", async () => {
+    apiClient.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        "2026-04-14-[주식분석]-두산에너빌리티": "두산에너빌리티",
+      }),
+    });
+    const { wikilinkWidget, wikilinkWidgetTheme } = await loadModule();
+
+    const view = createView(
+      "active\nsee [[2026-04-14-[주식분석]-두산에너빌리티]]\n",
+      [wikilinkWidget, wikilinkWidgetTheme],
+    );
+
+    await flushMicrotasks();
+    await vi.runOnlyPendingTimersAsync();
+    await flushMicrotasks();
+
+    const resolved = view.dom.querySelector(".cm-wikilink-resolved");
+    expect(apiClient).toHaveBeenCalledWith(
+      "/api/v1/vault/main/notes/batch-titles",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ids: ["2026-04-14-[주식분석]-두산에너빌리티"],
+        }),
+      },
+    );
+    expect(resolved?.textContent).toBe("두산에너빌리티");
   });
 });

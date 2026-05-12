@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
-  import { apiGet } from '$lib/api/client.js';
+  import { onMount } from "svelte";
+  import { goto } from "$app/navigation";
+  import { apiGet } from "$lib/api/client.js";
 
   interface Props {
     vaultName: string;
@@ -52,23 +52,26 @@
   const RING_R = 44;
 
   let otherNodes = $derived(
-    graph ? graph.nodes.filter((n) => n.id !== noteId) : []
+    graph ? graph.nodes.filter((n) => n.id !== noteId) : [],
   );
 
   let nodePositions = $derived<NodePos[]>([
-    ...(graph ? [{ id: noteId, title: '', x: CX, y: CY, isCurrent: true }] : []),
+    ...(graph
+      ? [{ id: noteId, title: "", x: CX, y: CY, isCurrent: true }]
+      : []),
     ...otherNodes.map((node, i) => {
       const n = otherNodes.length;
       // Distribute evenly on ring, starting at top (−π/2)
-      const angle = n === 1 ? -Math.PI / 2 : (2 * Math.PI * i) / n - Math.PI / 2;
+      const angle =
+        n === 1 ? -Math.PI / 2 : (2 * Math.PI * i) / n - Math.PI / 2;
       return {
         id: node.id,
         title: node.title ?? node.id,
         x: CX + RING_R * Math.cos(angle),
         y: CY + RING_R * Math.sin(angle),
-        isCurrent: false
+        isCurrent: false,
       };
-    })
+    }),
   ]);
 
   let posMap = $derived(new Map(nodePositions.map((n) => [n.id, n])));
@@ -82,13 +85,13 @@
             ? [{ x1: src.x, y1: src.y, x2: tgt.x, y2: tgt.y }]
             : [];
         })
-      : []
+      : [],
   );
 
   onMount(async () => {
     try {
       graph = await apiGet<EgoGraph>(
-        `/api/v1/vault/${vaultName}/graph/ego/${noteId}`
+        `/api/v1/vault/${vaultName}/graph/ego/${noteId}`,
       );
     } catch {
       failed = true;
@@ -104,7 +107,10 @@
 </script>
 
 {#if !loading && !failed && graph && graph.nodes.length > 1}
-  <div class="ego-constellation" aria-label="Ego constellation — 2-hop note graph">
+  <div
+    class="ego-constellation"
+    aria-label="Ego constellation — 2-hop note graph"
+  >
     <svg
       viewBox="0 0 {W} {H}"
       width="100%"
@@ -133,20 +139,15 @@
             tabindex="0"
             aria-label="Go to {node.title}"
             onclick={() => navigateTo(node)}
-            onkeydown={(e) => e.key === 'Enter' && navigateTo(node)}
+            onkeydown={(e) => e.key === "Enter" && navigateTo(node)}
           >
-            <circle
-              cx={node.x}
-              cy={node.y}
-              r="3"
-              class="ring-circle"
-            />
+            <circle cx={node.x} cy={node.y} r="3" class="ring-circle" />
           </g>
         {/if}
       {/each}
 
       <!-- Current note center (drawn on top) -->
-      {#each nodePositions as node (node.id + '-center')}
+      {#each nodePositions as node (node.id + "-center")}
         {#if node.isCurrent}
           <circle
             cx={node.x}

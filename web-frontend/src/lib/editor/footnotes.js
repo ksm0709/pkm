@@ -8,8 +8,8 @@
  * Cursor-line-reveal interop: on the active line, decorations are
  * suppressed so the writer sees raw markdown.
  */
-import { ViewPlugin, Decoration, EditorView } from '@codemirror/view';
-import { RangeSetBuilder } from '@codemirror/state';
+import { ViewPlugin, Decoration, EditorView } from "@codemirror/view";
+import { RangeSetBuilder } from "@codemirror/state";
 
 const REF_RE = /\[\^([^\]\s]+)\]/g;
 const DEF_RE = /^(\[\^([^\]\s]+)\]:)\s*(.*)$/;
@@ -37,7 +37,7 @@ function buildDecorations(view) {
           ranges.push({
             from: line.from,
             to: line.from + markerLen,
-            deco: Decoration.mark({ class: 'cm-md-footnote-def-marker' })
+            deco: Decoration.mark({ class: "cm-md-footnote-def-marker" }),
           });
         }
 
@@ -51,7 +51,7 @@ function buildDecorations(view) {
           ranges.push({
             from: start,
             to: end,
-            deco: Decoration.mark({ class: 'cm-md-footnote-ref' })
+            deco: Decoration.mark({ class: "cm-md-footnote-ref" }),
           });
         }
 
@@ -81,20 +81,20 @@ export const footnotes = ViewPlugin.fromClass(
       }
     }
   },
-  { decorations: (v) => v.decorations }
+  { decorations: (v) => v.decorations },
 );
 
 export const footnotesTheme = EditorView.baseTheme({
-  '.cm-md-footnote-ref': {
-    color: 'var(--accent)',
-    fontSize: '0.8em',
-    verticalAlign: 'super',
-    lineHeight: '1',
-    textDecoration: 'underline',
-    textUnderlineOffset: '2px'
+  ".cm-md-footnote-ref": {
+    color: "var(--accent)",
+    fontSize: "0.8em",
+    verticalAlign: "super",
+    lineHeight: "1",
+    textDecoration: "underline",
+    textUnderlineOffset: "2px",
   },
-  '.cm-md-footnote-def-marker': {
-    color: 'var(--text-faint)',
-    fontFamily: 'var(--font-mono)'
-  }
+  ".cm-md-footnote-def-marker": {
+    color: "var(--text-faint)",
+    fontFamily: "var(--font-mono)",
+  },
 });

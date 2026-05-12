@@ -1,4 +1,4 @@
-import type { PositionedGraphNode } from './layout';
+import type { PositionedGraphNode } from "./layout";
 
 export interface GraphViewport {
   x: number;
@@ -15,10 +15,17 @@ export interface LabelBudgetOptions {
   maxLabels?: number;
 }
 
-export function labelBudget(nodes: PositionedGraphNode[], options: LabelBudgetOptions = {}): Set<string> {
+export function labelBudget(
+  nodes: PositionedGraphNode[],
+  options: LabelBudgetOptions = {},
+): Set<string> {
   const maxLabels = Math.max(0, options.maxLabels ?? 24);
   const labels = new Set<string>();
-  const pinned = [options.focusedId, options.hoveredId, options.selectedId].filter(Boolean) as string[];
+  const pinned = [
+    options.focusedId,
+    options.hoveredId,
+    options.selectedId,
+  ].filter(Boolean) as string[];
 
   for (const id of pinned) {
     if (labels.size >= maxLabels) return labels;
@@ -35,7 +42,7 @@ export function labelBudget(nodes: PositionedGraphNode[], options: LabelBudgetOp
         b.importance - a.importance ||
         b.degree - a.degree ||
         a.label.localeCompare(b.label) ||
-        a.id.localeCompare(b.id)
+        a.id.localeCompare(b.id),
     );
 
   for (const node of candidates) {
@@ -46,7 +53,10 @@ export function labelBudget(nodes: PositionedGraphNode[], options: LabelBudgetOp
   return labels;
 }
 
-function inViewport(node: PositionedGraphNode, viewport?: GraphViewport): boolean {
+function inViewport(
+  node: PositionedGraphNode,
+  viewport?: GraphViewport,
+): boolean {
   if (!viewport) return true;
   return (
     node.x >= viewport.x &&

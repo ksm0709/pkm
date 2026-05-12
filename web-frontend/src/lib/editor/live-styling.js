@@ -10,8 +10,13 @@
  * (no tables/math/footnotes/admonitions/wikilink/frontmatter widgets) —
  * those land in slice 4.
  */
-import { EditorView, ViewPlugin, Decoration, WidgetType } from '@codemirror/view';
-import { RangeSetBuilder } from '@codemirror/state';
+import {
+  EditorView,
+  ViewPlugin,
+  Decoration,
+  WidgetType,
+} from "@codemirror/view";
+import { RangeSetBuilder } from "@codemirror/state";
 
 // ---------- inline-marker matchers (single-line only) ----------
 
@@ -23,10 +28,15 @@ import { RangeSetBuilder } from '@codemirror/state';
 // IMPORTANT: regex must use a single capture group covering the inner text.
 // Marker length is computed from match boundaries minus the captured span.
 const INLINE_RULES = [
-  { regex: /\*\*([^*\n]+)\*\*/g, hide: true, mark: 'cm-md-bold', marker: 2 },
-  { regex: /(?<!\*)\*([^*\n]+)\*(?!\*)/g, hide: true, mark: 'cm-md-italic', marker: 1 },
-  { regex: /~~([^~\n]+)~~/g, hide: true, mark: 'cm-md-strike', marker: 2 },
-  { regex: /`([^`\n]+)`/g, hide: true, mark: 'cm-md-code', marker: 1 }
+  { regex: /\*\*([^*\n]+)\*\*/g, hide: true, mark: "cm-md-bold", marker: 2 },
+  {
+    regex: /(?<!\*)\*([^*\n]+)\*(?!\*)/g,
+    hide: true,
+    mark: "cm-md-italic",
+    marker: 1,
+  },
+  { regex: /~~([^~\n]+)~~/g, hide: true, mark: "cm-md-strike", marker: 2 },
+  { regex: /`([^`\n]+)`/g, hide: true, mark: "cm-md-code", marker: 1 },
 ];
 
 // Link matcher: [text](url) — hide brackets and the URL portion entirely.
@@ -42,7 +52,7 @@ const HIDE = Decoration.replace({});
 
 /** @param {number} level */
 function lineHeadingClass(level) {
-  return level === 1 ? 'cm-md-h1' : level === 2 ? 'cm-md-h2' : 'cm-md-h3';
+  return level === 1 ? "cm-md-h1" : level === 2 ? "cm-md-h2" : "cm-md-h3";
 }
 
 /** @param {import('@codemirror/view').EditorView} view */
@@ -84,7 +94,7 @@ function decorateLine(builder, line) {
     builder.add(
       line.from,
       line.from,
-      Decoration.line({ attributes: { class: 'cm-md-hr' } })
+      Decoration.line({ attributes: { class: "cm-md-hr" } }),
     );
     blockHandled = true;
   } else {
@@ -94,7 +104,7 @@ function decorateLine(builder, line) {
       builder.add(
         line.from,
         line.from,
-        Decoration.line({ attributes: { class: lineHeadingClass(level) } })
+        Decoration.line({ attributes: { class: lineHeadingClass(level) } }),
       );
       // Hide "### " marker (level chars + 1 space).
       builder.add(line.from, line.from + level + 1, HIDE);
@@ -105,7 +115,7 @@ function decorateLine(builder, line) {
         builder.add(
           line.from,
           line.from,
-          Decoration.line({ attributes: { class: 'cm-md-quote' } })
+          Decoration.line({ attributes: { class: "cm-md-quote" } }),
         );
         builder.add(line.from, line.from + q[1].length, HIDE);
         blockHandled = true;
@@ -117,7 +127,7 @@ function decorateLine(builder, line) {
           builder.add(
             line.from + indent,
             line.from + indent + 2,
-            Decoration.replace({ widget: new BulletWidget() })
+            Decoration.replace({ widget: new BulletWidget() }),
           );
           blockHandled = true;
         }
@@ -149,7 +159,7 @@ function decorateLine(builder, line) {
       ranges.push({
         from: innerStart,
         to: innerEnd,
-        deco: Decoration.mark({ class: rule.mark })
+        deco: Decoration.mark({ class: rule.mark }),
       });
     }
   }
@@ -167,7 +177,7 @@ function decorateLine(builder, line) {
     ranges.push({
       from: textStart,
       to: textEnd,
-      deco: Decoration.mark({ class: 'cm-md-link' })
+      deco: Decoration.mark({ class: "cm-md-link" }),
     });
   }
 
@@ -181,9 +191,9 @@ function decorateLine(builder, line) {
 // Bullet replacement widget — render a typographic bullet glyph.
 class BulletWidget extends WidgetType {
   toDOM() {
-    const span = document.createElement('span');
-    span.textContent = '• ';
-    span.className = 'cm-md-bullet';
+    const span = document.createElement("span");
+    span.textContent = "• ";
+    span.className = "cm-md-bullet";
     return span;
   }
   eq() {
@@ -205,16 +215,12 @@ export const liveStyling = ViewPlugin.fromClass(
     }
     /** @param {import('@codemirror/view').ViewUpdate} update */
     update(update) {
-      if (
-        update.docChanged ||
-        update.viewportChanged ||
-        update.selectionSet
-      ) {
+      if (update.docChanged || update.viewportChanged || update.selectionSet) {
         this.decorations = buildDecorations(update.view);
       }
     }
   },
-  { decorations: (v) => v.decorations }
+  { decorations: (v) => v.decorations },
 );
 
 // ---------- styling theme ----------
@@ -223,48 +229,48 @@ export const liveStyling = ViewPlugin.fromClass(
 // applied via the existing prose styles in the design tokens; here we
 // just upsize headings and apply muted color to markers/quote.
 export const liveStylingTheme = EditorView.baseTheme({
-  '.cm-md-h1': {
-    fontFamily: 'var(--font-display)',
-    fontSize: 'var(--type-h1-size, 28px)',
-    fontWeight: 'var(--type-h1-weight, 600)',
-    lineHeight: 'var(--type-h1-lh, 1.20)'
+  ".cm-md-h1": {
+    fontFamily: "var(--font-display)",
+    fontSize: "var(--type-h1-size, 28px)",
+    fontWeight: "var(--type-h1-weight, 600)",
+    lineHeight: "var(--type-h1-lh, 1.20)",
   },
-  '.cm-md-h2': {
-    fontFamily: 'var(--font-display)',
-    fontSize: 'var(--type-h2-size, 20px)',
-    fontWeight: 'var(--type-h2-weight, 600)',
-    lineHeight: 'var(--type-h2-lh, 1.30)'
+  ".cm-md-h2": {
+    fontFamily: "var(--font-display)",
+    fontSize: "var(--type-h2-size, 20px)",
+    fontWeight: "var(--type-h2-weight, 600)",
+    lineHeight: "var(--type-h2-lh, 1.30)",
   },
-  '.cm-md-h3': {
-    fontFamily: 'var(--font-display)',
-    fontSize: 'var(--type-h3-size, 17px)',
-    fontWeight: 'var(--type-h3-weight, 600)',
-    lineHeight: 'var(--type-h3-lh, 1.35)'
+  ".cm-md-h3": {
+    fontFamily: "var(--font-display)",
+    fontSize: "var(--type-h3-size, 17px)",
+    fontWeight: "var(--type-h3-weight, 600)",
+    lineHeight: "var(--type-h3-lh, 1.35)",
   },
-  '.cm-md-quote': {
-    color: 'var(--text-muted)',
-    fontStyle: 'italic',
-    borderLeft: '2px solid var(--border)',
-    paddingLeft: 'var(--space-3, 12px)'
+  ".cm-md-quote": {
+    color: "var(--text-muted)",
+    fontStyle: "italic",
+    borderLeft: "2px solid var(--border)",
+    paddingLeft: "var(--space-3, 12px)",
   },
-  '.cm-md-hr': {
-    borderTop: '1px solid var(--border)',
-    color: 'transparent'
+  ".cm-md-hr": {
+    borderTop: "1px solid var(--border)",
+    color: "transparent",
   },
-  '.cm-md-bold': { fontWeight: '600' },
-  '.cm-md-italic': { fontStyle: 'italic' },
-  '.cm-md-strike': { textDecoration: 'line-through' },
-  '.cm-md-code': {
-    fontFamily: 'var(--font-mono)',
-    backgroundColor: 'var(--bg-elev)',
-    padding: '0 4px'
+  ".cm-md-bold": { fontWeight: "600" },
+  ".cm-md-italic": { fontStyle: "italic" },
+  ".cm-md-strike": { textDecoration: "line-through" },
+  ".cm-md-code": {
+    fontFamily: "var(--font-mono)",
+    backgroundColor: "var(--bg-elev)",
+    padding: "0 4px",
   },
-  '.cm-md-link': {
-    color: 'var(--accent)',
-    textDecoration: 'underline',
-    textUnderlineOffset: '2px'
+  ".cm-md-link": {
+    color: "var(--accent)",
+    textDecoration: "underline",
+    textUnderlineOffset: "2px",
   },
-  '.cm-md-bullet': {
-    color: 'var(--text-muted)'
-  }
+  ".cm-md-bullet": {
+    color: "var(--text-muted)",
+  },
 });

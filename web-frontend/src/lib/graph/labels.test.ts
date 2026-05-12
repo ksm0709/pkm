@@ -1,15 +1,15 @@
-import { describe, expect, it } from 'vitest';
-import { labelBudget } from './labels';
-import type { PositionedGraphNode } from './layout';
+import { describe, expect, it } from "vitest";
+import { labelBudget } from "./labels";
+import type { PositionedGraphNode } from "./layout";
 
 const nodes: PositionedGraphNode[] = [
   {
-    id: 'focused',
-    label: 'Focused',
-    type: 'note',
-    description: '',
-    community: 'a',
-    tier: '',
+    id: "focused",
+    label: "Focused",
+    type: "note",
+    description: "",
+    community: "a",
+    tier: "",
     raw: {},
     degree: 1,
     hub: false,
@@ -18,15 +18,15 @@ const nodes: PositionedGraphNode[] = [
     x: 20,
     y: 20,
     vx: 0,
-    vy: 0
+    vy: 0,
   },
   {
-    id: 'hub',
-    label: 'Hub',
-    type: 'note',
-    description: '',
-    community: 'a',
-    tier: 'hub',
+    id: "hub",
+    label: "Hub",
+    type: "note",
+    description: "",
+    community: "a",
+    tier: "hub",
     raw: {},
     degree: 9,
     hub: true,
@@ -35,15 +35,15 @@ const nodes: PositionedGraphNode[] = [
     x: 80,
     y: 80,
     vx: 0,
-    vy: 0
+    vy: 0,
   },
   {
-    id: 'near',
-    label: 'Near',
-    type: 'note',
-    description: '',
-    community: 'a',
-    tier: '',
+    id: "near",
+    label: "Near",
+    type: "note",
+    description: "",
+    community: "a",
+    tier: "",
     raw: {},
     degree: 4,
     hub: false,
@@ -52,15 +52,15 @@ const nodes: PositionedGraphNode[] = [
     x: 120,
     y: 80,
     vx: 0,
-    vy: 0
+    vy: 0,
   },
   {
-    id: 'far',
-    label: 'Far',
-    type: 'note',
-    description: '',
-    community: 'b',
-    tier: '',
+    id: "far",
+    label: "Far",
+    type: "note",
+    description: "",
+    community: "b",
+    tier: "",
     raw: {},
     degree: 7,
     hub: false,
@@ -69,15 +69,15 @@ const nodes: PositionedGraphNode[] = [
     x: 900,
     y: 900,
     vx: 0,
-    vy: 0
+    vy: 0,
   },
   {
-    id: 'low',
-    label: 'Low',
-    type: 'note',
-    description: '',
-    community: 'a',
-    tier: '',
+    id: "low",
+    label: "Low",
+    type: "note",
+    description: "",
+    community: "a",
+    tier: "",
     raw: {},
     degree: 0,
     hub: false,
@@ -86,21 +86,28 @@ const nodes: PositionedGraphNode[] = [
     x: 140,
     y: 80,
     vx: 0,
-    vy: 0
-  }
+    vy: 0,
+  },
 ];
 
-describe('graph label helpers', () => {
-  it('always includes focused hovered and selected labels before budgeted important labels', () => {
-    expect(
-      [...labelBudget(nodes, { focusedId: 'focused', hoveredId: 'low', selectedId: 'near', maxLabels: 3 })]
-    ).toEqual(['focused', 'low', 'near']);
+describe("graph label helpers", () => {
+  it("always includes focused hovered and selected labels before budgeted important labels", () => {
+    expect([
+      ...labelBudget(nodes, {
+        focusedId: "focused",
+        hoveredId: "low",
+        selectedId: "near",
+        maxLabels: 3,
+      }),
+    ]).toEqual(["focused", "low", "near"]);
   });
 
-  it('limits labels to important in-viewport nodes within the budget', () => {
-    expect([...labelBudget(nodes, { viewport: { x: 0, y: 0, width: 200, height: 200 }, maxLabels: 2 })]).toEqual([
-      'hub',
-      'near'
-    ]);
+  it("limits labels to important in-viewport nodes within the budget", () => {
+    expect([
+      ...labelBudget(nodes, {
+        viewport: { x: 0, y: 0, width: 200, height: 200 },
+        maxLabels: 2,
+      }),
+    ]).toEqual(["hub", "near"]);
   });
 });

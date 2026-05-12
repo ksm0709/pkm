@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { page } from '$app/stores';
-  import { apiGet } from '$lib/api/client.js';
+  import { page } from "$app/stores";
+  import { apiGet } from "$lib/api/client.js";
 
   interface WorkflowSummary {
     id: string;
@@ -15,16 +15,18 @@
   let vaultName = $derived($page.params.vault);
   let workflows = $state<WorkflowSummary[]>([]);
   let loading = $state(true);
-  let error = $state('');
+  let error = $state("");
 
   async function loadWorkflows(vault: string) {
     workflows = [];
     loading = true;
-    error = '';
+    error = "";
     try {
-      workflows = await apiGet<WorkflowSummary[]>(`/api/v1/vault/${vault}/workflows`);
+      workflows = await apiGet<WorkflowSummary[]>(
+        `/api/v1/vault/${vault}/workflows`,
+      );
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to load workflows.';
+      error = e instanceof Error ? e.message : "Failed to load workflows.";
     } finally {
       loading = false;
     }
@@ -57,11 +59,15 @@
       <ul class="workflow-list">
         {#each workflows as workflow (workflow.id)}
           <li class="workflow-entry">
-            <a href="/{vaultName}/workflows/{workflow.id}" class="workflow-link">
-              <span class="workflow-title">{workflow.title || workflow.id}</span>
+            <a
+              href="/{vaultName}/workflows/{workflow.id}"
+              class="workflow-link"
+            >
+              <span class="workflow-title">{workflow.title || workflow.id}</span
+              >
               <span class="workflow-trigger">{workflow.trigger_time}</span>
               <span class:off={!workflow.enabled} class="workflow-state">
-                {workflow.enabled ? 'on' : 'off'}
+                {workflow.enabled ? "on" : "off"}
               </span>
               <span class="workflow-snippet">{workflow.snippet}</span>
             </a>

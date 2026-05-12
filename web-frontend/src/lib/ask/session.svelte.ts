@@ -1,12 +1,12 @@
-import { apiGet } from '$lib/api/client.js';
-import { streamSse } from '$lib/api/sse.js';
+import { apiGet } from "$lib/api/client.js";
+import { streamSse } from "$lib/api/sse.js";
 
 export type AskItem =
-  | { kind: 'tool_call'; tool: string; args: string }
-  | { kind: 'reasoning'; text: string }
-  | { kind: 'task'; text: string }
-  | { kind: 'content'; text: string }
-  | { kind: 'error'; message: string };
+  | { kind: "tool_call"; tool: string; args: string }
+  | { kind: "reasoning"; text: string }
+  | { kind: "task"; text: string }
+  | { kind: "content"; text: string }
+  | { kind: "error"; message: string };
 
 export interface AskTurn {
   question: string;
@@ -16,7 +16,11 @@ export interface AskTurn {
   runId?: string;
 }
 
-export type ManagedTaskStatus = 'done' | 'in_progress' | 'cancelled' | 'pending';
+export type ManagedTaskStatus =
+  | "done"
+  | "in_progress"
+  | "cancelled"
+  | "pending";
 
 export type ManagedTask = {
   id: string;
@@ -35,7 +39,7 @@ type AskSessionSnapshot = {
 
 type AskRunSnapshot = {
   run_id: string;
-  status: 'running' | 'done' | 'error' | string;
+  status: "running" | "done" | "error" | string;
   chunks?: Array<{
     seq?: number;
     event?: string;
@@ -63,9 +67,9 @@ export function getAskSession(vaultName: string) {
 export class AskSessionState {
   turns = $state<AskTurn[]>([]);
   busy = $state(false);
-  modelLabel = $state('auto');
+  modelLabel = $state("auto");
   managedTasks = $state<ManagedTask[]>([]);
-  submittedQueryParam = $state('');
+  submittedQueryParam = $state("");
   hydrated = $state(false);
 
   #sessionId = createAskSessionId();
@@ -76,15 +80,21 @@ export class AskSessionState {
   hydrate() {
     if (this.hydrated) return;
     this.hydrated = true;
-    if (typeof localStorage === 'undefined') return;
+    if (typeof localStorage === "undefined") return;
     try {
       const raw = localStorage.getItem(this.#storageKey());
       if (!raw) return;
       const parsed = JSON.parse(raw) as Partial<AskSessionSnapshot>;
-      if (![1, 2, ASK_SESSION_VERSION].includes(parsed.version ?? 0) || !Array.isArray(parsed.turns)) {
+      if (
+        ![1, 2, ASK_SESSION_VERSION].includes(parsed.version ?? 0) ||
+        !Array.isArray(parsed.turns)
+      ) {
         return;
       }
-      if (typeof parsed.sessionId === 'string' && parsed.sessionId.startsWith('web-')) {
+      if (
+        typeof parsed.sessionId === "string" &&
+        parsed.sessionId.startsWith("web-")
+      ) {
         this.#sessionId = parsed.sessionId;
       }
       this.turns = parsed.turns
@@ -92,12 +102,16 @@ export class AskSessionState {
         .slice(-ASK_SESSION_MAX_TURNS)
         .map((turn) => ({
           ...turn,
-          done: turn.runId ? Boolean(turn.done) : true
+          done: turn.runId ? Boolean(turn.done) : true,
         }));
       this.managedTasks = Array.isArray(parsed.managedTasks)
-        ? parsed.managedTasks.filter((task) => task && typeof task.text === 'string')
+        ? parsed.managedTasks.filter(
+            (task) => task && typeof task.text === "string",
+          )
         : [];
-      const pending = [...this.turns].reverse().find((turn) => turn.runId && !turn.done);
+      const pending = [...this.turns]
+        .reverse()
+        .find((turn) => turn.runId && !turn.done);
       if (pending?.runId) {
         this.busy = true;
         this.#activeRun = this.#recoverPendingRun(pending.runId);
@@ -110,11 +124,11 @@ export class AskSessionState {
   async loadOptions() {
     try {
       const options = (await apiGet(
-        `/api/v1/vault/${this.vaultName}/ask/options`
+        `/api/v1/vault/${this.vaultName}/ask/options`,
       )) as { model?: string; resolved_model?: string };
       this.modelLabel = modelLabelFromOptions(options);
     } catch {
-      this.modelLabel = 'auto';
+      this.modelLabel = "auto";
     }
   }
 
@@ -125,12 +139,12 @@ export class AskSessionState {
   }
 
   clearQueryParam() {
-    this.submittedQueryParam = '';
+    this.submittedQueryParam = "";
   }
 
   async submit(question: string) {
     if (this.busy) return this.#activeRun;
-    if (question.trim() === '/new') {
+    if (question.trim() === "/new") {
       this.clear();
       return null;
     }
@@ -141,9 +155,9 @@ export class AskSessionState {
     const turn: AskTurn = {
       question,
       items: [],
-      answer: '',
+      answer: "",
       done: false,
-      runId
+      runId,
     };
     this.turns = [...this.turns, turn];
     this.#persist();
@@ -156,7 +170,7 @@ export class AskSessionState {
     this.#sessionId = createAskSessionId();
     this.turns = [];
     this.managedTasks = [];
-    this.submittedQueryParam = '';
+    this.submittedQueryParam = "";
     this.#persist();
   }
 
@@ -164,31 +178,46 @@ export class AskSessionState {
     try {
       await streamSse(
         `/api/v1/vault/${this.vaultName}/ask`,
-        { query: question, context, ask_session_id: this.#sessionId, ask_run_id: runId },
+        {
+          query: question,
+          context,
+          ask_session_id: this.#sessionId,
+          ask_run_id: runId,
+        },
         (eventName, data) => {
-          if (eventName === 'result') {
+          if (eventName === "result") {
             const payload = (data ?? {}) as Record<string, unknown>;
-            const answer = (payload.answer ?? payload.response ?? payload.content ?? '') as string;
+            const answer = (payload.answer ??
+              payload.response ??
+              payload.content ??
+              "") as string;
             // Prefer the canonical final answer if no streaming content arrived.
             this.#updateTurn(runId, (turn) => ({
               ...turn,
               answer: answer && !turn.answer ? answer : turn.answer,
-              done: true
+              done: true,
             }));
-          } else if (eventName === 'error') {
+          } else if (eventName === "error") {
             const payload = (data ?? {}) as Record<string, unknown>;
-            const msg = (payload.message ?? payload.reason ?? payload.content ?? 'error') as string;
+            const msg = (payload.message ??
+              payload.reason ??
+              payload.content ??
+              "error") as string;
             this.#updateTurn(runId, (turn) => ({
               ...turn,
-              items: [...turn.items, { kind: 'error', message: msg }],
-              done: true
+              items: [...turn.items, { kind: "error", message: msg }],
+              done: true,
             }));
-          } else if (eventName === 'run') {
+          } else if (eventName === "run") {
             // Run metadata is used for recovery, not rendered as transcript text.
           } else {
-            this.#appendChunk((data ?? {}) as Record<string, unknown>, eventName, runId);
+            this.#appendChunk(
+              (data ?? {}) as Record<string, unknown>,
+              eventName,
+              runId,
+            );
           }
-        }
+        },
       );
       if (!this.#isTurnDone(runId)) {
         await this.#recoverRun(runId);
@@ -199,7 +228,7 @@ export class AskSessionState {
         const msg = e instanceof Error ? e.message : String(e);
         this.#updateTurn(runId, (turn) => ({
           ...turn,
-          items: [...turn.items, { kind: 'error', message: msg }]
+          items: [...turn.items, { kind: "error", message: msg }],
         }));
       }
     } finally {
@@ -226,10 +255,10 @@ export class AskSessionState {
     for (let attempt = 0; attempt < ASK_RUN_RECOVERY_ATTEMPTS; attempt += 1) {
       try {
         const snapshot = (await apiGet(
-          `/api/v1/vault/${this.vaultName}/ask/runs/${encodeURIComponent(runId)}`
+          `/api/v1/vault/${this.vaultName}/ask/runs/${encodeURIComponent(runId)}`,
         )) as AskRunSnapshot;
         this.#applyRunSnapshot(runId, snapshot);
-        if (snapshot.status === 'done' || snapshot.status === 'error') {
+        if (snapshot.status === "done" || snapshot.status === "error") {
           return true;
         }
       } catch {
@@ -242,43 +271,62 @@ export class AskSessionState {
 
   #applyRunSnapshot(runId: string, snapshot: AskRunSnapshot) {
     const chunks = Array.isArray(snapshot.chunks) ? snapshot.chunks : [];
-    this.#updateTurn(runId, (turn) => ({ ...turn, items: [], answer: '', done: false }));
+    this.#updateTurn(runId, (turn) => ({
+      ...turn,
+      items: [],
+      answer: "",
+      done: false,
+    }));
     for (const chunk of chunks.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))) {
-      this.#appendChunk((chunk.data ?? {}) as Record<string, unknown>, chunk.event || 'stream', runId);
+      this.#appendChunk(
+        (chunk.data ?? {}) as Record<string, unknown>,
+        chunk.event || "stream",
+        runId,
+      );
     }
-    if (snapshot.status === 'done') {
+    if (snapshot.status === "done") {
       const payload = snapshot.result ?? {};
-      const answer = (payload.answer ?? payload.response ?? payload.content ?? '') as string;
+      const answer = (payload.answer ??
+        payload.response ??
+        payload.content ??
+        "") as string;
       this.#updateTurn(runId, (turn) => ({
         ...turn,
         answer: answer && !turn.answer ? answer : turn.answer,
-        done: true
+        done: true,
       }));
-    } else if (snapshot.status === 'error') {
+    } else if (snapshot.status === "error") {
       const payload = snapshot.error ?? {};
-      const msg = (payload.message ?? payload.reason ?? 'error') as string;
+      const msg = (payload.message ?? payload.reason ?? "error") as string;
       this.#updateTurn(runId, (turn) => ({
         ...turn,
-        items: [...turn.items, { kind: 'error', message: msg }],
-        done: true
+        items: [...turn.items, { kind: "error", message: msg }],
+        done: true,
       }));
     }
   }
 
-  #appendChunk(chunk: Record<string, unknown>, eventName: string, runId?: string) {
+  #appendChunk(
+    chunk: Record<string, unknown>,
+    eventName: string,
+    runId?: string,
+  ) {
     const type = (chunk.type as string) || eventName;
 
-    if (type === 'content') {
-      const text = (chunk.text ?? chunk.content ?? '') as string;
-      this.#updateTurn(runId, (turn) => ({ ...turn, answer: `${turn.answer}${text}` }));
+    if (type === "content") {
+      const text = (chunk.text ?? chunk.content ?? "") as string;
+      this.#updateTurn(runId, (turn) => ({
+        ...turn,
+        answer: `${turn.answer}${text}`,
+      }));
     } else if (
-      type === 'tool_call_start' ||
-      type === 'tool_call' ||
-      type === 'tool_detail'
+      type === "tool_call_start" ||
+      type === "tool_call" ||
+      type === "tool_detail"
     ) {
-      const tool = (chunk.name ?? chunk.tool ?? 'tool') as string;
-      const argsRaw = chunk.arguments ?? chunk.args ?? '';
-      if (tool === 'manage_tasks') {
+      const tool = (chunk.name ?? chunk.tool ?? "tool") as string;
+      const argsRaw = chunk.arguments ?? chunk.args ?? "";
+      if (tool === "manage_tasks") {
         const tasks = extractManagedTasks(argsRaw);
         if (tasks.length) {
           this.managedTasks = tasks;
@@ -287,28 +335,31 @@ export class AskSessionState {
         return;
       }
       const args =
-        typeof argsRaw === 'string' ? argsRaw : JSON.stringify(argsRaw);
+        typeof argsRaw === "string" ? argsRaw : JSON.stringify(argsRaw);
       this.#updateTurn(runId, (turn) => ({
         ...turn,
-        items: [...turn.items, { kind: 'tool_call', tool, args }]
+        items: [...turn.items, { kind: "tool_call", tool, args }],
       }));
-    } else if (type === 'reasoning') {
-      const text = (chunk.text ?? chunk.content ?? '') as string;
+    } else if (type === "reasoning") {
+      const text = (chunk.text ?? chunk.content ?? "") as string;
       this.#updateTurn(runId, (turn) => ({
         ...turn,
-        items: [...turn.items, { kind: 'reasoning', text }]
+        items: [...turn.items, { kind: "reasoning", text }],
       }));
-    } else if (type === 'task' || type === 'tasks' || type === 'todo') {
-      const text = (chunk.text ?? chunk.content ?? chunk.message ?? '') as string;
+    } else if (type === "task" || type === "tasks" || type === "todo") {
+      const text = (chunk.text ??
+        chunk.content ??
+        chunk.message ??
+        "") as string;
       this.#updateTurn(runId, (turn) => ({
         ...turn,
-        items: [...turn.items, { kind: 'task', text }]
+        items: [...turn.items, { kind: "task", text }],
       }));
-    } else if (type === 'error') {
-      const msg = (chunk.message ?? chunk.reason ?? 'error') as string;
+    } else if (type === "error") {
+      const msg = (chunk.message ?? chunk.reason ?? "error") as string;
       this.#updateTurn(runId, (turn) => ({
         ...turn,
-        items: [...turn.items, { kind: 'error', message: msg }]
+        items: [...turn.items, { kind: "error", message: msg }],
       }));
     }
     // tool_call_end and other types are silently consumed.
@@ -319,7 +370,9 @@ export class AskSessionState {
       ? this.turns.findIndex((turn) => turn.runId === runId)
       : this.turns.length - 1;
     if (targetIndex < 0) return;
-    this.turns = this.turns.map((turn, index) => (index === targetIndex ? updater(turn) : turn));
+    this.turns = this.turns.map((turn, index) =>
+      index === targetIndex ? updater(turn) : turn,
+    );
     this.#persist();
   }
 
@@ -328,7 +381,7 @@ export class AskSessionState {
   }
 
   #persist() {
-    if (!this.hydrated || typeof localStorage === 'undefined') return;
+    if (!this.hydrated || typeof localStorage === "undefined") return;
     try {
       if (!this.turns.length && !this.managedTasks.length) {
         localStorage.removeItem(this.#storageKey());
@@ -339,7 +392,7 @@ export class AskSessionState {
         savedAt: Date.now(),
         sessionId: this.#sessionId,
         turns: this.turns.slice(-ASK_SESSION_MAX_TURNS),
-        managedTasks: this.managedTasks
+        managedTasks: this.managedTasks,
       };
       localStorage.setItem(this.#storageKey(), JSON.stringify(snapshot));
     } catch {
@@ -353,33 +406,36 @@ export class AskSessionState {
 
   #buildContext() {
     const history = this.turns;
-    if (!history.length) return '';
+    if (!history.length) return "";
     return [
-      'Web ask conversation history from this browser session.',
-      'Use this as prior dialogue when answering the current query.',
+      "Web ask conversation history from this browser session.",
+      "Use this as prior dialogue when answering the current query.",
       ...history.map((turn, index) => {
         const parts = [
           `Turn ${index + 1}`,
           `User: ${turn.question}`,
           ...turn.items.map(formatItem),
-          `Assistant: ${turn.answer || '(no assistant answer recorded)'}`
+          `Assistant: ${turn.answer || "(no assistant answer recorded)"}`,
         ];
-        return parts.join('\n');
-      })
-    ].join('\n\n');
+        return parts.join("\n");
+      }),
+    ].join("\n\n");
   }
 }
 
-function modelLabelFromOptions(options: { model?: string; resolved_model?: string }) {
-  const selected = options.model || 'auto';
-  const resolved = options.resolved_model || '';
-  if (selected === 'auto') return resolved ? `${resolved} (auto)` : 'auto';
+function modelLabelFromOptions(options: {
+  model?: string;
+  resolved_model?: string;
+}) {
+  const selected = options.model || "auto";
+  const resolved = options.resolved_model || "";
+  if (selected === "auto") return resolved ? `${resolved} (auto)` : "auto";
   return resolved || selected;
 }
 
 function createAskSessionId() {
   const random =
-    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
       : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
   return `web-${random}`;
@@ -387,7 +443,7 @@ function createAskSessionId() {
 
 function createAskRunId() {
   const random =
-    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
       : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
   return `web-run-${random}`;
@@ -398,29 +454,30 @@ function sleep(ms: number) {
 }
 
 function formatItem(item: AskItem) {
-  if (item.kind === 'tool_call') return `Tool ${item.tool}: ${item.args || '(no arguments)'}`;
-  if (item.kind === 'reasoning') return `Thinking: ${item.text}`;
-  if (item.kind === 'task') return `Task: ${item.text}`;
-  if (item.kind === 'content') return `Assistant content: ${item.text}`;
+  if (item.kind === "tool_call")
+    return `Tool ${item.tool}: ${item.args || "(no arguments)"}`;
+  if (item.kind === "reasoning") return `Thinking: ${item.text}`;
+  if (item.kind === "task") return `Task: ${item.text}`;
+  if (item.kind === "content") return `Assistant content: ${item.text}`;
   return `Error: ${item.message}`;
 }
 
 function validTurn(value: unknown): value is AskTurn {
-  if (!value || typeof value !== 'object') return false;
+  if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
   return (
-    typeof record.question === 'string' &&
+    typeof record.question === "string" &&
     Array.isArray(record.items) &&
-    typeof record.answer === 'string'
+    typeof record.answer === "string"
   );
 }
 
 function parseJsonDeep(value: unknown) {
   let parsed = value;
   for (let depth = 0; depth < 4; depth += 1) {
-    if (typeof parsed !== 'string') return parsed;
+    if (typeof parsed !== "string") return parsed;
     const trimmed = parsed.trim();
-    if (!trimmed || !['{', '['].includes(trimmed[0])) return parsed;
+    if (!trimmed || !["{", "["].includes(trimmed[0])) return parsed;
     try {
       parsed = JSON.parse(trimmed);
     } catch {
@@ -431,8 +488,8 @@ function parseJsonDeep(value: unknown) {
 }
 
 function taskText(task: unknown, index: number) {
-  if (typeof task === 'string') return task;
-  if (!task || typeof task !== 'object') return `Task ${index + 1}`;
+  if (typeof task === "string") return task;
+  if (!task || typeof task !== "object") return `Task ${index + 1}`;
   const record = task as Record<string, unknown>;
   return String(
     record.text ??
@@ -440,39 +497,53 @@ function taskText(task: unknown, index: number) {
       record.title ??
       record.task ??
       record.description ??
-      `Task ${index + 1}`
+      `Task ${index + 1}`,
   );
 }
 
 function taskStatus(task: unknown): ManagedTaskStatus {
-  if (!task || typeof task !== 'object') return 'pending';
+  if (!task || typeof task !== "object") return "pending";
   const record = task as Record<string, unknown>;
-  const raw = String(record.status ?? record.state ?? '').toLowerCase().replace(/[-\s]/g, '_');
-  if (['done', 'completed', 'complete', 'success', 'checked'].includes(raw)) return 'done';
-  if (['in_progress', 'progress', 'running', 'active', 'doing', 'wip'].includes(raw)) {
-    return 'in_progress';
+  const raw = String(record.status ?? record.state ?? "")
+    .toLowerCase()
+    .replace(/[-\s]/g, "_");
+  if (["done", "completed", "complete", "success", "checked"].includes(raw))
+    return "done";
+  if (
+    ["in_progress", "progress", "running", "active", "doing", "wip"].includes(
+      raw,
+    )
+  ) {
+    return "in_progress";
   }
-  if (['cancelled', 'canceled', 'cancel', 'skipped'].includes(raw)) return 'cancelled';
-  return 'pending';
+  if (["cancelled", "canceled", "cancel", "skipped"].includes(raw))
+    return "cancelled";
+  return "pending";
 }
 
 function taskChecked(task: unknown, status: ManagedTaskStatus) {
-  if (task && typeof task === 'object') {
+  if (task && typeof task === "object") {
     const record = task as Record<string, unknown>;
-    if (typeof record.checked === 'boolean') return record.checked;
-    if (typeof record.completed === 'boolean') return record.completed;
-    if (typeof record.done === 'boolean') return record.done;
+    if (typeof record.checked === "boolean") return record.checked;
+    if (typeof record.completed === "boolean") return record.completed;
+    if (typeof record.done === "boolean") return record.done;
   }
-  return status === 'done';
+  return status === "done";
 }
 
 function taskSource(raw: unknown) {
   let source = parseJsonDeep(raw);
   for (let depth = 0; depth < 4; depth += 1) {
     source = parseJsonDeep(source);
-    if (!source || typeof source !== 'object' || Array.isArray(source)) return source;
+    if (!source || typeof source !== "object" || Array.isArray(source))
+      return source;
     const record = source as Record<string, unknown>;
-    const nested = record.tasks ?? record.items ?? record.todos ?? record.task_list ?? record.taskList;
+    const nested =
+      record.tasks ??
+      record.items ??
+      record.todos ??
+      record.task_list ??
+      record.taskList;
     if (nested === undefined) return source;
     source = nested;
   }
@@ -484,15 +555,15 @@ function extractManagedTasks(raw: unknown) {
   const list = Array.isArray(source) ? source : source ? [source] : [];
   return list
     .map((task, index) => {
-      const status = taskStatus(task) || 'pending';
+      const status = taskStatus(task) || "pending";
       return {
         id:
-          task && typeof task === 'object' && 'id' in task
+          task && typeof task === "object" && "id" in task
             ? String((task as Record<string, unknown>).id)
             : `${index}-${taskText(task, index)}`,
         text: taskText(task, index),
         checked: taskChecked(task, status),
-        status
+        status,
       };
     })
     .filter((task) => task.text.trim().length > 0);

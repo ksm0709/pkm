@@ -1,9 +1,9 @@
 /* Global stylesheet — import order matters */
-@import '$lib/styles/fonts.css';
-@import '$lib/styles/tokens.css';
-@import '$lib/styles/reset.css';
-@import '$lib/styles/type.css';
-@import '$lib/styles/reading-column.css';
+@import "$lib/styles/fonts.css";
+@import "$lib/styles/tokens.css";
+@import "$lib/styles/reset.css";
+@import "$lib/styles/type.css";
+@import "$lib/styles/reading-column.css";
 
 body {
   background-color: var(--bg);

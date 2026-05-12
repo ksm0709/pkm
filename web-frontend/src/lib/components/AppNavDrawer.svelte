@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
-  import { page } from '$app/stores';
-  import { appNavPages } from '$lib/navigation/app-nav';
+  import { goto } from "$app/navigation";
+  import { page } from "$app/stores";
+  import { appNavPages } from "$lib/navigation/app-nav";
 
   interface Props {
     vaultName: string;
@@ -30,23 +30,23 @@
   let navItems: NavItem[] = $derived([
     {
       ...appNavPages[0],
-      href: appNavPages[0].href(vaultName)
+      href: appNavPages[0].href(vaultName),
     },
     {
-      id: 'search',
-      label: 'Search',
-      meta: 'cmdk',
-      action: openCommandPalette
+      id: "search",
+      label: "Search",
+      meta: "cmdk",
+      action: openCommandPalette,
     },
     ...appNavPages.slice(1).map((item) => ({
       ...item,
-      href: item.href(vaultName)
-    }))
+      href: item.href(vaultName),
+    })),
   ]);
 
   function isActive(item: NavItem) {
     if (!item.href) return false;
-    if (item.id === 'notes') return activePath === item.href;
+    if (item.id === "notes") return activePath === item.href;
     return activePath === item.href || activePath.startsWith(`${item.href}/`);
   }
 
@@ -64,14 +64,19 @@
   }
 
   function onItemKeydown(event: KeyboardEvent, item: NavItem) {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
+    if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
     event.stopPropagation();
     runItem(item);
   }
 </script>
 
-<aside class="app-nav-drawer" class:open aria-hidden={!open} aria-label="App navigation">
+<aside
+  class="app-nav-drawer"
+  class:open
+  aria-hidden={!open}
+  aria-label="App navigation"
+>
   <div class="drawer-inner">
     <div class="drawer-header">
       <span class="drawer-title">navigation</span>
@@ -87,7 +92,7 @@
             class:active={isActive(item)}
             class:disabled={item.disabled}
             aria-label={item.label}
-            aria-current={isActive(item) ? 'page' : undefined}
+            aria-current={isActive(item) ? "page" : undefined}
             aria-disabled="true"
             tabindex={open ? 0 : -1}
             onclick={(event) => {
@@ -105,7 +110,7 @@
             class="nav-item"
             class:active={isActive(item)}
             aria-label={item.label}
-            aria-current={isActive(item) ? 'page' : undefined}
+            aria-current={isActive(item) ? "page" : undefined}
             tabindex={open ? 0 : -1}
             onclick={() => runItem(item)}
             onkeydown={(event) => onItemKeydown(event, item)}
@@ -137,7 +142,7 @@
   }
 
   .app-nav-drawer::after {
-    content: '';
+    content: "";
     position: absolute;
     top: 0;
     right: 0;
@@ -230,7 +235,7 @@
   }
 
   .nav-item::before {
-    content: '';
+    content: "";
     position: absolute;
     left: 0;
     top: 8px;
@@ -258,7 +263,7 @@
     font-size: var(--type-chrome-sm-size, 11px);
     color: var(--text-faint);
     text-transform: uppercase;
-    letter-spacing: 0.10em;
+    letter-spacing: 0.1em;
   }
 
   .nav-item:hover,

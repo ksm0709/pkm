@@ -10,15 +10,33 @@ vi.mock("../inline-suggestions.js", () => ({
   fetchInlineSuggestions: vi.fn(),
 }));
 
+/**
+ * @param {string} text
+ * @param {number} [pos]
+ * @returns {import("@codemirror/autocomplete").CompletionContext}
+ */
 function completionContext(text, pos = text.length) {
-  return {
-    pos,
-    state: {
-      doc: {
-        toString: () => text,
+  return /** @type {import("@codemirror/autocomplete").CompletionContext} */ (
+    /** @type {unknown} */ ({
+      pos,
+      state: {
+        doc: {
+          toString: () => text,
+        },
       },
-    },
-  };
+    })
+  );
+}
+
+/**
+ * @param {"note" | "tag"} kind
+ * @param {string} query
+ * @param {number} from
+ * @param {number} to
+ * @returns {import("../inline-suggestions.js").InlineTrigger}
+ */
+function inlineTrigger(kind, query, from, to) {
+  return { kind, query, from, to };
 }
 
 describe("inline completion source", () => {
@@ -38,7 +56,7 @@ describe("inline completion source", () => {
   });
 
   it("does not fetch suggestions when the current route has no vault segment", async () => {
-    const trigger = { kind: "tag", query: "pkm", from: 5, to: 9 };
+    const trigger = inlineTrigger("tag", "pkm", 5, 9);
     vi.stubGlobal("location", { pathname: "/" });
     vi.mocked(detectInlineTrigger).mockReturnValueOnce(trigger);
 
@@ -49,7 +67,7 @@ describe("inline completion source", () => {
   });
 
   it("maps note and tag suggestions to CodeMirror completion options", async () => {
-    const trigger = { kind: "note", query: "pkm", from: 7, to: 12 };
+    const trigger = inlineTrigger("note", "pkm", 7, 12);
     vi.stubGlobal("location", { pathname: "/work-vault/notes/current" });
     vi.mocked(detectInlineTrigger).mockReturnValueOnce(trigger);
     vi.mocked(fetchInlineSuggestions).mockResolvedValueOnce([
@@ -96,7 +114,7 @@ describe("inline completion source", () => {
   });
 
   it("returns null when the server has no matching suggestions", async () => {
-    const trigger = { kind: "tag", query: "missing", from: 0, to: 8 };
+    const trigger = inlineTrigger("tag", "missing", 0, 8);
     vi.stubGlobal("location", { pathname: "/main" });
     vi.mocked(detectInlineTrigger).mockReturnValueOnce(trigger);
     vi.mocked(fetchInlineSuggestions).mockResolvedValueOnce([]);

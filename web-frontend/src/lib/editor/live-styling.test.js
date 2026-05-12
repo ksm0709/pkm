@@ -12,6 +12,10 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+/**
+ * @param {string} doc
+ * @param {number} [selection]
+ */
 function createView(doc, selection = 0) {
   const parent = document.createElement("div");
   document.body.appendChild(parent);

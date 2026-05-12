@@ -6,46 +6,46 @@
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
   /* Type scale */
-  --type-h1-size:     clamp(34px, 4vw, 44px);
-  --type-h1-lh:       1.05;
-  --type-h1-weight:   600;
-  --type-h2-size:     22px;
-  --type-h2-lh:       1.22;
-  --type-h2-weight:   600;
-  --type-h3-size:     17px;
-  --type-h3-lh:       1.35;
-  --type-h3-weight:   600;
-  --type-body-size:   15px;
-  --type-body-lh:     1.72;
+  --type-h1-size: clamp(34px, 4vw, 44px);
+  --type-h1-lh: 1.05;
+  --type-h1-weight: 600;
+  --type-h2-size: 22px;
+  --type-h2-lh: 1.22;
+  --type-h2-weight: 600;
+  --type-h3-size: 17px;
+  --type-h3-lh: 1.35;
+  --type-h3-weight: 600;
+  --type-body-size: 15px;
+  --type-body-lh: 1.72;
   --type-body-weight: 400;
-  --type-caption-size:   12px;
-  --type-caption-lh:     1.45;
-  --type-chrome-size:    13px;
-  --type-chrome-lh:      1.25;
-  --type-chrome-weight:  400;
+  --type-caption-size: 12px;
+  --type-caption-lh: 1.45;
+  --type-chrome-size: 13px;
+  --type-chrome-lh: 1.25;
+  --type-chrome-weight: 400;
   --type-chrome-sm-size: 11px;
-  --type-chrome-sm-lh:   1.20;
+  --type-chrome-sm-lh: 1.2;
   --type-chrome-sm-weight: 600;
 
   /* Color — dark Signal Desk */
-  --bg:              #090b0d;
-  --surface:         #101419;
-  --surface-raised:  #161b21;
-  --surface-prose:   #12171c;
-  --text:            #e8ecef;
-  --text-muted:      #9aa6ad;
-  --text-faint:      #5f6970;
-  --border:          rgba(159, 177, 188, 0.20);
-  --rail:            rgba(236, 170, 74, 0.58);
-  --signal:          #ecaa4a;
-  --signal-cyan:     #70c7d8;
-  --signal-danger:   #ff6b5f;
-  --accent:          var(--signal);
-  --accent-bg:       rgba(236, 170, 74, 0.12);
-  --grid-line:       rgba(159, 177, 188, 0.055);
-  --focus-ring:      rgba(236, 170, 74, 0.34);
-  --selection-bg:    rgba(236, 170, 74, 0.24);
-  --code-bg:         rgba(4, 7, 10, 0.52);
+  --bg: #090b0d;
+  --surface: #101419;
+  --surface-raised: #161b21;
+  --surface-prose: #12171c;
+  --text: #e8ecef;
+  --text-muted: #9aa6ad;
+  --text-faint: #5f6970;
+  --border: rgba(159, 177, 188, 0.2);
+  --rail: rgba(236, 170, 74, 0.58);
+  --signal: #ecaa4a;
+  --signal-cyan: #70c7d8;
+  --signal-danger: #ff6b5f;
+  --accent: var(--signal);
+  --accent-bg: rgba(236, 170, 74, 0.12);
+  --grid-line: rgba(159, 177, 188, 0.055);
+  --focus-ring: rgba(236, 170, 74, 0.34);
+  --selection-bg: rgba(236, 170, 74, 0.24);
+  --code-bg: rgba(4, 7, 10, 0.52);
 
   /* Compatibility aliases for existing components. */
   --bg-base: var(--bg);
@@ -66,64 +66,64 @@
 
   /* Radius — strict, max 2px */
   --radius-none: 0;
-  --radius-sm:   2px;
+  --radius-sm: 2px;
 
   /* Motion */
-  --ease-out:    cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
   --dur-instant: 0ms;
-  --dur-fast:    120ms;
-  --dur-base:    200ms;
-  --dur-slow:    320ms;
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
 
   /* Shell */
   --topbar-height: 48px;
-  --palette-width:      560px;
+  --palette-width: 560px;
   --palette-max-height: 60vh;
   --drawer-width: 300px;
 }
 
 [data-theme="light"] {
-  --bg:              #eef1f2;
-  --surface:         #f8f8f4;
-  --surface-raised:  #ffffff;
-  --surface-prose:   #fbfaf5;
-  --text:            #111417;
-  --text-muted:      #53616a;
-  --text-faint:      #8a959b;
-  --border:          rgba(17, 20, 23, 0.16);
-  --rail:            rgba(173, 106, 22, 0.60);
-  --signal:          #ad6a16;
-  --signal-cyan:     #167d8d;
-  --signal-danger:   #b83d33;
-  --accent:          var(--signal);
-  --accent-bg:       rgba(173, 106, 22, 0.12);
-  --grid-line:       rgba(17, 20, 23, 0.045);
-  --focus-ring:      rgba(173, 106, 22, 0.30);
-  --selection-bg:    rgba(173, 106, 22, 0.20);
-  --code-bg:         rgba(17, 20, 23, 0.055);
+  --bg: #eef1f2;
+  --surface: #f8f8f4;
+  --surface-raised: #ffffff;
+  --surface-prose: #fbfaf5;
+  --text: #111417;
+  --text-muted: #53616a;
+  --text-faint: #8a959b;
+  --border: rgba(17, 20, 23, 0.16);
+  --rail: rgba(173, 106, 22, 0.6);
+  --signal: #ad6a16;
+  --signal-cyan: #167d8d;
+  --signal-danger: #b83d33;
+  --accent: var(--signal);
+  --accent-bg: rgba(173, 106, 22, 0.12);
+  --grid-line: rgba(17, 20, 23, 0.045);
+  --focus-ring: rgba(173, 106, 22, 0.3);
+  --selection-bg: rgba(173, 106, 22, 0.2);
+  --code-bg: rgba(17, 20, 23, 0.055);
 }
 
 /* Auto theme: respect OS preference when no manual override. */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --bg:              #eef1f2;
-    --surface:         #f8f8f4;
-    --surface-raised:  #ffffff;
-    --surface-prose:   #fbfaf5;
-    --text:            #111417;
-    --text-muted:      #53616a;
-    --text-faint:      #8a959b;
-    --border:          rgba(17, 20, 23, 0.16);
-    --rail:            rgba(173, 106, 22, 0.60);
-    --signal:          #ad6a16;
-    --signal-cyan:     #167d8d;
-    --signal-danger:   #b83d33;
-    --accent:          var(--signal);
-    --accent-bg:       rgba(173, 106, 22, 0.12);
-    --grid-line:       rgba(17, 20, 23, 0.045);
-    --focus-ring:      rgba(173, 106, 22, 0.30);
-    --selection-bg:    rgba(173, 106, 22, 0.20);
-    --code-bg:         rgba(17, 20, 23, 0.055);
+    --bg: #eef1f2;
+    --surface: #f8f8f4;
+    --surface-raised: #ffffff;
+    --surface-prose: #fbfaf5;
+    --text: #111417;
+    --text-muted: #53616a;
+    --text-faint: #8a959b;
+    --border: rgba(17, 20, 23, 0.16);
+    --rail: rgba(173, 106, 22, 0.6);
+    --signal: #ad6a16;
+    --signal-cyan: #167d8d;
+    --signal-danger: #b83d33;
+    --accent: var(--signal);
+    --accent-bg: rgba(173, 106, 22, 0.12);
+    --grid-line: rgba(17, 20, 23, 0.045);
+    --focus-ring: rgba(173, 106, 22, 0.3);
+    --selection-bg: rgba(173, 106, 22, 0.2);
+    --code-bg: rgba(17, 20, 23, 0.055);
   }
 }
 

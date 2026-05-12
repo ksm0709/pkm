@@ -14,8 +14,8 @@
    *
    * Body is fetched lazily via GET /api/v1/vault/{vault}/notes/{id}.
    */
-  import { onMount, onDestroy } from 'svelte';
-  import { apiGet } from '$lib/api/client.js';
+  import { onMount, onDestroy } from "svelte";
+  import { apiGet } from "$lib/api/client.js";
 
   interface Props {
     vault: string;
@@ -24,9 +24,9 @@
   let { vault }: Props = $props();
 
   let visible = $state(false);
-  let id = $state('');
-  let title = $state('');
-  let body = $state('');
+  let id = $state("");
+  let title = $state("");
+  let body = $state("");
   let x = $state(0);
   let y = $state(0);
   let loading = $state(false);
@@ -41,36 +41,41 @@
   async function loadBody(theId: string) {
     const key = bodyKey(vault, theId);
     if (bodyCache.has(key)) {
-      body = bodyCache.get(key) ?? '';
+      body = bodyCache.get(key) ?? "";
       return;
     }
     loading = true;
     try {
       const data = await apiGet<{ body?: string; title?: string }>(
-        `/api/v1/vault/${encodeURIComponent(vault)}/notes/${encodeURIComponent(theId)}`
+        `/api/v1/vault/${encodeURIComponent(vault)}/notes/${encodeURIComponent(theId)}`,
       );
-      const snippet = (data.body ?? '').slice(0, 600);
+      const snippet = (data.body ?? "").slice(0, 600);
       bodyCache.set(key, snippet);
       body = snippet;
       if (data.title && !title) title = data.title;
     } catch {
-      body = '';
+      body = "";
     } finally {
       loading = false;
     }
   }
 
-  function handleShow(state: { id: string; title: string; x: number; y: number }) {
+  function handleShow(state: {
+    id: string;
+    title: string;
+    x: number;
+    y: number;
+  }) {
     id = state.id;
     title = state.title || state.id;
-    body = '';
+    body = "";
     // Clamp coords inside viewport (popover is 360 wide).
     const margin = 8;
     const popW = 360;
     const popH = 220;
     let nx = state.x + 12;
     let ny = state.y + 12;
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       if (nx + popW > window.innerWidth - margin) {
         nx = Math.max(margin, window.innerWidth - popW - margin);
       }
@@ -91,12 +96,12 @@
   onMount(() => {
     (window as any).__pkmPreview = {
       show: handleShow,
-      hide: handleHide
+      hide: handleHide,
     };
   });
 
   onDestroy(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       try {
         delete (window as any).__pkmPreview;
       } catch {

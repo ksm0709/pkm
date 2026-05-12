@@ -12,13 +12,13 @@
  * liveStyling so the markdown highlighter installs a base style that
  * live-styling can override on the active line.
  */
-import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
-import { GFM } from '@lezer/markdown';
+import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { GFM } from "@lezer/markdown";
 
 // markdownLanguage already enables GFM-ish syntax (sub/sup/emoji); we
 // pass GFM explicitly so Tables are guaranteed to be parsed regardless
 // of base-language defaults.
 export const markdownWithGfm = markdown({
   base: markdownLanguage,
-  extensions: [GFM]
+  extensions: [GFM],
 });

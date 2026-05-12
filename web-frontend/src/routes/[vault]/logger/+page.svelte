@@ -1,12 +1,13 @@
 <script lang="ts">
-  import { tick } from 'svelte';
-  import { page } from '$app/stores';
-  import { apiClient, apiGet } from '$lib/api/client.js';
+  import { tick } from "svelte";
+  import { goto } from "$app/navigation";
+  import { page } from "$app/stores";
+  import { apiClient, apiGet } from "$lib/api/client.js";
   import {
     applyInlineSuggestion,
     detectInlineTrigger,
-    fetchInlineSuggestions
-  } from '$lib/inline-suggestions.js';
+    fetchInlineSuggestions,
+  } from "$lib/inline-suggestions.js";
 
   interface DailyNote {
     note_id: string;
@@ -22,24 +23,25 @@
 
   let vaultName = $derived($page.params.vault);
 
-  let today = $state('');
+  let today = $state("");
   let logs = $state<LogEntry[]>([]);
   let loading = $state(true);
   let busy = $state(false);
-  let error = $state('');
-  let inputValue = $state('');
+  let error = $state("");
+  let inputValue = $state("");
   let scrollEl: HTMLDivElement | null = $state(null);
   let textareaEl: HTMLTextAreaElement | null = $state(null);
   let inlineRows = $state<any[]>([]);
   let inlineActiveIndex = $state(0);
   let inlineTrigger = $state<any | null>(null);
+  let loggerActionsOpen = $state(false);
   let inlineRequestId = 0;
 
   const logLinePattern = /^\s*-\s+\[(\d{2}:\d{2}(?::\d{2})?)\]\s+(.+?)\s*$/;
 
   function parseLogs(body: string): LogEntry[] {
     return body
-      .split('\n')
+      .split("\n")
       .map((line) => line.match(logLinePattern))
       .filter((match): match is RegExpMatchArray => match !== null)
       .map((match) => {
@@ -47,7 +49,7 @@
         return {
           time,
           hour: `${time.slice(0, 2)}:00`,
-          text: match[2]
+          text: match[2],
         };
       });
   }
@@ -66,17 +68,21 @@
   }
 
   let logGroups = $derived(groupedLogs(logs));
-  let inlineMenuOpen = $derived(!busy && inlineTrigger && inlineRows.length > 0);
+  let inlineMenuOpen = $derived(
+    !busy && inlineTrigger && inlineRows.length > 0,
+  );
 
   async function loadToday() {
     loading = true;
-    error = '';
+    error = "";
     try {
-      const note = await apiGet<DailyNote>(`/api/v1/vault/${vaultName}/daily/today`);
+      const note = await apiGet<DailyNote>(
+        `/api/v1/vault/${vaultName}/daily/today`,
+      );
       today = note.note_id;
-      logs = parseLogs(note.body ?? '');
+      logs = parseLogs(note.body ?? "");
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to load today logs.';
+      error = e instanceof Error ? e.message : "Failed to load today logs.";
     } finally {
       loading = false;
       await tick();
@@ -90,18 +96,19 @@
 
   function autoresize() {
     if (!textareaEl) return;
-    textareaEl.style.height = 'auto';
+    textareaEl.style.height = "auto";
     textareaEl.style.height = `${Math.min(textareaEl.scrollHeight, 220)}px`;
   }
 
   async function refreshInlineSuggestions(
     currentValue = inputValue,
     cursor = textareaEl?.selectionStart ?? inputValue.length,
-    currentVault = vaultName
+    currentVault = vaultName,
   ) {
     const requestId = ++inlineRequestId;
     const trigger =
-      detectInlineTrigger(currentValue, cursor) || detectInlineTrigger(currentValue, currentValue.length);
+      detectInlineTrigger(currentValue, cursor) ||
+      detectInlineTrigger(currentValue, currentValue.length);
     inlineTrigger = trigger;
     inlineActiveIndex = 0;
     if (!trigger) {
@@ -132,28 +139,69 @@
     });
   }
 
+  function toggleLoggerActions() {
+    loggerActionsOpen = !loggerActionsOpen;
+    if (loggerActionsOpen) {
+      inlineRows = [];
+      inlineTrigger = null;
+      inlineActiveIndex = 0;
+    }
+  }
+
+  async function createDailySubnote() {
+    const title =
+      typeof window !== "undefined" ? window.prompt("Subnote title") : null;
+    loggerActionsOpen = false;
+    if (!title || busy) return;
+
+    busy = true;
+    error = "";
+    try {
+      const response = await apiClient(
+        `/api/v1/vault/${vaultName}/daily/today`,
+        {
+          method: "POST",
+          body: JSON.stringify({ type: "subnote", title, content: "" }),
+        },
+      );
+      if (!response.ok)
+        throw new Error(`POST daily sub-note -> ${response.status}`);
+      const payload = (await response.json()) as { note_id?: string };
+      if (payload.note_id) {
+        await goto(`/${vaultName}/notes/${payload.note_id}`);
+      }
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to create sub-note.";
+    } finally {
+      busy = false;
+    }
+  }
+
   async function submitLog() {
     const text = inputValue.trim();
     if (!text || busy) return;
     busy = true;
-    error = '';
+    error = "";
     try {
-      const response = await apiClient(`/api/v1/vault/${vaultName}/daily/today`, {
-        method: 'POST',
-        body: JSON.stringify({ type: 'entry', content: text })
-      });
+      const response = await apiClient(
+        `/api/v1/vault/${vaultName}/daily/today`,
+        {
+          method: "POST",
+          body: JSON.stringify({ type: "entry", content: text }),
+        },
+      );
       if (!response.ok) throw new Error(`POST daily log -> ${response.status}`);
       const payload = (await response.json()) as { entry?: string };
-      const [entry] = parseLogs(payload.entry ?? '');
+      const [entry] = parseLogs(payload.entry ?? "");
       if (entry) logs = [...logs, entry];
-      inputValue = '';
+      inputValue = "";
       inlineRows = [];
       inlineTrigger = null;
-      if (textareaEl) textareaEl.style.height = 'auto';
+      if (textareaEl) textareaEl.style.height = "auto";
       await tick();
       scrollToBottom();
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to append log.';
+      error = e instanceof Error ? e.message : "Failed to append log.";
     } finally {
       busy = false;
     }
@@ -161,32 +209,38 @@
 
   function handleKeydown(event: KeyboardEvent) {
     if (inlineMenuOpen) {
-      if (event.key === 'ArrowDown') {
+      if (event.key === "ArrowDown") {
         event.preventDefault();
         inlineActiveIndex = (inlineActiveIndex + 1) % inlineRows.length;
         return;
       }
-      if (event.key === 'ArrowUp') {
+      if (event.key === "ArrowUp") {
         event.preventDefault();
-        inlineActiveIndex = (inlineActiveIndex - 1 + inlineRows.length) % inlineRows.length;
+        inlineActiveIndex =
+          (inlineActiveIndex - 1 + inlineRows.length) % inlineRows.length;
         return;
       }
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         event.preventDefault();
         inlineRows = [];
         inlineTrigger = null;
         inlineActiveIndex = 0;
+        loggerActionsOpen = false;
         return;
       }
-      if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey) {
+      if (event.key === "Enter" && !event.metaKey && !event.ctrlKey) {
         event.preventDefault();
         completeInlineRow();
         return;
       }
     }
-    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
       event.preventDefault();
       void submitLog();
+    }
+    if (event.key === "Escape" && loggerActionsOpen) {
+      event.preventDefault();
+      loggerActionsOpen = false;
     }
   }
 
@@ -257,7 +311,11 @@
     }}
   >
     {#if inlineMenuOpen}
-      <div class="inline-suggest-menu" role="listbox" aria-label="Inline suggestions">
+      <div
+        class="inline-suggest-menu"
+        role="listbox"
+        aria-label="Inline suggestions"
+      >
         {#each inlineRows as row, i (`${row.kind}:${row.label}`)}
           <!-- svelte-ignore a11y_click_events_have_key_events -->
           <div
@@ -270,19 +328,47 @@
             onmousedown={(event) => event.preventDefault()}
             onclick={() => completeInlineRow(row)}
           >
-            <span class="inline-suggest-glyph" aria-hidden="true">{i === inlineActiveIndex ? '>' : ''}</span>
+            <span class="inline-suggest-glyph" aria-hidden="true"
+              >{i === inlineActiveIndex ? ">" : ""}</span
+            >
             <span class="inline-suggest-label">{row.label}</span>
             <span class="inline-suggest-detail">{row.detail}</span>
           </div>
         {/each}
       </div>
     {/if}
+    {#if loggerActionsOpen}
+      <div class="logger-action-menu" role="menu" aria-label="Logger actions">
+        <button
+          type="button"
+          class="logger-action-row"
+          role="menuitem"
+          aria-label="Add sub-note"
+          disabled={busy}
+          onclick={() => void createDailySubnote()}
+        >
+          <span aria-hidden="true">+</span>
+          <span>Add sub-note</span>
+        </button>
+      </div>
+    {/if}
+    <button
+      type="button"
+      class="action-toggle"
+      aria-label="Open logger actions"
+      aria-haspopup="menu"
+      aria-expanded={loggerActionsOpen}
+      disabled={busy}
+      onclick={toggleLoggerActions}
+    >
+      +
+    </button>
     <span class="prompt-mark" aria-hidden="true">LOG</span>
     <textarea
       bind:this={textareaEl}
       bind:value={inputValue}
       class="logger-textarea"
-      placeholder={busy ? 'Saving…' : 'Add log… (⌘↵ to submit, ↵ newline)'}
+      placeholder={busy ? "Saving…" : "Add log… (⌘↵ to submit, ↵ newline)"}
       rows="1"
       disabled={busy}
       spellcheck="false"
@@ -302,6 +388,8 @@
 
 <style>
   .logger-page {
+    --logger-content-width: min(1180px, calc(100vw - 64px));
+
     display: flex;
     flex-direction: column;
     height: calc(100vh - var(--topbar-height, 44px));
@@ -317,13 +405,20 @@
   }
 
   .logger-column {
+    box-sizing: border-box;
+    width: var(--logger-content-width);
+    max-width: none;
     padding-top: var(--space-6, 32px);
+    padding-right: 0;
     padding-bottom: var(--space-7, 48px);
+    padding-left: 0;
   }
 
   .logger-date,
   .status,
   .prompt-mark,
+  .action-toggle,
+  .logger-action-menu,
   .logger-textarea,
   .submit-btn {
     font-family: var(--font-mono);
@@ -390,7 +485,7 @@
     color: var(--text);
     font-family: var(--font-mono);
     font-size: var(--type-body-size, 15px);
-    line-height: var(--type-body-lh, 1.70);
+    line-height: var(--type-body-lh, 1.7);
     overflow-wrap: anywhere;
     word-break: break-word;
   }
@@ -426,6 +521,66 @@
     color: var(--text);
     font-family: var(--font-mono);
     box-shadow: none;
+  }
+
+  .logger-action-menu {
+    position: absolute;
+    bottom: calc(100% + 1px);
+    left: 0;
+    z-index: 6;
+    width: min(320px, 100%);
+    border-top: 1px solid var(--accent);
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface, var(--bg));
+    color: var(--text);
+  }
+
+  .logger-action-row {
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr);
+    gap: var(--space-2, 8px);
+    align-items: center;
+    width: 100%;
+    min-height: 36px;
+    padding: 0 var(--space-4, 16px);
+    color: var(--text);
+    background: transparent;
+    border: 0;
+    border-left: 2px solid transparent;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .logger-action-row:hover,
+  .logger-action-row:focus-visible {
+    border-left-color: var(--accent);
+    background: var(--accent-bg);
+    outline: none;
+  }
+
+  .logger-action-row span:first-child {
+    color: var(--accent);
+  }
+
+  .action-toggle {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    color: var(--accent);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm, 2px);
+    cursor: pointer;
+  }
+
+  .action-toggle[aria-expanded="true"],
+  .action-toggle:not(:disabled):hover,
+  .action-toggle:focus-visible {
+    border-color: var(--accent);
+    background: var(--accent-bg);
+    outline: none;
   }
 
   .inline-suggest-row {
@@ -484,7 +639,7 @@
     border-radius: 0;
     padding: var(--space-1, 4px) var(--space-2, 8px);
     font-size: var(--type-body-size, 15px);
-    line-height: var(--type-body-lh, 1.70);
+    line-height: var(--type-body-lh, 1.7);
     outline: none;
     caret-color: var(--accent);
   }
@@ -516,6 +671,10 @@
   }
 
   @media (max-width: 640px) {
+    .logger-page {
+      --logger-content-width: min(100%, calc(100vw - 32px));
+    }
+
     .hour-group,
     .log-message {
       display: flex;

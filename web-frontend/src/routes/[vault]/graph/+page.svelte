@@ -1,17 +1,17 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
-  import { goto } from '$app/navigation';
-  import { page } from '$app/stores';
-  import { apiClient } from '$lib/api/client.js';
-  import { focusNeighborhood, graphFocusState } from '$lib/graph/focus.js';
-  import { classifyGraphGesture } from '$lib/graph/gestures.js';
-  import { hitTestNode } from '$lib/graph/hit-test.js';
+  import { untrack } from "svelte";
+  import { goto } from "$app/navigation";
+  import { page } from "$app/stores";
+  import { apiClient } from "$lib/api/client.js";
+  import { focusNeighborhood, graphFocusState } from "$lib/graph/focus.js";
+  import { classifyGraphGesture } from "$lib/graph/gestures.js";
+  import { hitTestNode } from "$lib/graph/hit-test.js";
   import {
     createGraphSimulation,
     type GraphSimulationController,
     type GraphSimulationLink,
-    type GraphSimulationNode
-  } from '$lib/graph/simulation.js';
+    type GraphSimulationNode,
+  } from "$lib/graph/simulation.js";
   import {
     fitToBounds,
     panTransform,
@@ -19,9 +19,13 @@
     screenToWorld,
     wheelZoomTransform,
     zoomAt,
-    type GraphTransform
-  } from '$lib/graph/viewport.js';
-  import { normalizeGraph, type NormalizedGraph, type NormalizedGraphNode } from '$lib/graph/normalize.js';
+    type GraphTransform,
+  } from "$lib/graph/viewport.js";
+  import {
+    normalizeGraph,
+    type NormalizedGraph,
+    type NormalizedGraphNode,
+  } from "$lib/graph/normalize.js";
 
   type PreviewState = {
     node: NormalizedGraphNode;
@@ -34,7 +38,11 @@
   type GraphTestApi = {
     settle: (ticks?: number) => Promise<void>;
     getNode: (id: string) => ReturnType<typeof serializeNode>;
-    getEdge: (source: string, target: string, type?: string) => ReturnType<typeof serializeEdge>;
+    getEdge: (
+      source: string,
+      target: string,
+      type?: string,
+    ) => ReturnType<typeof serializeEdge>;
     getTransform: () => GraphTransform;
     getFocusState: (id: string) => string | null;
     getRenderedLabels: () => Array<{ id: string; text: string }>;
@@ -42,7 +50,11 @@
     dragNode: (id: string, dx: number, dy: number) => Promise<void>;
     getRenderedCounts: () => { nodes: number; edges: number; labels: number };
     getForceOptions: () => { repulsion: number; linkDistance: number };
-    getSimulationState: () => { generation: number; alpha: number; paused: boolean };
+    getSimulationState: () => {
+      generation: number;
+      alpha: number;
+      paused: boolean;
+    };
     getWorldState: () => ReturnType<typeof graphWorldState>;
     getNodeStyle: (id: string) => ReturnType<typeof graphNodeStyle>;
   };
@@ -62,22 +74,25 @@
   const BACKGROUND_DOUBLE_TAP_MS = 360;
   const BACKGROUND_DOUBLE_TAP_RADIUS = 28;
 
-  let vaultName = $derived($page.params.vault ?? '');
+  let vaultName = $derived($page.params.vault ?? "");
   let loading = $state(true);
-  let error = $state('');
+  let error = $state("");
   let missingGraph = $state(false);
   let rawGraph = $state<unknown>(null);
   let focusedId = $state<string | null>(null);
   let hoveredId = $state<string | null>(null);
   let selectedId = $state<string | null>(null);
   let preview = $state<PreviewState | null>(null);
-  let searchQuery = $state('');
+  let searchQuery = $state("");
   let paused = $state(false);
   let transform = $state<GraphTransform>({ x: 0, y: 0, k: 1 });
   let renderVersion = $state(0);
   let repulsion = $state(-420);
   let linkDistance = $state(92);
-  let graphWorld = { width: GRAPH_FALLBACK_WIDTH, height: GRAPH_FALLBACK_HEIGHT };
+  let graphWorld = {
+    width: GRAPH_FALLBACK_WIDTH,
+    height: GRAPH_FALLBACK_HEIGHT,
+  };
 
   let loadToken = 0;
   let canvas = $state<HTMLCanvasElement | null>(null);
@@ -87,10 +102,25 @@
   let activePointers = new Map<number, { x: number; y: number }>();
   let lastBackgroundTap: { x: number; y: number; at: number } | null = null;
   let pointer:
-    | { mode: 'node'; pointerId: number; nodeId: string; x: number; y: number; startedAt: number; moved: boolean }
-    | { mode: 'pan'; pointerId: number; x: number; y: number; startedAt: number; moved: boolean }
     | {
-        mode: 'pinch';
+        mode: "node";
+        pointerId: number;
+        nodeId: string;
+        x: number;
+        y: number;
+        startedAt: number;
+        moved: boolean;
+      }
+    | {
+        mode: "pan";
+        pointerId: number;
+        x: number;
+        y: number;
+        startedAt: number;
+        moved: boolean;
+      }
+    | {
+        mode: "pinch";
         pointerIds: [number, number];
         startCenter: { x: number; y: number };
         startDistance: number;
@@ -103,10 +133,14 @@
   const interactiveGraph = $derived(selectInteractiveGraph(graph));
   const focusStates = $derived(graphFocusState(interactiveGraph, focusedId, 1));
   const focusedNode = $derived(
-    focusedId ? interactiveGraph.nodes.find((node) => node.id === focusedId) ?? null : null
+    focusedId
+      ? (interactiveGraph.nodes.find((node) => node.id === focusedId) ?? null)
+      : null,
   );
-  const focusedDescription = $derived(focusedNode?.description?.trim() ?? '');
-  const searchResults = $derived(searchGraphNodes(interactiveGraph.nodes, searchQuery));
+  const focusedDescription = $derived(focusedNode?.description?.trim() ?? "");
+  const searchResults = $derived(
+    searchGraphNodes(interactiveGraph.nodes, searchQuery),
+  );
   const a11yStatus = $derived(accessibilityStatus());
 
   $effect(() => {
@@ -115,7 +149,14 @@
   });
 
   $effect(() => {
-    if (!canvas || loading || error || missingGraph || interactiveGraph.nodes.length === 0) return;
+    if (
+      !canvas ||
+      loading ||
+      error ||
+      missingGraph ||
+      interactiveGraph.nodes.length === 0
+    )
+      return;
 
     simulation?.dispose();
     cancelAnimationFrame(raf);
@@ -130,9 +171,13 @@
       chargeStrength: initialForce.repulsion,
       linkDistance: initialForce.linkDistance,
       autoStart: true,
-      onTick: scheduleDraw
+      onTick: scheduleDraw,
     });
-    transform = fitToBounds({ minX: 0, minY: 0, maxX: graphWorld.width, maxY: graphWorld.height }, size, 0);
+    transform = fitToBounds(
+      { minX: 0, minY: 0, maxX: graphWorld.width, maxY: graphWorld.height },
+      size,
+      0,
+    );
     paused = false;
     scheduleDraw();
     installTestApi();
@@ -157,17 +202,20 @@
   async function loadGraph(vault: string) {
     const token = ++loadToken;
     loading = true;
-    error = '';
+    error = "";
     missingGraph = false;
     rawGraph = null;
     focusedId = null;
     hoveredId = null;
     selectedId = null;
     preview = null;
-    searchQuery = '';
+    searchQuery = "";
 
     try {
-      const response = await apiClient(`/api/v1/vault/${encodeURIComponent(vault)}/graph`, { method: 'GET' });
+      const response = await apiClient(
+        `/api/v1/vault/${encodeURIComponent(vault)}/graph`,
+        { method: "GET" },
+      );
       if (token !== loadToken) return;
       if (response.status === 404) {
         missingGraph = true;
@@ -177,7 +225,7 @@
       rawGraph = await response.json();
     } catch (e) {
       if (token !== loadToken) return;
-      error = e instanceof Error ? e.message : 'Failed to load graph.';
+      error = e instanceof Error ? e.message : "Failed to load graph.";
     } finally {
       if (token === loadToken) loading = false;
     }
@@ -189,12 +237,14 @@
       [...source.nodes]
         .sort(compareGraphImportance)
         .slice(0, INTERACTIVE_NODE_CAP)
-        .map((node) => node.id)
+        .map((node) => node.id),
     );
     return {
       ...source,
       nodes: source.nodes.filter((node) => nodeIds.has(node.id)),
-      edges: source.edges.filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target))
+      edges: source.edges.filter(
+        (edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target),
+      ),
     };
   }
 
@@ -208,13 +258,16 @@
 
   function drawGraph() {
     if (!canvas || !simulation) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const rect = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
     const width = Math.max(1, rect.width);
     const height = Math.max(1, rect.height);
-    if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)) {
+    if (
+      canvas.width !== Math.round(width * dpr) ||
+      canvas.height !== Math.round(height * dpr)
+    ) {
       canvas.width = Math.round(width * dpr);
       canvas.height = Math.round(height * dpr);
     }
@@ -228,20 +281,26 @@
     const nodeById = new Map(nodes.map((node) => [node.id, node]));
     const labels = visibleLabelIds(nodes);
 
-    ctx.lineCap = 'round';
+    ctx.lineCap = "round";
     for (const edge of simulation.links()) {
       if (!edge.visible) continue;
       const source = linkNode(edge.source, nodeById);
       const target = linkNode(edge.target, nodeById);
       if (!source || !target) continue;
-      const sourceState = states.get(source.id) ?? 'normal';
-      const targetState = states.get(target.id) ?? 'normal';
-      const muted = sourceState === 'muted' && targetState === 'muted';
+      const sourceState = states.get(source.id) ?? "normal";
+      const targetState = states.get(target.id) ?? "normal";
+      const muted = sourceState === "muted" && targetState === "muted";
       const a = worldToCanvas(source);
       const b = worldToCanvas(target);
-      ctx.globalAlpha = muted ? 0.08 : edge.type.includes('semantic') ? 0.28 : 0.42;
-      ctx.strokeStyle = edge.type.includes('semantic') ? palette.semanticEdge : palette.edge;
-      ctx.lineWidth = edge.type.includes('semantic') ? 1.1 : 0.9;
+      ctx.globalAlpha = muted
+        ? 0.08
+        : edge.type.includes("semantic")
+          ? 0.28
+          : 0.42;
+      ctx.strokeStyle = edge.type.includes("semantic")
+        ? palette.semanticEdge
+        : palette.edge;
+      ctx.lineWidth = edge.type.includes("semantic") ? 1.1 : 0.9;
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.lineTo(b.x, b.y);
@@ -249,35 +308,55 @@
     }
 
     for (const node of nodes) {
-      const state = states.get(node.id) ?? 'normal';
+      const state = states.get(node.id) ?? "normal";
       const pos = worldToCanvas(node);
-      ctx.globalAlpha = state === 'muted' ? 0.18 : 1;
+      ctx.globalAlpha = state === "muted" ? 0.18 : 1;
       ctx.fillStyle = nodeColor(node, palette);
       ctx.strokeStyle = nodeStroke(node, palette);
       ctx.lineWidth = node.id === focusedId ? 3 : node.hub ? 2.5 : 1.4;
       ctx.beginPath();
-      ctx.arc(pos.x, pos.y, Math.max(3, node.radius * transform.k), 0, Math.PI * 2);
+      ctx.arc(
+        pos.x,
+        pos.y,
+        Math.max(3, node.radius * transform.k),
+        0,
+        Math.PI * 2,
+      );
       ctx.fill();
       ctx.stroke();
-      if (node.id === hoveredId || node.id === selectedId || node.id === focusedId) {
+      if (
+        node.id === hoveredId ||
+        node.id === selectedId ||
+        node.id === focusedId
+      ) {
         ctx.globalAlpha = 0.28;
         ctx.strokeStyle = palette.accent;
         ctx.lineWidth = 4;
         ctx.beginPath();
-        ctx.arc(pos.x, pos.y, Math.max(6, (node.radius + 5) * transform.k), 0, Math.PI * 2);
+        ctx.arc(
+          pos.x,
+          pos.y,
+          Math.max(6, (node.radius + 5) * transform.k),
+          0,
+          Math.PI * 2,
+        );
         ctx.stroke();
       }
     }
 
-    ctx.font = '12px var(--font-mono, monospace)';
-    ctx.textBaseline = 'middle';
+    ctx.font = "12px var(--font-mono, monospace)";
+    ctx.textBaseline = "middle";
     for (const node of nodes) {
       if (!labels.has(node.id)) continue;
-      const state = states.get(node.id) ?? 'normal';
+      const state = states.get(node.id) ?? "normal";
       const pos = worldToCanvas(node);
-      ctx.globalAlpha = state === 'muted' ? 0.22 : 0.9;
+      ctx.globalAlpha = state === "muted" ? 0.22 : 0.9;
       ctx.fillStyle = palette.label;
-      ctx.fillText(labelText(node), pos.x + node.radius * transform.k + 6, pos.y);
+      ctx.fillText(
+        labelText(node),
+        pos.x + node.radius * transform.k + 6,
+        pos.y,
+      );
     }
     ctx.globalAlpha = 1;
   }
@@ -285,7 +364,7 @@
   function worldToCanvas(point: { x: number; y: number }) {
     return {
       x: point.x * transform.k + transform.x,
-      y: point.y * transform.k + transform.y
+      y: point.y * transform.k + transform.y,
     };
   }
 
@@ -342,7 +421,7 @@
       // Some synthetic browser events used in tests do not support pointer capture.
     }
 
-    if (event.pointerType === 'touch' && activePointers.size >= 2) {
+    if (event.pointerType === "touch" && activePointers.size >= 2) {
       startPinchGesture();
       return;
     }
@@ -350,20 +429,27 @@
     const node = hitTestNode(simulation.nodes(), point, transform);
     if (node) {
       pointer = {
-        mode: 'node',
+        mode: "node",
         pointerId: event.pointerId,
         nodeId: node.id,
         x: point.x,
         y: point.y,
         startedAt: Date.now(),
-        moved: false
+        moved: false,
       };
       node.fx = node.x;
       node.fy = node.y;
       selectedId = node.id;
       simulation.reheat(0.25);
     } else {
-      pointer = { mode: 'pan', pointerId: event.pointerId, x: point.x, y: point.y, startedAt: Date.now(), moved: false };
+      pointer = {
+        mode: "pan",
+        pointerId: event.pointerId,
+        x: point.x,
+        y: point.y,
+        startedAt: Date.now(),
+        moved: false,
+      };
     }
   }
 
@@ -371,14 +457,23 @@
     if (!pointer || !simulation) return;
     const point = relativePoint(event);
     activePointers.set(event.pointerId, point);
-    if (pointer.mode === 'pinch') {
+    if (pointer.mode === "pinch") {
       const a = activePointers.get(pointer.pointerIds[0]);
       const b = activePointers.get(pointer.pointerIds[1]);
       if (!a || !b) return;
       const center = midpoint(a, b);
       const distance = pointDistance(a, b);
-      const zoomed = pinchZoomTransform(pointer.startTransform, pointer.startCenter, pointer.startDistance, distance);
-      transform = panTransform(zoomed, center.x - pointer.startCenter.x, center.y - pointer.startCenter.y);
+      const zoomed = pinchZoomTransform(
+        pointer.startTransform,
+        pointer.startCenter,
+        pointer.startDistance,
+        distance,
+      );
+      transform = panTransform(
+        zoomed,
+        center.x - pointer.startCenter.x,
+        center.y - pointer.startCenter.y,
+      );
       pointer.moved = true;
       scheduleDraw();
       return;
@@ -388,13 +483,15 @@
     const dy = point.y - pointer.y;
     if (Math.hypot(dx, dy) > 2) pointer.moved = true;
 
-    if (pointer.mode === 'pan') {
+    if (pointer.mode === "pan") {
       transform = panTransform(transform, dx, dy);
       pointer.x = point.x;
       pointer.y = point.y;
       scheduleDraw();
     } else {
-      const node = simulation.nodes().find((entry) => entry.id === pointer?.nodeId);
+      const node = simulation
+        .nodes()
+        .find((entry) => entry.id === pointer?.nodeId);
       if (node) {
         const world = screenToWorld(point, transform);
         node.fx = world.x;
@@ -410,13 +507,16 @@
   async function handlePointerUp(event: PointerEvent) {
     if (!pointer || !simulation) return;
     activePointers.delete(event.pointerId);
-    if (pointer.mode === 'pinch') {
+    if (pointer.mode === "pinch") {
       pointer = null;
       return;
     }
     if (event.pointerId !== pointer.pointerId) return;
     const ended = pointer;
-    const node = ended.mode === 'node' ? simulation.nodes().find((entry) => entry.id === ended.nodeId) : null;
+    const node =
+      ended.mode === "node"
+        ? simulation.nodes().find((entry) => entry.id === ended.nodeId)
+        : null;
     if (node) {
       node.fx = null;
       node.fy = null;
@@ -427,7 +527,7 @@
       lastBackgroundTap = null;
       return;
     }
-    if (ended.mode === 'pan') {
+    if (ended.mode === "pan") {
       handleBackgroundTap({ x: ended.x, y: ended.y });
       return;
     }
@@ -438,10 +538,10 @@
       metaKey: event.metaKey,
       ctrlKey: event.ctrlKey,
       button: event.button,
-      longPressMs: LONG_PRESS_MS
+      longPressMs: LONG_PRESS_MS,
     });
-    if (action === 'preview') await openPreview(node);
-    else if (action === 'focus') focusNode(node);
+    if (action === "preview") await openPreview(node);
+    else if (action === "focus") focusNode(node);
   }
 
   function handleBackgroundTap(point: { x: number; y: number }) {
@@ -449,7 +549,8 @@
     const previous = lastBackgroundTap;
     lastBackgroundTap = { ...point, at: now };
     if (!previous) return;
-    const closeEnough = pointDistance(point, previous) <= BACKGROUND_DOUBLE_TAP_RADIUS;
+    const closeEnough =
+      pointDistance(point, previous) <= BACKGROUND_DOUBLE_TAP_RADIUS;
     const soonEnough = now - previous.at <= BACKGROUND_DOUBLE_TAP_MS;
     if (!closeEnough || !soonEnough) return;
     clearFocus();
@@ -460,8 +561,10 @@
     if (event) activePointers.delete(event.pointerId);
     else activePointers.clear();
     lastBackgroundTap = null;
-    if (pointer?.mode === 'node' && simulation) {
-      const node = simulation.nodes().find((entry) => entry.id === pointer?.nodeId);
+    if (pointer?.mode === "node" && simulation) {
+      const node = simulation
+        .nodes()
+        .find((entry) => entry.id === pointer?.nodeId);
       if (node) {
         node.fx = null;
         node.fy = null;
@@ -477,18 +580,20 @@
     const [first, second] = entries;
     const startCenter = midpoint(first[1], second[1]);
     pointer = {
-      mode: 'pinch',
+      mode: "pinch",
       pointerIds: [first[0], second[0]],
       startCenter,
       startDistance: pointDistance(first[1], second[1]),
       startTransform: { ...transform },
-      moved: false
+      moved: false,
     };
   }
 
   function releaseActiveNode() {
-    if (pointer?.mode !== 'node' || !simulation) return;
-    const node = simulation.nodes().find((entry) => entry.id === pointer?.nodeId);
+    if (pointer?.mode !== "node" || !simulation) return;
+    const node = simulation
+      .nodes()
+      .find((entry) => entry.id === pointer?.nodeId);
     if (!node) return;
     node.fx = null;
     node.fy = null;
@@ -497,11 +602,14 @@
   function midpoint(a: { x: number; y: number }, b: { x: number; y: number }) {
     return {
       x: (a.x + b.x) / 2,
-      y: (a.y + b.y) / 2
+      y: (a.y + b.y) / 2,
     };
   }
 
-  function pointDistance(a: { x: number; y: number }, b: { x: number; y: number }) {
+  function pointDistance(
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+  ) {
     return Math.hypot(a.x - b.x, a.y - b.y);
   }
 
@@ -509,7 +617,7 @@
     const rect = canvas?.getBoundingClientRect();
     return {
       x: event.clientX - (rect?.left ?? 0),
-      y: event.clientY - (rect?.top ?? 0)
+      y: event.clientY - (rect?.top ?? 0),
     };
   }
 
@@ -529,7 +637,7 @@
   }
 
   async function openPreview(node: NormalizedGraphNode | GraphSimulationNode) {
-    if (node.type !== 'note') {
+    if (node.type !== "note") {
       focusNode(node);
       return;
     }
@@ -538,34 +646,43 @@
     preview = {
       node,
       title: node.label,
-      body: '',
+      body: "",
       loading: true,
-      error: ''
+      error: "",
     };
 
     try {
       const response = await apiClient(
         `/api/v1/vault/${encodeURIComponent(vaultName)}/notes/${encodeURIComponent(node.id)}`,
-        { method: 'GET' }
+        { method: "GET" },
       );
       if (!response.ok) throw new Error(`preview -> ${response.status}`);
       const payload = await response.json();
       if (!preview || preview.node.id !== node.id) return;
       preview = {
         node,
-        title: stringValue(payload.title) || stringValue(payload.note_id) || node.label,
-        body: stringValue(payload.body) || stringValue(payload.content) || '',
+        title:
+          stringValue(payload.title) ||
+          stringValue(payload.note_id) ||
+          node.label,
+        body: stringValue(payload.body) || stringValue(payload.content) || "",
         loading: false,
-        error: ''
+        error: "",
       };
     } catch (e) {
       if (!preview || preview.node.id !== node.id) return;
-      preview = { ...preview, loading: false, error: e instanceof Error ? e.message : 'preview failed' };
+      preview = {
+        ...preview,
+        loading: false,
+        error: e instanceof Error ? e.message : "preview failed",
+      };
     }
   }
 
   function openNote(node: NormalizedGraphNode) {
-    void goto(`/${encodeURIComponent(vaultName)}/notes/${encodeURIComponent(node.id)}`);
+    void goto(
+      `/${encodeURIComponent(vaultName)}/notes/${encodeURIComponent(node.id)}`,
+    );
   }
 
   function closePreview() {
@@ -573,7 +690,7 @@
   }
 
   function handleKeydown(event: KeyboardEvent) {
-    if (event.key !== 'Escape') return;
+    if (event.key !== "Escape") return;
     if (preview) {
       preview = null;
       return;
@@ -607,20 +724,35 @@
   function zoomBy(delta: number) {
     if (!canvas) return;
     const size = canvasSize();
-    transform = zoomAt(transform, { x: size.width / 2, y: size.height / 2 }, transform.k + delta);
+    transform = zoomAt(
+      transform,
+      { x: size.width / 2, y: size.height / 2 },
+      transform.k + delta,
+    );
     scheduleDraw();
   }
 
   function resetView() {
     if (!canvas) return;
-    transform = fitToBounds({ minX: 0, minY: 0, maxX: graphWorld.width, maxY: graphWorld.height }, canvasSize(), 0);
+    transform = fitToBounds(
+      { minX: 0, minY: 0, maxX: graphWorld.width, maxY: graphWorld.height },
+      canvasSize(),
+      0,
+    );
     scheduleDraw();
   }
 
   function installTestApi() {
-    if (typeof window === 'undefined') return;
-    const testHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    if (!import.meta.env.DEV && import.meta.env.VITE_PKM_GRAPH_TEST_API !== '1' && !testHost) return;
+    if (typeof window === "undefined") return;
+    const testHost =
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1";
+    if (
+      !import.meta.env.DEV &&
+      import.meta.env.VITE_PKM_GRAPH_TEST_API !== "1" &&
+      !testHost
+    )
+      return;
     const graphWindow = window as GraphWindow;
     graphWindow.__pkmGraphTest = {
       settle: async (ticks = 180) => {
@@ -628,7 +760,10 @@
         drawGraph();
         renderVersion += 1;
       },
-      getNode: (id) => serializeNode(simulation?.nodes().find((node) => node.id === id) ?? null),
+      getNode: (id) =>
+        serializeNode(
+          simulation?.nodes().find((node) => node.id === id) ?? null,
+        ),
       getEdge: (source, target, type) => {
         const edge =
           simulation
@@ -637,16 +772,21 @@
               (entry) =>
                 linkId(entry.source) === source &&
                 linkId(entry.target) === target &&
-                (!type || entry.type === type)
+                (!type || entry.type === type),
             ) ?? null;
         return serializeEdge(edge);
       },
       getTransform: () => ({ ...transform }),
       getFocusState: (id) => focusStates.get(id) ?? null,
-      getRenderedLabels: () => (simulation ? renderedLabels(simulation.nodes()) : []),
+      getRenderedLabels: () =>
+        simulation ? renderedLabels(simulation.nodes()) : [],
       hitTest: (screenX, screenY) => {
         if (!simulation) return null;
-        const node = hitTestNode(simulation.nodes(), { x: screenX, y: screenY }, transform);
+        const node = hitTestNode(
+          simulation.nodes(),
+          { x: screenX, y: screenY },
+          transform,
+        );
         return node ? { id: node.id } : null;
       },
       dragNode: async (id, dx, dy) => {
@@ -666,21 +806,21 @@
       getRenderedCounts: () => ({
         nodes: simulation?.nodes().filter((node) => node.visible).length ?? 0,
         edges: simulation?.links().filter((edge) => edge.visible).length ?? 0,
-        labels: simulation ? visibleLabelIds(simulation.nodes()).size : 0
+        labels: simulation ? visibleLabelIds(simulation.nodes()).size : 0,
       }),
       getForceOptions: () => ({ repulsion, linkDistance }),
       getSimulationState: () => ({
         generation: simulationGeneration,
         alpha: round(simulation?.alpha() ?? 0),
-        paused: simulation?.isPaused() ?? true
+        paused: simulation?.isPaused() ?? true,
       }),
       getWorldState: graphWorldState,
-      getNodeStyle: graphNodeStyle
+      getNodeStyle: graphNodeStyle,
     };
   }
 
   function uninstallTestApi() {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     delete (window as GraphWindow).__pkmGraphTest;
   }
 
@@ -695,7 +835,7 @@
       radius: round(node.radius),
       degree: node.degree,
       hub: node.hub,
-      visible: node.visible
+      visible: node.visible,
     };
   }
 
@@ -707,48 +847,68 @@
       type: edge.type,
       distance: round(edge.distance),
       confidence: round(edge.confidence),
-      visible: edge.visible
+      visible: edge.visible,
     };
   }
 
-  function linkNode(value: string | GraphSimulationNode, byId: Map<string, GraphSimulationNode>) {
-    return typeof value === 'string' ? byId.get(value) : value;
+  function linkNode(
+    value: string | GraphSimulationNode,
+    byId: Map<string, GraphSimulationNode>,
+  ) {
+    return typeof value === "string" ? byId.get(value) : value;
   }
 
   function linkId(value: string | GraphSimulationNode) {
-    return typeof value === 'string' ? value : value.id;
+    return typeof value === "string" ? value : value.id;
   }
 
   function canvasSize() {
     const rect = canvas?.getBoundingClientRect();
     return {
       width: Math.max(1, rect?.width ?? GRAPH_FALLBACK_WIDTH),
-      height: Math.max(1, rect?.height ?? GRAPH_FALLBACK_HEIGHT)
+      height: Math.max(1, rect?.height ?? GRAPH_FALLBACK_HEIGHT),
     };
   }
 
-  function graphWorldSize(size: { width: number; height: number }, nodeCount: number) {
+  function graphWorldSize(
+    size: { width: number; height: number },
+    nodeCount: number,
+  ) {
     const spread = Math.max(1, Math.sqrt(Math.max(1, nodeCount)));
     return {
-      width: Math.round(Math.max(GRAPH_FALLBACK_WIDTH, size.width * GRAPH_WORLD_VIEWPORT_SCALE, spread * GRAPH_WORLD_NODE_SPACING_X)),
-      height: Math.round(Math.max(GRAPH_FALLBACK_HEIGHT, size.height * GRAPH_WORLD_VIEWPORT_SCALE, spread * GRAPH_WORLD_NODE_SPACING_Y))
+      width: Math.round(
+        Math.max(
+          GRAPH_FALLBACK_WIDTH,
+          size.width * GRAPH_WORLD_VIEWPORT_SCALE,
+          spread * GRAPH_WORLD_NODE_SPACING_X,
+        ),
+      ),
+      height: Math.round(
+        Math.max(
+          GRAPH_FALLBACK_HEIGHT,
+          size.height * GRAPH_WORLD_VIEWPORT_SCALE,
+          spread * GRAPH_WORLD_NODE_SPACING_Y,
+        ),
+      ),
     };
   }
 
   function graphWorldState() {
     return {
       ...graphWorld,
-      nodeBounds: nodeBounds(simulation?.nodes() ?? [])
+      nodeBounds: nodeBounds(simulation?.nodes() ?? []),
     };
   }
 
   function graphNodeStyle(id: string) {
-    const node = simulation?.nodes().find((entry) => entry.id === id) ?? interactiveGraph.nodes.find((entry) => entry.id === id);
+    const node =
+      simulation?.nodes().find((entry) => entry.id === id) ??
+      interactiveGraph.nodes.find((entry) => entry.id === id);
     const palette = graphPalette();
     return node
       ? {
           fill: nodeColor(node, palette),
-          stroke: nodeStroke(node, palette)
+          stroke: nodeStroke(node, palette),
         }
       : null;
   }
@@ -760,9 +920,9 @@
         minX: Math.min(bounds.minX, round(node.x)),
         minY: Math.min(bounds.minY, round(node.y)),
         maxX: Math.max(bounds.maxX, round(node.x)),
-        maxY: Math.max(bounds.maxY, round(node.y))
+        maxY: Math.max(bounds.maxY, round(node.y)),
       }),
-      { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
+      { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
     );
   }
 
@@ -770,20 +930,30 @@
     const q = query.trim().toLowerCase();
     if (!q) return [];
     return nodes
-      .filter((node) => node.label.toLowerCase().includes(q) || node.id.toLowerCase().includes(q))
+      .filter(
+        (node) =>
+          node.label.toLowerCase().includes(q) ||
+          node.id.toLowerCase().includes(q),
+      )
       .sort(compareGraphImportance)
       .slice(0, 8);
   }
 
   function accessibilityStatus() {
     const focused = focusedNode;
-    if (!focused) return `Graph ready. ${interactiveGraph.nodes.length} nodes. Focus: full graph.`;
-    const neighborCount = [...focusStates.values()].filter((state) => state === 'neighbor').length;
-    const previewState = preview ? 'Preview open.' : 'Preview closed.';
+    if (!focused)
+      return `Graph ready. ${interactiveGraph.nodes.length} nodes. Focus: full graph.`;
+    const neighborCount = [...focusStates.values()].filter(
+      (state) => state === "neighbor",
+    ).length;
+    const previewState = preview ? "Preview open." : "Preview closed.";
     return `Focus: ${focused.label}. ${neighborCount} neighbors. ${previewState}`;
   }
 
-  function compareGraphImportance(a: NormalizedGraphNode, b: NormalizedGraphNode) {
+  function compareGraphImportance(
+    a: NormalizedGraphNode,
+    b: NormalizedGraphNode,
+  ) {
     return (
       Number(b.hub) - Number(a.hub) ||
       b.importance - a.importance ||
@@ -795,46 +965,58 @@
   }
 
   function graphPalette() {
-    const dark = typeof document !== 'undefined' && document.documentElement.dataset.theme === 'dark';
+    const dark =
+      typeof document !== "undefined" &&
+      document.documentElement.dataset.theme === "dark";
     return {
-      note: dark ? '#6b7280' : '#374151',
-      dailyNote: dark ? '#86efac' : '#bbf7d0',
-      tag: dark ? '#facc15' : '#ca8a04',
-      hub: '#2563eb',
-      unresolved: '#9a3412',
-      noteStroke: dark ? '#cbd5e1' : '#111827',
-      dailyNoteStroke: dark ? '#bbf7d0' : '#16a34a',
-      edge: dark ? '#64748b' : '#94a3b8',
-      semanticEdge: dark ? '#a78bfa' : '#7c3aed',
-      accent: '#eab308',
-      label: dark ? '#e5e7eb' : '#111827'
+      note: dark ? "#6b7280" : "#374151",
+      dailyNote: dark ? "#86efac" : "#bbf7d0",
+      tag: dark ? "#facc15" : "#ca8a04",
+      hub: "#2563eb",
+      unresolved: "#9a3412",
+      noteStroke: dark ? "#cbd5e1" : "#111827",
+      dailyNoteStroke: dark ? "#bbf7d0" : "#16a34a",
+      edge: dark ? "#64748b" : "#94a3b8",
+      semanticEdge: dark ? "#a78bfa" : "#7c3aed",
+      accent: "#eab308",
+      label: dark ? "#e5e7eb" : "#111827",
     };
   }
 
-  function nodeColor(node: NormalizedGraphNode, palette: ReturnType<typeof graphPalette>) {
+  function nodeColor(
+    node: NormalizedGraphNode,
+    palette: ReturnType<typeof graphPalette>,
+  ) {
     if (node.hub) return palette.hub;
-    if (node.type === 'tag') return palette.tag;
-    if (node.type === 'note_or_unresolved') return palette.unresolved;
+    if (node.type === "tag") return palette.tag;
+    if (node.type === "note_or_unresolved") return palette.unresolved;
     if (isDailyNote(node)) return palette.dailyNote;
     return palette.note;
   }
 
-  function nodeStroke(node: NormalizedGraphNode, palette: ReturnType<typeof graphPalette>) {
-    if (node.hub) return '#93c5fd';
-    if (node.type === 'tag') return '#fef08a';
+  function nodeStroke(
+    node: NormalizedGraphNode,
+    palette: ReturnType<typeof graphPalette>,
+  ) {
+    if (node.hub) return "#93c5fd";
+    if (node.type === "tag") return "#fef08a";
     if (isDailyNote(node)) return palette.dailyNoteStroke;
     return palette.noteStroke;
   }
 
   function isDailyNote(node: NormalizedGraphNode) {
-    if (node.type !== 'note') return false;
+    if (node.type !== "note") return false;
     const community = node.community.toLowerCase();
-    const path = stringValue(node.raw.path).replace(/\\/g, '/').toLowerCase();
-    return community === 'daily' || path.includes('/daily/') || /^\d{4}-\d{2}-\d{2}(?:$|-)/.test(node.id);
+    const path = stringValue(node.raw.path).replace(/\\/g, "/").toLowerCase();
+    return (
+      community === "daily" ||
+      path.includes("/daily/") ||
+      /^\d{4}-\d{2}-\d{2}(?:$|-)/.test(node.id)
+    );
   }
 
   function stringValue(value: unknown) {
-    return typeof value === 'string' ? value : '';
+    return typeof value === "string" ? value : "";
   }
 
   function round(value: number) {
@@ -850,10 +1032,21 @@
 
 <main class="graph-page">
   {#if loading}
-    <section class="graph-layout" data-testid="graph-layout" data-preview-open="false">
+    <section
+      class="graph-layout"
+      data-testid="graph-layout"
+      data-preview-open="false"
+    >
       <div class="graph-stage">
-        <p class="graph-summary" data-testid="graph-summary">Loading graph...</p>
-        <div class="force-surface" data-testid="graph-force-surface" role="application" aria-label="Vault graph">
+        <p class="graph-summary" data-testid="graph-summary">
+          Loading graph...
+        </p>
+        <div
+          class="force-surface"
+          data-testid="graph-force-surface"
+          role="application"
+          aria-label="Vault graph"
+        >
           <p class="status-msg">Loading graph...</p>
         </div>
       </div>
@@ -868,17 +1061,23 @@
   {:else if graph.nodes.length === 0}
     <section class="empty-state" aria-label="Empty graph">
       <p class="empty-title">Graph is empty.</p>
-      <p>Run <code>pkm index</code> after adding notes or links to populate the graph.</p>
+      <p>
+        Run <code>pkm index</code> after adding notes or links to populate the graph.
+      </p>
     </section>
   {:else}
     <section
       class="graph-layout"
       class:preview-open={Boolean(preview)}
       data-testid="graph-layout"
-      data-preview-open={preview ? 'true' : 'false'}
+      data-preview-open={preview ? "true" : "false"}
     >
       <div class="graph-stage">
-        <div class="graph-controls" data-testid="graph-controls" aria-label="Graph controls">
+        <div
+          class="graph-controls"
+          data-testid="graph-controls"
+          aria-label="Graph controls"
+        >
           <label class="search-control">
             <span>Search</span>
             <input
@@ -889,10 +1088,20 @@
             />
           </label>
           <div class="control-buttons">
-            <button type="button" aria-label="Zoom out" onclick={() => zoomBy(-0.1)}>−</button>
-            <button type="button" aria-label="Zoom in" onclick={() => zoomBy(0.1)}>+</button>
+            <button
+              type="button"
+              aria-label="Zoom out"
+              onclick={() => zoomBy(-0.1)}>−</button
+            >
+            <button
+              type="button"
+              aria-label="Zoom in"
+              onclick={() => zoomBy(0.1)}>+</button
+            >
             <button type="button" onclick={resetView}>Fit</button>
-            <button type="button" onclick={setPaused}>{paused ? 'Resume' : 'Pause'}</button>
+            <button type="button" onclick={setPaused}
+              >{paused ? "Resume" : "Pause"}</button
+            >
           </div>
           <div class="force-controls" aria-label="Force controls">
             <label>
@@ -934,25 +1143,41 @@
               {/if}
             </p>
             {#if focusedDescription}
-              <p class="graph-focus-description" data-testid="graph-focus-description">{focusedDescription}</p>
+              <p
+                class="graph-focus-description"
+                data-testid="graph-focus-description"
+              >
+                {focusedDescription}
+              </p>
             {/if}
           </div>
-          {#if focusedNode?.type === 'note'}
-            <button type="button" onclick={() => void openPreview(focusedNode)}>Preview focused note</button>
+          {#if focusedNode?.type === "note"}
+            <button type="button" onclick={() => void openPreview(focusedNode)}
+              >Preview focused note</button
+            >
           {/if}
         </div>
 
         {#if searchResults.length}
           <div class="search-results" aria-label="Graph search results">
             {#each searchResults as result (result.id)}
-              <button type="button" onclick={() => focusNode(result)}>Focus {result.label}</button>
+              <button type="button" onclick={() => focusNode(result)}
+                >Focus {result.label}</button
+              >
             {/each}
           </div>
         {/if}
 
-        <p class="sr-status" data-testid="graph-a11y-status" aria-live="polite">{a11yStatus}</p>
+        <p class="sr-status" data-testid="graph-a11y-status" aria-live="polite">
+          {a11yStatus}
+        </p>
 
-        <div class="force-surface" data-testid="graph-force-surface" role="application" aria-label="Vault graph">
+        <div
+          class="force-surface"
+          data-testid="graph-force-surface"
+          role="application"
+          aria-label="Vault graph"
+        >
           <canvas
             bind:this={canvas}
             class="graph-canvas"
@@ -969,7 +1194,11 @@
       </div>
 
       {#if preview}
-        <aside class="preview-sheet" data-testid="graph-preview-sheet" aria-label="Graph note preview">
+        <aside
+          class="preview-sheet"
+          data-testid="graph-preview-sheet"
+          aria-label="Graph note preview"
+        >
           <div class="preview-head">
             <div>
               <p class="preview-kicker">Preview</p>
@@ -998,7 +1227,9 @@
           {#if preview.loading}
             <p class="preview-status">Loading preview...</p>
           {:else if preview.error}
-            <p class="preview-status error" data-testid="graph-preview-error">{preview.error}</p>
+            <p class="preview-status error" data-testid="graph-preview-error">
+              {preview.error}
+            </p>
           {:else}
             <pre class="preview-body">{preview.body}</pre>
           {/if}

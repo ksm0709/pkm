@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Page } from "@playwright/test";
 
 /**
  * Inject `data-theme` onto <html> before any page script runs so the SPA
@@ -7,7 +7,7 @@ import type { Page } from '@playwright/test';
  */
 export async function applyTheme(
   page: Page,
-  theme: 'light' | 'dark'
+  theme: "light" | "dark",
 ): Promise<void> {
   await page.addInitScript((mode: string) => {
     document.documentElement.dataset.theme = mode;
@@ -18,6 +18,6 @@ export async function applyTheme(
  * Derive theme from project name (chromium-light → light, chromium-dark → dark).
  * Falls back to 'light' for unknown projects.
  */
-export function themeFromProject(projectName: string): 'light' | 'dark' {
-  return projectName.includes('dark') ? 'dark' : 'light';
+export function themeFromProject(projectName: string): "light" | "dark" {
+  return projectName.includes("dark") ? "dark" : "light";
 }

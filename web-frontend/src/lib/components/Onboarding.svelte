@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
+  import { goto } from "$app/navigation";
 
-  let password = $state('');
+  let password = $state("");
   let remember = $state(true);
-  let error = $state('');
+  let error = $state("");
   let loading = $state(false);
 
   async function handleSubmit(e: SubmitEvent) {
@@ -11,22 +11,22 @@
     if (!password) return;
 
     loading = true;
-    error = '';
+    error = "";
 
     try {
-      const result = await fetch('/api/v1/auth/login', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password, remember })
+      const result = await fetch("/api/v1/auth/login", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password, remember }),
       });
 
       if (result.ok) {
-        localStorage.removeItem('pkm.token');
-        sessionStorage.removeItem('pkm.token');
+        localStorage.removeItem("pkm.token");
+        sessionStorage.removeItem("pkm.token");
 
         // Navigate to last vault or first available
-        const lastVault = localStorage.getItem('pkm.lastVault');
+        const lastVault = localStorage.getItem("pkm.lastVault");
         if (lastVault) {
           await goto(`/${lastVault}/logger`);
         } else {
@@ -35,17 +35,17 @@
           if (vaults.length > 0) {
             await goto(`/${vaults[0].name}/logger`);
           } else {
-            await goto('/');
+            await goto("/");
           }
         }
       } else {
         error =
           result.status === 401
-            ? 'Invalid password.'
-            : 'Password login is not configured.';
+            ? "Invalid password."
+            : "Password login is not configured.";
       }
     } catch {
-      error = 'Cannot reach daemon. Is pkm running?';
+      error = "Cannot reach daemon. Is pkm running?";
     } finally {
       loading = false;
     }
@@ -57,7 +57,9 @@
     <section class="signal-block" aria-labelledby="login-title">
       <p class="eyebrow">local knowledge station</p>
       <h1 id="login-title" class="wordmark">pkm</h1>
-      <p class="tagline">Authenticate to the local daemon and reopen your thinking cockpit.</p>
+      <p class="tagline">
+        Authenticate to the local daemon and reopen your thinking cockpit.
+      </p>
 
       <dl class="meta-grid" aria-label="Session requirements">
         <div>
@@ -66,7 +68,7 @@
         </div>
         <div>
           <dt>session cookie</dt>
-          <dd>{remember ? 'persistent' : 'session'}</dd>
+          <dd>{remember ? "persistent" : "session"}</dd>
         </div>
       </dl>
     </section>
@@ -75,7 +77,9 @@
       <div class="form-rail" aria-hidden="true"></div>
       <div class="form-header">
         <p class="form-kicker">entry console</p>
-        <p class="form-copy">Password-only access. Existing cookie flow is preserved.</p>
+        <p class="form-copy">
+          Password-only access. Existing cookie flow is preserved.
+        </p>
       </div>
 
       <div class="field">
@@ -101,7 +105,7 @@
       {/if}
 
       <button class="submit-btn" type="submit" disabled={loading || !password}>
-        <span>{loading ? 'Signing in…' : 'Sign in'}</span>
+        <span>{loading ? "Signing in…" : "Sign in"}</span>
       </button>
     </form>
   </div>
@@ -115,7 +119,7 @@
     --text: #e8ecef;
     --text-muted: #9aa6ad;
     --text-faint: #5f6970;
-    --border: rgba(159, 177, 188, 0.20);
+    --border: rgba(159, 177, 188, 0.2);
     --accent: #ecaa4a;
     --accent-bg: rgba(236, 170, 74, 0.12);
     --signal: #ecaa4a;
@@ -148,7 +152,7 @@
   }
 
   .signal-block::before {
-    content: '';
+    content: "";
     position: absolute;
     left: -1px;
     top: 0;
@@ -190,7 +194,7 @@
     max-width: 42ch;
     font-family: var(--font-mono);
     font-size: var(--type-body-size, 15px);
-    line-height: var(--type-body-lh, 1.70);
+    line-height: var(--type-body-lh, 1.7);
     color: var(--text-muted, #9aa6ad);
     margin-bottom: var(--space-6, 32px);
   }
@@ -204,7 +208,7 @@
   .meta-grid div {
     padding: var(--space-3, 12px);
     background: rgba(159, 177, 188, 0.045);
-    border: 1px solid var(--border, rgba(159, 177, 188, 0.20));
+    border: 1px solid var(--border, rgba(159, 177, 188, 0.2));
   }
 
   .meta-grid dt {
@@ -228,7 +232,7 @@
     width: 100%;
     padding: var(--space-5, 24px);
     background: var(--surface, var(--bg-elev, #101419));
-    border: 1px solid var(--border, rgba(159, 177, 188, 0.20));
+    border: 1px solid var(--border, rgba(159, 177, 188, 0.2));
     border-top-color: var(--rail, rgba(236, 170, 74, 0.58));
   }
 
@@ -243,7 +247,7 @@
 
   .form-header {
     padding-bottom: var(--space-2, 8px);
-    border-bottom: 1px solid var(--border, rgba(159, 177, 188, 0.20));
+    border-bottom: 1px solid var(--border, rgba(159, 177, 188, 0.2));
   }
 
   .form-copy {
@@ -274,7 +278,7 @@
     font-size: var(--type-body-size, 15px);
     color: var(--text, #e8ecef);
     background-color: var(--bg, #090b0d);
-    border: 1px solid var(--border, rgba(159, 177, 188, 0.20));
+    border: 1px solid var(--border, rgba(159, 177, 188, 0.2));
     border-radius: var(--radius-none, 0);
     padding: var(--space-2, 8px) var(--space-3, 12px);
     outline: none;
@@ -298,7 +302,7 @@
     cursor: pointer;
   }
 
-  .remember-label input[type='checkbox'] {
+  .remember-label input[type="checkbox"] {
     accent-color: var(--signal, var(--accent, #ecaa4a));
     width: 14px;
     height: 14px;

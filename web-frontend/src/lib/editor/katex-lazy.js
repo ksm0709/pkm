@@ -13,8 +13,13 @@
  * Cursor-line-reveal interop: the active line is left raw so the user
  * can edit math source. Decorations only apply on non-active lines.
  */
-import { ViewPlugin, Decoration, WidgetType, EditorView } from '@codemirror/view';
-import { RangeSetBuilder } from '@codemirror/state';
+import {
+  ViewPlugin,
+  Decoration,
+  WidgetType,
+  EditorView,
+} from "@codemirror/view";
+import { RangeSetBuilder } from "@codemirror/state";
 
 /**
  * @typedef {{
@@ -37,16 +42,16 @@ function loadKatex() {
   if (katexModule) return Promise.resolve(katexModule);
   if (katexLoading) return katexLoading;
   katexLoading = (async () => {
-    const mod = await import('katex');
-    if (!cssInjected && typeof document !== 'undefined') {
+    const mod = await import("katex");
+    if (!cssInjected && typeof document !== "undefined") {
       // Vite resolves the `?url` query at build time, emitting katex CSS
       // as a separate asset and returning the URL. We attach it via a
       // <link> tag so it doesn't bloat the main JS bundle.
       try {
         // @ts-ignore — Vite-specific query suffix
-        const mod = await import('katex/dist/katex.min.css?url');
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
+        const mod = await import("katex/dist/katex.min.css?url");
+        const link = document.createElement("link");
+        link.rel = "stylesheet";
         link.href = mod.default;
         document.head.appendChild(link);
       } catch {
@@ -75,13 +80,15 @@ class MathWidget extends WidgetType {
     return other.source === this.source && other.display === this.display;
   }
   toDOM() {
-    const host = document.createElement('span');
-    host.className = this.display ? 'cm-md-math cm-md-math-block' : 'cm-md-math';
+    const host = document.createElement("span");
+    host.className = this.display
+      ? "cm-md-math cm-md-math-block"
+      : "cm-md-math";
     if (katexModule) {
       try {
         katexModule.render(this.source, host, {
           throwOnError: false,
-          displayMode: this.display
+          displayMode: this.display,
         });
       } catch {
         host.textContent = this.source;
@@ -128,7 +135,7 @@ function buildDecorations(view) {
           ranges.push({
             from: start,
             to: end,
-            deco: Decoration.replace({ widget: new MathWidget(bm[1], true) })
+            deco: Decoration.replace({ widget: new MathWidget(bm[1], true) }),
           });
         }
 
@@ -144,7 +151,7 @@ function buildDecorations(view) {
           ranges.push({
             from: start,
             to: end,
-            deco: Decoration.replace({ widget: new MathWidget(im[1], false) })
+            deco: Decoration.replace({ widget: new MathWidget(im[1], false) }),
           });
         }
 
@@ -182,17 +189,17 @@ export const katexLazy = ViewPlugin.fromClass(
       });
     }
   },
-  { decorations: (v) => v.decorations }
+  { decorations: (v) => v.decorations },
 );
 
 export const katexLazyTheme = EditorView.baseTheme({
-  '.cm-md-math': {
-    fontFamily: 'var(--font-display)',
-    color: 'var(--text)',
-    padding: '0 2px'
+  ".cm-md-math": {
+    fontFamily: "var(--font-display)",
+    color: "var(--text)",
+    padding: "0 2px",
   },
-  '.cm-md-math-block': {
-    display: 'inline-block',
-    padding: '0 var(--space-3, 12px)'
-  }
+  ".cm-md-math-block": {
+    display: "inline-block",
+    padding: "0 var(--space-3, 12px)",
+  },
 });

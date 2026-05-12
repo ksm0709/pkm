@@ -8,6 +8,7 @@
     decorateRenderedHtml,
     tagHue,
   } from "$lib/notes/rendered-markdown.js";
+  import { wikilinksToMarkdownLinks } from "$lib/notes/wikilinks.js";
 
   interface Note {
     note_id: string;
@@ -51,9 +52,15 @@
   let renderedBody = $state("");
   let editMode = $state(false);
   let editorDoc = $state("");
+  let savedDoc = $state("");
+  let editorMode = $state<"vim" | "plain">("vim");
+  let saving = $state(false);
+  let saveError = $state("");
+  let saveStatus = $state("");
 
   let vaultName = $derived($page.params.vault);
   let noteId = $derived($page.params.id);
+  let editorDirty = $derived(editorDoc !== savedDoc);
   let loadToken = 0;
   const dailyNoteIdPattern = /^\d{4}-\d{2}-\d{2}$/;
   const taskStateOrder = ["[ ]", "[>]", "[x]", "[~]"] as const;
@@ -70,10 +77,6 @@
 
   function tagHref(vault: string, tag: string) {
     return `/${encodeURIComponent(vault)}/notes/${encodeURIComponent(`tag:${tag}`)}`;
-  }
-
-  function escapeMarkdownLabel(text: string) {
-    return text.replace(/([\\[\]])/g, "\\$1");
   }
 
   function taskStateKind(state: string) {
@@ -173,31 +176,8 @@
     return didReplace ? updated : markdown;
   }
 
-  function wikilinkToMarkdownLinks(markdown: string, vault: string) {
-    return forMarkdownTextSegments(markdown, (segment) =>
-      segment.replace(/\[\[([^\]\n]+)\]\]/g, (match, rawTarget, offset) => {
-        if (segment[offset - 1] === "!") return match;
-
-        const separatorIndex = rawTarget.indexOf("|");
-        const target =
-          separatorIndex >= 0
-            ? rawTarget.slice(0, separatorIndex).trim()
-            : rawTarget.trim();
-        const label =
-          separatorIndex >= 0
-            ? rawTarget.slice(separatorIndex + 1).trim()
-            : target;
-
-        if (!target) return match;
-
-        const href = `/${encodeURIComponent(vault)}/notes/${encodeURIComponent(target)}`;
-        return `[${escapeMarkdownLabel(label || target)}](${href})`;
-      }),
-    );
-  }
-
   async function renderNoteBody(markdown: string, vault: string) {
-    const markdownWithLinks = wikilinkToMarkdownLinks(markdown, vault);
+    const markdownWithLinks = wikilinksToMarkdownLinks(markdown, vault);
     const markdownWithTaskStates = withTaskStateButtons(markdownWithLinks);
     const parsedBody = await marked.parse(markdownWithTaskStates, {
       async: true,
@@ -230,6 +210,7 @@
     const body = updatedNote.body ?? updatedBody;
     note = { ...updatedNote, body };
     editorDoc = body;
+    savedDoc = body;
     renderedBody = await renderNoteBody(body, vaultName);
   }
 
@@ -266,6 +247,9 @@
     error = "";
     renderedBody = "";
     editorDoc = "";
+    savedDoc = "";
+    saveError = "";
+    saveStatus = "";
     editMode = false;
 
     const noteEndpoint = dailyNoteIdPattern.test(id)
@@ -286,6 +270,7 @@
       if (token !== loadToken) return;
       note = loadedNote;
       editorDoc = loadedBody;
+      savedDoc = loadedBody;
       renderedBody = nextRenderedBody;
     } else {
       error = isTagNoteId(id) ? "Tag note not found." : "Note not found.";
@@ -327,6 +312,38 @@
       errorValue instanceof Error &&
       /(?:→|->)\s*404\b|404/.test(errorValue.message)
     );
+  }
+
+  async function saveNoteBody() {
+    if (!note || saving || !editorDirty) return;
+    saving = true;
+    saveError = "";
+    saveStatus = "Saving";
+
+    try {
+      const response = await apiClient(
+        `/api/v1/vault/${vaultName}/notes/${encodeURIComponent(note.note_id)}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ body: editorDoc }),
+        },
+      );
+      if (!response.ok) throw new Error(`PUT note body -> ${response.status}`);
+
+      const updatedNote = (await response.json()) as Note;
+      const body = updatedNote.body ?? editorDoc;
+      const nextRenderedBody = await renderNoteBody(body, vaultName);
+      note = { ...updatedNote, body };
+      editorDoc = body;
+      savedDoc = body;
+      renderedBody = nextRenderedBody;
+      saveStatus = "Saved";
+    } catch (e) {
+      saveError = e instanceof Error ? e.message : "Failed to save note.";
+      saveStatus = "Unsaved";
+    } finally {
+      saving = false;
+    }
   }
 
   $effect(() => {
@@ -409,8 +426,55 @@
       </header>
 
       {#if editMode}
+        <div class="editor-toolbar" aria-label="Editor controls">
+          <div class="editor-mode-toggle" aria-label="Editor mode">
+            <button
+              type="button"
+              class:active={editorMode === "vim"}
+              aria-pressed={editorMode === "vim"}
+              onclick={() => (editorMode = "vim")}
+            >
+              Vim
+            </button>
+            <button
+              type="button"
+              class:active={editorMode === "plain"}
+              aria-pressed={editorMode === "plain"}
+              onclick={() => (editorMode = "plain")}
+            >
+              Plain
+            </button>
+          </div>
+          <span
+            class:error={!!saveError}
+            class="editor-save-status"
+            aria-live="polite"
+          >
+            {saveError ||
+              (saving
+                ? "Saving"
+                : editorDirty
+                  ? "Unsaved"
+                  : saveStatus || "Saved")}
+          </span>
+          <button
+            type="button"
+            class="save-note-button"
+            aria-label="Save note"
+            disabled={!editorDirty || saving}
+            onclick={() => void saveNoteBody()}
+          >
+            Save
+          </button>
+        </div>
         <div class="note-editor">
-          <CodeMirror bind:doc={editorDoc} />
+          {#key editorMode}
+            <CodeMirror
+              bind:doc={editorDoc}
+              vimMode={editorMode === "vim"}
+              onSave={saveNoteBody}
+            />
+          {/key}
         </div>
       {:else}
         <!-- Rendered markdown body -->
@@ -502,6 +566,65 @@
   .mode-toggle button:hover {
     color: var(--bg);
     background: var(--accent);
+  }
+
+  .editor-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3, 12px);
+    margin-bottom: var(--space-2, 8px);
+    font-family: var(--font-mono);
+  }
+
+  .editor-mode-toggle {
+    display: flex;
+    border: 1px solid var(--border);
+  }
+
+  .editor-mode-toggle button,
+  .save-note-button {
+    min-height: 32px;
+    padding: 0 var(--space-3, 12px);
+    background: transparent;
+    border: 0;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--type-chrome-sm-size, 11px);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+  }
+
+  .editor-mode-toggle button + button {
+    border-left: 1px solid var(--border);
+  }
+
+  .editor-mode-toggle button.active,
+  .editor-mode-toggle button:hover,
+  .save-note-button:not(:disabled):hover {
+    color: var(--bg);
+    background: var(--accent);
+  }
+
+  .editor-save-status {
+    color: var(--text-faint);
+    font-size: var(--type-chrome-sm-size, 11px);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .editor-save-status.error {
+    color: var(--signal-danger, #c0392b);
+  }
+
+  .save-note-button {
+    margin-left: auto;
+    border: 1px solid var(--border);
+  }
+
+  .save-note-button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
   }
 
   .note-editor {

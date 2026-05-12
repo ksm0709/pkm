@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
-  import { page } from '$app/stores';
-  import { apiGet } from '$lib/api/client.js';
+  import { onMount, onDestroy } from "svelte";
+  import { page } from "$app/stores";
+  import { apiGet } from "$lib/api/client.js";
 
   interface DailyEntry {
     note_id?: string;
     date: string; // YYYY-MM-DD
-    kind?: 'daily' | 'subnote';
+    kind?: "daily" | "subnote";
     title: string;
     todo_count: number;
     snippet: string;
@@ -17,7 +17,7 @@
   let entries = $state<DailyEntry[]>([]);
   let loading = $state(false);
   let initialLoading = $state(true);
-  let error = $state('');
+  let error = $state("");
   let hasMore = $state(true);
 
   const today = new Date().toISOString().slice(0, 10);
@@ -39,7 +39,7 @@
         if (batch.length < PAGE_SIZE) hasMore = false;
       }
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to load daily notes.';
+      error = e instanceof Error ? e.message : "Failed to load daily notes.";
       hasMore = false;
     } finally {
       loading = false;
@@ -51,9 +51,9 @@
     if (loading || !hasMore) return;
     if (entries.length === 0) {
       // Use today + 1 day as exclusive upper bound so today is included.
-      const [y, m, d] = today.split('-').map(Number);
+      const [y, m, d] = today.split("-").map(Number);
       const next = new Date(y, m - 1, d + 1);
-      const cursor = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`;
+      const cursor = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`;
       loadPage(cursor);
     } else {
       const oldest = entries[entries.length - 1].date;
@@ -66,7 +66,7 @@
   }
 
   function isSubnote(entry: DailyEntry) {
-    return entry.kind === 'subnote' || noteIdFor(entry) !== entry.date;
+    return entry.kind === "subnote" || noteIdFor(entry) !== entry.date;
   }
 
   function subnoteLabel(entry: DailyEntry) {
@@ -85,7 +85,7 @@
             if (e.isIntersecting) loadMore();
           }
         },
-        { rootMargin: '200px' }
+        { rootMargin: "200px" },
       );
       observer.observe(sentinel);
     }
@@ -104,50 +104,61 @@
   //   gd → today's daily, gn/gp → next/prev neighbor, gx → external,
   //   <leader>k (Space + k) → ⌘K palette. Mirrors the editor mappings
   //   from F4-5 so the timeline page is reachable from itself.
-  let pending = '';
+  let pending = "";
   let pendingTimer: ReturnType<typeof setTimeout> | null = null;
 
   function isTypingTarget(t: EventTarget | null): boolean {
     if (!(t instanceof HTMLElement)) return false;
     const tag = t.tagName;
     return (
-      tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable
+      tag === "INPUT" ||
+      tag === "TEXTAREA" ||
+      tag === "SELECT" ||
+      t.isContentEditable
     );
   }
 
   function handleKeydown(e: KeyboardEvent): void {
     if (isTypingTarget(e.target)) return;
-    const nav = (window as any).__pkmNav as Record<string, () => void> | undefined;
+    const nav = (window as any).__pkmNav as
+      | Record<string, () => void>
+      | undefined;
     if (!nav) return;
     const key = e.key;
-    if (pending === 'g') {
-      pending = '';
+    if (pending === "g") {
+      pending = "";
       if (pendingTimer) clearTimeout(pendingTimer);
       pendingTimer = null;
       const map: Record<string, string> = {
-        d: 'gotoDaily', n: 'nextNeighbor', p: 'prevNeighbor', x: 'openExternal'
+        d: "gotoDaily",
+        n: "nextNeighbor",
+        p: "prevNeighbor",
+        x: "openExternal",
       };
       const action = map[key];
-      if (action && typeof nav[action] === 'function') {
+      if (action && typeof nav[action] === "function") {
         e.preventDefault();
         nav[action]();
       }
       return;
     }
-    if (pending === ' ' && key === 'k') {
-      pending = '';
+    if (pending === " " && key === "k") {
+      pending = "";
       if (pendingTimer) clearTimeout(pendingTimer);
       pendingTimer = null;
-      if (typeof nav.openPalette === 'function') {
+      if (typeof nav.openPalette === "function") {
         e.preventDefault();
         nav.openPalette();
       }
       return;
     }
-    if (key === 'g' || key === ' ') {
+    if (key === "g" || key === " ") {
       pending = key;
       if (pendingTimer) clearTimeout(pendingTimer);
-      pendingTimer = setTimeout(() => { pending = ''; pendingTimer = null; }, 800);
+      pendingTimer = setTimeout(() => {
+        pending = "";
+        pendingTimer = null;
+      }, 800);
     }
   }
 </script>
@@ -243,7 +254,9 @@
     font-size: var(--type-body-size, 15px);
     text-decoration: none;
     color: var(--text);
-    transition: background-color var(--dur-fast, 120ms) var(--ease-out), color var(--dur-fast, 120ms) var(--ease-out);
+    transition:
+      background-color var(--dur-fast, 120ms) var(--ease-out),
+      color var(--dur-fast, 120ms) var(--ease-out);
   }
 
   .entry.is-subnote .entry-link {
