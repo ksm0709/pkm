@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.79.0 (2026-05-12)
+
+### Features
+
+- Keep vault graph workflows current and readable
+  ([`f99c554`](https://github.com/ksm0709/pkm/commit/f99c5546a85eddd19f20cff430d8cfe36fe9edef))
+
+
 ## v2.78.3 (2026-05-12)
 
 ### Bug Fixes
