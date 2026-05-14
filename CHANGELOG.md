@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.82.0 (2026-05-14)
+
+### Features
+
+- Enable keyboard traversal across semantic note neighbors
+  ([`26fe47e`](https://github.com/ksm0709/pkm/commit/26fe47eaf38d270ba74438a8cc3445caac373c0f))
+
+
 ## v2.81.0 (2026-05-12)
 
 ### Features
