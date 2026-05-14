@@ -322,3 +322,42 @@ async def test_semantic_neighbors_ignore_wrong_type_and_unrelated_edges(
         data = await resp.json()
 
     assert [item["note_id"] for item in data["semantic"]] == ["semantic-target"]
+
+
+@pytest.mark.anyio
+async def test_semantic_neighbors_are_ranked_by_confidence_then_title(
+    web_cfg: WebConfig, tmp_vault: VaultConfig
+) -> None:
+    """Semantic neighbors should be deterministic for keyboard rank navigation."""
+    graph = nx.DiGraph()
+    graph.add_node("source-note", title="Source", type="note")
+    (tmp_vault.pkm_dir / "graph.json").write_text(
+        json.dumps(nx.node_link_data(graph)), encoding="utf-8"
+    )
+
+    enriched = nx.Graph()
+    enriched.add_node("source-note", title="Source", type="note")
+    enriched.add_node("third", title="Third", type="note")
+    enriched.add_node("alpha", title="Alpha", type="note")
+    enriched.add_node("beta", title="Beta", type="note")
+    enriched.add_edge("source-note", "third", type="semantic_similar", confidence=0.7)
+    enriched.add_edge("source-note", "beta", type="semantic_similar", confidence=0.9)
+    enriched.add_edge("source-note", "alpha", type="semantic_similar", confidence=0.9)
+    (tmp_vault.pkm_dir / "graph_enriched.json").write_text(
+        json.dumps(nx.node_link_data(enriched)), encoding="utf-8"
+    )
+
+    app = make_app(web_config=web_cfg)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/notes/source-note/neighbors",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 200
+        data = await resp.json()
+
+    assert [item["note_id"] for item in data["semantic"]] == [
+        "alpha",
+        "beta",
+        "third",
+    ]

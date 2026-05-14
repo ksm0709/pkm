@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRawSnippet, mount, tick, unmount } from "svelte";
+import { graphKeyNav } from "$lib/navigation/graph-keynav.svelte";
 import Layout from "./+layout.svelte";
 
 const mocks = vi.hoisted(() => ({
@@ -47,12 +48,14 @@ describe("vault layout goto key hints", () => {
         disconnect = vi.fn();
       },
     );
+    graphKeyNav.resetForTests();
   });
 
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.clearAllMocks();
+    graphKeyNav.resetForTests();
     document.documentElement.removeAttribute("style");
     document.body.innerHTML = "";
   });
@@ -73,11 +76,16 @@ describe("vault layout goto key hints", () => {
     return { component, target };
   }
 
-  async function press(key: string, target: EventTarget = window) {
+  async function press(
+    key: string,
+    target: EventTarget = window,
+    init: KeyboardEventInit = {},
+  ) {
     const event = new KeyboardEvent("keydown", {
       key,
       bubbles: true,
       cancelable: true,
+      ...init,
     });
     target.dispatchEvent(event);
     await tick();
@@ -97,14 +105,99 @@ describe("vault layout goto key hints", () => {
     expect(hint()?.textContent).toContain("g");
     expect(hint()?.textContent).toContain("d");
     expect(hint()?.textContent).toContain("Open daily note");
+    expect(hint()?.textContent).not.toContain("Follow link at cursor");
+    expect(hint()?.textContent).not.toContain("Open external link");
+
+    unmount(component);
+  });
+
+  it("shows ranked semantic note hints and follows g-number", async () => {
+    graphKeyNav.setCurrentNoteNavigationContext("main", "source-note", [
+      { note_id: "third", title: "Third", confidence: 0.7 },
+      { note_id: "beta", title: "Beta", confidence: 0.9 },
+      { note_id: "alpha", title: "Alpha", confidence: 0.9 },
+    ]);
+    const { component } = render();
+    await flush();
+
+    await press("g");
+
     expect(hint()?.textContent).toContain("n");
-    expect(hint()?.textContent).toContain("Next neighbor");
+    expect(hint()?.textContent).toContain("Next semantic neighbor");
     expect(hint()?.textContent).toContain("p");
-    expect(hint()?.textContent).toContain("Previous neighbor");
-    expect(hint()?.textContent).toContain("f");
-    expect(hint()?.textContent).toContain("Follow link at cursor");
-    expect(hint()?.textContent).toContain("x");
-    expect(hint()?.textContent).toContain("Open external link");
+    expect(hint()?.textContent).toContain("Previous semantic neighbor");
+    expect(hint()?.textContent).toContain("1");
+    expect(hint()?.textContent).toContain("Alpha");
+    expect(hint()?.textContent).toContain("0.90");
+    expect(hint()?.textContent).toContain("2");
+    expect(hint()?.textContent).toContain("Beta");
+
+    const event = await press("1");
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(mocks.goto).toHaveBeenCalledWith("/main/notes/alpha");
+    expect(hint()).toBeNull();
+
+    unmount(component);
+  });
+
+  it("ignores unavailable semantic ranks without preventing defaults", async () => {
+    graphKeyNav.setCurrentNoteNavigationContext("main", "source-note", [
+      { note_id: "alpha", title: "Alpha", confidence: 0.9 },
+    ]);
+    const { component } = render();
+    await flush();
+
+    await press("g");
+    const event = await press("9");
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(mocks.goto).not.toHaveBeenCalled();
+    expect(hint()).toBeNull();
+
+    unmount(component);
+  });
+
+  it("runs gn, gp, gb, and Ctrl+O through the navigation stack", async () => {
+    graphKeyNav.setCurrentNoteNavigationContext("main", "source-note", [
+      { note_id: "alpha", title: "Alpha", confidence: 0.9 },
+      { note_id: "beta", title: "Beta", confidence: 0.8 },
+    ]);
+    const { component } = render();
+    await flush();
+
+    await press("g");
+    await press("n");
+    expect(mocks.goto).toHaveBeenLastCalledWith("/main/notes/alpha");
+
+    mocks.goto.mockClear();
+    await press("g");
+    await press("p");
+    expect(mocks.goto).toHaveBeenLastCalledWith("/main/notes/beta");
+
+    mocks.goto.mockClear();
+    await press("g");
+    await press("b");
+    expect(mocks.goto).toHaveBeenLastCalledWith("/main/notes/source-note");
+
+    graphKeyNav.setCurrentNoteNavigationContext("main", "source-note", [
+      { note_id: "alpha", title: "Alpha", confidence: 0.9 },
+    ]);
+    await press("g");
+    await press("1");
+    mocks.goto.mockClear();
+
+    const ctrlO = await press("o", window, { ctrlKey: true, code: "KeyO" });
+    expect(ctrlO.defaultPrevented).toBe(true);
+    expect(mocks.goto).toHaveBeenLastCalledWith("/main/notes/source-note");
+
+    mocks.goto.mockClear();
+    const emptyCtrlO = await press("o", window, {
+      ctrlKey: true,
+      code: "KeyO",
+    });
+    expect(emptyCtrlO.defaultPrevented).toBe(false);
+    expect(mocks.goto).not.toHaveBeenCalled();
 
     unmount(component);
   });

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
   import { page } from "$app/stores";
   import { marked } from "marked";
   import { apiClient, apiGet } from "$lib/api/client.js";
@@ -9,6 +10,7 @@
     tagHue,
   } from "$lib/notes/rendered-markdown.js";
   import { wikilinksToMarkdownLinks } from "$lib/notes/wikilinks.js";
+  import { graphKeyNav } from "$lib/navigation/graph-keynav.svelte";
 
   interface Note {
     note_id: string;
@@ -251,6 +253,7 @@
     saveError = "";
     saveStatus = "";
     editMode = false;
+    graphKeyNav.clearCurrentNoteNavigationContext();
 
     const noteEndpoint = dailyNoteIdPattern.test(id)
       ? `/api/v1/vault/${vault}/daily/${id}`
@@ -263,8 +266,9 @@
 
     if (token !== loadToken) return;
 
+    let loadedNote: Note | null = null;
     if (noteResult.status === "fulfilled") {
-      const loadedNote = noteResult.value;
+      loadedNote = noteResult.value;
       const loadedBody = loadedNote.body ?? "";
       const nextRenderedBody = await renderNoteBody(loadedBody, vault);
       if (token !== loadToken) return;
@@ -281,6 +285,16 @@
       neighbors = neighborsResult.value;
     }
     loadingNeighbors = false;
+
+    if (loadedNote && neighborsResult.status === "fulfilled") {
+      graphKeyNav.setCurrentNoteNavigationContext(
+        vault,
+        loadedNote.note_id,
+        neighborsResult.value.semantic ?? [],
+      );
+    } else {
+      graphKeyNav.clearCurrentNoteNavigationContext(vault, id);
+    }
 
     // Track last vault
     localStorage.setItem("pkm.lastVault", vault);
@@ -349,6 +363,10 @@
   $effect(() => {
     if (!vaultName || !noteId) return;
     void loadNote(vaultName, noteId);
+  });
+
+  onDestroy(() => {
+    graphKeyNav.clearCurrentNoteNavigationContext(vaultName, noteId);
   });
 </script>
 

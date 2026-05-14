@@ -91,6 +91,13 @@ def _title_from_note_id(note_id: str) -> str:
     return note_id.replace("-", " ").replace("_", " ").strip() or note_id
 
 
+def _semantic_confidence(value: Any) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _validate_app_creatable_note_id(note_id: str) -> None:
     try:
         validate_note_id(note_id)
@@ -184,6 +191,13 @@ def _neighbors_data(vault: VaultConfig, note_id: str) -> dict:
                     "description": _node_description(attrs),
                 }
             )
+    semantic.sort(
+        key=lambda item: (
+            -_semantic_confidence(item.get("confidence")),
+            str(item.get("title") or item.get("note_id") or "").casefold(),
+            str(item.get("note_id") or "").casefold(),
+        )
+    )
 
     return {
         "note_id": note_id,

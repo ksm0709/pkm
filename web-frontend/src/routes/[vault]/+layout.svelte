@@ -8,6 +8,11 @@
   import WikilinkPreview from "$lib/components/WikilinkPreview.svelte";
   import { loadConfigs } from "$lib/configs/client";
   import {
+    graphKeyNav,
+    noteHref,
+    type NavigationTarget,
+  } from "$lib/navigation/graph-keynav.svelte";
+  import {
     DEFAULT_WINDOW_PADDING,
     applyWindowLayoutVars,
     clearWindowLayoutVars,
@@ -24,6 +29,7 @@
     | "gotoDaily"
     | "nextNeighbor"
     | "prevNeighbor"
+    | "back"
     | "followAtCursor"
     | "openExternal"
     | "openPalette";
@@ -31,30 +37,12 @@
   interface KeyHintAction {
     key: string;
     description: string;
-    navAction: NavAction;
+    navAction?: NavAction;
+    run?: () => boolean;
   }
 
   const KEY_HINT_TIMEOUT_MS = 1200;
-  const keyHintActions: Record<string, KeyHintAction[]> = {
-    g: [
-      { key: "d", description: "Open daily note", navAction: "gotoDaily" },
-      { key: "n", description: "Next neighbor", navAction: "nextNeighbor" },
-      {
-        key: "p",
-        description: "Previous neighbor",
-        navAction: "prevNeighbor",
-      },
-      {
-        key: "f",
-        description: "Follow link at cursor",
-        navAction: "followAtCursor",
-      },
-      {
-        key: "x",
-        description: "Open external link",
-        navAction: "openExternal",
-      },
-    ],
+  const leaderKeyHintActions: Record<string, KeyHintAction[]> = {
     " ": [
       {
         key: "k",
@@ -63,6 +51,61 @@
       },
     ],
   };
+  const keyHintPrefixes = new Set(["g", " "]);
+
+  function gotoKeyHintActions(): KeyHintAction[] {
+    const actions: KeyHintAction[] = [
+      { key: "d", description: "Open daily note", navAction: "gotoDaily" },
+    ];
+    if (graphKeyNav.hasSemanticNeighbors) {
+      actions.push(
+        {
+          key: "n",
+          description: "Next semantic neighbor",
+          navAction: "nextNeighbor",
+        },
+        {
+          key: "p",
+          description: "Previous semantic neighbor",
+          navAction: "prevNeighbor",
+        },
+      );
+      for (const action of graphKeyNav.semanticRankActions) {
+        actions.push({
+          key: action.key,
+          description: action.description,
+          run: () =>
+            navigateGraphTarget(
+              graphKeyNav.navigateToSemanticRank(action.rank),
+            ),
+        });
+      }
+    }
+    if (graphKeyNav.canGoBack) {
+      actions.push({
+        key: "b",
+        description: "Back",
+        navAction: "back",
+      });
+    }
+    return actions;
+  }
+
+  function keyHintActionsFor(prefix: string) {
+    if (prefix === "g") return gotoKeyHintActions();
+    return leaderKeyHintActions[prefix] ?? [];
+  }
+
+  function navigateGraphTarget(target: NavigationTarget | null) {
+    if (!target) return false;
+    void goto(noteHref(target));
+    return true;
+  }
+
+  function gotoDailyNote() {
+    graphKeyNav.pushCurrent();
+    return goto(`/${vaultName}/notes/${new Date().toISOString().slice(0, 10)}`);
+  }
 
   let { children }: Props = $props();
 
@@ -78,7 +121,7 @@
   let pendingTimer: ReturnType<typeof setTimeout> | null = null;
   let layoutLoadSequence = 0;
   let resizeObserver: ResizeObserver | null = null;
-  let activeKeyHints = $derived(keyHintActions[pendingKey] ?? []);
+  let activeKeyHints = $derived.by(() => keyHintActionsFor(pendingKey));
   let activeKeyHintLabel = $derived(pendingKey === " " ? "Space" : pendingKey);
 
   onMount(() => {
@@ -89,13 +132,14 @@
     }
 
     // Install global navigation hook used by vim mappings (F4-5).
-    // Other actions are stubs here; F4-2/F4-4/F3 wire them in later.
     (window as any).__pkmNav = {
-      gotoDaily: () =>
-        goto(`/${vaultName}/notes/${new Date().toISOString().slice(0, 10)}`),
-      gotoNote: (id: string) => goto(`/${vaultName}/notes/${id}`),
-      nextNeighbor: () => false,
-      prevNeighbor: () => false,
+      gotoDaily: () => gotoDailyNote(),
+      gotoNote: (id: string) => goto(noteHref({ vaultName, noteId: id })),
+      nextNeighbor: () =>
+        navigateGraphTarget(graphKeyNav.navigateNextSemantic()),
+      prevNeighbor: () =>
+        navigateGraphTarget(graphKeyNav.navigatePreviousSemantic()),
+      back: () => navigateGraphTarget(graphKeyNav.popNavigationStack()),
       followAtCursor: () => false,
       openExternal: () => false,
       openPalette: () => openCommandPalette(),
@@ -255,6 +299,7 @@
     const action = activeKeyHints.find((item) => item.key === key);
     clearPendingKeyHint();
     if (!action) return false;
+    if (action.run) return action.run();
     const nav = (window as any).__pkmNav as
       | Partial<Record<NavAction, () => unknown>>
       | undefined;
@@ -268,6 +313,20 @@
     const key = event.key.toLowerCase();
     const isTyping = isTypingTarget(event.target);
 
+    if (
+      !isTyping &&
+      !hasOpenDialog() &&
+      event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey &&
+      (key === "o" || event.code === "KeyO")
+    ) {
+      if (navigateGraphTarget(graphKeyNav.popNavigationStack())) {
+        event.preventDefault();
+      }
+      return;
+    }
+
     if (!isTyping && pendingKey) {
       if (key === "escape") {
         event.preventDefault();
@@ -280,7 +339,7 @@
       return;
     }
 
-    if (!isTyping && key in keyHintActions && !hasOpenDialog()) {
+    if (!isTyping && keyHintPrefixes.has(key) && !hasOpenDialog()) {
       openPendingKeyHint(key);
       return;
     }
