@@ -93,6 +93,55 @@ def test_worker_helper_policies_redact_reasoning_sessions_and_cache(
     assert list(cache) == ["b", "c"]
 
 
+def test_rebuild_workflow_index_runs_in_isolated_subprocess(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Workflow reindex isolates PyTorch imports from the long-lived worker."""
+    vault_root = tmp_path / "vaults"
+    vault_path = vault_root / "demo"
+    vault_path.mkdir(parents=True)
+    calls: list[dict[str, Any]] = []
+
+    def fake_run(cmd: list[str], **kwargs: Any):
+        calls.append({"cmd": cmd, **kwargs})
+        return worker.subprocess.CompletedProcess(cmd, 0, stdout="indexed", stderr="")
+
+    monkeypatch.setattr(worker.subprocess, "run", fake_run)
+    monkeypatch.setattr(worker.sys, "executable", "/python")
+    monkeypatch.setenv("PKM_WORKFLOW_INDEX_TIMEOUT", "42")
+
+    worker._rebuild_workflow_index(SimpleNamespace(name="demo", path=vault_path))
+
+    assert calls == [
+        {
+            "cmd": ["/python", "-m", "pkm", "--vault", "demo", "index"],
+            "cwd": str(vault_path),
+            "env": {**os.environ, "PKM_VAULTS_ROOT": str(vault_root)},
+            "capture_output": True,
+            "text": True,
+            "timeout": 42,
+        }
+    ]
+
+
+def test_rebuild_workflow_index_reports_subprocess_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Workflow history receives the isolated index process error text."""
+    vault_path = tmp_path / "demo"
+    vault_path.mkdir()
+
+    def fake_run(cmd: list[str], **_kwargs: Any):
+        return worker.subprocess.CompletedProcess(
+            cmd, 2, stdout="ignored stdout", stderr="index exploded"
+        )
+
+    monkeypatch.setattr(worker.subprocess, "run", fake_run)
+
+    with pytest.raises(RuntimeError, match=r"pkm index failed \(2\): index exploded"):
+        worker._rebuild_workflow_index(SimpleNamespace(name="demo", path=vault_path))
+
+
 @pytest.mark.anyio
 async def test_ipc_client_writes_json_and_reads_control_messages(monkeypatch) -> None:
     """IPC read loop handles abort/task/noise/EOF while send writes JSON lines."""

@@ -6,6 +6,7 @@ import os
 import logging
 import re
 import socket
+import subprocess
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -50,10 +51,32 @@ class AgentTaskOutcome:
 
 
 def _rebuild_workflow_index(vault: Any) -> None:
-    """Rebuild index/graph before graph-dependent workflow execution."""
-    from pkm.search_engine import build_index
+    """Rebuild index/graph before graph-dependent workflow execution.
 
-    build_index(vault)
+    Keep this in a child process so PyTorch/SentenceTransformer import state cannot
+    poison the long-lived worker process across scheduled vault runs.
+    """
+    env = os.environ.copy()
+    env["PKM_VAULTS_ROOT"] = str(vault.path.parent)
+    timeout = int(os.environ.get("PKM_WORKFLOW_INDEX_TIMEOUT", "1800"))
+
+    result = subprocess.run(
+        [sys.executable, "-m", "pkm", "--vault", vault.name, "index"],
+        cwd=str(vault.path),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+    if result.returncode != 0:
+        output = "\n".join(
+            part.strip() for part in (result.stderr, result.stdout) if part.strip()
+        )
+        if len(output) > 4000:
+            output = output[-4000:]
+        raise RuntimeError(
+            f"pkm index failed ({result.returncode}): {output or 'no output'}"
+        )
 
 
 def reasoning_kwargs(model: str, effort: str | None) -> dict[str, Any]:
