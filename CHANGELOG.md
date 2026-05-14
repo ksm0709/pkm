@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.82.1 (2026-05-14)
+
+### Bug Fixes
+
+- Stop note loading loops after graph navigation context updates
+  ([`c43031b`](https://github.com/ksm0709/pkm/commit/c43031b7f84a748c690008342a55327397fac84a))
+
+
 ## v2.82.0 (2026-05-14)
 
 ### Features
