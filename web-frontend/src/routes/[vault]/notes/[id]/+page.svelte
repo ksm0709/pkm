@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy } from "svelte";
+  import { onDestroy, untrack } from "svelte";
   import { page } from "$app/stores";
   import { marked } from "marked";
   import { apiClient, apiGet } from "$lib/api/client.js";
@@ -362,7 +362,9 @@
 
   $effect(() => {
     if (!vaultName || !noteId) return;
-    void loadNote(vaultName, noteId);
+    untrack(() => {
+      void loadNote(vaultName, noteId);
+    });
   });
 
   onDestroy(() => {
