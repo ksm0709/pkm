@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.82.2 (2026-05-14)
+
+### Bug Fixes
+
+- Isolate workflow reindex from long-lived worker imports
+  ([`7c2af70`](https://github.com/ksm0709/pkm/commit/7c2af70d01d4a7c9311e83c5e8dcd268b12ed702))
+
+
 ## v2.82.1 (2026-05-14)
 
 ### Bug Fixes
