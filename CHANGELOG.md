@@ -2,6 +2,22 @@
 
 <!-- version list -->
 
+## v2.83.0 (2026-05-15)
+
+### Bug Fixes
+
+- Keep CI green across current Click releases
+  ([`c85fa30`](https://github.com/ksm0709/pkm/commit/c85fa30178462ebb6446a2bdcd843c2f5e46b67c))
+
+- Keep workflow scheduling opt-in after updates
+  ([`67fd32c`](https://github.com/ksm0709/pkm/commit/67fd32c8b551bdb18c31300c83b14cc1fe213eea))
+
+### Features
+
+- Allow connected-provider model selection for tiny-agent tasks
+  ([`9bf43f9`](https://github.com/ksm0709/pkm/commit/9bf43f9033ccef6064c260288558c23b86df5344))
+
+
 ## v2.82.2 (2026-05-14)
 
 ### Bug Fixes
