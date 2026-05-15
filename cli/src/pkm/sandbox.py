@@ -49,6 +49,47 @@ def _native_load_allowed() -> bool:
     return _sandbox_profile() in _TRUSTED_NATIVE_PROFILES
 
 
+def _workflow_index_subprocess_allowed(args: tuple[object, ...]) -> bool:
+    """Permit the worker's isolated graph/index rebuild and nothing else."""
+    if not _native_load_allowed() or len(args) < 4:
+        return False
+
+    executable, cmd_args, cwd, env = args[:4]
+    if not isinstance(cmd_args, (list, tuple)):
+        return False
+
+    try:
+        cmd = [os.fsdecode(part) for part in cmd_args]
+    except TypeError:
+        return False
+
+    if len(cmd) != 6 or cmd[1:4] != ["-m", "pkm", "--vault"] or cmd[5] != "index":
+        return False
+    if not cmd[4] or cmd[4].startswith("-") or "/" in cmd[4]:
+        return False
+
+    try:
+        expected_executable = Path(sys.executable).resolve()
+        if Path(os.fsdecode(executable)).resolve() != expected_executable:
+            return False
+        if Path(cmd[0]).resolve() != expected_executable:
+            return False
+    except Exception:
+        return False
+
+    vault_path = _state["vault_path"]
+    if vault_path is None or cwd is None or not isinstance(env, dict):
+        return False
+
+    try:
+        cwd_path = Path(os.fsdecode(cwd)).resolve()
+        root_path = Path(os.fsdecode(env.get("PKM_VAULTS_ROOT", ""))).resolve()
+    except Exception:
+        return False
+
+    return cwd_path == vault_path and root_path == vault_path.parent.resolve()
+
+
 def setup_sandbox(vault_dir: Path | str) -> None:
     _state["vault_path"] = Path(vault_dir).resolve()
 
@@ -56,13 +97,12 @@ def setup_sandbox(vault_dir: Path | str) -> None:
         return
 
     def audit_hook(event: str, args: tuple[object, ...]):
-        if event in {
-            "os.system",
-            "os.exec",
-            "os.posix_spawn",
-            "os.spawn",
-            "subprocess.Popen",
-        }:
+        if event == "subprocess.Popen" and not _workflow_index_subprocess_allowed(
+            args
+        ):
+            raise SandboxViolation(f"Command execution blocked: {event}")
+
+        if event in {"os.system", "os.exec", "os.posix_spawn", "os.spawn"}:
             raise SandboxViolation(f"Command execution blocked: {event}")
 
         if event in _NATIVE_LOAD_EVENTS and not _native_load_allowed():

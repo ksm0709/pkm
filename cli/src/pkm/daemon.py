@@ -151,6 +151,8 @@ class LLMWorkerProxy:
         import sys
 
         worker_script = Path(__file__).parent / "worker.py"
+        worker_env = {**os.environ, "PKM_VAULT_DIR": vault_dir}
+        worker_env.setdefault("PKM_WORKER_SANDBOX_PROFILE", "trusted-native")
 
         self.process = await asyncio.create_subprocess_exec(
             sys.executable,
@@ -158,7 +160,7 @@ class LLMWorkerProxy:
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env={**os.environ, "PKM_VAULT_DIR": vault_dir},
+            env=worker_env,
         )
 
         asyncio.create_task(self._log_stderr())

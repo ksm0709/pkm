@@ -138,6 +138,68 @@ def test_trusted_native_profile_allows_native_loads_but_keeps_boundaries(
         hook("open", (outside, "w"))
 
 
+def test_trusted_native_profile_allows_only_workflow_index_subprocess(
+    monkeypatch, tmp_path
+) -> None:
+    """trusted-native permits the isolated workflow reindex command only."""
+    hooks = []
+    vault_root = tmp_path / "vaults"
+    vault = vault_root / "demo"
+    vault.mkdir(parents=True)
+    monkeypatch.setenv("PKM_WORKER_SANDBOX_PROFILE", "trusted-native")
+    monkeypatch.setattr(sandbox.sys, "addaudithook", lambda hook: hooks.append(hook))
+    monkeypatch.setattr(sandbox, "drop_privileges", lambda: None)
+
+    sandbox.setup_sandbox(vault)
+    hook = hooks[0]
+    env = {"PKM_VAULTS_ROOT": str(vault_root)}
+
+    hook(
+        "subprocess.Popen",
+        (
+            sys.executable,
+            [sys.executable, "-m", "pkm", "--vault", "demo", "index"],
+            str(vault),
+            env,
+        ),
+    )
+
+    with pytest.raises(sandbox.SandboxViolation, match="Command execution blocked"):
+        hook(
+            "subprocess.Popen",
+            (
+                sys.executable,
+                [sys.executable, "-m", "pkm", "--vault", "demo", "search"],
+                str(vault),
+                env,
+            ),
+        )
+
+
+def test_strict_profile_blocks_workflow_index_subprocess(monkeypatch, tmp_path) -> None:
+    """The index subprocess exception is limited to trusted-native workers."""
+    hooks = []
+    vault_root = tmp_path / "vaults"
+    vault = vault_root / "demo"
+    vault.mkdir(parents=True)
+    monkeypatch.setattr(sandbox.sys, "addaudithook", lambda hook: hooks.append(hook))
+    monkeypatch.setattr(sandbox, "drop_privileges", lambda: None)
+
+    sandbox.setup_sandbox(vault)
+    hook = hooks[0]
+
+    with pytest.raises(sandbox.SandboxViolation, match="Command execution blocked"):
+        hook(
+            "subprocess.Popen",
+            (
+                sys.executable,
+                [sys.executable, "-m", "pkm", "--vault", "demo", "index"],
+                str(vault),
+                {"PKM_VAULTS_ROOT": str(vault_root)},
+            ),
+        )
+
+
 def test_audit_hook_enforces_write_and_read_boundaries(monkeypatch, tmp_path) -> None:
     """The captured audit hook allows vault/dev/system reads and blocks outside access."""
     hooks = []

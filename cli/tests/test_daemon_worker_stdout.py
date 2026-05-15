@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+from types import SimpleNamespace
 
+import pytest
 from pkm.daemon import (
     LLMWorkerProxy,
     TaskQueue,
@@ -86,6 +88,64 @@ def test_worker_proxy_has_no_budget_for_background_tasks() -> None:
     proxy = LLMWorkerProxy()
 
     assert not hasattr(proxy, "budget")
+
+
+@pytest.mark.anyio
+async def test_worker_proxy_start_defaults_to_trusted_native_sandbox(
+    monkeypatch, tmp_path
+) -> None:
+    """Daemon-managed workers get the profile required by workflow graph tooling."""
+    import pkm.daemon as daemon
+
+    calls: list[dict] = []
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        calls.append({"args": args, "kwargs": kwargs})
+        return SimpleNamespace(
+            stdin=None,
+            stdout=SimpleNamespace(readline=lambda: b""),
+            stderr=SimpleNamespace(readline=lambda: b""),
+        )
+
+    monkeypatch.delenv("PKM_WORKER_SANDBOX_PROFILE", raising=False)
+    monkeypatch.setattr(
+        daemon.asyncio, "create_subprocess_exec", fake_create_subprocess_exec
+    )
+    monkeypatch.setattr(daemon.asyncio, "create_task", lambda coro: coro.close())
+
+    await LLMWorkerProxy().start(str(tmp_path))
+
+    env = calls[0]["kwargs"]["env"]
+    assert env["PKM_VAULT_DIR"] == str(tmp_path)
+    assert env["PKM_WORKER_SANDBOX_PROFILE"] == "trusted-native"
+
+
+@pytest.mark.anyio
+async def test_worker_proxy_start_preserves_explicit_sandbox_profile(
+    monkeypatch, tmp_path
+) -> None:
+    """Operators can still override the daemon-managed worker sandbox profile."""
+    import pkm.daemon as daemon
+
+    calls: list[dict] = []
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        calls.append({"args": args, "kwargs": kwargs})
+        return SimpleNamespace(
+            stdin=None,
+            stdout=SimpleNamespace(readline=lambda: b""),
+            stderr=SimpleNamespace(readline=lambda: b""),
+        )
+
+    monkeypatch.setenv("PKM_WORKER_SANDBOX_PROFILE", "strict")
+    monkeypatch.setattr(
+        daemon.asyncio, "create_subprocess_exec", fake_create_subprocess_exec
+    )
+    monkeypatch.setattr(daemon.asyncio, "create_task", lambda coro: coro.close())
+
+    await LLMWorkerProxy().start(str(tmp_path))
+
+    assert calls[0]["kwargs"]["env"]["PKM_WORKER_SANDBOX_PROFILE"] == "strict"
 
 
 def test_keepalive_env_disables_idle_timeout(monkeypatch) -> None:
