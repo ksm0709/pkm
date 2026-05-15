@@ -726,6 +726,7 @@ async def workflow_checker(config: WorkflowConfig):
                 "id": f"{latest_config.id}_{vault_name}_{ts}",
                 "task_type": "workflow",
                 "workflow_id": latest_config.id,
+                "model": latest_config.model,
                 "workflow_source": "scheduled",
                 "env_keys": agent_credential_env(),
                 "env": {"PKM_VAULT_DIR": str(vault.path)},

@@ -12,6 +12,9 @@
     value?: string;
     busy?: boolean;
     modelLabel?: string;
+    selectedModel?: string;
+    modelOptions?: string[];
+    onmodelchange?: (model: string) => void;
     onsubmit: (text: string) => void;
   }
 
@@ -20,6 +23,9 @@
     value = $bindable(""),
     busy = false,
     modelLabel = "auto",
+    selectedModel = "auto",
+    modelOptions = ["auto"],
+    onmodelchange,
     onsubmit,
   }: Props = $props();
 
@@ -340,6 +346,10 @@
     if (textareaEl) value = textareaEl.value;
     autoresize();
   }
+
+  function handleModelChange() {
+    onmodelchange?.(selectedModel);
+  }
 </script>
 
 <form
@@ -402,7 +412,18 @@
     </div>
   {/if}
   <span class="prompt-mark" aria-hidden="true">ASK</span>
-  <span class="model-label">model {modelLabel}</span>
+  <select
+    class="model-select"
+    aria-label="Ask model"
+    bind:value={selectedModel}
+    onchange={handleModelChange}
+    disabled={busy}
+    title={`Current model: ${modelLabel}`}
+  >
+    {#each modelOptions as option (option)}
+      <option value={option}>{option}</option>
+    {/each}
+  </select>
   <textarea
     bind:this={textareaEl}
     bind:value
@@ -434,6 +455,23 @@
     padding: var(--space-3, 12px) var(--space-4, 16px) var(--space-2, 8px);
     background-color: transparent;
     border-left: 2px solid var(--accent);
+  }
+
+  .model-select {
+    max-width: min(240px, 26vw);
+    min-width: 88px;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    border-radius: 0;
+    background: transparent;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--type-chrome-sm-size, 11px);
+  }
+
+  .model-select:focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: 3px;
   }
 
   .ask-slash-menu {
@@ -566,20 +604,6 @@
     letter-spacing: 0.12em;
     color: var(--accent);
     flex-shrink: 0;
-  }
-
-  .model-label {
-    position: absolute;
-    top: 3px;
-    left: var(--space-4, 16px);
-    max-width: min(42ch, calc(100% - 96px));
-    overflow: hidden;
-    color: var(--text-faint);
-    font-family: var(--font-mono);
-    font-size: 10px;
-    line-height: 1.2;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .ask-textarea {

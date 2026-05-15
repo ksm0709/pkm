@@ -620,6 +620,7 @@ async def _dispatch_workflow(
         )
         record_history(status="failure", phase="load", error=message)
         return
+    selected_model = model or getattr(config, "model", "auto") or "auto"
 
     vault = VaultConfig(name=Path(vault_dir).name, path=Path(vault_dir))
     today = str(date.today())
@@ -656,7 +657,7 @@ async def _dispatch_workflow(
         user_content=user_content,
         system_prompt=system_prompt,
         vault_dir=vault_dir,
-        model=model,
+        model=selected_model,
         env_keys=env_keys,
         reasoning_effort=reasoning_effort,
         cwd=cwd,

@@ -15,7 +15,7 @@ Manage PKM configuration.
 - `default-vault`: Default vault name used when `--vault` is not specified
 - `editor`: Editor command used by `pkm daily edit` (e.g. 'vim', 'code --wait')
 - `graph-depth`: Default graph traversal depth for search and show commands
-- `model`: LLM model used by `pkm ask` (default: auto, e.g. gpt-5.4-nano, gpt-5-mini, gemini/gemini-3-flash-preview)
+- `model`: LLM model used by `pkm ask` (default: auto; explicit values may be any connected-provider LiteLLM chat model)
 - `web-bind`: Bind address used by the pkm web daemon
 - `web-port`: Port used by the pkm web daemon
 - `web-window-padding`: Symmetric page window padding in the pkm web app, in px (0-128, default: 32)

@@ -133,6 +133,13 @@ async def test_get_configs_returns_model_select_options_for_configured_credentia
     for env_key in ("GEMINI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
         monkeypatch.delenv(env_key, raising=False)
     secret_store.values["OPENAI_API_KEY"] = "openai-secret"
+    monkeypatch.setattr(
+        configs_route,
+        "get_connected_model_options",
+        lambda env: ["gpt-5.4-nano", "gpt-4o-mini"]
+        if env.get("OPENAI_API_KEY")
+        else [],
+    )
 
     async with TestClient(TestServer(app)) as client:
         resp = await client.get(
@@ -147,9 +154,8 @@ async def test_get_configs_returns_model_select_options_for_configured_credentia
     assert settings["model"]["options"] == [
         "auto",
         "gpt-5.4-nano",
-        "gpt-5-mini",
-        "gpt-5-nano",
-        "gpt-5.4-mini",
+        "gpt-4o-mini",
+        "configured-model",
     ]
 
 

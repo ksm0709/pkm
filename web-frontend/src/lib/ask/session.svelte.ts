@@ -68,6 +68,8 @@ export class AskSessionState {
   turns = $state<AskTurn[]>([]);
   busy = $state(false);
   modelLabel = $state("auto");
+  selectedModel = $state("auto");
+  modelOptions = $state<string[]>(["auto"]);
   managedTasks = $state<ManagedTask[]>([]);
   submittedQueryParam = $state("");
   hydrated = $state(false);
@@ -125,11 +127,30 @@ export class AskSessionState {
     try {
       const options = (await apiGet(
         `/api/v1/vault/${this.vaultName}/ask/options`,
-      )) as { model?: string; resolved_model?: string };
+      )) as {
+        model?: string;
+        resolved_model?: string;
+        model_options?: string[];
+      };
+      const choices = Array.isArray(options.model_options)
+        ? options.model_options.filter((choice) => typeof choice === "string")
+        : [];
+      this.modelOptions = choices.length ? choices : ["auto"];
+      this.selectedModel = this.modelOptions.includes(options.model || "")
+        ? options.model || "auto"
+        : "auto";
       this.modelLabel = modelLabelFromOptions(options);
     } catch {
+      this.selectedModel = "auto";
+      this.modelOptions = ["auto"];
       this.modelLabel = "auto";
     }
+  }
+
+  setModel(model: string) {
+    this.selectedModel = this.modelOptions.includes(model) ? model : "auto";
+    this.modelLabel =
+      this.selectedModel === "auto" ? "auto" : this.selectedModel;
   }
 
   claimQueryParam(query: string) {
@@ -183,6 +204,7 @@ export class AskSessionState {
           context,
           ask_session_id: this.#sessionId,
           ask_run_id: runId,
+          model: this.selectedModel,
         },
         (eventName, data) => {
           if (eventName === "result") {

@@ -66,12 +66,19 @@ describe("AskSessionState", () => {
       model: "auto",
       resolved_model: "test/resolved-model",
       reasoning_effort: "medium",
+      model_options: ["auto", "test/resolved-model", "test/other-model"],
     });
 
     const session = getAskSession(`auto-model-${Date.now()}`);
     await session.loadOptions();
 
     expect(session.modelLabel).toBe("test/resolved-model (auto)");
+    expect(session.modelOptions).toEqual([
+      "auto",
+      "test/resolved-model",
+      "test/other-model",
+    ]);
+    expect(session.selectedModel).toBe("auto");
   });
 
   it("labels explicit model selections without an auto suffix", async () => {
@@ -80,12 +87,35 @@ describe("AskSessionState", () => {
       model: "test/explicit-model",
       resolved_model: "test/explicit-model",
       reasoning_effort: "medium",
+      model_options: ["auto", "test/explicit-model"],
     });
 
     const session = getAskSession(`explicit-model-${Date.now()}`);
     await session.loadOptions();
 
     expect(session.modelLabel).toBe("test/explicit-model");
+    expect(session.selectedModel).toBe("test/explicit-model");
+  });
+
+  it("sends the selected model with each ask stream request", async () => {
+    const streamMock = vi.mocked(streamSse);
+    streamMock.mockImplementation(async (_path, body, onEvent) => {
+      expect(body).toMatchObject({
+        query: "Use another model",
+        model: "test/other-model",
+      });
+      onEvent("result", { response: "done" });
+    });
+
+    const session = getAskSession(`selected-model-${Date.now()}`);
+    session.hydrate();
+    session.modelOptions = ["auto", "test/other-model"];
+    session.setModel("test/other-model");
+
+    await session.submit("Use another model");
+
+    expect(streamMock).toHaveBeenCalledTimes(1);
+    expect(session.turns.at(-1)?.answer).toBe("done");
   });
 
   it("streams one ask turn into transcript items, managed tasks, and persisted context", async () => {

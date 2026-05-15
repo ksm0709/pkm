@@ -11,6 +11,8 @@
   let turns = $derived(askSession.turns);
   let busy = $derived(askSession.busy);
   let modelLabel = $derived(askSession.modelLabel);
+  let selectedModel = $derived(askSession.selectedModel);
+  let modelOptions = $derived(askSession.modelOptions);
   let managedTasks = $derived(askSession.managedTasks);
   let inputValue = $state("");
   let scrollEl: HTMLDivElement | null = $state(null);
@@ -133,6 +135,9 @@
         {vaultName}
         {busy}
         {modelLabel}
+        {selectedModel}
+        {modelOptions}
+        onmodelchange={(model) => askSession.setModel(model)}
         onsubmit={(question) => askSession.submit(question)}
       />
     </div>

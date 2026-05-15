@@ -51,6 +51,7 @@ def workflow_list(vault: str | None, fmt: str):
                         "jitter_type": c.jitter_type,
                         "marker_file": c.marker_file,
                         "enabled": c.enabled,
+                        "model": c.model,
                         "pre_hook": c.pre_hook,
                         "post_hook": c.post_hook,
                     }
@@ -70,6 +71,7 @@ def workflow_list(vault: str | None, fmt: str):
     table.add_column("ID", style="bold cyan")
     table.add_column("Hour", justify="center")
     table.add_column("Enabled", justify="center")
+    table.add_column("Model", style="dim")
     table.add_column("Jitter", style="dim")
     table.add_column("Marker File", style="dim")
     table.add_column("Pre-hook", style="green")
@@ -80,6 +82,7 @@ def workflow_list(vault: str | None, fmt: str):
             c.id,
             str(c.schedule_hour),
             "yes" if c.enabled else "no",
+            c.model,
             c.jitter_type,
             c.marker_file,
             _hook_label(c.pre_hook),
@@ -138,6 +141,7 @@ def workflow_run(ctx: click.Context, workflow_id: str):
         "id": f"{workflow_id}_manual_{int(time.time())}",
         "task_type": "workflow",
         "workflow_id": workflow_id,
+        "model": config_map[workflow_id].model,
         "workflow_source": "manual",
         "env_keys": agent_credential_env(),
         "env": {"PKM_VAULT_DIR": vault_dir},

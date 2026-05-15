@@ -105,41 +105,36 @@ def _invoke_ask(
 
 
 def test_list_models_renders_provider_table_and_missing_key_status(monkeypatch):
-    """--list-models shows available models and API-key readiness."""
+    """--list-models shows connected provider models and API-key readiness."""
     import pkm.models
 
     monkeypatch.setattr(
         pkm.models,
-        "get_available_models",
-        lambda: [
-            SimpleNamespace(
-                id="openai/gpt-test",
-                provider="openai",
-                context_window="128k",
-                input_cost_1m="$1",
-                output_cost_1m="$2",
-            ),
-            SimpleNamespace(
-                id="anthropic/claude-test",
-                provider="anthropic",
-                context_window="200k",
-                input_cost_1m="$3",
-                output_cost_1m="$4",
-            ),
-        ],
+        "get_connected_model_options",
+        lambda env: ["openai/gpt-test", "anthropic/claude-test"],
     )
-    _install_litellm(
+    fake_litellm = _install_litellm(
         monkeypatch,
         lambda model_id: {
             "keys_in_environment": model_id == "openai/gpt-test",
             "missing_keys": ["KEY"],
         },
     )
+    fake_litellm.model_cost = {
+        "openai/gpt-test": {
+            "litellm_provider": "openai",
+            "max_input_tokens": 128000,
+        },
+        "anthropic/claude-test": {
+            "litellm_provider": "anthropic",
+            "max_input_tokens": 200000,
+        },
+    }
 
     result = _runner().invoke(ask_cmd, ["--list-models"])
 
     assert result.exit_code == 0
-    assert "PKM Recommended LLM Models" in result.output
+    assert "PKM Connected LLM Models" in result.output
     assert "openai" in result.output
     assert "anthropic" in result.output
     assert "KEY" in result.output

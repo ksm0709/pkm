@@ -12,6 +12,7 @@ from typing import Any
 from aiohttp import web
 
 from pkm.credential_store import agent_credential_env
+from pkm.models import get_connected_model_options
 from pkm.web.routes.ask import _runtime_daemon_module
 from pkm.web.routes.notes import _resolve_vault
 from pkm.workflows import WorkflowConfig, load_workflows
@@ -42,6 +43,7 @@ def _workflow_payload(
         "schedule_hour": config.schedule_hour,
         "trigger_time": _trigger_time(config.schedule_hour),
         "enabled": config.enabled,
+        "model": config.model,
         "marker_file": config.marker_file,
         "pre_hook": config.pre_hook,
         "post_hook": config.post_hook,
@@ -50,6 +52,10 @@ def _workflow_payload(
     if include_body:
         payload["body"] = config.system_prompt_template
         payload["jitter_type"] = config.jitter_type
+        payload["model_options"] = [
+            "auto",
+            *get_connected_model_options(agent_credential_env()),
+        ]
     return payload
 
 
@@ -192,6 +198,7 @@ async def run_workflow(request: web.Request) -> web.Response:
         "id": task_id,
         "task_type": "workflow",
         "workflow_id": workflow_id,
+        "model": workflows[workflow_id].model,
         "workflow_source": "manual",
         "env_keys": agent_credential_env(),
         "env": {"PKM_VAULT_DIR": str(vault.path)},
@@ -233,6 +240,17 @@ async def update_workflow(request: web.Request) -> web.Response:
         if hour < 0 or hour > 23:
             raise web.HTTPBadRequest(reason="schedule_hour must be 0-23")
         updates["schedule_hour"] = hour
+    if "model" in body:
+        model = body["model"]
+        if model is None:
+            updates["model"] = "auto"
+        elif isinstance(model, str):
+            normalized = model.strip() or "auto"
+            if "\n" in normalized or "\r" in normalized or "\0" in normalized:
+                raise web.HTTPBadRequest(reason="model must be a single-line value")
+            updates["model"] = normalized
+        else:
+            raise web.HTTPBadRequest(reason="model must be a string")
     if not updates:
         return web.json_response(_workflow_payload(workflow, include_body=True))
 

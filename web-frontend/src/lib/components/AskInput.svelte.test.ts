@@ -125,9 +125,10 @@ describe("AskInput", () => {
     expect(
       target.querySelector<HTMLButtonElement>(".submit-btn")?.disabled,
     ).toBe(true);
-    expect(target.querySelector(".model-label")?.textContent).toBe(
-      "model test-model",
-    );
+    const modelSelect =
+      target.querySelector<HTMLSelectElement>(".model-select");
+    expect(modelSelect?.disabled).toBe(true);
+    expect(modelSelect?.title).toBe("Current model: test-model");
 
     target
       .querySelector<HTMLFormElement>("form")
@@ -135,6 +136,26 @@ describe("AskInput", () => {
         new SubmitEvent("submit", { bubbles: true, cancelable: true }),
       );
     expect(onsubmit).not.toHaveBeenCalled();
+
+    unmount(component);
+  });
+
+  it("emits model changes from the model dropdown", async () => {
+    const onmodelchange = vi.fn();
+    const { target, component } = render({
+      selectedModel: "auto",
+      modelOptions: ["auto", "gpt-4o-mini"],
+      onmodelchange,
+    });
+    await flush();
+
+    const modelSelect =
+      target.querySelector<HTMLSelectElement>(".model-select")!;
+    modelSelect.value = "gpt-4o-mini";
+    modelSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    await tick();
+
+    expect(onmodelchange).toHaveBeenCalledWith("gpt-4o-mini");
 
     unmount(component);
   });

@@ -9,6 +9,8 @@
     trigger_time: string;
     schedule_hour: number;
     enabled: boolean;
+    model: string;
+    model_options?: string[];
     marker_file: string;
     pre_hook: string | null;
     post_hook: string | null;
@@ -43,6 +45,7 @@
   let saving = $state(false);
   let enabledDraft = $state(true);
   let triggerTimeDraft = $state("00:00");
+  let modelDraft = $state("auto");
   let historyOpen = $state(false);
   let historyLoading = $state(false);
   let historyError = $state("");
@@ -87,6 +90,7 @@
     if (!workflow) return;
     enabledDraft = workflow.enabled;
     triggerTimeDraft = workflow.trigger_time;
+    modelDraft = workflow.model || "auto";
     modalOpen = true;
   }
 
@@ -102,6 +106,7 @@
           body: JSON.stringify({
             enabled: enabledDraft,
             trigger_time: triggerTimeDraft,
+            model: modelDraft,
           }),
         },
       );
@@ -221,6 +226,7 @@
     <section class="workflow-meta" aria-label="Workflow metadata">
       <span>{workflow.trigger_time}</span>
       <span>{workflow.enabled ? "on" : "off"}</span>
+      <span>{workflow.model || "auto"}</span>
       <span class:active-run={runStatus.status !== "idle"}>
         {runStatus.status}{runStatus.task_id ? `:${runStatus.task_id}` : ""}
       </span>
@@ -268,6 +274,14 @@
             step="3600"
             bind:value={triggerTimeDraft}
           />
+        </div>
+        <div class="modal-row wide">
+          <label for="workflow-model">Model</label>
+          <select id="workflow-model" bind:value={modelDraft}>
+            {#each workflow.model_options?.length ? workflow.model_options : [workflow.model || "auto"] as option (option)}
+              <option value={option}>{option}</option>
+            {/each}
+          </select>
         </div>
         <div class="modal-actions">
           <button type="button" onclick={() => (modalOpen = false)}
@@ -570,6 +584,21 @@
 
   .modal-row input[type="time"] {
     width: 120px;
+    color: var(--text);
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--accent);
+    padding: var(--space-1, 4px);
+    font-family: var(--font-mono);
+  }
+
+  .modal-row.wide {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-row select {
+    min-width: 0;
+    width: 100%;
     color: var(--text);
     background: transparent;
     border: 0;

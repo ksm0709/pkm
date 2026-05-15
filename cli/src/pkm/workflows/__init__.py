@@ -25,6 +25,7 @@ class WorkflowConfig:
     pre_hook: Optional[str] = None
     post_hook: Optional[str] = None
     enabled: bool = False
+    model: str = "auto"
 
 
 def _global_workflow_path() -> Path:
@@ -225,6 +226,7 @@ def load_workflows(vault_path: str | Path | None = None) -> list[WorkflowConfig]
                 pre_hook=e.get("pre_hook") or None,
                 post_hook=e.get("post_hook") or None,
                 enabled=_coerce_bool(e.get("enabled"), default=False),
+                model=str(e.get("model") or "auto"),
             )
         )
     return configs

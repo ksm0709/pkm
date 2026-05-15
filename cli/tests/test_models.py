@@ -82,6 +82,55 @@ def test_collect_api_keys_omits_blank_values(monkeypatch):
     assert collect_api_keys() == {"OPENAI_API_KEY": "openai"}
 
 
+def test_connected_model_options_include_all_chat_models_for_keyed_providers(
+    monkeypatch,
+):
+    from pkm.models import get_connected_model_options
+
+    fake_litellm = ModuleType("litellm")
+    fake_litellm.open_ai_chat_completion_models = {
+        "gpt-5.4-nano",
+        "gpt-custom",
+        "gpt-image-1",
+    }
+    fake_litellm.gemini_models = {
+        "gemini-2.5-pro",
+        "gemini/imagen-4.0-fast-generate-001",
+    }
+    fake_litellm.anthropic_models = {"claude-haiku-4-5"}
+    fake_litellm.model_cost = {
+        "gpt-5.4-nano": {"mode": "chat", "litellm_provider": "openai"},
+        "gpt-custom": {"mode": "chat", "litellm_provider": "openai"},
+        "gpt-image-1": {"mode": "image_generation", "litellm_provider": "openai"},
+        "gemini/gemini-2.5-pro": {
+            "mode": "chat",
+            "litellm_provider": "gemini",
+        },
+        "gemini/imagen-4.0-fast-generate-001": {
+            "mode": "image_generation",
+            "litellm_provider": "gemini",
+        },
+        "anthropic/claude-haiku-4-5": {
+            "mode": "chat",
+            "litellm_provider": "anthropic",
+        },
+    }
+    monkeypatch.setitem(sys.modules, "litellm", fake_litellm)
+
+    assert get_connected_model_options(
+        {
+            "OPENAI_API_KEY": "openai",
+            "GEMINI_API_KEY": "gemini",
+            "ANTHROPIC_API_KEY": "anthropic",
+        }
+    ) == [
+        "gpt-5.4-nano",
+        "anthropic/claude-haiku-4-5",
+        "gemini/gemini-2.5-pro",
+        "gpt-custom",
+    ]
+
+
 def test_openai_models_are_ranked_by_pkm_price_performance():
     from pkm.models import get_available_models
 

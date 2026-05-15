@@ -33,6 +33,7 @@ def test_load_workflows_returns_bundled_defaults_when_no_global(tmp_path, monkey
     assert "daily_task_summary" not in ids
     by_id = {workflow.id: workflow for workflow in configs}
     assert by_id["zettelkasten_maintenance"].enabled is False
+    assert by_id["zettelkasten_maintenance"].model == "auto"
 
 
 def test_load_workflows_allows_full_user_defined_daily_task_summary(
@@ -155,6 +156,7 @@ def test_vault_override_merge(tmp_path, monkeypatch):
                     "jitter_type": "md5_hostname",
                     "marker_file": "wf-a-run",
                     "system_prompt_template": "vault override",
+                    "model": "gpt-4o-mini",
                 },
                 {
                     "id": "wf_c",
@@ -172,6 +174,7 @@ def test_vault_override_merge(tmp_path, monkeypatch):
 
     assert by_id["wf_a"].schedule_hour == 10
     assert by_id["wf_a"].system_prompt_template == "vault override"
+    assert by_id["wf_a"].model == "gpt-4o-mini"
     assert by_id["wf_b"].system_prompt_template == "global b"
     assert "wf_c" in by_id
 

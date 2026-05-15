@@ -19,7 +19,7 @@ from pkm.credential_store import (
     agent_credential_env,
     provider_payload,
 )
-from pkm.models import get_available_models
+from pkm.models import get_connected_model_options
 from pkm.web.routes.notes import _resolve_vault
 from pkm.web.security import (
     request_credential_access_allowed,
@@ -35,11 +35,6 @@ _CONFIG_INPUT_TYPES = {
 }
 _CONFIG_OPTIONS = {
     "reasoning-effort": ["", "low", "medium", "high"],
-}
-_MODEL_PROVIDER_ENV_KEYS = {
-    "Anthropic": "ANTHROPIC_API_KEY",
-    "Google": "GEMINI_API_KEY",
-    "OpenAI": "OPENAI_API_KEY",
 }
 
 
@@ -87,12 +82,7 @@ def _config_section(data: dict[str, Any], key: str) -> dict[str, Any]:
 
 
 def _ask_model_options(env: dict[str, str]) -> list[str]:
-    options = [
-        model.id
-        for model in get_available_models()
-        if env.get(_MODEL_PROVIDER_ENV_KEYS.get(model.provider, ""))
-    ]
-    return ["auto", *options]
+    return ["auto", *get_connected_model_options(env)]
 
 
 def _setting_options(key: str, model_options: list[str] | None) -> list[str]:
@@ -113,6 +103,9 @@ def _setting_payload(
     section = _config_section(data, key)
     raw_value = section.get(internal_key)
     value, source = config_value_for_key(key, section, unset_label="")
+    options = _setting_options(key, model_options)
+    if key == "model" and value and value not in options:
+        options = [*options, value]
     return {
         "key": key,
         "section": section_name,
@@ -123,7 +116,7 @@ def _setting_payload(
         "configured": raw_value is not None,
         "source": source,
         "input_type": _CONFIG_INPUT_TYPES.get(key, "text"),
-        "options": _setting_options(key, model_options),
+        "options": options,
     }
 
 

@@ -30,7 +30,7 @@ The natural language reporting capability is also exposed as an MCP tool (`pkm_a
 
 The daemon uses [LiteLLM](https://docs.litellm.ai/) to proxy API calls, which supports over 100+ LLM providers. By default, the model is set to `auto`.
 
-When `auto` is used, PKM will automatically pick the best available model from a curated list based on the API keys exported in your environment. If one model's API fails, it will seamlessly fall back to the next best model in the list.
+When `auto` is used, PKM will automatically pick the best available model from a curated fallback list based on the API keys exported in your environment or saved in the web credential store. If one model's API fails, it will seamlessly fall back to the next best model in the list.
 
 To use the default configuration, export your API key (e.g. Gemini or OpenAI) before starting the daemon:
 ```bash
@@ -46,6 +46,7 @@ For OpenAI-only environments, `auto` prioritizes thinking-model price/performanc
 ### Changing the Model or Provider
 
 You can change the LLM model globally via configuration or per-command using the `--model` flag.
+Explicit model selection is not limited to PKM's `auto` fallback list: any LiteLLM chat model for a connected Google Gemini, OpenAI, or Anthropic API key can be selected from the web app dropdown or passed with `--model`.
 
 **Method 1: Global Configuration**
 ```bash
@@ -59,7 +60,7 @@ pkm daemon restart
 pkm ask "what was that idea?" --model "gpt-5.4-nano"
 ```
 
-To list all available models and providers from LiteLLM, run:
+To list connected-provider chat models available to `pkm ask`, run:
 ```bash
 pkm ask --list-models
 ```
@@ -120,7 +121,7 @@ The agent has access to typed tools for vault interaction, including:
 
 - `--timeout <seconds>`: Set the timeout to wait for the LLM response (default: 120 seconds).
 - `--model <model_name>`: LLM model to use (overrides global config).
-- `--list-models`: List available model providers via litellm.
+- `--list-models`: List connected-provider chat models via LiteLLM.
 
 ```bash
 pkm ask "summarize my notes on project Y" --timeout 300

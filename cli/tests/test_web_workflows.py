@@ -48,6 +48,7 @@ async def test_list_workflows_returns_readable_workflow_summaries(app, tmp_vault
         "trigger_time",
         "schedule_hour",
         "enabled",
+        "model",
         "snippet",
     }
     assert first["enabled"] is False
@@ -69,6 +70,8 @@ async def test_get_workflow_returns_read_mode_body(app, tmp_vault):
     assert data["title"] == "zettelkasten maintenance"
     assert data["trigger_time"] == "02:00"
     assert data["enabled"] is False
+    assert data["model"] == "auto"
+    assert data["model_options"][0] == "auto"
     assert "Zettelkasten maintainer" in data["body"]
 
 
@@ -113,6 +116,25 @@ async def test_patch_workflow_persists_enabled_state_and_trigger_time(app, tmp_v
     overrides = json.loads(override_path.read_text(encoding="utf-8"))
     assert overrides == [
         {"id": "zettelkasten_maintenance", "enabled": False, "schedule_hour": 6}
+    ]
+
+
+@pytest.mark.anyio
+async def test_patch_workflow_persists_model_override(app, tmp_vault):
+    """PATCH can store the tiny-agent model used by manual and scheduled runs."""
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.patch(
+            "/api/v1/vault/test-vault/workflows/zettelkasten_maintenance",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+            json={"model": "gpt-4o-mini"},
+        )
+        assert resp.status == 200
+        data = await resp.json()
+
+    assert data["model"] == "gpt-4o-mini"
+    override_path = tmp_vault.path / ".pkm" / "workflow.json"
+    assert json.loads(override_path.read_text(encoding="utf-8")) == [
+        {"id": "zettelkasten_maintenance", "model": "gpt-4o-mini"}
     ]
 
 
@@ -326,6 +348,7 @@ async def test_run_workflow_queues_task_and_records_history(app, tmp_vault, monk
             "id": data["task_id"],
             "task_type": "workflow",
             "workflow_id": workflow_id,
+            "model": "auto",
             "workflow_source": "manual",
             "env_keys": {"OPENAI_API_KEY": "saved-openai"},
             "env": {"PKM_VAULT_DIR": str(tmp_vault.path)},

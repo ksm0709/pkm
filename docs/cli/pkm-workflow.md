@@ -28,6 +28,7 @@ Workflows are defined in JSON and merged from three sources (later sources overr
     "schedule_hour": 3,
     "jitter_type": "md5_hostname",
     "marker_file": "my-wf-last-run",
+    "model": "auto",
     "system_prompt_template": "Run the {rollover_result} task.",
     "pre_hook": "pkm.workflows.hooks:build_daily_summary",
     "post_hook": null
@@ -42,6 +43,7 @@ Workflows are defined in JSON and merged from three sources (later sources overr
 | `schedule_hour` | yes | Hour of day (0–23) to run |
 | `jitter_type` | yes | Jitter strategy: `md5_hostname` or `md5_hostname_suffix:<seed>` |
 | `marker_file` | yes | Marker filename under `{vault}/.pkm/` to prevent duplicate runs |
+| `model` | no | Tiny-agent model for this workflow; defaults to `auto`. The web app lists connected-provider LiteLLM chat models. |
 | `system_prompt_template` | yes | Prompt template; `{key}` placeholders filled from pre-hook result |
 | `pre_hook` | no | Python callable `"module:function"` run before the agent; return dict injected into template |
 | `post_hook` | no | Python callable `"module:function"` run after the agent completes |
@@ -100,6 +102,7 @@ pkm workflow history all --format json --limit 5
 ## Notes
 
 - `pkm workflow run` writes a task to `~/.config/pkm/task_queue.json` (raw JSON array). The daemon worker picks it up on its next poll cycle.
+- Manual and scheduled workflow tasks use the workflow's `model` field, falling back to `auto` when unset.
 - The daemon auto-schedules configured workflows on startup via `workflow_checker` coroutines, but scheduled runs are skipped unless `enabled` is `true`. `pkm workflow run` is for on-demand execution.
 - `pkm update` refreshes recognizable locally copied bundled workflow settings in `~/.config/pkm/workflow.json` after package updates, preserving local schedule, jitter, and marker choices.
 - Custom hooks must be importable from the Python environment where the daemon runs.

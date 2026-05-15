@@ -155,10 +155,11 @@ def test_workflow_run_queues_task_with_injected_vault_env(tmp_path, monkeypatch)
     assert queue == [
         {
             "type": "task",
-            "id": "zettelkasten_maintenance_manual_42",
-            "task_type": "workflow",
-            "workflow_id": "zettelkasten_maintenance",
-            "workflow_source": "manual",
+                "id": "zettelkasten_maintenance_manual_42",
+                "task_type": "workflow",
+                "workflow_id": "zettelkasten_maintenance",
+                "model": "auto",
+                "workflow_source": "manual",
             "env_keys": {"OPENAI_API_KEY": "saved-openai"},
             "env": {"PKM_VAULT_DIR": str(vault.path)},
         }

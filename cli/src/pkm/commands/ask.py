@@ -99,24 +99,35 @@ def ask_cmd(
 ) -> None:
     """Ask a natural language question about your vault."""
     if list_models:
-        from pkm.models import get_available_models, validate_model_environment
+        from pkm.models import get_connected_model_options, validate_model_environment
         from rich.table import Table
 
         try:
-            import litellm  # noqa: F401
+            import litellm
 
-            console.print("[bold cyan]PKM Recommended LLM Models:[/bold cyan]")
+            env_keys = agent_credential_env()
+            models = get_connected_model_options(env_keys)
+            console.print("[bold cyan]PKM Connected LLM Models:[/bold cyan]")
+            if not models:
+                console.print(
+                    "[yellow]No saved or environment API keys found for supported providers.[/yellow]"
+                )
+                sys.exit(0)
 
             table = Table(show_header=True, header_style="bold")
             table.add_column("Model ID")
             table.add_column("Provider")
             table.add_column("Context")
-            table.add_column("Input/1M")
-            table.add_column("Output/1M")
             table.add_column("API Key Ready?")
 
-            for m in get_available_models():
-                val = validate_model_environment(m.id)
+            for model_id in models:
+                cost = litellm.model_cost.get(model_id) or {}
+                if not cost and "/" in model_id:
+                    cost = litellm.model_cost.get(model_id.split("/", 1)[1]) or {}
+                provider = cost.get("litellm_provider") or model_id.split("/", 1)[0]
+                context = cost.get("max_input_tokens")
+                with _temporary_env(env_keys):
+                    val = validate_model_environment(model_id)
                 has_keys = val.get("keys_in_environment", True)
                 status = (
                     "[green]Yes[/green]"
@@ -125,17 +136,15 @@ def ask_cmd(
                 )
 
                 table.add_row(
-                    m.id,
-                    m.provider,
-                    m.context_window,
-                    m.input_cost_1m,
-                    m.output_cost_1m,
+                    model_id,
+                    str(provider),
+                    str(context or "unknown"),
                     status,
                 )
 
             console.print(table)
             console.print(
-                "\n[dim]When model='auto', PKM will automatically use the best available model from this list.[/dim]"
+                "\n[dim]When model='auto', PKM still uses the recommended fallback order. Explicit selections can use any model in this connected-provider list.[/dim]"
             )
             sys.exit(0)
         except ImportError:

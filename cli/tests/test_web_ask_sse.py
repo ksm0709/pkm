@@ -671,6 +671,7 @@ async def test_get_ask_options_returns_configured_default_model(
         "load_config",
         lambda: {"defaults": {"model": "test/default-model", "reasoning-effort": "medium"}},
     )
+    monkeypatch.setattr(ask_route, "get_connected_model_options", lambda env: [])
 
     async with TestClient(TestServer(app)) as client:
         resp = await client.get(
@@ -684,6 +685,7 @@ async def test_get_ask_options_returns_configured_default_model(
         "model": "test/default-model",
         "resolved_model": "test/default-model",
         "reasoning_effort": "medium",
+        "model_options": ["auto", "test/default-model"],
     }
 
 
@@ -702,6 +704,11 @@ async def test_get_ask_options_resolves_auto_model(
         "resolve_auto_models",
         lambda: ["test/resolved-model", "test/fallback-model"],
     )
+    monkeypatch.setattr(
+        ask_route,
+        "get_connected_model_options",
+        lambda env: ["test/resolved-model", "test/fallback-model"],
+    )
 
     async with TestClient(TestServer(app)) as client:
         resp = await client.get(
@@ -715,6 +722,7 @@ async def test_get_ask_options_resolves_auto_model(
         "model": "auto",
         "resolved_model": "test/resolved-model",
         "reasoning_effort": "medium",
+        "model_options": ["auto", "test/resolved-model", "test/fallback-model"],
     }
 
 
@@ -740,6 +748,11 @@ async def test_get_ask_options_resolves_auto_model_with_saved_credentials(
         return ["gpt-5.4-mini"]
 
     monkeypatch.setattr(ask_route, "resolve_auto_models", _resolve_auto_models)
+    monkeypatch.setattr(
+        ask_route,
+        "get_connected_model_options",
+        lambda env: ["gpt-5.4-mini"] if env.get("OPENAI_API_KEY") else [],
+    )
 
     async with TestClient(TestServer(app)) as client:
         resp = await client.get(
@@ -753,6 +766,7 @@ async def test_get_ask_options_resolves_auto_model_with_saved_credentials(
         "model": "auto",
         "resolved_model": "gpt-5.4-mini",
         "reasoning_effort": "medium",
+        "model_options": ["auto", "gpt-5.4-mini"],
     }
     assert os.environ.get("OPENAI_API_KEY") is None
 

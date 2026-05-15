@@ -32,7 +32,7 @@ from aiohttp.client_exceptions import ClientConnectionResetError
 from aiohttp import web
 
 from pkm.config import load_config
-from pkm.models import resolve_auto_models
+from pkm.models import get_connected_model_options, resolve_auto_models
 from pkm.credential_store import agent_credential_env
 from pkm.web.keepalive import run_keepalive
 from pkm.web.routes.notes import _resolve_vault
@@ -259,11 +259,15 @@ async def get_ask_options(request: web.Request) -> web.Response:
     _resolve_vault(request.match_info["name"])
     model, reasoning_effort = _default_ask_options()
     env_keys = agent_credential_env()
+    model_options = ["auto", *get_connected_model_options(env_keys)]
+    if model and model not in model_options:
+        model_options.append(model)
     return web.json_response(
         {
             "model": model,
             "resolved_model": _resolved_ask_model(model, env_keys),
             "reasoning_effort": reasoning_effort,
+            "model_options": model_options,
         }
     )
 
