@@ -50,7 +50,7 @@ async def test_list_workflows_returns_readable_workflow_summaries(app, tmp_vault
         "enabled",
         "snippet",
     }
-    assert first["enabled"] is True
+    assert first["enabled"] is False
     assert first["trigger_time"].endswith(":00")
 
 
@@ -68,7 +68,7 @@ async def test_get_workflow_returns_read_mode_body(app, tmp_vault):
     assert data["id"] == "zettelkasten_maintenance"
     assert data["title"] == "zettelkasten maintenance"
     assert data["trigger_time"] == "02:00"
-    assert data["enabled"] is True
+    assert data["enabled"] is False
     assert "Zettelkasten maintainer" in data["body"]
 
 

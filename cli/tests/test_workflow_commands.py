@@ -28,6 +28,8 @@ def test_workflow_list_shows_bundled_defaults(tmp_path, monkeypatch):
     ids = [w["id"] for w in payload]
     assert "zettelkasten_maintenance" in ids
     assert "daily_task_summary" not in ids
+    by_id = {w["id"]: w for w in payload}
+    assert by_id["zettelkasten_maintenance"]["enabled"] is False
 
 
 def test_workflow_list_shows_entries(tmp_path, monkeypatch):
@@ -53,6 +55,7 @@ def test_workflow_list_shows_entries(tmp_path, monkeypatch):
     ids = [w["id"] for w in payload]
     assert "my_wf" in ids
     assert any(w["schedule_hour"] == 3 for w in payload if w["id"] == "my_wf")
+    assert any(w["enabled"] is False for w in payload if w["id"] == "my_wf")
     assert "3" in result.output
 
 

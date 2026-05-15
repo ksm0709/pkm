@@ -13,6 +13,7 @@ from pkm.workflows import (
     load_workflows,
     jitter_minutes,
     resolve_hook,
+    sync_installed_workflow_defaults,
     sync_stale_global_workflow_defaults,
 )
 from pkm.workflows.history import append_workflow_history, read_workflow_history
@@ -30,6 +31,8 @@ def test_load_workflows_returns_bundled_defaults_when_no_global(tmp_path, monkey
     ids = [c.id for c in configs]
     assert "zettelkasten_maintenance" in ids
     assert "daily_task_summary" not in ids
+    by_id = {workflow.id: workflow for workflow in configs}
+    assert by_id["zettelkasten_maintenance"].enabled is False
 
 
 def test_load_workflows_allows_full_user_defined_daily_task_summary(
@@ -62,6 +65,7 @@ def test_load_workflows_allows_full_user_defined_daily_task_summary(
     assert by_id["daily_task_summary"].pre_hook == (
         "pkm.workflows.hooks:build_daily_summary"
     )
+    assert by_id["daily_task_summary"].enabled is False
 
 
 def test_load_workflows_skips_partial_legacy_removed_workflow_override(
@@ -296,6 +300,7 @@ def test_sync_stale_global_workflow_defaults_updates_old_zettelkasten_prompt(
     assert updated["schedule_hour"] == 4
     assert updated["jitter_type"] == "md5_hostname_suffix:local"
     assert updated["post_hook"] == "pkm.workflows.hooks:repair_malformed_notes"
+    assert updated["enabled"] is False
     assert "get_graph_context" not in updated["system_prompt_template"]
     assert "get_note_neighbors" in updated["system_prompt_template"]
     assert "&relation [[target]] - reason" in updated["system_prompt_template"]
@@ -331,6 +336,47 @@ def test_sync_stale_global_workflow_defaults_preserves_custom_prompts(
     updated = json.loads(workflow_path.read_text(encoding="utf-8"))[0]
     assert updated["system_prompt_template"] == custom_prompt
     assert not list(cfg_dir.glob("workflow.json.bak-*"))
+
+
+def test_sync_installed_workflow_defaults_updates_copied_bundled_defaults(
+    tmp_path, monkeypatch
+):
+    """pkm update refreshes local copied bundled workflow settings."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    cfg_dir = tmp_path / ".config" / "pkm"
+    cfg_dir.mkdir(parents=True)
+    workflow_path = cfg_dir / "workflow.json"
+    default_prompt = {
+        workflow.id: workflow for workflow in load_workflows()
+    }["zettelkasten_maintenance"].system_prompt_template
+    workflow_path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "zettelkasten_maintenance",
+                    "schedule_hour": 5,
+                    "jitter_type": "md5_hostname_suffix:local",
+                    "marker_file": "local-zettel-last-run",
+                    "system_prompt_template": default_prompt,
+                    "pre_hook": "pkm.workflows.hooks:build_daily_summary",
+                    "post_hook": None,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    synced = sync_installed_workflow_defaults()
+
+    assert synced == workflow_path
+    updated = json.loads(workflow_path.read_text(encoding="utf-8"))[0]
+    assert updated["schedule_hour"] == 5
+    assert updated["jitter_type"] == "md5_hostname_suffix:local"
+    assert updated["marker_file"] == "local-zettel-last-run"
+    assert updated["enabled"] is False
+    assert updated["pre_hook"] is None
+    assert updated["post_hook"] == "pkm.workflows.hooks:repair_malformed_notes"
+    assert list(cfg_dir.glob("workflow.json.bak-*"))
 
 
 def test_workflow_history_jsonl_reads_newest_filters_limits_and_skips_corrupt_lines(

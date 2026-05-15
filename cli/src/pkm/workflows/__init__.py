@@ -24,7 +24,7 @@ class WorkflowConfig:
     system_prompt_template: str
     pre_hook: Optional[str] = None
     post_hook: Optional[str] = None
-    enabled: bool = True
+    enabled: bool = False
 
 
 def _global_workflow_path() -> Path:
@@ -38,6 +38,7 @@ def _vault_workflow_path(vault_path: str | Path) -> Path:
 _BUNDLED_DEFAULTS = Path(__file__).parent / "default_workflows.json"
 _REQUIRED_FIELDS = {"id", "schedule_hour", "marker_file"}
 _MANAGED_DEFAULT_SYNC_FIELDS = ("system_prompt_template", "pre_hook", "post_hook")
+_MANAGED_DEFAULT_FILL_FIELDS = ("enabled",)
 
 
 def _merge_from_file(path: Path, entries: dict[str, dict[str, Any]]) -> None:
@@ -67,6 +68,21 @@ def _bundled_workflows_by_id() -> dict[str, dict[str, Any]]:
     return entries
 
 
+def _coerce_bool(value: Any, *, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+        return default
+    return bool(value)
+
+
 def _is_stale_zettelkasten_default(item: dict[str, Any]) -> bool:
     if item.get("id") != "zettelkasten_maintenance":
         return False
@@ -88,13 +104,56 @@ def _is_stale_zettelkasten_default(item: dict[str, Any]) -> bool:
     return old_default_markers and stale_relation_markers
 
 
-def sync_stale_global_workflow_defaults(path: Path | None = None) -> Path | None:
-    """Refresh stale managed global workflow overrides after package updates.
+def _is_bundled_default_copy(item: dict[str, Any], default: dict[str, Any]) -> bool:
+    if _is_stale_zettelkasten_default(item):
+        return True
+    prompt = item.get("system_prompt_template")
+    default_prompt = default.get("system_prompt_template")
+    return isinstance(prompt, str) and prompt == default_prompt
+
+
+def _sync_bundled_workflow_item(
+    item: dict[str, Any], default: dict[str, Any]
+) -> bool:
+    changed = False
+    is_managed_copy = _is_bundled_default_copy(item, default)
+
+    if is_managed_copy:
+        for field in _MANAGED_DEFAULT_SYNC_FIELDS:
+            if field in default:
+                next_value = default[field]
+                if item.get(field) != next_value:
+                    item[field] = next_value
+                    changed = True
+            elif field in item:
+                item.pop(field, None)
+                changed = True
+
+        for field in _REQUIRED_FIELDS:
+            if field not in item:
+                item[field] = default[field]
+                changed = True
+        if "jitter_type" not in item:
+            item["jitter_type"] = default.get("jitter_type", "md5_hostname")
+            changed = True
+
+    if is_managed_copy:
+        for field in _MANAGED_DEFAULT_FILL_FIELDS:
+            if field not in item:
+                item[field] = default.get(field, False)
+                changed = True
+
+    return changed
+
+
+def sync_installed_workflow_defaults(path: Path | None = None) -> Path | None:
+    """Refresh locally installed workflow defaults after package updates.
 
     Global workflow overrides intentionally win over bundled defaults. Older pkm
     installs copied the zettelkasten daemon prompt into ~/.config/pkm/workflow.json,
-    so package updates alone cannot repair that prompt. This migration only touches
-    recognizable old bundled defaults and preserves local scheduling choices.
+    so package updates alone cannot repair that prompt. This migration only
+    updates recognizable bundled-default copies and fills new default fields,
+    while preserving local scheduling choices.
     """
     workflow_path = path or _global_workflow_path()
     if not workflow_path.exists():
@@ -105,23 +164,16 @@ def sync_stale_global_workflow_defaults(path: Path | None = None) -> Path | None
         return None
 
     defaults = _bundled_workflows_by_id()
-    default = defaults.get("zettelkasten_maintenance")
-    if default is None:
-        return None
 
     changed = False
     for item in items:
-        if not _is_stale_zettelkasten_default(item):
+        item_id = item.get("id")
+        if not isinstance(item_id, str):
             continue
-        for field in _MANAGED_DEFAULT_SYNC_FIELDS:
-            if field in default:
-                item[field] = default[field]
-            else:
-                item.pop(field, None)
-        for field in _REQUIRED_FIELDS:
-            item.setdefault(field, default[field])
-        item.setdefault("jitter_type", default.get("jitter_type", "md5_hostname"))
-        changed = True
+        default = defaults.get(item_id)
+        if default is None:
+            continue
+        changed = _sync_bundled_workflow_item(item, default) or changed
 
     if not changed:
         return None
@@ -135,6 +187,11 @@ def sync_stale_global_workflow_defaults(path: Path | None = None) -> Path | None
         encoding="utf-8",
     )
     return workflow_path
+
+
+def sync_stale_global_workflow_defaults(path: Path | None = None) -> Path | None:
+    """Backward-compatible alias for older callers."""
+    return sync_installed_workflow_defaults(path)
 
 
 def load_workflows(vault_path: str | Path | None = None) -> list[WorkflowConfig]:
@@ -167,7 +224,7 @@ def load_workflows(vault_path: str | Path | None = None) -> list[WorkflowConfig]
                 system_prompt_template=e.get("system_prompt_template", ""),
                 pre_hook=e.get("pre_hook") or None,
                 post_hook=e.get("post_hook") or None,
-                enabled=bool(e.get("enabled", True)),
+                enabled=_coerce_bool(e.get("enabled"), default=False),
             )
         )
     return configs

@@ -58,7 +58,7 @@ def _patch_post_install(monkeypatch):
         update_mod, "install_shell_aliases", lambda: calls.append("aliases")
     )
     monkeypatch.setattr(update_mod, "sync_existing_web_unit", lambda: None)
-    monkeypatch.setattr(update_mod, "sync_stale_global_workflow_defaults", lambda: None)
+    monkeypatch.setattr(update_mod, "sync_installed_workflow_defaults", lambda: None)
     return calls
 
 
@@ -185,16 +185,16 @@ def test_update_syncs_existing_web_unit_after_success(monkeypatch, tmp_path):
     assert hooks == ["skills", "aliases"]
 
 
-def test_update_syncs_stale_global_workflow_defaults_after_success(
+def test_update_syncs_installed_workflow_defaults_after_success(
     monkeypatch, tmp_path
 ):
-    """Successful updates refresh stale copied daemon workflow defaults."""
+    """Successful updates refresh locally installed workflow defaults."""
     repo, cli_dir = _make_repo(tmp_path)
     hooks = _patch_post_install(monkeypatch)
     workflow_path = tmp_path / "workflow.json"
     monkeypatch.setattr(update_mod, "find_local_cli_dir", lambda: cli_dir)
     monkeypatch.setattr(
-        update_mod, "sync_stale_global_workflow_defaults", lambda: workflow_path
+        update_mod, "sync_installed_workflow_defaults", lambda: workflow_path
     )
 
     dispatcher = CommandDispatcher(
@@ -218,7 +218,7 @@ def test_update_syncs_stale_global_workflow_defaults_after_success(
     result = _runner().invoke(update_cmd, [])
 
     assert result.exit_code == 0
-    assert "PKM workflow defaults synced" in result.output
+    assert "PKM workflow settings synced" in result.output
     assert str(workflow_path) in result.output
     assert hooks == ["skills", "aliases"]
 

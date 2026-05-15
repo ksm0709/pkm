@@ -1,6 +1,7 @@
 [
   {
     "id": "zettelkasten_maintenance",
+    "enabled": false,
     "schedule_hour": 2,
     "jitter_type": "md5_hostname",
     "marker_file": "zettel-last-run",

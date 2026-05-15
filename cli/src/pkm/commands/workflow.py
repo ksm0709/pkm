@@ -17,6 +17,10 @@ from pkm.workflows.history import read_workflow_history
 _console = Console()
 
 
+def _hook_label(hook: str | None) -> str:
+    return hook.rsplit(":", 1)[-1] if hook else "—"
+
+
 @click.group(name="workflow")
 def workflow_group():
     """Manage PKM daemon workflows."""
@@ -46,6 +50,7 @@ def workflow_list(vault: str | None, fmt: str):
                         "schedule_hour": c.schedule_hour,
                         "jitter_type": c.jitter_type,
                         "marker_file": c.marker_file,
+                        "enabled": c.enabled,
                         "pre_hook": c.pre_hook,
                         "post_hook": c.post_hook,
                     }
@@ -64,6 +69,7 @@ def workflow_list(vault: str | None, fmt: str):
     table = Table(title="PKM Workflows", show_lines=True)
     table.add_column("ID", style="bold cyan")
     table.add_column("Hour", justify="center")
+    table.add_column("Enabled", justify="center")
     table.add_column("Jitter", style="dim")
     table.add_column("Marker File", style="dim")
     table.add_column("Pre-hook", style="green")
@@ -73,10 +79,11 @@ def workflow_list(vault: str | None, fmt: str):
         table.add_row(
             c.id,
             str(c.schedule_hour),
+            "yes" if c.enabled else "no",
             c.jitter_type,
             c.marker_file,
-            c.pre_hook or "—",
-            c.post_hook or "—",
+            _hook_label(c.pre_hook),
+            _hook_label(c.post_hook),
         )
 
     _console.print(table)

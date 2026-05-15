@@ -24,6 +24,7 @@ Workflows are defined in JSON and merged from three sources (later sources overr
 [
   {
     "id": "my_workflow",
+    "enabled": false,
     "schedule_hour": 3,
     "jitter_type": "md5_hostname",
     "marker_file": "my-wf-last-run",
@@ -37,6 +38,7 @@ Workflows are defined in JSON and merged from three sources (later sources overr
 | Field | Required | Description |
 |-------|----------|-------------|
 | `id` | yes | Unique workflow identifier |
+| `enabled` | no | Whether scheduled daemon runs are enabled; defaults to `false` when omitted |
 | `schedule_hour` | yes | Hour of day (0–23) to run |
 | `jitter_type` | yes | Jitter strategy: `md5_hostname` or `md5_hostname_suffix:<seed>` |
 | `marker_file` | yes | Marker filename under `{vault}/.pkm/` to prevent duplicate runs |
@@ -55,7 +57,7 @@ Workflows are defined in JSON and merged from three sources (later sources overr
 
 | ID | Hour | Description |
 |----|------|-------------|
-| `zettelkasten_maintenance` | 3 | Nightly graph maintenance: surprising connections, cluster review, hub notes |
+| `zettelkasten_maintenance` | 2 | Nightly graph maintenance: surprising connections, cluster review, hub notes |
 
 `daily_task_summary` is no longer bundled. Existing users can still define a complete custom workflow with that id in global or vault workflow config.
 
@@ -98,5 +100,6 @@ pkm workflow history all --format json --limit 5
 ## Notes
 
 - `pkm workflow run` writes a task to `~/.config/pkm/task_queue.json` (raw JSON array). The daemon worker picks it up on its next poll cycle.
-- The daemon auto-schedules all configured workflows on startup via `workflow_checker` coroutines; `pkm workflow run` is for on-demand execution.
+- The daemon auto-schedules configured workflows on startup via `workflow_checker` coroutines, but scheduled runs are skipped unless `enabled` is `true`. `pkm workflow run` is for on-demand execution.
+- `pkm update` refreshes recognizable locally copied bundled workflow settings in `~/.config/pkm/workflow.json` after package updates, preserving local schedule, jitter, and marker choices.
 - Custom hooks must be importable from the Python environment where the daemon runs.
