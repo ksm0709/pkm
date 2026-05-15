@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.83.1 (2026-05-15)
+
+### Bug Fixes
+
+- Let workflow maintenance rebuild indexes under sandbox
+  ([`b4cec31`](https://github.com/ksm0709/pkm/commit/b4cec31889f9a0f6a7549581265ddacbe32534fd))
+
+
 ## v2.83.0 (2026-05-15)
 
 ### Bug Fixes
