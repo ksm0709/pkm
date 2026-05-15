@@ -31,6 +31,8 @@ search = [
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
+    "aiohttp>=3.9",
+    "keyring>=25.0",
 ]
 web = [
     "aiohttp>=3.9",

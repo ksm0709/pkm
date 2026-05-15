@@ -2,11 +2,34 @@
 
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 
+import click.testing
 import pytest
 
 from pkm.config import VaultConfig
+
+
+if "mix_stderr" not in inspect.signature(
+    click.testing.CliRunner.__init__
+).parameters:
+    _BaseCliRunner = click.testing.CliRunner
+
+    class CompatCliRunner(_BaseCliRunner):
+        """Preserve Click <8.3 test runner stderr controls."""
+
+        def __init__(self, *args, mix_stderr: bool = True, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._compat_mix_stderr = mix_stderr
+
+        def invoke(self, *args, **kwargs):
+            result = super().invoke(*args, **kwargs)
+            if not self._compat_mix_stderr:
+                result.output_bytes = result.stdout_bytes
+            return result
+
+    click.testing.CliRunner = CompatCliRunner
 
 
 @pytest.fixture
