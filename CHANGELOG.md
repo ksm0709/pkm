@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.84.0 (2026-05-16)
+
+### Features
+
+- Add Termux (Android) install support
+  ([`5734261`](https://github.com/ksm0709/pkm/commit/5734261f72d562e63cba2249f502fc289aed364f))
+
+
 ## v2.83.1 (2026-05-15)
 
 ### Bug Fixes
