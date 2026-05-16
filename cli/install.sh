@@ -4,6 +4,29 @@
 # Requires: Python 3.10+
 set -euo pipefail
 
+# ── Termux (Android) detection ───────────────────────────────────────────────
+# Termux needs Rust for native wheels, serialized builds for cargo registry
+# races, and skips [search] (no PyTorch Android wheel).  Delegate to the
+# dedicated Termux installer when we detect the environment.
+if [[ -n "${TERMUX_VERSION:-}" || -d "/data/data/com.termux" ]]; then
+  TERMUX_SCRIPT=""
+  # Resolve the Termux script relative to this file when run from the repo.
+  if [[ -n "${BASH_SOURCE[0]+x}" && "${BASH_SOURCE[0]}" != "" && "${BASH_SOURCE[0]}" != "bash" ]]; then
+    _dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    [[ -f "$_dir/install-termux.sh" ]] && TERMUX_SCRIPT="$_dir/install-termux.sh"
+  fi
+  # When piped (curl | bash), download the repo and exec the Termux script.
+  if [[ -z "$TERMUX_SCRIPT" ]]; then
+    echo "Termux detected — downloading Termux installer..."
+    _tmp="$(mktemp -d)"
+    curl -fsSL "https://github.com/ksm0709/pkm/archive/refs/heads/main.tar.gz" \
+      | tar -xz -C "$_tmp" --strip-components=1
+    TERMUX_SCRIPT="$_tmp/cli/install-termux.sh"
+  fi
+  echo "Termux detected — forwarding to install-termux.sh"
+  exec bash "$TERMUX_SCRIPT" "$@"
+fi
+
 echo "=== PKM CLI Installer ==="
 echo ""
 
