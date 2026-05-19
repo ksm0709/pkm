@@ -43,6 +43,7 @@ export function installVimMappings() {
   Vim.defineEx("followAtCursor", "", () => callNav("followAtCursor"));
   Vim.defineEx("openExternal", "", () => callNav("openExternal"));
   Vim.defineEx("openPalette", "", () => callNav("openPalette"));
+  Vim.defineEx("openNoteSearch", "", () => callNav("openNoteSearch"));
 
   // ----- Normal-mode mappings -----
   Vim.map("gd", ":gotoDaily<CR>", "normal");
@@ -51,4 +52,5 @@ export function installVimMappings() {
   Vim.map("gf", ":followAtCursor<CR>", "normal");
   Vim.map("gx", ":openExternal<CR>", "normal");
   Vim.map("<leader>k", ":openPalette<CR>", "normal");
+  Vim.map("<leader>/", ":openNoteSearch<CR>", "normal");
 }

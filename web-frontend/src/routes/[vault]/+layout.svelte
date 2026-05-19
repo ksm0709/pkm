@@ -33,7 +33,8 @@
     | "back"
     | "followAtCursor"
     | "openExternal"
-    | "openPalette";
+    | "openPalette"
+    | "openNoteSearch";
 
   interface KeyHintAction {
     key: string;
@@ -49,6 +50,11 @@
         key: "k",
         description: "Open command palette",
         navAction: "openPalette",
+      },
+      {
+        key: "/",
+        description: "Jump to note",
+        navAction: "openNoteSearch",
       },
     ],
   };
@@ -114,6 +120,7 @@
   let pageName = $derived(pageNameFromPath($page.url.pathname, vaultName));
   let drawerOpen = $state(false);
   let commandPaletteOpenToken = $state(0);
+  let noteSearchOpenToken = $state(0);
   let vaultContentEl = $state<HTMLDivElement | null>(null);
   let contentInlineSize = $state(0);
   let windowPadding = $state(DEFAULT_WINDOW_PADDING);
@@ -144,6 +151,7 @@
       followAtCursor: () => false,
       openExternal: () => false,
       openPalette: () => openCommandPalette(),
+      openNoteSearch: () => openNoteSearch(),
     };
 
     window.addEventListener("keydown", handleKeydown);
@@ -214,6 +222,11 @@
 
   function openCommandPalette() {
     commandPaletteOpenToken += 1;
+    return true;
+  }
+
+  function openNoteSearch() {
+    noteSearchOpenToken += 1;
     return true;
   }
 
@@ -395,7 +408,11 @@
   </div>
 </div>
 
-<CmdK {vaultName} openToken={commandPaletteOpenToken} />
+<CmdK
+  {vaultName}
+  openToken={commandPaletteOpenToken}
+  searchOpenToken={noteSearchOpenToken}
+/>
 
 {#if activeKeyHints.length > 0}
   <aside

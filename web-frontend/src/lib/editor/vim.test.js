@@ -25,6 +25,7 @@ describe("vim mappings", () => {
       ["gf", ":followAtCursor<CR>", "normal"],
       ["gx", ":openExternal<CR>", "normal"],
       ["<leader>k", ":openPalette<CR>", "normal"],
+      ["<leader>/", ":openNoteSearch<CR>", "normal"],
     ]);
     expect(defineEx.mock.calls.map((call) => call[0])).toEqual([
       "gotoDaily",
@@ -33,6 +34,7 @@ describe("vim mappings", () => {
       "followAtCursor",
       "openExternal",
       "openPalette",
+      "openNoteSearch",
     ]);
   });
 

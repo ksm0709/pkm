@@ -58,7 +58,7 @@ describe("CmdK", () => {
     document.body.innerHTML = "";
   });
 
-  function render(openToken = 1) {
+  function render(openToken = 1, searchOpenToken = 0) {
     const target = document.createElement("div");
     document.body.appendChild(target);
     const component = mount(CmdK, {
@@ -66,9 +66,14 @@ describe("CmdK", () => {
       props: {
         vaultName: "main",
         openToken,
+        searchOpenToken,
       },
     });
     return { target, component };
+  }
+
+  function renderSearch() {
+    return render(0, 1);
   }
 
   async function flush() {
@@ -106,6 +111,30 @@ describe("CmdK", () => {
     unmount(component);
   });
 
+  it("keeps command filtering separate from note search results", async () => {
+    const { target, component } = render();
+    await tick();
+    await vi.runOnlyPendingTimersAsync();
+    await tick();
+
+    const input = target.querySelector<HTMLInputElement>(".cmdk-input");
+    input!.value = "pkm";
+    input!.dispatchEvent(new Event("input", { bubbles: true }));
+    await tick();
+    await vi.advanceTimersByTimeAsync(120);
+    await tick();
+
+    expect(apiGet).not.toHaveBeenCalledWith("/api/v1/vault/main/search?q=pkm");
+    expect(target.querySelector(".cmdk-row[data-note-id]")).toBeNull();
+    expect(
+      [...target.querySelectorAll(".row-label")].map(
+        (node) => node.textContent,
+      ),
+    ).toEqual(["Ask…"]);
+
+    unmount(component);
+  });
+
   it("persists a selected vault before navigating to it", async () => {
     const { target, component } = render();
     await tick();
@@ -132,11 +161,14 @@ describe("CmdK", () => {
   });
 
   it("debounces note search and opens the selected note result", async () => {
-    const { target, component } = render();
+    const { target, component } = renderSearch();
     await tick();
     await vi.runOnlyPendingTimersAsync();
     await tick();
 
+    expect(target.querySelector(".console-label")?.textContent).toContain(
+      "NOTE SEARCH",
+    );
     const input = target.querySelector<HTMLInputElement>(".cmdk-input");
     input!.value = "pkm";
     input!.dispatchEvent(new Event("input", { bubbles: true }));
@@ -190,7 +222,7 @@ describe("CmdK", () => {
       }
       return [];
     });
-    const { target, component } = render();
+    const { target, component } = renderSearch();
     await tick();
     await vi.runOnlyPendingTimersAsync();
     await tick();
@@ -216,7 +248,7 @@ describe("CmdK", () => {
   });
 
   it("searches tag rows and routes their note result", async () => {
-    const { target, component } = render();
+    const { target, component } = renderSearch();
     await tick();
     await vi.runOnlyPendingTimersAsync();
     await tick();
@@ -239,6 +271,29 @@ describe("CmdK", () => {
     row?.click();
     await tick();
     expect(goto).toHaveBeenCalledWith("/main/notes/idea-note");
+
+    unmount(component);
+  });
+
+  it("routes Cmd/Ctrl slash to the note search palette", async () => {
+    const { target, component } = render(0, 0);
+    await tick();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "/",
+        code: "Slash",
+        metaKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    await tick();
+
+    expect(target.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(target.querySelector(".console-label")?.textContent).toContain(
+      "NOTE SEARCH",
+    );
 
     unmount(component);
   });

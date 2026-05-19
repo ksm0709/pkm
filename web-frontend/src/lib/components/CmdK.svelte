@@ -8,12 +8,13 @@
   interface Props {
     vaultName: string;
     openToken?: number;
+    searchOpenToken?: number;
   }
 
-  let { vaultName, openToken = 0 }: Props = $props();
+  let { vaultName, openToken = 0, searchOpenToken = 0 }: Props = $props();
 
   type Theme = "light" | "dark" | "auto";
-  type PaletteMode = "commands" | "vaults";
+  type PaletteMode = "commands" | "search" | "vaults";
 
   type CommandRow = {
     kind: "command";
@@ -186,9 +187,14 @@
         kind: "command",
         id: "cmd:jump",
         label: "Jump to note…",
-        hint: "type to search",
+        hint: "search",
         run: () => {
-          // Focus stays in input; user can keep typing
+          mode = "search";
+          query = "";
+          activeIndex = 0;
+          notes = [];
+          tagNotes = [];
+          lastQuery = "";
           inputEl?.focus();
         },
       },
@@ -299,11 +305,16 @@
       return vaultSwitchRows();
     }
 
-    if (!trimmed) {
-      return staticCommands();
+    if (currentMode === "commands") {
+      if (!trimmed) return staticCommands();
+      return commandsForQuery(trimmed);
     }
 
-    if (trimmed.startsWith("#")) {
+    if (!trimmed) {
+      return [];
+    }
+
+    if (currentMode === "search" && trimmed.startsWith("#")) {
       return tagNotesList.map((n) => ({
         kind: "note" as const,
         id: `tagnote:${n.note_id}`,
@@ -313,16 +324,17 @@
       }));
     }
 
-    const noteRows: NoteRow[] = notesList.map((n) => ({
-      kind: "note",
-      id: `note:${n.note_id}`,
-      label: n.title || n.note_id,
-      hint: n.snippet,
-      note_id: n.note_id,
-    }));
+    if (currentMode === "search") {
+      return notesList.map((n) => ({
+        kind: "note" as const,
+        id: `note:${n.note_id}`,
+        label: n.title || n.note_id,
+        hint: n.snippet,
+        note_id: n.note_id,
+      }));
+    }
 
-    const cmdRows: CommandRow[] = commandsForQuery(trimmed);
-    return [...noteRows, ...cmdRows];
+    return [];
   }
 
   async function runSearch(q: string) {
@@ -404,14 +416,14 @@
     const target = e.target as HTMLInputElement;
     query = target.value;
     activeIndex = 0;
-    if (mode === "vaults") return;
+    if (mode !== "search") return;
     scheduleSearch(query);
   }
 
-  function openPalette() {
+  function openPalette(initialMode: "commands" | "search" = "commands") {
     open = true;
     query = "";
-    mode = "commands";
+    mode = initialMode;
     activeIndex = 0;
     notes = [];
     tagNotes = [];
@@ -481,6 +493,17 @@
       return;
     }
 
+    if (
+      (event.metaKey || event.ctrlKey) &&
+      (event.key === "/" || event.code === "Slash")
+    ) {
+      if (!open && eventStartedInEditor()) return;
+      consume();
+      if (open && mode === "search") close();
+      else openPalette("search");
+      return;
+    }
+
     if (!open) return;
 
     if (indexing) {
@@ -524,11 +547,19 @@
     if (openToken > 0) openPalette();
   });
 
+  $effect(() => {
+    if (searchOpenToken > 0) openPalette("search");
+  });
+
   onMount(() => {
     const handler = () => openPalette();
+    const searchHandler = () => openPalette("search");
     window.addEventListener("pkm:open-command-palette", handler);
-    return () =>
+    window.addEventListener("pkm:open-note-search", searchHandler);
+    return () => {
       window.removeEventListener("pkm:open-command-palette", handler);
+      window.removeEventListener("pkm:open-note-search", searchHandler);
+    };
   });
 </script>
 
@@ -546,7 +577,11 @@
       aria-modal="true"
     >
       <div class="console-label">
-        {mode === "vaults" ? "VAULT SWITCHER" : "COMMAND CONSOLE"}
+        {mode === "vaults"
+          ? "VAULT SWITCHER"
+          : mode === "search"
+            ? "NOTE SEARCH"
+            : "COMMAND CONSOLE"}
       </div>
       <input
         bind:this={inputEl}
@@ -554,7 +589,9 @@
         type="text"
         placeholder={mode === "vaults"
           ? "Choose vault…"
-          : "Search notes, run commands, #tag…"}
+          : mode === "search"
+            ? "Search notes or #tag…"
+            : "Run command…"}
         value={query}
         oninput={onInput}
         autocomplete="off"

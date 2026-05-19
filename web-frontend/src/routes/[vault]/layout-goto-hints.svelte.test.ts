@@ -211,6 +211,8 @@ describe("vault layout goto key hints", () => {
     expect(hint()?.textContent).toContain("Space");
     expect(hint()?.textContent).toContain("k");
     expect(hint()?.textContent).toContain("Open command palette");
+    expect(hint()?.textContent).toContain("/");
+    expect(hint()?.textContent).toContain("Jump to note");
 
     unmount(component);
   });
@@ -225,6 +227,23 @@ describe("vault layout goto key hints", () => {
     expect(event.defaultPrevented).toBe(true);
     expect(mocks.goto).toHaveBeenCalledWith("/main/notes/2026-05-12");
     expect(hint()).toBeNull();
+
+    unmount(component);
+  });
+
+  it("runs Space slash and opens note search", async () => {
+    const { component, target } = render();
+    await flush();
+
+    await press(" ");
+    const event = await press("/");
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(hint()).toBeNull();
+    expect(target.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(target.querySelector(".console-label")?.textContent).toContain(
+      "NOTE SEARCH",
+    );
 
     unmount(component);
   });
