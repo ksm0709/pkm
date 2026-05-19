@@ -1,5 +1,6 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
+  import { readRememberedVault } from "$lib/vault/remembered-vault";
 
   let password = $state("");
   let remember = $state(true);
@@ -26,7 +27,7 @@
         sessionStorage.removeItem("pkm.token");
 
         // Navigate to last vault or first available
-        const lastVault = localStorage.getItem("pkm.lastVault");
+        const lastVault = readRememberedVault();
         if (lastVault) {
           await goto(`/${lastVault}/logger`);
         } else {

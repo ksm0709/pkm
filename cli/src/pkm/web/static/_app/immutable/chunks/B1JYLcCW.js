@@ -1,0 +1,2 @@
+const r="pkm.lastVault",o="pkm_last_vault";function l(){const t=a();return t||c()}function u(t){const e=t.trim();if(e){try{localStorage.setItem(r,e)}catch{}try{document.cookie=`${o}=${encodeURIComponent(e)}; Max-Age=31536000; Path=/; SameSite=Lax`}catch{}}}function a(){try{return localStorage.getItem(r)||null}catch{return null}}function c(){try{const t=`${o}=`,e=document.cookie.split(";").map(n=>n.trim()).find(n=>n.startsWith(t));return e&&decodeURIComponent(e.slice(t.length))||null}catch{return null}}export{l as a,u as r};
+//# sourceMappingURL=B1JYLcCW.js.map

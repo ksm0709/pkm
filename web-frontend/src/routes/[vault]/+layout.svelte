@@ -19,6 +19,7 @@
     parseWindowPadding,
     windowLayoutVars,
   } from "$lib/layout/window-layout";
+  import { rememberVault } from "$lib/vault/remembered-vault";
   import type { Snippet } from "svelte";
 
   interface Props {
@@ -189,6 +190,7 @@
   $effect(() => {
     const vault = vaultName;
     if (!vault) return;
+    rememberVault(vault);
     void refreshWindowPadding(vault);
   });
 

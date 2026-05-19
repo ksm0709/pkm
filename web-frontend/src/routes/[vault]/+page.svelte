@@ -1,6 +1,7 @@
 <script lang="ts">
   import { page } from "$app/stores";
   import { apiGet } from "$lib/api/client.js";
+  import { rememberVault } from "$lib/vault/remembered-vault";
 
   interface NoteEntry {
     note_id: string;
@@ -49,8 +50,7 @@
         hour: "2-digit",
         minute: "2-digit",
       }).format(new Date());
-      // Store last visited vault
-      localStorage.setItem("pkm.lastVault", vault);
+      rememberVault(vault);
     } catch (e) {
       if (token !== loadToken) return;
       error = e instanceof Error ? e.message : "Failed to load notes.";

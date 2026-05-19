@@ -41,6 +41,11 @@ describe("vault layout window padding", () => {
     | ((entries: Array<{ contentRect: { width: number } }>) => void);
 
   beforeEach(() => {
+    localStorage.clear();
+    mocks.pageStore?.set({
+      params: { vault: "main" },
+      url: new URL("http://localhost/main"),
+    });
     resizeCallback = undefined;
     mocks.loadConfigs.mockResolvedValue({
       settings: [
@@ -70,6 +75,7 @@ describe("vault layout window padding", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.clearAllMocks();
+    localStorage.clear();
     document.documentElement.removeAttribute("style");
     document.body.innerHTML = "";
   });
@@ -170,6 +176,23 @@ describe("vault layout window padding", () => {
     expect(
       document.documentElement.style.getPropertyValue("--window-padding-raw"),
     ).toBe("32px");
+
+    unmount(component);
+  });
+
+  it("persists the current vault when vault-scoped routes mount and change", async () => {
+    const { component } = render();
+    await flush();
+
+    expect(localStorage.getItem("pkm.lastVault")).toBe("main");
+
+    mocks.pageStore?.set({
+      params: { vault: "archive" },
+      url: new URL("http://localhost/archive/logger"),
+    });
+    await flush();
+
+    expect(localStorage.getItem("pkm.lastVault")).toBe("archive");
 
     unmount(component);
   });

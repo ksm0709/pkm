@@ -11,6 +11,7 @@
   } from "$lib/notes/rendered-markdown.js";
   import { wikilinksToMarkdownLinks } from "$lib/notes/wikilinks.js";
   import { graphKeyNav } from "$lib/navigation/graph-keynav.svelte";
+  import { rememberVault } from "$lib/vault/remembered-vault";
 
   interface Note {
     note_id: string;
@@ -296,8 +297,7 @@
       graphKeyNav.clearCurrentNoteNavigationContext(vault, id);
     }
 
-    // Track last vault
-    localStorage.setItem("pkm.lastVault", vault);
+    rememberVault(vault);
   }
 
   async function loadOrCreateNote(vault: string, id: string, endpoint: string) {

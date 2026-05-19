@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from pkm.config import VaultConfig
+from pkm.workflows.history import append_workflow_history
 from pkm.workflows import WorkflowConfig
 
 
@@ -19,6 +20,82 @@ class RecordingQueue:
 
     def push(self, task: dict) -> None:
         self.items.append(task)
+
+
+def test_workflow_marker_allows_retry_after_other_host_failure(tmp_path):
+    """A failed claim from another host must not block this host's scheduled run."""
+    import pkm.daemon as daemon
+
+    vault_path = tmp_path / "vault"
+    marker_path = vault_path / ".pkm" / "wf-last-run"
+    marker_path.parent.mkdir(parents=True)
+    marker_path.write_text(
+        json.dumps({"date": "2026-05-19", "host": "b850m"}),
+        encoding="utf-8",
+    )
+    append_workflow_history(
+        vault_path,
+        {
+            "workflow_id": "wf",
+            "task_id": "wf_vault_1",
+            "hostname": "b850m",
+            "time": "2026-05-18T17:07:11.223984Z",
+            "status": "failure",
+            "source": "scheduled",
+            "phase": "index",
+            "error": "Command execution blocked: subprocess.Popen",
+            "result_summary": "",
+        },
+    )
+
+    blocks, host = daemon._workflow_marker_blocks_scheduled_run(
+        vault_path=vault_path,
+        workflow_id="wf",
+        marker_path=marker_path,
+        current_date=datetime.date(2026, 5, 19),
+        hostname="lgubook",
+    )
+
+    assert blocks is False
+    assert host == "b850m"
+
+
+def test_workflow_marker_blocks_after_same_day_success(tmp_path):
+    """A completed run still prevents duplicate same-day workflow execution."""
+    import pkm.daemon as daemon
+
+    vault_path = tmp_path / "vault"
+    marker_path = vault_path / ".pkm" / "wf-last-run"
+    marker_path.parent.mkdir(parents=True)
+    marker_path.write_text(
+        json.dumps({"date": "2026-05-19", "host": "b850m"}),
+        encoding="utf-8",
+    )
+    append_workflow_history(
+        vault_path,
+        {
+            "workflow_id": "wf",
+            "task_id": "wf_vault_1",
+            "hostname": "b850m",
+            "time": "2026-05-19T02:30:00+09:00",
+            "status": "success",
+            "source": "scheduled",
+            "phase": "complete",
+            "error": None,
+            "result_summary": "done",
+        },
+    )
+
+    blocks, host = daemon._workflow_marker_blocks_scheduled_run(
+        vault_path=vault_path,
+        workflow_id="wf",
+        marker_path=marker_path,
+        current_date=datetime.date(2026, 5, 19),
+        hostname="lgubook",
+    )
+
+    assert blocks is True
+    assert host == "b850m"
 
 
 @pytest.mark.anyio

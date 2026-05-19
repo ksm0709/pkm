@@ -14,10 +14,7 @@ const ASSETS = Array.from(new Set([...build, ...files, ...APP_SHELL]));
 
 sw.addEventListener("install", (event) => {
   event.waitUntil(
-    caches
-      .open(CACHE_NAME)
-      .then((cache) => cache.addAll(ASSETS))
-      .then(() => sw.skipWaiting()),
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)),
   );
 });
 
@@ -32,7 +29,7 @@ sw.addEventListener("activate", (event) => {
             .map((key) => caches.delete(key)),
         ),
       )
-      .then(() => sw.clients.claim()),
+      .then(() => undefined),
   );
 });
 

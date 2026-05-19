@@ -43,6 +43,43 @@ body::before {
   border: 1px solid var(--border);
 }
 
+.markdown-table-scroll {
+  width: 100%;
+  max-width: 100%;
+  margin: 0 0 var(--space-4, 16px);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.markdown-table-scroll > table {
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  border-collapse: collapse;
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: var(--type-body-size, 15px);
+  line-height: var(--type-body-lh, 1.72);
+}
+
+.markdown-table-scroll :is(th, td) {
+  max-width: none;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border: 1px solid var(--border);
+  color: var(--text);
+  overflow-wrap: normal;
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+  word-break: normal;
+}
+
+.markdown-table-scroll th {
+  background: var(--surface-raised, var(--bg-elev));
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
 .note-editor {
   border-color: var(--border);
 }

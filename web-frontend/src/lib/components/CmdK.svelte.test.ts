@@ -11,6 +11,8 @@ vi.mock("$lib/api/client.js", () => ({ apiClient: vi.fn(), apiGet: vi.fn() }));
 describe("CmdK", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    localStorage.clear();
+    document.cookie = "pkm_last_vault=; Max-Age=0; Path=/";
     vi.mocked(apiGet).mockImplementation(async (path: string) => {
       if (path === "/api/v1/vaults") return ["main", { name: "archive" }];
       if (path.includes("/search?q=pkm")) {
@@ -48,6 +50,8 @@ describe("CmdK", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    localStorage.clear();
+    document.cookie = "pkm_last_vault=; Max-Age=0; Path=/";
     vi.mocked(apiClient).mockReset();
     vi.mocked(goto).mockReset();
     vi.mocked(apiGet).mockReset();
@@ -98,6 +102,31 @@ describe("CmdK", () => {
 
     expect(goto).toHaveBeenCalledWith("/main");
     expect(target.querySelector('[role="dialog"]')).toBeNull();
+
+    unmount(component);
+  });
+
+  it("persists a selected vault before navigating to it", async () => {
+    const { target, component } = render();
+    await tick();
+    await vi.runOnlyPendingTimersAsync();
+    await tick();
+
+    const switchVault = [
+      ...target.querySelectorAll<HTMLElement>(".cmdk-row"),
+    ].find((row) => row.textContent?.includes("Switch vault"));
+    switchVault?.click();
+    await flush();
+
+    const archiveVault = [
+      ...target.querySelectorAll<HTMLElement>(".cmdk-row"),
+    ].find((row) => row.textContent?.includes("archive"));
+    archiveVault?.click();
+    await tick();
+
+    expect(localStorage.getItem("pkm.lastVault")).toBe("archive");
+    expect(document.cookie).toContain("pkm_last_vault=archive");
+    expect(goto).toHaveBeenCalledWith("/archive/logger");
 
     unmount(component);
   });

@@ -54,6 +54,67 @@ def _announce_web_server_started(bind: str, port: int) -> None:
     print(message, flush=True)
 
 
+def _record_local_date(record: dict[str, Any]) -> datetime.date | None:
+    value = record.get("time")
+    if not isinstance(value, str):
+        return None
+
+    try:
+        parsed = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone()
+    return parsed.date()
+
+
+def _workflow_marker_blocks_scheduled_run(
+    *,
+    vault_path: Path,
+    workflow_id: str,
+    marker_path: Path,
+    current_date: datetime.date,
+    hostname: str,
+) -> tuple[bool, str | None]:
+    if not marker_path.exists():
+        return False, None
+
+    try:
+        data = json.loads(marker_path.read_text(encoding="utf-8"))
+    except Exception:
+        return False, None
+
+    if data.get("date") != str(current_date):
+        return False, None
+
+    marker_host = str(data.get("host") or "unknown")
+    if marker_host == hostname:
+        return True, marker_host
+
+    try:
+        from pkm.workflows.history import read_workflow_history
+
+        records = read_workflow_history(vault_path, workflow_id=workflow_id, limit=200)
+    except Exception:
+        return True, marker_host
+
+    today_records = [
+        record for record in records if _record_local_date(record) == current_date
+    ]
+    if any(
+        record.get("status") == "success" and record.get("phase") == "complete"
+        for record in today_records
+    ):
+        return True, marker_host
+
+    marker_host_failed = any(
+        record.get("hostname") == marker_host and record.get("status") == "failure"
+        for record in today_records
+    )
+    return not marker_host_failed, marker_host
+
+
 def _resolve_graph_path(vault, tier: str = "enriched"):
     """Return best-available graph path. Preferred: enriched, fallback: structural.
 
@@ -703,20 +764,30 @@ async def workflow_checker(config: WorkflowConfig):
                 continue
 
             marker_path = vault.pkm_dir / latest_config.marker_file
-            if marker_path.exists():
-                try:
-                    data = json.loads(marker_path.read_text())
-                    if data.get("date") == str(current_date):
-                        logger.info(
-                            "Workflow '%s' already claimed by '%s' today, skipping vault '%s'",
-                            latest_config.id,
-                            data.get("host", "unknown"),
-                            vault_name,
-                        )
-                        last_run_dates[vault_name] = current_date
-                        continue
-                except Exception:
-                    pass
+            marker_blocks, marker_host = _workflow_marker_blocks_scheduled_run(
+                vault_path=vault.path,
+                workflow_id=latest_config.id,
+                marker_path=marker_path,
+                current_date=current_date,
+                hostname=hostname,
+            )
+            if marker_blocks:
+                logger.info(
+                    "Workflow '%s' already claimed by '%s' today, skipping vault '%s'",
+                    latest_config.id,
+                    marker_host or "unknown",
+                    vault_name,
+                )
+                last_run_dates[vault_name] = current_date
+                continue
+            if marker_host and marker_host != hostname:
+                logger.info(
+                    "Workflow '%s' claim by '%s' failed today; allowing '%s' to retry vault '%s'",
+                    latest_config.id,
+                    marker_host,
+                    hostname,
+                    vault_name,
+                )
 
             vault.pkm_dir.mkdir(parents=True, exist_ok=True)
             marker_path.write_text(

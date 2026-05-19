@@ -84,6 +84,19 @@ function appendDecoratedInlineSyntax(
   }
 }
 
+function wrapMarkdownTables(fragment: DocumentFragment, doc: Document) {
+  for (const table of Array.from(fragment.querySelectorAll("table"))) {
+    if (table.parentElement?.classList.contains("markdown-table-scroll")) {
+      continue;
+    }
+
+    const wrapper = doc.createElement("div");
+    wrapper.className = "markdown-table-scroll";
+    table.replaceWith(wrapper);
+    wrapper.append(table);
+  }
+}
+
 export function decorateRenderedHtml(
   html: string,
   vault: string,
@@ -109,6 +122,8 @@ export function decorateRenderedHtml(
     appendDecoratedInlineSyntax(fragment, node.data, vault, doc);
     node.replaceWith(fragment);
   }
+
+  wrapMarkdownTables(template.content, doc);
 
   return template.innerHTML;
 }

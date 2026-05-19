@@ -2,22 +2,34 @@
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import Onboarding from "$lib/components/Onboarding.svelte";
+  import { readRememberedVault } from "$lib/vault/remembered-vault";
 
   let checking = $state(true);
 
-  type VaultEntry = {
-    name: string;
-    is_default?: boolean;
-    active?: boolean;
-  };
+  type VaultEntry =
+    | string
+    | {
+        name: string;
+        is_default?: boolean;
+        active?: boolean;
+      };
+
+  function vaultName(vault: VaultEntry | undefined) {
+    if (!vault) return null;
+    return typeof vault === "string" ? vault : vault.name;
+  }
 
   function chooseVault(vaults: VaultEntry[], fallback: string | null) {
     return (
-      vaults.find((vault) => vault.is_default || vault.active)?.name ||
-      (fallback && vaults.some((vault) => vault.name === fallback)
+      (fallback && vaults.some((vault) => vaultName(vault) === fallback)
         ? fallback
         : null) ||
-      vaults[0]?.name ||
+      vaultName(
+        vaults.find(
+          (vault) =>
+            typeof vault !== "string" && (vault.is_default || vault.active),
+        ) ?? vaults[0],
+      ) ||
       null
     );
   }
@@ -25,7 +37,7 @@
   onMount(async () => {
     const token =
       localStorage.getItem("pkm.token") || sessionStorage.getItem("pkm.token");
-    const lastVault = localStorage.getItem("pkm.lastVault");
+    const lastVault = readRememberedVault();
 
     try {
       const res = await fetch("/api/v1/vaults", { credentials: "same-origin" });

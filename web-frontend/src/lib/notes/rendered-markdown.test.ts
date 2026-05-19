@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { decorateRenderedHtml } from "./rendered-markdown";
+import { decorateRenderedHtml, renderMarkdownHtml } from "./rendered-markdown";
 
 describe("rendered markdown decoration", () => {
   it("renders relation vocabulary markers as square chips next to wikilinks", () => {
@@ -40,5 +40,29 @@ describe("rendered markdown decoration", () => {
     expect(host.querySelector("pre")?.textContent).toBe("&source [[raw]] #tag");
     expect(host.textContent).toContain("R&D");
     expect(host.textContent).toContain("foo&bar");
+  });
+
+  it("wraps rendered markdown tables for horizontal scrolling", async () => {
+    const rendered = await renderMarkdownHtml(
+      [
+        "| Column | Wide notes |",
+        "| --- | --- |",
+        "| A | long table content with spaces that should stay on one row<br>explicit break |",
+      ].join("\n"),
+      "main",
+    );
+    const host = document.createElement("div");
+    host.innerHTML = rendered;
+
+    const wrapper = host.querySelector<HTMLElement>(".markdown-table-scroll");
+    const table = wrapper?.querySelector("table");
+    const cell = wrapper?.querySelector("td:nth-child(2)");
+
+    expect(wrapper).not.toBeNull();
+    expect(table).not.toBeNull();
+    expect(cell?.textContent).toContain(
+      "long table content with spaces that should stay on one row",
+    );
+    expect(cell?.innerHTML).toContain("<br>");
   });
 });

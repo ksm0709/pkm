@@ -3,6 +3,7 @@
   import { goto } from "$app/navigation";
   import { apiClient, apiGet } from "$lib/api/client.js";
   import { appNavPages } from "$lib/navigation/app-nav";
+  import { rememberVault } from "$lib/vault/remembered-vault";
 
   interface Props {
     vaultName: string;
@@ -267,6 +268,7 @@
             inputEl?.focus();
             return;
           }
+          rememberVault(v);
           return goto(`/${v}/logger`);
         },
       }));
