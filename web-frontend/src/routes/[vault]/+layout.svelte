@@ -12,6 +12,8 @@
     noteHref,
     type NavigationTarget,
   } from "$lib/navigation/graph-keynav.svelte";
+  import { appNavPages } from "$lib/navigation/app-nav";
+  import { cmdkCoreCommandShortcuts } from "$lib/navigation/cmdk-command-shortcuts";
   import {
     DEFAULT_WINDOW_PADDING,
     applyWindowLayoutVars,
@@ -34,16 +36,32 @@
     | "followAtCursor"
     | "openExternal"
     | "openPalette"
-    | "openNoteSearch";
+    | "openNoteSearch"
+    | "runCmdKCommand";
 
   interface KeyHintAction {
     key: string;
     description: string;
     navAction?: NavAction;
+    commandId?: string;
     run?: () => boolean;
   }
 
   const KEY_HINT_TIMEOUT_MS = 1200;
+  const cmdkShortcutActions: KeyHintAction[] = [
+    ...cmdkCoreCommandShortcuts.map((command) => ({
+      key: command.shortcut,
+      description: command.label,
+      navAction: "runCmdKCommand" as const,
+      commandId: command.id,
+    })),
+    ...appNavPages.map((page) => ({
+      key: page.commandShortcut,
+      description: page.commandLabel,
+      navAction: "runCmdKCommand" as const,
+      commandId: `nav:${page.id}`,
+    })),
+  ];
   const leaderKeyHintActions: Record<string, KeyHintAction[]> = {
     " ": [
       {
@@ -51,11 +69,7 @@
         description: "Open command palette",
         navAction: "openPalette",
       },
-      {
-        key: "/",
-        description: "Jump to note",
-        navAction: "openNoteSearch",
-      },
+      ...cmdkShortcutActions,
     ],
   };
   const keyHintPrefixes = new Set(["g", " "]);
@@ -152,6 +166,7 @@
       openExternal: () => false,
       openPalette: () => openCommandPalette(),
       openNoteSearch: () => openNoteSearch(),
+      runCmdKCommand: (id: string) => runCmdKCommand(id),
     };
 
     window.addEventListener("keydown", handleKeydown);
@@ -227,6 +242,13 @@
 
   function openNoteSearch() {
     noteSearchOpenToken += 1;
+    return true;
+  }
+
+  function runCmdKCommand(id: string) {
+    window.dispatchEvent(
+      new CustomEvent("pkm:run-command-shortcut", { detail: { id } }),
+    );
     return true;
   }
 
@@ -316,11 +338,11 @@
     if (!action) return false;
     if (action.run) return action.run();
     const nav = (window as any).__pkmNav as
-      | Partial<Record<NavAction, () => unknown>>
+      | Partial<Record<NavAction, (...args: string[]) => unknown>>
       | undefined;
     const fn = nav?.[action.navAction];
     if (typeof fn !== "function") return false;
-    fn();
+    fn(...(action.commandId ? [action.commandId] : []));
     return true;
   }
 
@@ -393,6 +415,7 @@
     {vaultName}
     open={drawerOpen}
     {openCommandPalette}
+    {openNoteSearch}
     {closeDrawer}
   />
   {#if drawerOpen}

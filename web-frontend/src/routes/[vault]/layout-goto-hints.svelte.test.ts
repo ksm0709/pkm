@@ -213,6 +213,10 @@ describe("vault layout goto key hints", () => {
     expect(hint()?.textContent).toContain("Open command palette");
     expect(hint()?.textContent).toContain("/");
     expect(hint()?.textContent).toContain("Jump to note");
+    expect(hint()?.textContent).toContain("g");
+    expect(hint()?.textContent).toContain("Open graph");
+    expect(hint()?.textContent).toContain("v");
+    expect(hint()?.textContent).toContain("Switch vault");
 
     unmount(component);
   });
@@ -227,6 +231,20 @@ describe("vault layout goto key hints", () => {
     expect(event.defaultPrevented).toBe(true);
     expect(mocks.goto).toHaveBeenCalledWith("/main/notes/2026-05-12");
     expect(hint()).toBeNull();
+
+    unmount(component);
+  });
+
+  it("runs Space command shortcuts through CmdK command routing", async () => {
+    const { component } = render();
+    await flush();
+
+    await press(" ");
+    const event = await press("g");
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(hint()).toBeNull();
+    expect(mocks.goto).toHaveBeenCalledWith("/main/graph");
 
     unmount(component);
   });

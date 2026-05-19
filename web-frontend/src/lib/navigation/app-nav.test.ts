@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { appNavPages } from "./app-nav";
+import { cmdkCoreCommandShortcuts } from "./cmdk-command-shortcuts";
 
 describe("app navigation contract", () => {
   it("keeps primary destinations in the command palette order users scan", () => {
@@ -15,6 +16,10 @@ describe("app navigation contract", () => {
     ]);
     expect(appNavPages.every((page) => page.label && page.commandLabel)).toBe(
       true,
+    );
+    expect(appNavPages.every((page) => page.commandShortcut)).toBe(true);
+    expect(new Set(appNavPages.map((page) => page.commandShortcut)).size).toBe(
+      appNavPages.length,
     );
   });
 
@@ -33,5 +38,16 @@ describe("app navigation contract", () => {
       daily: "/main/daily",
       configs: "/main/configs",
     });
+  });
+
+  it("keeps every CmdK command on a unique Space leader shortcut", () => {
+    const shortcuts = [
+      ...cmdkCoreCommandShortcuts.map((command) => command.shortcut),
+      ...appNavPages.map((page) => page.commandShortcut),
+    ];
+
+    expect(shortcuts.every(Boolean)).toBe(true);
+    expect(new Set(shortcuts).size).toBe(shortcuts.length);
+    expect(shortcuts).not.toContain("k");
   });
 });

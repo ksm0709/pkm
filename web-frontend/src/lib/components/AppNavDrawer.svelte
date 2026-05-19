@@ -7,6 +7,7 @@
     vaultName: string;
     open?: boolean;
     openCommandPalette?: () => void;
+    openNoteSearch?: () => void;
     closeDrawer?: () => void;
   }
 
@@ -23,6 +24,7 @@
   let vaultName = $derived(props.vaultName);
   let open = $derived(props.open ?? false);
   let openCommandPalette = $derived(props.openCommandPalette ?? (() => {}));
+  let openNoteSearch = $derived(props.openNoteSearch ?? openCommandPalette);
   let closeDrawer = $derived(props.closeDrawer ?? (() => {}));
 
   let activePath = $derived(decodeURIComponent($page.url.pathname));
@@ -36,7 +38,7 @@
       id: "search",
       label: "Search",
       meta: "cmdk",
-      action: openCommandPalette,
+      action: openNoteSearch,
     },
     ...appNavPages.slice(1).map((item) => ({
       ...item,

@@ -298,6 +298,33 @@ describe("CmdK", () => {
     unmount(component);
   });
 
+  it("runs registered command shortcut events through the same command rows", async () => {
+    const { target, component } = render(0, 0);
+    await tick();
+
+    window.dispatchEvent(
+      new CustomEvent("pkm:run-command-shortcut", {
+        detail: { id: "nav:graph" },
+      }),
+    );
+    await tick();
+
+    expect(goto).toHaveBeenCalledWith("/main/graph");
+
+    window.dispatchEvent(
+      new CustomEvent("pkm:run-command-shortcut", {
+        detail: { id: "cmd:switch" },
+      }),
+    );
+    await flush();
+
+    expect(target.querySelector(".console-label")?.textContent).toContain(
+      "VAULT SWITCHER",
+    );
+
+    unmount(component);
+  });
+
   it("dispatches theme changes through the shared theme event", async () => {
     const { target, component } = render();
     const listener = vi.fn();

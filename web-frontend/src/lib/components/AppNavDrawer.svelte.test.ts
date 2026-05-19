@@ -63,9 +63,10 @@ describe("AppNavDrawer", () => {
     unmount(component);
   });
 
-  it("runs command palette actions without routing", async () => {
+  it("opens note search from the Search navigation item without routing", async () => {
     const target = document.createElement("div");
     const openCommandPalette = vi.fn();
+    const openNoteSearch = vi.fn();
     const closeDrawer = vi.fn();
     document.body.appendChild(target);
 
@@ -75,6 +76,7 @@ describe("AppNavDrawer", () => {
         vaultName: "main",
         open: true,
         openCommandPalette,
+        openNoteSearch,
         closeDrawer,
       },
     });
@@ -88,7 +90,8 @@ describe("AppNavDrawer", () => {
     searchButton?.click();
 
     expect(closeDrawer).toHaveBeenCalledTimes(1);
-    expect(openCommandPalette).toHaveBeenCalledTimes(1);
+    expect(openNoteSearch).toHaveBeenCalledTimes(1);
+    expect(openCommandPalette).not.toHaveBeenCalled();
     expect(goto).not.toHaveBeenCalled();
 
     unmount(component);

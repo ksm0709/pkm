@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import { apiClient, apiGet } from "$lib/api/client.js";
+  import { cmdkCoreCommandShortcuts } from "$lib/navigation/cmdk-command-shortcuts";
   import { appNavPages } from "$lib/navigation/app-nav";
   import { rememberVault } from "$lib/vault/remembered-vault";
 
@@ -21,6 +22,7 @@
     id: string;
     label: string;
     hint?: string;
+    shortcut: string;
     run: () => void | Promise<void>;
   };
 
@@ -88,6 +90,9 @@
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let lastQuery = "";
+  const coreCommand = Object.fromEntries(
+    cmdkCoreCommandShortcuts.map((command) => [command.id, command]),
+  );
 
   function dispatchTheme(theme: Theme) {
     window.dispatchEvent(
@@ -179,6 +184,7 @@
       id: `nav:${item.id}`,
       label: item.commandLabel,
       hint: item.commandHint,
+      shortcut: item.commandShortcut,
       run: () => goto(item.href(vaultName)),
     }));
 
@@ -186,9 +192,11 @@
       {
         kind: "command",
         id: "cmd:jump",
-        label: "Jump to note…",
-        hint: "search",
+        label: coreCommand["cmd:jump"].label,
+        hint: coreCommand["cmd:jump"].hint,
+        shortcut: coreCommand["cmd:jump"].shortcut,
         run: () => {
+          open = true;
           mode = "search";
           query = "";
           activeIndex = 0;
@@ -201,30 +209,34 @@
       {
         kind: "command",
         id: "cmd:daily",
-        label: "Open today's daily note",
-        hint: "daily",
+        label: coreCommand["cmd:daily"].label,
+        hint: coreCommand["cmd:daily"].hint,
+        shortcut: coreCommand["cmd:daily"].shortcut,
         run: () =>
           goto(`/${vaultName}/notes/${new Date().toISOString().slice(0, 10)}`),
       },
       {
         kind: "command",
         id: "cmd:daily-subnote",
-        label: "Add daily sub-note",
-        hint: "daily subnote",
+        label: coreCommand["cmd:daily-subnote"].label,
+        hint: coreCommand["cmd:daily-subnote"].hint,
+        shortcut: coreCommand["cmd:daily-subnote"].shortcut,
         run: createDailySubnote,
       },
       {
         kind: "command",
         id: "cmd:index-vault",
-        label: "Index vault",
-        hint: "rebuild search and graph",
+        label: coreCommand["cmd:index-vault"].label,
+        hint: coreCommand["cmd:index-vault"].hint,
+        shortcut: coreCommand["cmd:index-vault"].shortcut,
         run: indexVault,
       },
       {
         kind: "command",
         id: "cmd:ask",
-        label: "Ask…",
-        hint: "ask",
+        label: coreCommand["cmd:ask"].label,
+        hint: coreCommand["cmd:ask"].hint,
+        shortcut: coreCommand["cmd:ask"].shortcut,
         run: () => {
           const q = query.trim();
           const target = q
@@ -237,9 +249,11 @@
       {
         kind: "command",
         id: "cmd:switch",
-        label: "Switch vault…",
-        hint: "switch",
+        label: coreCommand["cmd:switch"].label,
+        hint: coreCommand["cmd:switch"].hint,
+        shortcut: coreCommand["cmd:switch"].shortcut,
         run: async () => {
+          open = true;
           await loadVaults();
           mode = "vaults";
           query = "";
@@ -250,8 +264,9 @@
       {
         kind: "command",
         id: "cmd:theme",
-        label: "Toggle theme",
-        hint: "theme",
+        label: coreCommand["cmd:theme"].label,
+        hint: coreCommand["cmd:theme"].hint,
+        shortcut: coreCommand["cmd:theme"].shortcut,
         run: () => {
           const t = nextTheme(readStoredTheme());
           dispatchTheme(t);
@@ -269,6 +284,7 @@
         id: `vault:${v}`,
         label: v,
         hint: v === vaultName ? "current vault" : "vault",
+        shortcut: "",
         run: () => {
           if (v === vaultName) {
             inputEl?.focus();
@@ -467,6 +483,11 @@
     }
   }
 
+  function executeCommandById(id: string) {
+    const row = staticCommands().find((command) => command.id === id);
+    if (row) void execute(row);
+  }
+
   function onKeydown(event: KeyboardEvent) {
     function consume() {
       event.preventDefault();
@@ -554,11 +575,17 @@
   onMount(() => {
     const handler = () => openPalette();
     const searchHandler = () => openPalette("search");
+    const shortcutHandler = (event: Event & { detail?: { id?: string } }) => {
+      const id = event.detail?.id;
+      if (id) executeCommandById(id);
+    };
     window.addEventListener("pkm:open-command-palette", handler);
     window.addEventListener("pkm:open-note-search", searchHandler);
+    window.addEventListener("pkm:run-command-shortcut", shortcutHandler);
     return () => {
       window.removeEventListener("pkm:open-command-palette", handler);
       window.removeEventListener("pkm:open-note-search", searchHandler);
+      window.removeEventListener("pkm:run-command-shortcut", shortcutHandler);
     };
   });
 </script>

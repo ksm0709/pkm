@@ -14,6 +14,7 @@ export type AppNavPage = {
   meta: string;
   commandLabel: string;
   commandHint: string;
+  commandShortcut: string;
   href: (vaultName: string) => string;
 };
 
@@ -24,6 +25,7 @@ export const appNavPages: AppNavPage[] = [
     meta: "index",
     commandLabel: "Open notes",
     commandHint: "index",
+    commandShortcut: "n",
     href: (vaultName) => `/${vaultName}`,
   },
   {
@@ -32,6 +34,7 @@ export const appNavPages: AppNavPage[] = [
     meta: "index",
     commandLabel: "Open tags",
     commandHint: "tag index",
+    commandShortcut: "t",
     href: (vaultName) => `/${vaultName}/tags`,
   },
   {
@@ -40,6 +43,7 @@ export const appNavPages: AppNavPage[] = [
     meta: "network",
     commandLabel: "Open graph",
     commandHint: "network",
+    commandShortcut: "g",
     href: (vaultName) => `/${vaultName}/graph`,
   },
   {
@@ -48,6 +52,7 @@ export const appNavPages: AppNavPage[] = [
     meta: "agent",
     commandLabel: "Open ask",
     commandHint: "agent",
+    commandShortcut: "a",
     href: (vaultName) => `/${vaultName}/ask`,
   },
   {
@@ -56,6 +61,7 @@ export const appNavPages: AppNavPage[] = [
     meta: "daily log",
     commandLabel: "Open logger",
     commandHint: "daily log",
+    commandShortcut: "l",
     href: (vaultName) => `/${vaultName}/logger`,
   },
   {
@@ -64,6 +70,7 @@ export const appNavPages: AppNavPage[] = [
     meta: "automation",
     commandLabel: "Open workflows",
     commandHint: "automation",
+    commandShortcut: "w",
     href: (vaultName) => `/${vaultName}/workflows`,
   },
   {
@@ -72,6 +79,7 @@ export const appNavPages: AppNavPage[] = [
     meta: "ledger",
     commandLabel: "Open daily",
     commandHint: "ledger",
+    commandShortcut: "d",
     href: (vaultName) => `/${vaultName}/daily`,
   },
   {
@@ -80,6 +88,7 @@ export const appNavPages: AppNavPage[] = [
     meta: "settings",
     commandLabel: "Open configs",
     commandHint: "settings",
+    commandShortcut: "c",
     href: (vaultName) => `/${vaultName}/configs`,
   },
 ];

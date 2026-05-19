@@ -11,6 +11,8 @@
  * Mappings are global on the Vim singleton, so install once.
  */
 import * as cmvim from "@replit/codemirror-vim";
+import { cmdkCoreCommandShortcuts } from "$lib/navigation/cmdk-command-shortcuts";
+import { appNavPages } from "$lib/navigation/app-nav";
 
 /** @type {any} */
 const Vim = cmvim.Vim;
@@ -18,12 +20,20 @@ const Vim = cmvim.Vim;
 let installed = false;
 
 /** @param {string} key */
-function callNav(key) {
+function commandExName(key) {
+  return `cmdk_${key.replace(/[^a-zA-Z0-9]/g, "_")}`;
+}
+
+/**
+ * @param {string} key
+ * @param {...string} args
+ */
+function callNav(key, ...args) {
   /** @type {any} */
   const nav = /** @type {any} */ (typeof window !== "undefined" ? window : {})
     .__pkmNav;
   const fn = nav?.[key];
-  if (typeof fn === "function") fn();
+  if (typeof fn === "function") fn(...args);
 }
 
 export function installVimMappings() {
@@ -45,6 +55,19 @@ export function installVimMappings() {
   Vim.defineEx("openPalette", "", () => callNav("openPalette"));
   Vim.defineEx("openNoteSearch", "", () => callNav("openNoteSearch"));
 
+  const cmdkCommands = [
+    ...cmdkCoreCommandShortcuts,
+    ...appNavPages.map((page) => ({
+      id: `nav:${page.id}`,
+      shortcut: page.commandShortcut,
+    })),
+  ];
+  for (const command of cmdkCommands) {
+    const exName = commandExName(command.id);
+    Vim.defineEx(exName, "", () => callNav("runCmdKCommand", command.id));
+    Vim.map(`<leader>${command.shortcut}`, `:${exName}<CR>`, "normal");
+  }
+
   // ----- Normal-mode mappings -----
   Vim.map("gd", ":gotoDaily<CR>", "normal");
   Vim.map("gn", ":nextNeighbor<CR>", "normal");
@@ -52,5 +75,4 @@ export function installVimMappings() {
   Vim.map("gf", ":followAtCursor<CR>", "normal");
   Vim.map("gx", ":openExternal<CR>", "normal");
   Vim.map("<leader>k", ":openPalette<CR>", "normal");
-  Vim.map("<leader>/", ":openNoteSearch<CR>", "normal");
 }
