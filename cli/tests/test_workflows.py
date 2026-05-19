@@ -513,3 +513,34 @@ def test_repair_malformed_notes_merges_duplicate_frontmatter(tmp_path):
     assert repaired_note.tags == ["pkm-webapp", "logging", "daily-notes"]
     assert repaired_note.aliases == ["pkm-webapp-logger"]
     assert repaired_note.body.startswith("# Logger")
+
+
+def test_repair_malformed_notes_quotes_unquoted_colon_titles(tmp_path):
+    from pkm.config import VaultConfig
+    from pkm.frontmatter import parse
+    from pkm.workflows.hooks import repair_malformed_notes
+
+    vault = VaultConfig(name="test", path=tmp_path)
+    vault.notes_dir.mkdir(parents=True)
+    note_path = vault.notes_dir / "neo-mcp-opencode-오픈소스-에이전트-허브.md"
+    note_path.write_text(
+        "---\n"
+        "id: neo-mcp-opencode-오픈소스-에이전트-허브\n"
+        "title: Neo MCP: opencode 오픈소스 에이전트 허브\n"
+        "tags: [hub]\n"
+        "---\n"
+        "\n"
+        "# Hub\n",
+        encoding="utf-8",
+    )
+
+    result = repair_malformed_notes(vault, None)
+    repaired_text = note_path.read_text(encoding="utf-8")
+    repaired_note = parse(note_path)
+
+    assert result["repaired_count"] == 1
+    assert result["repaired_notes"] == [
+        "notes/neo-mcp-opencode-오픈소스-에이전트-허브.md"
+    ]
+    assert 'title: "Neo MCP: opencode 오픈소스 에이전트 허브"' in repaired_text
+    assert repaired_note.title == "Neo MCP: opencode 오픈소스 에이전트 허브"

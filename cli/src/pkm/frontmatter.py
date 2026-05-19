@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,6 +14,40 @@ import yaml
 
 _FM_PATTERN = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
 _INLINE_TAG_PATTERN = re.compile(r"(?<![\w/])#([\w][\w/-]*)", re.UNICODE)
+_YAML_SCALAR_LINE_PATTERN = re.compile(
+    r"^(\s*)([A-Za-z_][\w.-]*)(\s*:\s+)(.+?)\s*$"
+)
+
+
+def _needs_yaml_scalar_quote(value: str) -> bool:
+    stripped = value.strip()
+    if not stripped or ": " not in stripped:
+        return False
+    if stripped[0] in {"'", '"', "[", "{", "|", ">", "&", "*", "!", "%", "@", "`"}:
+        return False
+    return not stripped.startswith("- ")
+
+
+def _quote_yaml_scalar_line(match: re.Match[str]) -> str:
+    indent, key, separator, value = match.groups()
+    if not _needs_yaml_scalar_quote(value):
+        return match.group(0)
+    return f"{indent}{key}{separator}{json.dumps(value.strip(), ensure_ascii=False)}"
+
+
+def _repair_frontmatter_scalar_values(text: str) -> tuple[str, bool]:
+    match = _FM_PATTERN.match(text)
+    if not match:
+        return text, False
+
+    block = match.group(1)
+    repaired_block = "\n".join(
+        _YAML_SCALAR_LINE_PATTERN.sub(_quote_yaml_scalar_line, line)
+        for line in block.splitlines()
+    )
+    if repaired_block == block:
+        return text, False
+    return f"{text[: match.start(1)]}{repaired_block}{text[match.end(1) :]}", True
 
 
 def _split_leading_frontmatter_blocks(text: str) -> tuple[list[dict[str, Any]], str]:
@@ -56,12 +91,23 @@ def _merge_frontmatter_blocks(blocks: list[dict[str, Any]]) -> dict[str, Any]:
     return merged
 
 
+def repair_frontmatter_text(text: str) -> tuple[str, bool, list[str]]:
+    """Repair known malformed leading YAML frontmatter patterns."""
+    repaired_text, scalar_changed = _repair_frontmatter_scalar_values(text)
+    blocks, body = _split_leading_frontmatter_blocks(repaired_text)
+    issues: list[str] = []
+    if scalar_changed:
+        issues.append("unquoted_frontmatter_scalar")
+    if len(blocks) <= 1:
+        return repaired_text, scalar_changed, issues
+    issues.append("duplicate_leading_frontmatter")
+    return render(_merge_frontmatter_blocks(blocks), body), True, issues
+
+
 def normalize_frontmatter_text(text: str) -> tuple[str, bool]:
     """Collapse accidental consecutive YAML blocks into one merged frontmatter."""
-    blocks, body = _split_leading_frontmatter_blocks(text)
-    if len(blocks) <= 1:
-        return text, False
-    return render(_merge_frontmatter_blocks(blocks), body), True
+    repaired_text, changed, _issues = repair_frontmatter_text(text)
+    return repaired_text, changed
 
 
 def extract_inline_tags(body: str) -> list[str]:
@@ -119,7 +165,13 @@ class Note:
 
 def parse(path: Path) -> Note:
     text = path.read_text(encoding="utf-8")
-    blocks, body = _split_leading_frontmatter_blocks(text)
+    try:
+        blocks, body = _split_leading_frontmatter_blocks(text)
+    except yaml.YAMLError:
+        text, changed, _issues = repair_frontmatter_text(text)
+        if not changed:
+            raise
+        blocks, body = _split_leading_frontmatter_blocks(text)
     if blocks:
         meta = blocks[0]
     else:

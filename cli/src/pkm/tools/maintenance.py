@@ -89,7 +89,7 @@ def list_malformed_notes() -> str:
     malformed: list[dict[str, object]] = []
 
     try:
-        from pkm.frontmatter import normalize_frontmatter_text, parse
+        from pkm.frontmatter import parse, repair_frontmatter_text
 
         for base_dir in (vault.notes_dir, vault.daily_dir, vault.tags_dir):
             if not base_dir.is_dir():
@@ -97,7 +97,7 @@ def list_malformed_notes() -> str:
             for path in sorted(base_dir.glob("*.md")):
                 try:
                     text = path.read_text(encoding="utf-8")
-                    _, changed = normalize_frontmatter_text(text)
+                    _normalized, changed, issues = repair_frontmatter_text(text)
                     if not changed:
                         continue
                     note = parse(path)
@@ -105,7 +105,7 @@ def list_malformed_notes() -> str:
                         {
                             "path": str(path.relative_to(vault.path)),
                             "note_id": str(note.id),
-                            "issue": "duplicate_leading_frontmatter",
+                            "issue": "+".join(issues),
                             "repairable": True,
                         }
                     )

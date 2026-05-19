@@ -370,6 +370,43 @@ def test_read_note_returns_daily_note_with_string_id_and_content_hash(
     assert len(result["content_hash"]) == 64
 
 
+def test_read_and_patch_note_handle_unquoted_colon_title(tmp_vault, monkeypatch) -> None:
+    """Tiny-agent tools should recover and rewrite repairable malformed frontmatter."""
+    monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
+    note_path = tmp_vault.notes_dir / "adhd와-생각-집중실행-패턴-허브.md"
+    note_path.write_text(
+        "---\n"
+        "id: adhd와-생각-집중실행-패턴-허브\n"
+        "title: ADHD: 생각 집중실행 패턴 허브\n"
+        "tags: [hub]\n"
+        "---\n\n"
+        "# Hub\n"
+        "\n"
+        "Original body.\n",
+        encoding="utf-8",
+    )
+
+    from pkm.tools.notes import patch_note, read_note
+
+    read_result = _call_tool(
+        read_note, note_id="adhd와-생각-집중실행-패턴-허브"
+    )
+    assert read_result["title"] == "ADHD: 생각 집중실행 패턴 허브"
+    assert read_result["body"].startswith("# Hub")
+
+    patch_result = _call_tool(
+        patch_note,
+        note_id="adhd와-생각-집중실행-패턴-허브",
+        operation="append",
+        new="Linked repair evidence.",
+    )
+
+    assert patch_result["status"] == "patched"
+    repaired_note = parse(note_path)
+    assert repaired_note.title == "ADHD: 생각 집중실행 패턴 허브"
+    assert "Linked repair evidence." in repaired_note.body
+
+
 def test_rename_note_reports_real_missing_and_conflict_errors(
     tmp_vault, monkeypatch
 ) -> None:

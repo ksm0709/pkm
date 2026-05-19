@@ -108,6 +108,34 @@ class TestPatchNote:
         assert result["status"] == "error"
         assert "not found" in result["summary"]
 
+    def test_patch_note_repairs_unquoted_colon_title(
+        self, mcp_server, tmp_vault
+    ) -> None:
+        """MCP patch_note can edit a note whose title needs YAML quoting."""
+        note_path = tmp_vault.notes_dir / "neo-mcp-opencode-오픈소스-에이전트-허브.md"
+        note_path.write_text(
+            "---\n"
+            "id: neo-mcp-opencode-오픈소스-에이전트-허브\n"
+            "title: Neo MCP: opencode 오픈소스 에이전트 허브\n"
+            "tags: [hub]\n"
+            "---\n\n"
+            "# Hub\n",
+            encoding="utf-8",
+        )
+
+        result = mcp_server.patch_note(
+            note_id="neo-mcp-opencode-오픈소스-에이전트-허브",
+            operation="append",
+            new="MCP repair evidence.",
+        )
+
+        assert result["status"] == "patched"
+        text = note_path.read_text(encoding="utf-8")
+        assert "MCP repair evidence." in text
+        from pkm.frontmatter import parse
+
+        assert parse(note_path).title == "Neo MCP: opencode 오픈소스 에이전트 허브"
+
 
 class TestReadNoteDaily:
     def test_read_note_returns_daily_note_with_string_id_and_content_hash(
@@ -119,6 +147,27 @@ class TestReadNoteDaily:
         assert result["note_id"] == "2026-04-01"
         assert isinstance(result["content_hash"], str)
         assert len(result["content_hash"]) == 64
+
+    def test_read_note_repairs_unquoted_colon_title(
+        self, mcp_server, tmp_vault
+    ) -> None:
+        """MCP read_note should not fail on repairable title frontmatter."""
+        note_path = tmp_vault.notes_dir / "adhd와-생각-집중실행-패턴-허브.md"
+        note_path.write_text(
+            "---\n"
+            "id: adhd와-생각-집중실행-패턴-허브\n"
+            "title: ADHD: 생각 집중실행 패턴 허브\n"
+            "tags: [hub]\n"
+            "---\n\n"
+            "# Hub\n",
+            encoding="utf-8",
+        )
+
+        result = mcp_server.read_note("adhd와-생각-집중실행-패턴-허브")
+
+        assert result["note_id"] == "adhd와-생각-집중실행-패턴-허브"
+        assert result["title"] == "ADHD: 생각 집중실행 패턴 허브"
+        assert result["body"].startswith("# Hub")
 
 
 class TestDailyAdd:

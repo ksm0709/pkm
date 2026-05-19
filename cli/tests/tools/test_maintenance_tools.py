@@ -103,6 +103,31 @@ def test_list_malformed_notes_finds_duplicate_frontmatter(tmp_vault, monkeypatch
     }
 
 
+def test_list_malformed_notes_marks_unquoted_colon_title_repairable(
+    tmp_vault, monkeypatch
+):
+    malformed = tmp_vault.notes_dir / "neo-mcp-opencode-오픈소스-에이전트-허브.md"
+    malformed.write_text(
+        "---\n"
+        "id: neo-mcp-opencode-오픈소스-에이전트-허브\n"
+        "title: Neo MCP: opencode 오픈소스 에이전트 허브\n"
+        "tags: [hub]\n"
+        "---\n\n"
+        "# Hub\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
+
+    result = json.loads(_run(list_malformed_notes()))
+
+    assert {
+        "path": "notes/neo-mcp-opencode-오픈소스-에이전트-허브.md",
+        "note_id": "neo-mcp-opencode-오픈소스-에이전트-허브",
+        "issue": "unquoted_frontmatter_scalar",
+        "repairable": True,
+    } in result["malformed_notes"]
+
+
 def test_list_malformed_notes_empty_when_clean(tmp_vault, monkeypatch):
     monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
 
