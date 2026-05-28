@@ -1,15 +1,10 @@
 <script lang="ts">
   import { onDestroy, untrack } from "svelte";
   import { page } from "$app/stores";
-  import { marked } from "marked";
   import { apiClient, apiGet } from "$lib/api/client.js";
   import NeighborPanel from "$lib/components/NeighborPanel.svelte";
   import CodeMirror from "$lib/editor/CodeMirror.svelte";
-  import {
-    decorateRenderedHtml,
-    tagHue,
-  } from "$lib/notes/rendered-markdown.js";
-  import { wikilinksToMarkdownLinks } from "$lib/notes/wikilinks.js";
+  import { renderMarkdownHtml, tagHue } from "$lib/notes/rendered-markdown.js";
   import { graphKeyNav } from "$lib/navigation/graph-keynav.svelte";
   import { rememberVault } from "$lib/vault/remembered-vault";
 
@@ -180,12 +175,9 @@
   }
 
   async function renderNoteBody(markdown: string, vault: string) {
-    const markdownWithLinks = wikilinksToMarkdownLinks(markdown, vault);
-    const markdownWithTaskStates = withTaskStateButtons(markdownWithLinks);
-    const parsedBody = await marked.parse(markdownWithTaskStates, {
-      async: true,
+    return renderMarkdownHtml(markdown, vault, undefined, {
+      transformMarkdown: withTaskStateButtons,
     });
-    return decorateRenderedHtml(parsedBody, vault);
   }
 
   async function saveTaskState(taskIndex: number, currentState: string) {

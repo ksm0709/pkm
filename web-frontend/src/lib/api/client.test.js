@@ -65,6 +65,33 @@ describe("api client", () => {
     );
   });
 
+  it("does not force a JSON content type for FormData uploads", async () => {
+    const fetch = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("localStorage", createStorage());
+    vi.stubGlobal("sessionStorage", createStorage());
+    vi.stubGlobal("fetch", fetch);
+
+    const form = new FormData();
+    form.append(
+      "file",
+      new Blob(["hello"], { type: "text/plain" }),
+      "hello.txt",
+    );
+
+    await apiClient("/api/v1/vault/main/data", {
+      method: "POST",
+      body: form,
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/vault/main/data",
+      expect.objectContaining({
+        body: form,
+        headers: {},
+      }),
+    );
+  });
+
   it("clears stale tokens and redirects to login after an unauthorized response", async () => {
     const localStorage = createStorage({ "pkm.token": "bad-token" });
     const sessionStorage = createStorage({ "pkm.token": "fallback-token" });

@@ -65,4 +65,28 @@ describe("rendered markdown decoration", () => {
     );
     expect(cell?.innerHTML).toContain("<br>");
   });
+
+  it("strips active HTML from rendered markdown", async () => {
+    const rendered = await renderMarkdownHtml(
+      [
+        "<script>alert('xss')</script>",
+        '<img src="/api/v1/vault/main/data/photo.png" onerror="alert(\'xss\')">',
+        '<a href="javascript:alert(1)">bad</a>',
+        '<a href="/main/notes/Safe">good</a>',
+      ].join("\n"),
+      "main",
+    );
+    const host = document.createElement("div");
+    host.innerHTML = rendered;
+
+    expect(host.querySelector("script")).toBeNull();
+    expect(host.querySelector("[onerror]")).toBeNull();
+    expect(host.querySelector('a[href^="javascript:"]')).toBeNull();
+    expect(host.querySelector("img")?.getAttribute("src")).toBe(
+      "/api/v1/vault/main/data/photo.png",
+    );
+    expect(
+      host.querySelector<HTMLAnchorElement>('a[href="/main/notes/Safe"]'),
+    ).not.toBeNull();
+  });
 });

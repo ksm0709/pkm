@@ -3,6 +3,7 @@
   import { goto } from "$app/navigation";
   import { page } from "$app/stores";
   import { apiClient, apiGet } from "$lib/api/client.js";
+  import MarkdownRenderer from "$lib/components/MarkdownRenderer.svelte";
   import {
     applyInlineSuggestion,
     detectInlineTrigger,
@@ -31,6 +32,7 @@
   let inputValue = $state("");
   let scrollEl: HTMLDivElement | null = $state(null);
   let textareaEl: HTMLTextAreaElement | null = $state(null);
+  let fileInputEl: HTMLInputElement | null = $state(null);
   let inlineRows = $state<any[]>([]);
   let inlineActiveIndex = $state(0);
   let inlineTrigger = $state<any | null>(null);
@@ -148,6 +150,67 @@
     }
   }
 
+  function insertUploadedMarkdown(markdown: string) {
+    const snippet = markdown.trim();
+    if (!snippet) return;
+
+    if (!textareaEl) {
+      inputValue = inputValue ? `${inputValue} ${snippet}` : snippet;
+      return;
+    }
+
+    const start = textareaEl.selectionStart ?? inputValue.length;
+    const end = textareaEl.selectionEnd ?? start;
+    const before = inputValue.slice(0, start);
+    const after = inputValue.slice(end);
+    const prefix = before && !/\s$/.test(before) ? " " : "";
+    const suffix = after && !/^\s/.test(after) ? " " : "";
+    const cursor = before.length + prefix.length + snippet.length;
+
+    inputValue = `${before}${prefix}${snippet}${suffix}${after}`;
+    void tick().then(() => {
+      textareaEl?.focus();
+      textareaEl?.setSelectionRange(cursor, cursor);
+      autoresize();
+    });
+  }
+
+  function openFileUpload() {
+    loggerActionsOpen = false;
+    fileInputEl?.click();
+  }
+
+  async function uploadSelectedFile() {
+    const file = fileInputEl?.files?.[0];
+    if (!file || busy) return;
+
+    busy = true;
+    error = "";
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await apiClient(`/api/v1/vault/${vaultName}/data`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!response.ok)
+        throw new Error(`POST data upload -> ${response.status}`);
+      const payload = (await response.json()) as { markdown?: string };
+      const markdown = (payload.markdown ?? "").trim();
+      if (!markdown) return;
+      if (inputValue.trim()) {
+        insertUploadedMarkdown(markdown);
+      } else {
+        await appendLogEntry(markdown);
+      }
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to upload file.";
+    } finally {
+      if (fileInputEl) fileInputEl.value = "";
+      busy = false;
+    }
+  }
+
   async function createDailySubnote() {
     const title =
       typeof window !== "undefined" ? window.prompt("Subnote title") : null;
@@ -177,29 +240,30 @@
     }
   }
 
+  async function appendLogEntry(text: string) {
+    const response = await apiClient(`/api/v1/vault/${vaultName}/daily/today`, {
+      method: "POST",
+      body: JSON.stringify({ type: "entry", content: text }),
+    });
+    if (!response.ok) throw new Error(`POST daily log -> ${response.status}`);
+    const payload = (await response.json()) as { entry?: string };
+    const [entry] = parseLogs(payload.entry ?? "");
+    if (entry) logs = [...logs, entry];
+    inputValue = "";
+    inlineRows = [];
+    inlineTrigger = null;
+    if (textareaEl) textareaEl.style.height = "auto";
+    await tick();
+    scrollToBottom();
+  }
+
   async function submitLog() {
     const text = inputValue.trim();
     if (!text || busy) return;
     busy = true;
     error = "";
     try {
-      const response = await apiClient(
-        `/api/v1/vault/${vaultName}/daily/today`,
-        {
-          method: "POST",
-          body: JSON.stringify({ type: "entry", content: text }),
-        },
-      );
-      if (!response.ok) throw new Error(`POST daily log -> ${response.status}`);
-      const payload = (await response.json()) as { entry?: string };
-      const [entry] = parseLogs(payload.entry ?? "");
-      if (entry) logs = [...logs, entry];
-      inputValue = "";
-      inlineRows = [];
-      inlineTrigger = null;
-      if (textareaEl) textareaEl.style.height = "auto";
-      await tick();
-      scrollToBottom();
+      await appendLogEntry(text);
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to append log.";
     } finally {
@@ -293,7 +357,13 @@
               {#each group.items as entry (`${entry.time}-${entry.text}`)}
                 <article class="log-message">
                   <span class="log-time">{entry.time}</span>
-                  <p>{entry.text}</p>
+                  <div class="log-content">
+                    <MarkdownRenderer
+                      markdown={entry.text}
+                      vault={vaultName}
+                      compact
+                    />
+                  </div>
                 </article>
               {/each}
             </section>
@@ -310,6 +380,14 @@
       void submitLog();
     }}
   >
+    <input
+      bind:this={fileInputEl}
+      type="file"
+      class="file-input"
+      aria-label="Upload file"
+      disabled={busy}
+      onchange={() => void uploadSelectedFile()}
+    />
     {#if inlineMenuOpen}
       <div
         class="inline-suggest-menu"
@@ -349,6 +427,17 @@
         >
           <span aria-hidden="true">+</span>
           <span>Add sub-note</span>
+        </button>
+        <button
+          type="button"
+          class="logger-action-row"
+          role="menuitem"
+          aria-label="Upload file"
+          disabled={busy}
+          onclick={openFileUpload}
+        >
+          <span aria-hidden="true">↑</span>
+          <span>Upload file</span>
         </button>
       </div>
     {/if}
@@ -478,7 +567,7 @@
     white-space: nowrap;
   }
 
-  .log-message p {
+  .log-content {
     margin: 0;
     color: var(--text);
     font-family: var(--font-mono);
@@ -486,6 +575,21 @@
     line-height: var(--type-body-lh, 1.7);
     overflow-wrap: anywhere;
     word-break: break-word;
+  }
+
+  .log-content :global(.markdown-prose.compact p),
+  .log-content :global(.markdown-prose.compact li) {
+    color: var(--text);
+    font-size: var(--type-body-size, 15px);
+    line-height: var(--type-body-lh, 1.7);
+  }
+
+  .log-content :global(.markdown-prose.compact p:last-child),
+  .log-content :global(.markdown-prose.compact ul:last-child),
+  .log-content :global(.markdown-prose.compact ol:last-child),
+  .log-content :global(.markdown-prose.compact pre:last-child),
+  .log-content :global(.markdown-prose.compact blockquote:last-child) {
+    margin-bottom: 0;
   }
 
   .logger-input {
@@ -503,6 +607,16 @@
     background-color: var(--surface, var(--bg));
     border-top: 1px solid var(--border);
     border-left: 2px solid var(--accent);
+  }
+
+  .file-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   .inline-suggest-menu {

@@ -17,6 +17,7 @@ from pkm.web.routes.daily import (
     list_daily,
     post_daily_today,
 )
+from pkm.web.routes.data import get_data_file, post_data_file
 from pkm.web.routes.graph import get_ego_graph, get_graph
 from pkm.web.routes.notes import (
     batch_titles,
@@ -64,6 +65,10 @@ def register_routes(app: web.Application) -> None:
     app.router.add_post("/api/v1/vault/{name}/daily/today", post_daily_today)
     app.router.add_get("/api/v1/vault/{name}/daily/{date}", get_daily_date)
     app.router.add_get("/api/v1/vault/{name}/daily", list_daily)
+
+    # Data files — flat files under vault data/
+    app.router.add_post("/api/v1/vault/{name}/data", post_data_file)
+    app.router.add_get("/api/v1/vault/{name}/data/{filename}", get_data_file)
 
     # Search
     app.router.add_post("/api/v1/vault/{name}/index", index_vault)

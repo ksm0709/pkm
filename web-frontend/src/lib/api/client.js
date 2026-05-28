@@ -26,9 +26,12 @@ function getToken() {
 export async function apiClient(path, opts = {}) {
   const { token: overrideToken, ...fetchOpts } = opts;
   const token = overrideToken ?? getToken();
+  const body = fetchOpts.body;
+  const isFormData =
+    typeof FormData !== "undefined" && body instanceof FormData;
 
   const headers = {
-    "Content-Type": "application/json",
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
     ...(fetchOpts.headers ?? {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
