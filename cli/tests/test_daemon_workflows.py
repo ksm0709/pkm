@@ -39,7 +39,7 @@ def test_workflow_marker_allows_retry_after_other_host_failure(tmp_path):
             "workflow_id": "wf",
             "task_id": "wf_vault_1",
             "hostname": "b850m",
-            "time": "2026-05-18T17:07:11.223984Z",
+            "time": "2026-05-19T02:07:11.223984",
             "status": "failure",
             "source": "scheduled",
             "phase": "index",
