@@ -2,6 +2,36 @@
 
 <!-- version list -->
 
+## v2.85.0 (2026-06-03)
+
+### Bug Fixes
+
+- Let agents recover malformed colon titles
+  ([`19fd75c`](https://github.com/ksm0709/pkm/commit/19fd75c15248d429176eb3f4fb8dd489b45e7c1a))
+
+- Preserve PWA vault state across mobile relaunch
+  ([`3fa48d6`](https://github.com/ksm0709/pkm/commit/3fa48d6ac941d1afadaac1343932b1f467587b2e))
+
+- Route every CmdK command through Space shortcuts
+  ([`115cdfc`](https://github.com/ksm0709/pkm/commit/115cdfc612a87f53bc585b4984de1df12d74ae8a))
+
+- Separate command palette from note search
+  ([`0989aca`](https://github.com/ksm0709/pkm/commit/0989aca6fe73b205a30fbc8d45777755431e8adc))
+
+### Features
+
+- Make logger uploads produce visible file entries
+  ([`995fc5a`](https://github.com/ksm0709/pkm/commit/995fc5a6ae8fccee41472793188403d76fee6389))
+
+- Serve nested vault data files
+  ([`553061b`](https://github.com/ksm0709/pkm/commit/553061b409b79237f7d7c360b54b8fb032e72893))
+
+### Testing
+
+- Make workflow marker retry test timezone independent
+  ([`294f17e`](https://github.com/ksm0709/pkm/commit/294f17ed68eabc7bdbd87673ea96716364eaf644))
+
+
 ## v2.84.0 (2026-05-16)
 
 ### Features
