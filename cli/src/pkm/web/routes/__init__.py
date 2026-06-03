@@ -66,9 +66,11 @@ def register_routes(app: web.Application) -> None:
     app.router.add_get("/api/v1/vault/{name}/daily/{date}", get_daily_date)
     app.router.add_get("/api/v1/vault/{name}/daily", list_daily)
 
-    # Data files — flat files under vault data/
+    # Data files — flat and nested files under vault data/
     app.router.add_post("/api/v1/vault/{name}/data", post_data_file)
     app.router.add_get("/api/v1/vault/{name}/data/{filename}", get_data_file)
+    app.router.add_get("/api/v1/vault/{name}/data/{path:.+}", get_data_file)
+    app.router.add_get("/{name}/data/{path:.+}", get_data_file)
 
     # Search
     app.router.add_post("/api/v1/vault/{name}/index", index_vault)

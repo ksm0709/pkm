@@ -32,6 +32,30 @@ def _sanitize_filename(raw_name: str | None) -> str:
     return basename
 
 
+def _sanitize_data_relpath(raw_path: str | None) -> str:
+    """Return a relative vault data/ path that cannot escape data/."""
+    path = (raw_path or "").strip()
+    if not path:
+        raise web.HTTPBadRequest(reason="Data file path is required")
+    if "\\" in path:
+        raise web.HTTPBadRequest(reason="Data file path must use forward slashes")
+
+    parts = path.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        raise web.HTTPBadRequest(reason="Invalid data file path")
+
+    candidate = Path(path)
+    if candidate.is_absolute():
+        raise web.HTTPBadRequest(reason="Data file path must be relative")
+    return "/".join(parts)
+
+
+def _request_data_path(request: web.Request) -> str:
+    return _sanitize_data_relpath(
+        request.match_info.get("path") or request.match_info.get("filename")
+    )
+
+
 def _data_path(vault: VaultConfig, filename: str) -> Path:
     data_root = vault.data_dir.resolve()
     target = (data_root / filename).resolve()
@@ -81,7 +105,10 @@ def _safe_download_headers(filename: str) -> dict[str, str]:
         ".webp": "image/webp",
     }.get(Path(filename).suffix.lower())
 
-    headers = {"X-Content-Type-Options": "nosniff"}
+    headers = {
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "no-store",
+    }
     if media_type in _SAFE_INLINE_CONTENT_TYPES:
         headers[hdrs.CONTENT_TYPE] = media_type
         return headers
@@ -161,10 +188,10 @@ async def post_data_file(request: web.Request) -> web.Response:
 
 
 async def get_data_file(request: web.Request) -> web.StreamResponse:
-    """GET /api/v1/vault/{name}/data/{filename} — download one data file."""
+    """GET a data file under vault data/, including nested relative paths."""
     vault = _resolve_vault(request.match_info["name"])
-    filename = _sanitize_filename(request.match_info["filename"])
-    target = _data_path(vault, filename)
+    relpath = _request_data_path(request)
+    target = _data_path(vault, relpath)
     if not target.is_file():
         raise web.HTTPNotFound(reason="Data file not found")
 

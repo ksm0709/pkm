@@ -224,6 +224,163 @@ async def test_get_data_file_returns_uploaded_bytes(app, tmp_vault: VaultConfig)
 
 
 @pytest.mark.anyio
+async def test_get_data_file_returns_nested_api_path(app, tmp_vault: VaultConfig) -> None:
+    nested = tmp_vault.data_dir / "my-invest" / "reports" / "329180" / "2026-06-03"
+    nested.mkdir(parents=True)
+    (nested / "01_deep_research.md").write_text("deep report", encoding="utf-8")
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/data/"
+            "my-invest/reports/329180/2026-06-03/01_deep_research.md",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 200
+        body = await resp.text()
+
+    assert body == "deep report"
+    assert resp.headers["Cache-Control"] == "no-store"
+
+
+@pytest.mark.anyio
+async def test_get_data_file_returns_nested_human_path(app, tmp_vault: VaultConfig) -> None:
+    nested = tmp_vault.data_dir / "my-invest" / "reports" / "329180" / "2026-06-03"
+    nested.mkdir(parents=True)
+    (nested / "01_deep_research.md").write_text("deep report", encoding="utf-8")
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/test-vault/data/my-invest/reports/329180/2026-06-03/01_deep_research.md",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 200
+        body = await resp.text()
+
+    assert body == "deep report"
+
+
+@pytest.mark.anyio
+async def test_nested_data_routes_require_auth_and_reject_query_token(
+    app,
+    tmp_vault: VaultConfig,
+) -> None:
+    nested = tmp_vault.data_dir / "bundle" / "report.md"
+    nested.parent.mkdir(parents=True)
+    nested.write_text("secret data", encoding="utf-8")
+
+    async with TestClient(TestServer(app)) as client:
+        api_no_auth = await client.get("/api/v1/vault/test-vault/data/bundle/report.md")
+        human_no_auth = await client.get("/test-vault/data/bundle/report.md")
+        api_query_token = await client.get(
+            f"/api/v1/vault/test-vault/data/bundle/report.md?token={TOKEN}"
+        )
+        human_query_token = await client.get(f"/test-vault/data/bundle/report.md?token={TOKEN}")
+
+    assert api_no_auth.status == 401
+    assert human_no_auth.status == 401
+    assert api_query_token.status == 401
+    assert human_query_token.status == 401
+
+
+@pytest.mark.anyio
+async def test_get_nested_data_file_rejects_traversal_variants(
+    app,
+    tmp_vault: VaultConfig,
+) -> None:
+    outside = tmp_vault.path / "secret.txt"
+    outside.write_text("secret", encoding="utf-8")
+    attempted_paths = [
+        "/api/v1/vault/test-vault/data/my-invest%2F..%2F..%2Fsecret.txt",
+        "/api/v1/vault/test-vault/data/my-invest%2F%2E%2E%2F%2E%2E%2Fsecret.txt",
+        "/api/v1/vault/test-vault/data/my-invest%2F.%2Freports.txt",
+        "/api/v1/vault/test-vault/data/my-invest%5Creports.txt",
+        "/test-vault/data/my-invest%2F..%2F..%2Fsecret.txt",
+        "/test-vault/data/%2Fsecret.txt",
+    ]
+
+    async with TestClient(TestServer(app)) as client:
+        for path in attempted_paths:
+            resp = await client.get(path, headers={"Authorization": f"Bearer {TOKEN}"})
+            assert resp.status in {400, 404}
+            body = await resp.text()
+            assert body != "secret"
+
+
+@pytest.mark.anyio
+async def test_get_nested_data_file_rejects_empty_path_components(
+    app,
+    tmp_vault: VaultConfig,
+) -> None:
+    target = tmp_vault.data_dir / "bundle" / "report.md"
+    target.parent.mkdir(parents=True)
+    target.write_text("safe report", encoding="utf-8")
+
+    attempted_paths = [
+        "/api/v1/vault/test-vault/data/bundle%2F%2Freport.md",
+        "/test-vault/data/bundle%2F%2Freport.md",
+    ]
+
+    async with TestClient(TestServer(app)) as client:
+        for path in attempted_paths:
+            resp = await client.get(path, headers={"Authorization": f"Bearer {TOKEN}"})
+            assert resp.status == 400
+            body = await resp.text()
+            assert body != "safe report"
+
+
+@pytest.mark.anyio
+async def test_get_nested_data_file_rejects_symlink_escape(
+    app,
+    tmp_vault: VaultConfig,
+) -> None:
+    outside = tmp_vault.path / "secret.txt"
+    outside.write_text("secret", encoding="utf-8")
+    link = tmp_vault.data_dir / "bundle" / "secret-link.txt"
+    link.parent.mkdir(parents=True)
+    link.symlink_to(outside)
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/data/bundle/secret-link.txt",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status in {400, 404}
+        body = await resp.text()
+
+    assert body != "secret"
+
+
+@pytest.mark.anyio
+async def test_get_nested_data_file_preserves_download_headers(
+    app,
+    tmp_vault: VaultConfig,
+) -> None:
+    nested = tmp_vault.data_dir / "bundle"
+    nested.mkdir(parents=True)
+    (nested / "page.html").write_text("<script></script>", encoding="utf-8")
+    (nested / "photo.png").write_bytes(b"png")
+
+    async with TestClient(TestServer(app)) as client:
+        html_resp = await client.get(
+            "/api/v1/vault/test-vault/data/bundle/page.html",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        png_resp = await client.get(
+            "/test-vault/data/bundle/photo.png",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+
+    assert html_resp.status == 200
+    assert html_resp.headers["X-Content-Type-Options"] == "nosniff"
+    assert html_resp.headers["Content-Type"].startswith("application/octet-stream")
+    assert 'filename="page.html"' in html_resp.headers["Content-Disposition"]
+    assert png_resp.status == 200
+    assert png_resp.headers["X-Content-Type-Options"] == "nosniff"
+    assert png_resp.headers["Content-Type"].startswith("image/png")
+    assert "Content-Disposition" not in png_resp.headers
+
+
+@pytest.mark.anyio
 async def test_get_data_file_forces_attachment_for_active_content(
     app,
     tmp_vault: VaultConfig,

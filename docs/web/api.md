@@ -129,6 +129,49 @@ Resolve a batch of note IDs to titles.
 
 ---
 
+## Data files
+
+### `POST /api/v1/vault/{name}/data`
+
+Upload one flat file into the vault `data/` directory. Upload filenames must be
+single filenames, not nested paths; collisions are saved with numeric suffixes
+such as `report-1.pdf`.
+
+- **Request body** — `multipart/form-data` with a required `file` field.
+- **Response 201**:
+  ```json
+  {
+    "filename": "report.pdf",
+    "href": "/api/v1/vault/main/data/report.pdf",
+    "markdown": "[report.pdf](/api/v1/vault/main/data/report.pdf)",
+    "size": 123,
+    "content_type": "application/pdf"
+  }
+  ```
+- **400** — missing file field, non-multipart request, or invalid filename.
+- **409** — no collision-free filename could be allocated.
+
+### `GET /api/v1/vault/{name}/data/{path}`
+
+Download a file from the vault `data/` directory. `path` may be either a flat
+filename or a nested relative path such as
+`my-invest/reports/329180/2026-06-03/01_deep_research.md`.
+
+- **Response 200** — raw file bytes.
+- **400** — invalid data path, including absolute paths, backslashes, empty
+  path components, `.`, `..`, or symlink escapes outside `data/`.
+- **404** — data file not found.
+- **Security** — active content such as HTML/SVG is served as an attachment with
+  `X-Content-Type-Options: nosniff`; safe raster images may be displayed inline.
+
+### `GET /{name}/data/{path}`
+
+Compatibility route for browser-openable vault data links. It serves the same
+files and enforces the same authentication, validation, and content-disposition
+policy as the canonical API route above.
+
+---
+
 ## Search
 
 ### `GET /api/v1/vault/{name}/search`

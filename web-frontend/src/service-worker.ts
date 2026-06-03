@@ -33,6 +33,10 @@ sw.addEventListener("activate", (event) => {
   );
 });
 
+function isVaultDataRoute(pathname: string) {
+  return /^\/[^/]+\/data\/.+/.test(pathname);
+}
+
 sw.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
@@ -40,7 +44,8 @@ sw.addEventListener("fetch", (event) => {
   if (
     request.method !== "GET" ||
     url.origin !== sw.location.origin ||
-    url.pathname.startsWith("/api/")
+    url.pathname.startsWith("/api/") ||
+    isVaultDataRoute(url.pathname)
   ) {
     return;
   }
