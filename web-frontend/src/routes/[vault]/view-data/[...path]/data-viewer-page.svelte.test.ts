@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mount, tick, unmount } from "svelte";
 import { apiClient } from "$lib/api/client.js";
@@ -16,6 +17,19 @@ vi.mock("$lib/api/client.js", () => ({
 }));
 
 describe("data viewer page", () => {
+  function readPageSource() {
+    return readFileSync(
+      "src/routes/[vault]/view-data/[...path]/+page.svelte",
+      "utf-8",
+    );
+  }
+
+  function styleRule(source: string, selectorPattern: RegExp) {
+    const match = selectorPattern.exec(source);
+    expect(match?.groups?.body).toBeDefined();
+    return match?.groups?.body ?? "";
+  }
+
   afterEach(() => {
     vi.mocked(apiClient).mockReset();
     document.body.innerHTML = "";
@@ -36,6 +50,27 @@ describe("data viewer page", () => {
     }
     throw lastError;
   }
+
+  it("keeps data previews full-width instead of capped at a centered readable width", () => {
+    const source = readPageSource();
+    const headerRule = styleRule(
+      source,
+      /\.viewer-header\s*\{(?<body>[^}]+)\}/m,
+    );
+    const previewRule = styleRule(
+      source,
+      /\.notice,\s*\.preview\s*\{(?<body>[^}]+)\}/m,
+    );
+
+    expect(source).not.toContain("max-width: 1100px");
+    expect(headerRule).toContain("width: 100%");
+    expect(headerRule).toContain("box-sizing: border-box");
+    expect(headerRule).toContain("max-width: none");
+    expect(previewRule).toContain("width: 100%");
+    expect(previewRule).toContain("box-sizing: border-box");
+    expect(previewRule).toContain("max-width: none");
+    expect(previewRule).toContain("overflow-x: auto");
+  });
 
   it("fetches and renders markdown data files with a raw download link", async () => {
     vi.mocked(apiClient).mockResolvedValue(

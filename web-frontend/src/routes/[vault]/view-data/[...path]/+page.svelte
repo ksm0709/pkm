@@ -103,6 +103,8 @@
 
 <style>
   .data-viewer {
+    box-sizing: border-box;
+    width: 100%;
     min-height: 100vh;
     padding: var(--space-6, 32px);
     color: var(--text);
@@ -110,8 +112,10 @@
   }
 
   .viewer-header {
-    max-width: 1100px;
-    margin: 0 auto var(--space-6, 32px);
+    box-sizing: border-box;
+    width: 100%;
+    max-width: none;
+    margin: 0 0 var(--space-6, 32px);
     padding-bottom: var(--space-4, 16px);
     border-bottom: 1px solid var(--border);
   }
@@ -166,9 +170,12 @@
 
   .notice,
   .preview {
-    max-width: 1100px;
-    margin: 0 auto;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: none;
+    margin: 0;
     padding: var(--space-5, 24px);
+    overflow-x: auto;
     border: 1px solid var(--border);
     border-radius: 12px;
     background: var(--surface, transparent);
@@ -193,5 +200,16 @@
   .html-preview :global(object),
   .html-preview :global(embed) {
     display: none;
+  }
+
+  @media (max-width: 760px) {
+    .data-viewer {
+      padding: var(--space-4, 16px);
+    }
+
+    .notice,
+    .preview {
+      padding: var(--space-4, 16px);
+    }
   }
 </style>
