@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.86.0 (2026-06-06)
+
+### Features
+
+- **web**: Render markdown and html data files in app
+  ([`ff48b86`](https://github.com/ksm0709/pkm/commit/ff48b862b26fcb7567c725f289665dd22e94823d))
+
+
 ## v2.85.0 (2026-06-03)
 
 ### Bug Fixes
