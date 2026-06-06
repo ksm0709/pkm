@@ -243,7 +243,10 @@ async def test_get_data_file_returns_nested_api_path(app, tmp_vault: VaultConfig
 
 
 @pytest.mark.anyio
-async def test_get_data_file_returns_nested_human_path(app, tmp_vault: VaultConfig) -> None:
+async def test_get_data_file_redirects_nested_human_markdown_path(
+    app,
+    tmp_vault: VaultConfig,
+) -> None:
     nested = tmp_vault.data_dir / "my-invest" / "reports" / "329180" / "2026-06-03"
     nested.mkdir(parents=True)
     (nested / "01_deep_research.md").write_text("deep report", encoding="utf-8")
@@ -252,11 +255,14 @@ async def test_get_data_file_returns_nested_human_path(app, tmp_vault: VaultConf
         resp = await client.get(
             "/test-vault/data/my-invest/reports/329180/2026-06-03/01_deep_research.md",
             headers={"Authorization": f"Bearer {TOKEN}"},
+            allow_redirects=False,
         )
-        assert resp.status == 200
-        body = await resp.text()
 
-    assert body == "deep report"
+    assert resp.status == 303
+    assert resp.headers["Location"] == (
+        "/test-vault/view-data/my-invest/reports/329180/2026-06-03/"
+        "01_deep_research.md"
+    )
 
 
 @pytest.mark.anyio
@@ -351,22 +357,83 @@ async def test_get_nested_data_file_rejects_symlink_escape(
 
 
 @pytest.mark.anyio
-async def test_get_nested_data_file_preserves_download_headers(
+async def test_human_data_route_redirects_renderable_text_files_to_viewer(
+    app,
+    tmp_vault: VaultConfig,
+) -> None:
+    nested = tmp_vault.data_dir / "my-invest" / "reports" / "108490" / "2026-06-06"
+    nested.mkdir(parents=True)
+    (nested / "01_deep_research.md").write_text("# Deep report", encoding="utf-8")
+    (nested / "company page.html").write_text("<h1>Company</h1>", encoding="utf-8")
+
+    async with TestClient(TestServer(app)) as client:
+        markdown_resp = await client.get(
+            "/test-vault/data/my-invest/reports/108490/2026-06-06/01_deep_research.md",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+            allow_redirects=False,
+        )
+        html_resp = await client.get(
+            "/test-vault/data/my-invest/reports/108490/2026-06-06/company%20page.html",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+            allow_redirects=False,
+        )
+
+    assert markdown_resp.status == 303
+    assert markdown_resp.headers["Location"] == (
+        "/test-vault/view-data/my-invest/reports/108490/2026-06-06/"
+        "01_deep_research.md"
+    )
+    assert html_resp.status == 303
+    assert html_resp.headers["Location"] == (
+        "/test-vault/view-data/my-invest/reports/108490/2026-06-06/"
+        "company%20page.html"
+    )
+
+
+@pytest.mark.anyio
+async def test_human_data_route_keeps_non_renderable_download_policy(
+    app,
+    tmp_vault: VaultConfig,
+) -> None:
+    nested = tmp_vault.data_dir / "bundle"
+    nested.mkdir(parents=True)
+    (nested / "report.pdf").write_bytes(b"pdf")
+    (nested / "photo.png").write_bytes(b"png")
+
+    async with TestClient(TestServer(app)) as client:
+        pdf_resp = await client.get(
+            "/test-vault/data/bundle/report.pdf",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+            allow_redirects=False,
+        )
+        png_resp = await client.get(
+            "/test-vault/data/bundle/photo.png",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+            allow_redirects=False,
+        )
+
+    assert pdf_resp.status == 200
+    assert pdf_resp.headers["X-Content-Type-Options"] == "nosniff"
+    assert pdf_resp.headers["Content-Type"].startswith("application/octet-stream")
+    assert 'filename="report.pdf"' in pdf_resp.headers["Content-Disposition"]
+    assert png_resp.status == 200
+    assert png_resp.headers["X-Content-Type-Options"] == "nosniff"
+    assert png_resp.headers["Content-Type"].startswith("image/png")
+    assert "Content-Disposition" not in png_resp.headers
+
+
+@pytest.mark.anyio
+async def test_get_nested_data_file_preserves_api_download_headers(
     app,
     tmp_vault: VaultConfig,
 ) -> None:
     nested = tmp_vault.data_dir / "bundle"
     nested.mkdir(parents=True)
     (nested / "page.html").write_text("<script></script>", encoding="utf-8")
-    (nested / "photo.png").write_bytes(b"png")
 
     async with TestClient(TestServer(app)) as client:
         html_resp = await client.get(
             "/api/v1/vault/test-vault/data/bundle/page.html",
-            headers={"Authorization": f"Bearer {TOKEN}"},
-        )
-        png_resp = await client.get(
-            "/test-vault/data/bundle/photo.png",
             headers={"Authorization": f"Bearer {TOKEN}"},
         )
 
@@ -374,10 +441,6 @@ async def test_get_nested_data_file_preserves_download_headers(
     assert html_resp.headers["X-Content-Type-Options"] == "nosniff"
     assert html_resp.headers["Content-Type"].startswith("application/octet-stream")
     assert 'filename="page.html"' in html_resp.headers["Content-Disposition"]
-    assert png_resp.status == 200
-    assert png_resp.headers["X-Content-Type-Options"] == "nosniff"
-    assert png_resp.headers["Content-Type"].startswith("image/png")
-    assert "Content-Disposition" not in png_resp.headers
 
 
 @pytest.mark.anyio

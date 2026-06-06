@@ -16,6 +16,7 @@ _SAFE_INLINE_CONTENT_TYPES = {
     "image/png",
     "image/webp",
 }
+_RENDERABLE_TEXT_SUFFIXES = {".htm", ".html", ".markdown", ".md"}
 
 
 def _sanitize_filename(raw_name: str | None) -> str:
@@ -187,6 +188,14 @@ async def post_data_file(request: web.Request) -> web.Response:
     )
 
 
+def _viewer_href(vault_name: str, relpath: str) -> str:
+    return f"/{quote(vault_name, safe='')}/view-data/{quote(relpath, safe='/')}"
+
+
+def _is_renderable_text_path(path: str) -> bool:
+    return Path(path).suffix.lower() in _RENDERABLE_TEXT_SUFFIXES
+
+
 async def get_data_file(request: web.Request) -> web.StreamResponse:
     """GET a data file under vault data/, including nested relative paths."""
     vault = _resolve_vault(request.match_info["name"])
@@ -194,5 +203,20 @@ async def get_data_file(request: web.Request) -> web.StreamResponse:
     target = _data_path(vault, relpath)
     if not target.is_file():
         raise web.HTTPNotFound(reason="Data file not found")
+
+    return web.FileResponse(target, headers=_safe_download_headers(target.name))
+
+
+async def get_human_data_file(request: web.Request) -> web.StreamResponse:
+    """Browser-openable data links redirect renderable text files to the SPA viewer."""
+    vault_name = request.match_info["name"]
+    vault = _resolve_vault(vault_name)
+    relpath = _request_data_path(request)
+    target = _data_path(vault, relpath)
+    if not target.is_file():
+        raise web.HTTPNotFound(reason="Data file not found")
+
+    if _is_renderable_text_path(relpath):
+        raise web.HTTPSeeOther(location=_viewer_href(vault_name, relpath))
 
     return web.FileResponse(target, headers=_safe_download_headers(target.name))

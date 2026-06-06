@@ -166,9 +166,19 @@ filename or a nested relative path such as
 
 ### `GET /{name}/data/{path}`
 
-Compatibility route for browser-openable vault data links. It serves the same
-files and enforces the same authentication, validation, and content-disposition
-policy as the canonical API route above.
+Browser-openable vault data links. It enforces the same authentication and path
+validation as the canonical API route. Renderable text formats (`.md`,
+`.markdown`, `.html`, `.htm`) redirect to the in-app safe viewer at
+`/{name}/view-data/{path}` so users can read reports without downloading them.
+Other file types keep the API content-disposition policy: raster images may open
+inline, while active/unknown content downloads as an attachment.
+
+### `GET /{name}/view-data/{path}`
+
+SPA route for safe data previews. The frontend fetches the raw bytes through the
+canonical API route using the current authenticated session, renders Markdown
+with the normal note renderer, sanitizes HTML before display, and exposes a
+"Download raw" link back to `/api/v1/vault/{name}/data/{path}`.
 
 ---
 

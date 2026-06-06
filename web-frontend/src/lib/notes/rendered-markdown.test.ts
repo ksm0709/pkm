@@ -66,6 +66,39 @@ describe("rendered markdown decoration", () => {
     expect(cell?.innerHTML).toContain("<br>");
   });
 
+  it("rewrites renderable data-file links to the safe viewer route", async () => {
+    const rendered = await renderMarkdownHtml(
+      [
+        "[human md](/taeho/data/reports/deep.md)",
+        "[api html](/api/v1/vault/taeho/data/reports/company%20page.html#summary)",
+        "[pdf](/taeho/data/reports/raw.pdf)",
+        "[external](https://example.com/taeho/data/reports/deep.md)",
+      ].join("\n\n"),
+      "taeho",
+    );
+    const host = document.createElement("div");
+    host.innerHTML = rendered;
+
+    expect(
+      host.querySelector<HTMLAnchorElement>('a[href="/taeho/view-data/reports/deep.md"]')
+        ?.textContent,
+    ).toBe("human md");
+    expect(
+      host.querySelector<HTMLAnchorElement>(
+        'a[href="/taeho/view-data/reports/company%20page.html#summary"]',
+      )?.textContent,
+    ).toBe("api html");
+    expect(
+      host.querySelector<HTMLAnchorElement>('a[href="/taeho/data/reports/raw.pdf"]')
+        ?.textContent,
+    ).toBe("pdf");
+    expect(
+      host.querySelector<HTMLAnchorElement>(
+        'a[href="https://example.com/taeho/data/reports/deep.md"]',
+      )?.textContent,
+    ).toBe("external");
+  });
+
   it("strips active HTML from rendered markdown", async () => {
     const rendered = await renderMarkdownHtml(
       [

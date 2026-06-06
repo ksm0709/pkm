@@ -1,4 +1,5 @@
 import { marked } from "marked";
+import { rewriteRenderableDataLinkHref } from "$lib/data-viewer/paths";
 import { wikilinksToMarkdownLinks } from "./wikilinks";
 
 const allowedTags = new Set([
@@ -219,6 +220,18 @@ function wrapMarkdownTables(fragment: DocumentFragment, doc: Document) {
   }
 }
 
+function rewriteRenderableDataLinks(
+  fragment: DocumentFragment,
+  vault: string,
+) {
+  for (const link of Array.from(fragment.querySelectorAll("a[href]"))) {
+    const href = link.getAttribute("href");
+    if (!href) continue;
+    const rewritten = rewriteRenderableDataLinkHref(href, vault);
+    if (rewritten) link.setAttribute("href", rewritten);
+  }
+}
+
 export function decorateRenderedHtml(
   html: string,
   vault: string,
@@ -246,6 +259,7 @@ export function decorateRenderedHtml(
   }
 
   wrapMarkdownTables(template.content, doc);
+  rewriteRenderableDataLinks(template.content, vault);
 
   return template.innerHTML;
 }
