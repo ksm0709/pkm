@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.86.1 (2026-06-06)
+
+### Bug Fixes
+
+- **web**: Expand data viewer preview width
+  ([`a64e23f`](https://github.com/ksm0709/pkm/commit/a64e23fe1e9f052ea3b7257e386331034b5c2979))
+
+
 ## v2.86.0 (2026-06-06)
 
 ### Features
