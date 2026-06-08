@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.86.2 (2026-06-08)
+
+### Bug Fixes
+
+- Preserve literal single-tilde ranges in web markdown
+  ([`40ca923`](https://github.com/ksm0709/pkm/commit/40ca9232d631fe1c3f211c4a30d829071dabaae3))
+
+
 ## v2.86.1 (2026-06-06)
 
 ### Bug Fixes
