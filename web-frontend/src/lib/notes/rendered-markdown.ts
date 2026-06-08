@@ -1,6 +1,27 @@
-import { marked } from "marked";
+import { Marked } from "marked";
 import { rewriteRenderableDataLinkHref } from "$lib/data-viewer/paths";
 import { wikilinksToMarkdownLinks } from "./wikilinks";
+
+const pkmMarked = new Marked({ gfm: true });
+
+pkmMarked.use({
+  tokenizer: {
+    del(src) {
+      const cap =
+        /^(~~)(?=[^\s~])((?:\\.|[^\\])*?(?:\\.|[^\s~\\]))\1(?=[^~]|$)/.exec(
+          src,
+        );
+      if (!cap) return undefined;
+
+      return {
+        type: "del",
+        raw: cap[0],
+        text: cap[2],
+        tokens: this.lexer.inlineTokens(cap[2]),
+      };
+    },
+  },
+});
 
 const allowedTags = new Set([
   "a",
@@ -220,10 +241,7 @@ function wrapMarkdownTables(fragment: DocumentFragment, doc: Document) {
   }
 }
 
-function rewriteRenderableDataLinks(
-  fragment: DocumentFragment,
-  vault: string,
-) {
+function rewriteRenderableDataLinks(fragment: DocumentFragment, vault: string) {
   for (const link of Array.from(fragment.querySelectorAll("a[href]"))) {
     const href = link.getAttribute("href");
     if (!href) continue;
@@ -276,9 +294,8 @@ export async function renderMarkdownHtml(
   const source = options.transformMarkdown
     ? options.transformMarkdown(markdownWithLinks)
     : markdownWithLinks;
-  const parsed = await marked.parse(source, {
+  const parsed = await pkmMarked.parse(source, {
     async: true,
-    gfm: true,
   });
   const sanitized = doc ? sanitizeRenderedHtml(parsed, doc) : parsed;
   return doc ? decorateRenderedHtml(sanitized, vault, doc) : sanitized;

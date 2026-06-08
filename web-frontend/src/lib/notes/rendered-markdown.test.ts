@@ -66,6 +66,28 @@ describe("rendered markdown decoration", () => {
     expect(cell?.innerHTML).toContain("<br>");
   });
 
+  it("keeps single-tilde ranges literal while rendering double-tilde strikethrough", async () => {
+    const rendered = await renderMarkdownHtml(
+      [
+        "~2024~ should stay literal.",
+        "foo ~bar~ baz should stay literal.",
+        "2024~2026 and 09:00~10:30 should stay literal.",
+        "foo ~~deleted~~ baz should render strikethrough.",
+      ].join("\n\n"),
+      "main",
+    );
+    const host = document.createElement("div");
+    host.innerHTML = rendered;
+
+    expect(host.textContent).toContain("~2024~ should stay literal.");
+    expect(host.textContent).toContain("foo ~bar~ baz should stay literal.");
+    expect(host.textContent).toContain("2024~2026 and 09:00~10:30");
+
+    const deletions = Array.from(host.querySelectorAll("del"));
+    expect(deletions).toHaveLength(1);
+    expect(deletions[0]?.textContent).toBe("deleted");
+  });
+
   it("rewrites renderable data-file links to the safe viewer route", async () => {
     const rendered = await renderMarkdownHtml(
       [
@@ -80,8 +102,9 @@ describe("rendered markdown decoration", () => {
     host.innerHTML = rendered;
 
     expect(
-      host.querySelector<HTMLAnchorElement>('a[href="/taeho/view-data/reports/deep.md"]')
-        ?.textContent,
+      host.querySelector<HTMLAnchorElement>(
+        'a[href="/taeho/view-data/reports/deep.md"]',
+      )?.textContent,
     ).toBe("human md");
     expect(
       host.querySelector<HTMLAnchorElement>(
@@ -89,8 +112,9 @@ describe("rendered markdown decoration", () => {
       )?.textContent,
     ).toBe("api html");
     expect(
-      host.querySelector<HTMLAnchorElement>('a[href="/taeho/data/reports/raw.pdf"]')
-        ?.textContent,
+      host.querySelector<HTMLAnchorElement>(
+        'a[href="/taeho/data/reports/raw.pdf"]',
+      )?.textContent,
     ).toBe("pdf");
     expect(
       host.querySelector<HTMLAnchorElement>(
