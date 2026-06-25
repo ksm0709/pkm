@@ -46,9 +46,9 @@ describe("data viewer path helpers", () => {
   });
 
   it("rewrites same-vault renderable data links to the viewer", () => {
-    expect(rewriteRenderableDataLinkHref("/taeho/data/a/report.md", "taeho")).toBe(
-      "/taeho/view-data/a/report.md",
-    );
+    expect(
+      rewriteRenderableDataLinkHref("/taeho/data/a/report.md", "taeho"),
+    ).toBe("/taeho/view-data/a/report.md");
     expect(
       rewriteRenderableDataLinkHref(
         "/api/v1/vault/taeho/data/a/company%20page.html#summary",
@@ -58,10 +58,17 @@ describe("data viewer path helpers", () => {
   });
 
   it("does not rewrite non-renderable, cross-vault, or external links", () => {
-    expect(rewriteRenderableDataLinkHref("/taeho/data/a/report.pdf", "taeho")).toBeNull();
-    expect(rewriteRenderableDataLinkHref("/other/data/a/report.md", "taeho")).toBeNull();
     expect(
-      rewriteRenderableDataLinkHref("https://example.com/taeho/data/a/report.md", "taeho"),
+      rewriteRenderableDataLinkHref("/taeho/data/a/report.pdf", "taeho"),
+    ).toBeNull();
+    expect(
+      rewriteRenderableDataLinkHref("/other/data/a/report.md", "taeho"),
+    ).toBeNull();
+    expect(
+      rewriteRenderableDataLinkHref(
+        "https://example.com/taeho/data/a/report.md",
+        "taeho",
+      ),
     ).toBeNull();
   });
 });

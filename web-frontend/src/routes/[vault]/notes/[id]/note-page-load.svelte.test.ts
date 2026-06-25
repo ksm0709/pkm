@@ -18,6 +18,13 @@ const mocks = vi.hoisted(() => ({
       },
 }));
 
+const mermaidMock = vi.hoisted(() => ({
+  initialize: vi.fn(),
+  render: vi.fn(async (_id: string, source: string) => ({
+    svg: `<svg><text>${source}</text></svg>`,
+  })),
+}));
+
 vi.mock("$lib/api/client.js", () => ({
   apiClient: mocks.apiClient,
   apiGet: mocks.apiGet,
@@ -33,6 +40,14 @@ vi.mock("$app/stores", async () => {
     page: { subscribe: mocks.pageStore.subscribe },
   };
 });
+
+vi.mock(
+  "mermaid",
+  () => ({
+    default: mermaidMock,
+  }),
+  { virtual: true },
+);
 
 describe("note page loading", () => {
   beforeEach(() => {
@@ -77,6 +92,22 @@ describe("note page loading", () => {
     }
   }
 
+  async function waitFor(assertion: () => void | Promise<void>) {
+    let lastError: unknown;
+    for (let i = 0; i < 30; i += 1) {
+      try {
+        await assertion();
+        return;
+      } catch (error) {
+        lastError = error;
+        await Promise.resolve();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        await tick();
+      }
+    }
+    throw lastError;
+  }
+
   it("does not reload the note when graph navigation context is published", async () => {
     const target = document.createElement("div");
     document.body.appendChild(target);
@@ -93,6 +124,69 @@ describe("note page loading", () => {
         (path) => path === "/api/v1/vault/main/notes/alpha-note/neighbors",
       ),
     ).toHaveLength(1);
+
+    unmount(component);
+  });
+
+  it("renders note bodies through the sanitized markdown renderer", async () => {
+    mocks.apiGet.mockImplementation(async (path: string) => {
+      if (path.endsWith("/neighbors")) {
+        return {
+          note_id: "alpha-note",
+          outbound: [],
+          inbound: [],
+          semantic: [],
+        };
+      }
+      return {
+        note_id: "alpha-note",
+        title: "Alpha",
+        body: [
+          '<svg viewBox="0 0 10 10" aria-label="diagram" onload="alert(1)">',
+          '<path d="M1 1h8v8H1z" fill="currentColor"></path>',
+          "<script>alert('xss')</script>",
+          "</svg>",
+          "",
+          "- [ ] task stays interactive",
+          "",
+          "```mermaid",
+          "graph TD",
+          "  A --> B",
+          "```",
+        ].join("\n"),
+        frontmatter: {},
+        created: null,
+        updated: null,
+        tags: [],
+        importance: null,
+      };
+    });
+
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+
+    const component = mount(NotePage, { target });
+    await waitFor(() => {
+      expect(
+        target.querySelector(".note-body svg[aria-label='diagram'] path"),
+      ).not.toBeNull();
+      expect(
+        target.querySelector(".note-body .mermaid-rendered svg"),
+      ).not.toBeNull();
+    });
+
+    expect(
+      target.querySelector(".note-body script, .note-body [onload]"),
+    ).toBeNull();
+    const taskButton = target.querySelector<HTMLButtonElement>(
+      "button.note-task-state",
+    );
+    expect(taskButton?.dataset.taskState).toBe("[ ]");
+    expect(taskButton?.getAttribute("aria-label")).toBe("Task status todo");
+    expect(mermaidMock.render).toHaveBeenCalledWith(
+      expect.stringMatching(/^pkm-mermaid-/),
+      expect.stringContaining("graph TD"),
+    );
 
     unmount(component);
   });

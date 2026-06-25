@@ -1,0 +1,2 @@
+import{y as w,e as T,r as x,u as E,n as O,z as Y,S as k}from"./Dm3e_zQT.js";function n(r,f){return r===f||(r==null?void 0:r[k])===f}function A(r={},f,i,y){var p=w.r,S=O;return T(()=>{var a,t;return x(()=>{a=t,t=[],E(()=>{r!==i(...t)&&(f(r,...t),a&&n(i(...a),r)&&f(null,...a))})}),()=>{let s=S;for(;s!==p&&s.parent!==null&&s.parent.f&Y;)s=s.parent;const h=()=>{t&&n(i(...t),r)&&f(null,...t)},c=s.teardown;s.teardown=()=>{h(),c==null||c()}}}),r}export{A as b};
+//# sourceMappingURL=C0MVfom6.js.map

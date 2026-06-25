@@ -91,7 +91,8 @@ describe("data viewer page", () => {
       expect.objectContaining({ method: "GET" }),
     );
     expect(
-      target.querySelector<HTMLAnchorElement>('a[data-testid="raw-download"]')?.href,
+      target.querySelector<HTMLAnchorElement>('a[data-testid="raw-download"]')
+        ?.href,
     ).toContain("/api/v1/vault/taeho/data/reports/deep.md");
 
     unmount(component);

@@ -28,10 +28,15 @@ const allowedTags = new Set([
   "blockquote",
   "br",
   "button",
+  "circle",
   "code",
   "del",
+  "defs",
+  "desc",
   "div",
   "em",
+  "ellipse",
+  "g",
   "h1",
   "h2",
   "h3",
@@ -41,24 +46,106 @@ const allowedTags = new Set([
   "hr",
   "img",
   "li",
+  "line",
+  "marker",
   "ol",
   "p",
+  "path",
+  "polygon",
+  "polyline",
   "pre",
+  "rect",
   "span",
   "strong",
+  "svg",
   "table",
   "tbody",
   "td",
   "tfoot",
   "th",
   "thead",
+  "text",
+  "title",
   "tr",
+  "tspan",
   "ul",
 ]);
 
-const droppedTags = new Set(["embed", "iframe", "object", "script", "style"]);
+const droppedTags = new Set([
+  "embed",
+  "foreignobject",
+  "iframe",
+  "object",
+  "script",
+  "style",
+]);
 
-const globalAttributes = new Set(["aria-label", "class", "title"]);
+const globalAttributes = new Set(["aria-label", "class", "role", "title"]);
+const svgTags = new Set([
+  "circle",
+  "defs",
+  "desc",
+  "ellipse",
+  "g",
+  "line",
+  "marker",
+  "path",
+  "polygon",
+  "polyline",
+  "rect",
+  "svg",
+  "text",
+  "title",
+  "tspan",
+]);
+const svgAttributes = new Set([
+  "aria-label",
+  "class",
+  "cx",
+  "cy",
+  "d",
+  "dominant-baseline",
+  "dx",
+  "dy",
+  "fill",
+  "font-family",
+  "font-size",
+  "height",
+  "id",
+  "marker-end",
+  "marker-height",
+  "marker-mid",
+  "marker-start",
+  "marker-width",
+  "markerheight",
+  "markerunits",
+  "markerwidth",
+  "orient",
+  "points",
+  "r",
+  "refx",
+  "refy",
+  "role",
+  "rx",
+  "ry",
+  "stroke",
+  "stroke-linecap",
+  "stroke-linejoin",
+  "stroke-width",
+  "text-anchor",
+  "title",
+  "transform",
+  "viewbox",
+  "width",
+  "x",
+  "x1",
+  "x2",
+  "xmlns",
+  "y",
+  "y1",
+  "y2",
+]);
+const svgPaintAttributes = new Set(["fill", "stroke"]);
 const tagAttributes = new Map([
   ["a", new Set(["href", "rel", "target"])],
   ["button", new Set(["data-task-index", "data-task-state", "type"])],
@@ -88,6 +175,28 @@ function isSafeUrl(value: string, kind: "href" | "src") {
   }
 }
 
+function isSafeSvgAttributeValue(name: string, value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  if (/[<>\u0000-\u001f]/.test(trimmed)) return false;
+  if (/javascript:|vbscript:|data:|expression\s*\(/i.test(trimmed))
+    return false;
+  if (/url\s*\(\s*(?!#[-\w:.]+\s*\))/i.test(trimmed)) return false;
+
+  if (svgPaintAttributes.has(name)) {
+    return (
+      trimmed === "none" ||
+      trimmed === "currentColor" ||
+      /^#[0-9a-f]{3,8}$/i.test(trimmed) ||
+      /^[a-z]+$/i.test(trimmed) ||
+      /^url\(\s*#[-\w:.]+\s*\)$/i.test(trimmed) ||
+      /^rgba?\([\d\s.,%]+\)$/i.test(trimmed)
+    );
+  }
+
+  return true;
+}
+
 function isAllowedAttribute(element: Element, attribute: Attr) {
   const tag = element.tagName.toLowerCase();
   const name = attribute.name.toLowerCase();
@@ -100,6 +209,10 @@ function isAllowedAttribute(element: Element, attribute: Attr) {
   if (name === "src") return tag === "img" && isSafeUrl(attribute.value, "src");
   if (name === "target") return tag === "a";
   if (name === "rel") return tag === "a";
+
+  if (svgTags.has(tag) && svgAttributes.has(name)) {
+    return isSafeSvgAttributeValue(name, attribute.value);
+  }
 
   return (
     globalAttributes.has(name) || (tagAttributes.get(tag)?.has(name) ?? false)
@@ -250,6 +363,20 @@ function rewriteRenderableDataLinks(fragment: DocumentFragment, vault: string) {
   }
 }
 
+function promoteMermaidCodeBlocks(fragment: DocumentFragment, doc: Document) {
+  for (const code of Array.from(
+    fragment.querySelectorAll<HTMLElement>("pre > code.language-mermaid"),
+  )) {
+    const pre = code.parentElement;
+    if (!pre) continue;
+
+    const diagram = doc.createElement("pre");
+    diagram.className = "mermaid";
+    diagram.textContent = code.textContent ?? "";
+    pre.replaceWith(diagram);
+  }
+}
+
 export function decorateRenderedHtml(
   html: string,
   vault: string,
@@ -277,6 +404,7 @@ export function decorateRenderedHtml(
   }
 
   wrapMarkdownTables(template.content, doc);
+  promoteMermaidCodeBlocks(template.content, doc);
   rewriteRenderableDataLinks(template.content, vault);
 
   return template.innerHTML;

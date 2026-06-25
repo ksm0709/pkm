@@ -75,7 +75,9 @@
     <h1>{fileName}</h1>
     <p class="path" title={dataPath}>{dataPath}</p>
     <div class="actions">
-      <a data-testid="raw-download" class="button" href={downloadHref}>Download raw</a>
+      <a data-testid="raw-download" class="button" href={downloadHref}
+        >Download raw</a
+      >
       <a class="button secondary" href={canonicalViewerHref}>Viewer link</a>
     </div>
   </header>
@@ -91,7 +93,7 @@
     <section class="notice error" role="alert">{error}</section>
   {:else if kind === "markdown"}
     <article class="preview markdown-preview">
-      <MarkdownRenderer markdown={markdown} vault={vaultName} />
+      <MarkdownRenderer {markdown} vault={vaultName} />
     </article>
   {:else}
     <article class="preview html-preview markdown-prose">

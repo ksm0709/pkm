@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { decorateRenderedHtml, renderMarkdownHtml } from "./rendered-markdown";
+import {
+  decorateRenderedHtml,
+  renderMarkdownHtml,
+  sanitizeRenderedHtml,
+} from "./rendered-markdown";
 
 describe("rendered markdown decoration", () => {
   it("renders relation vocabulary markers as square chips next to wikilinks", () => {
@@ -64,6 +68,86 @@ describe("rendered markdown decoration", () => {
       "long table content with spaces that should stay on one row",
     );
     expect(cell?.innerHTML).toContain("<br>");
+  });
+
+  it("preserves safe inline SVG while stripping active SVG content", async () => {
+    const rendered = await renderMarkdownHtml(
+      [
+        '<svg viewBox="0 0 10 10" role="img" aria-label="demo" onload="alert(1)">',
+        "<title>Demo diagram</title>",
+        '<path d="M1 1h8v8H1z" fill="currentColor" onclick="alert(1)"></path>',
+        '<a href="javascript:alert(1)"><text>bad link</text></a>',
+        "<script>alert('xss')</script>",
+        "</svg>",
+      ].join(""),
+      "main",
+    );
+    const host = document.createElement("div");
+    host.innerHTML = rendered;
+
+    const svg = host.querySelector<SVGSVGElement>("svg");
+    const path = host.querySelector<SVGPathElement>("svg path");
+
+    expect(svg).not.toBeNull();
+    expect(svg?.getAttribute("viewBox")).toBe("0 0 10 10");
+    expect(svg?.getAttribute("role")).toBe("img");
+    expect(svg?.getAttribute("aria-label")).toBe("demo");
+    expect(svg?.querySelector("title")?.textContent).toBe("Demo diagram");
+    expect(path?.getAttribute("d")).toBe("M1 1h8v8H1z");
+    expect(path?.getAttribute("fill")).toBe("currentColor");
+    expect(host.querySelector("[onload], [onclick], script")).toBeNull();
+    expect(host.querySelector('a[href^="javascript:"]')).toBeNull();
+  });
+
+  it("preserves Mermaid-style SVG markers and text attributes safely", () => {
+    const sanitized = sanitizeRenderedHtml(
+      [
+        '<svg viewBox="0 0 100 40">',
+        '<defs><marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">',
+        '<path d="M0,0 L10,3.5 L0,7 Z" fill="currentColor"></path>',
+        "</marker></defs>",
+        '<g class="edgePath"><path d="M10 20L90 20" marker-end="url(#arrowhead)" stroke="currentColor"></path></g>',
+        '<path d="M0 0" marker-end="url(https://evil.example/marker)"></path>',
+        '<text x="50" y="20" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="16">Node</text>',
+        "</svg>",
+      ].join(""),
+    );
+    const host = document.createElement("div");
+    host.innerHTML = sanitized;
+
+    expect(host.querySelector("defs marker#arrowhead path")).not.toBeNull();
+    expect(
+      host
+        .querySelector<SVGPathElement>("g.edgePath path")
+        ?.getAttribute("marker-end"),
+    ).toBe("url(#arrowhead)");
+    expect(
+      host.querySelectorAll<SVGPathElement>(
+        'path[marker-end="url(https://evil.example/marker)"]',
+      ),
+    ).toHaveLength(0);
+    expect(host.querySelector("text")?.getAttribute("text-anchor")).toBe(
+      "middle",
+    );
+    expect(host.querySelector("text")?.getAttribute("dominant-baseline")).toBe(
+      "central",
+    );
+  });
+
+  it("renders Mermaid fences as diagram render targets", async () => {
+    const rendered = await renderMarkdownHtml(
+      ["```mermaid", "graph TD", "  A[Start] --> B[Done]", "```"].join("\n"),
+      "main",
+    );
+    const host = document.createElement("div");
+    host.innerHTML = rendered;
+
+    const diagram = host.querySelector<HTMLElement>("pre.mermaid");
+
+    expect(diagram).not.toBeNull();
+    expect(diagram?.textContent).toContain("graph TD");
+    expect(diagram?.textContent).toContain("A[Start] --> B[Done]");
+    expect(host.querySelector("code.language-mermaid")).toBeNull();
   });
 
   it("keeps single-tilde ranges literal while rendering double-tilde strikethrough", async () => {

@@ -1,2 +1,0 @@
-import{A as y,b as u,ac as _,ad as o,h as t,N as g,a9 as i,K as l,C as d,M as p,F as m}from"./BxHIyB2V.js";function C(n,r){let a=null,E=t;var s;if(t){a=p;for(var e=m(document.head);e!==null&&(e.nodeType!==g||e.data!==n);)e=i(e);if(e===null)l(!1);else{var f=i(e);e.remove(),d(f)}}t||(s=document.head.appendChild(y()));try{u(()=>r(s),_|o)}finally{E&&(l(!0),d(a))}}export{C as h};
-//# sourceMappingURL=BndX9K9r.js.map

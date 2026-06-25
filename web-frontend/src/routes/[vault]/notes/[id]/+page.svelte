@@ -2,9 +2,10 @@
   import { onDestroy, untrack } from "svelte";
   import { page } from "$app/stores";
   import { apiClient, apiGet } from "$lib/api/client.js";
+  import MarkdownRenderer from "$lib/components/MarkdownRenderer.svelte";
   import NeighborPanel from "$lib/components/NeighborPanel.svelte";
   import CodeMirror from "$lib/editor/CodeMirror.svelte";
-  import { renderMarkdownHtml, tagHue } from "$lib/notes/rendered-markdown.js";
+  import { tagHue } from "$lib/notes/rendered-markdown.js";
   import { graphKeyNav } from "$lib/navigation/graph-keynav.svelte";
   import { rememberVault } from "$lib/vault/remembered-vault";
 
@@ -47,7 +48,6 @@
   let loadingNote = $state(true);
   let loadingNeighbors = $state(true);
   let error = $state("");
-  let renderedBody = $state("");
   let editMode = $state(false);
   let editorDoc = $state("");
   let savedDoc = $state("");
@@ -174,12 +174,6 @@
     return didReplace ? updated : markdown;
   }
 
-  async function renderNoteBody(markdown: string, vault: string) {
-    return renderMarkdownHtml(markdown, vault, undefined, {
-      transformMarkdown: withTaskStateButtons,
-    });
-  }
-
   async function saveTaskState(taskIndex: number, currentState: string) {
     if (!note) return;
     const updatedBody = replaceTaskStateByIndex(
@@ -206,7 +200,6 @@
     note = { ...updatedNote, body };
     editorDoc = body;
     savedDoc = body;
-    renderedBody = await renderNoteBody(body, vaultName);
   }
 
   function handleNoteBodyClick(event: MouseEvent) {
@@ -240,7 +233,6 @@
     loadingNote = true;
     loadingNeighbors = true;
     error = "";
-    renderedBody = "";
     editorDoc = "";
     savedDoc = "";
     saveError = "";
@@ -263,12 +255,10 @@
     if (noteResult.status === "fulfilled") {
       loadedNote = noteResult.value;
       const loadedBody = loadedNote.body ?? "";
-      const nextRenderedBody = await renderNoteBody(loadedBody, vault);
       if (token !== loadToken) return;
       note = loadedNote;
       editorDoc = loadedBody;
       savedDoc = loadedBody;
-      renderedBody = nextRenderedBody;
     } else {
       error = isTagNoteId(id) ? "Tag note not found." : "Note not found.";
     }
@@ -338,11 +328,9 @@
 
       const updatedNote = (await response.json()) as Note;
       const body = updatedNote.body ?? editorDoc;
-      const nextRenderedBody = await renderNoteBody(body, vaultName);
       note = { ...updatedNote, body };
       editorDoc = body;
       savedDoc = body;
-      renderedBody = nextRenderedBody;
       saveStatus = "Saved";
     } catch (e) {
       saveError = e instanceof Error ? e.message : "Failed to save note.";
@@ -490,9 +478,12 @@
         </div>
       {:else}
         <!-- Rendered markdown body -->
-        <!-- eslint-disable-next-line svelte/no-at-html-tags -->
         <div class="note-body prose" use:taskStateClickAction>
-          {@html renderedBody}
+          <MarkdownRenderer
+            markdown={note.body ?? ""}
+            vault={vaultName}
+            transformMarkdown={withTaskStateButtons}
+          />
         </div>
       {/if}
 

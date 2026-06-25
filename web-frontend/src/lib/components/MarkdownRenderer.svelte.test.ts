@@ -1,7 +1,22 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mount, tick, unmount } from "svelte";
 import MarkdownRenderer from "./MarkdownRenderer.svelte";
+
+const mermaidMock = vi.hoisted(() => ({
+  initialize: vi.fn(),
+  render: vi.fn(async (_id: string, source: string) => ({
+    svg: `<svg data-mermaid-rendered="true"><text>${source}</text></svg>`,
+  })),
+}));
+
+vi.mock(
+  "mermaid",
+  () => ({
+    default: mermaidMock,
+  }),
+  { virtual: true },
+);
 
 describe("MarkdownRenderer", () => {
   afterEach(() => {
@@ -49,6 +64,40 @@ describe("MarkdownRenderer", () => {
     expect(target.querySelector(".note-tag-chip")?.textContent).toBe("#pkm");
     expect(target.querySelector(".note-relation-chip")?.textContent).toBe(
       "&depends_on",
+    );
+
+    unmount(component);
+  });
+
+  it("renders Mermaid diagrams after markdown HTML is mounted", async () => {
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(MarkdownRenderer, {
+      target,
+      props: {
+        vault: "main",
+        markdown: [
+          "```mermaid",
+          "graph TD",
+          "  A[Start] --> B[Done]",
+          "```",
+        ].join("\n"),
+      },
+    });
+
+    await waitFor(() => {
+      expect(target.querySelector(".mermaid-rendered svg")).not.toBeNull();
+    });
+
+    expect(mermaidMock.initialize).toHaveBeenCalledWith(
+      expect.objectContaining({ securityLevel: "strict", startOnLoad: false }),
+    );
+    expect(mermaidMock.render).toHaveBeenCalledWith(
+      expect.stringMatching(/^pkm-mermaid-/),
+      expect.stringContaining("graph TD"),
+    );
+    expect(target.querySelector("pre.mermaid")?.textContent).toContain(
+      "graph TD",
     );
 
     unmount(component);

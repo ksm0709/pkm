@@ -1,14 +1,20 @@
 <script lang="ts">
-  import { renderMarkdownHtml } from "$lib/notes/rendered-markdown.js";
+  import {
+    renderMarkdownHtml,
+    sanitizeRenderedHtml,
+  } from "$lib/notes/rendered-markdown.js";
 
   interface Props {
     markdown: string;
     vault: string;
     compact?: boolean;
+    transformMarkdown?: (markdown: string) => string;
   }
 
-  let { markdown, vault, compact = false }: Props = $props();
+  let { markdown, vault, compact = false, transformMarkdown }: Props = $props();
   let html = $state("");
+  let root: HTMLDivElement | undefined = $state();
+  let mermaidRenderRun = 0;
 
   $effect(() => {
     const source = markdown ?? "";
@@ -18,7 +24,7 @@
 
     if (!source.trim()) return;
 
-    void renderMarkdownHtml(source, vaultName)
+    void renderMarkdownHtml(source, vaultName, undefined, { transformMarkdown })
       .then((rendered) => {
         if (!cancelled) html = rendered;
       })
@@ -31,6 +37,55 @@
     };
   });
 
+  $effect(() => {
+    const container = root;
+    const renderedHtml = html;
+    if (!container || !renderedHtml) return;
+
+    const runId = ++mermaidRenderRun;
+    void renderMermaidBlocks(container, runId);
+  });
+
+  async function renderMermaidBlocks(container: HTMLElement, runId: number) {
+    const blocks = Array.from(
+      container.querySelectorAll<HTMLElement>("pre.mermaid"),
+    ).filter((block) => block.dataset.mermaidRendered !== "true");
+    if (blocks.length === 0) return;
+
+    try {
+      const mermaid = (await import("mermaid")).default;
+      mermaid.initialize({ securityLevel: "strict", startOnLoad: false });
+
+      await Promise.all(
+        blocks.map(async (block, index) => {
+          const source = block.textContent ?? "";
+          const id = `pkm-mermaid-${runId}-${index}`;
+          try {
+            const { svg } = await mermaid.render(id, source);
+            if (runId !== mermaidRenderRun) return;
+
+            const rendered = document.createElement("div");
+            rendered.className = "mermaid-rendered";
+            rendered.innerHTML = sanitizeRenderedHtml(svg);
+            block.after(rendered);
+            block.dataset.mermaidRendered = "true";
+            block.hidden = true;
+          } catch (error) {
+            if (runId !== mermaidRenderRun) return;
+            block.classList.add("mermaid-error");
+            block.title =
+              error instanceof Error ? error.message : "Mermaid render failed";
+          }
+        }),
+      );
+    } catch {
+      for (const block of blocks) {
+        block.classList.add("mermaid-error");
+        block.title = "Mermaid renderer unavailable";
+      }
+    }
+  }
+
   function escapeHtml(value: string) {
     return value
       .replace(/&/g, "&amp;")
@@ -41,7 +96,7 @@
   }
 </script>
 
-<div class="markdown-prose" class:compact>
+<div bind:this={root} class="markdown-prose" class:compact>
   <!-- eslint-disable-next-line svelte/no-at-html-tags -->
   {@html html}
 </div>
