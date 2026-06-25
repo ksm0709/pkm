@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.86.3 (2026-06-25)
+
+### Bug Fixes
+
+- **web**: Render Mermaid diagrams in markdown notes
+  ([`b9870d5`](https://github.com/ksm0709/pkm/commit/b9870d56d95fc4f8d5b7604116feed7cf02e0f9b))
+
+
 ## v2.86.2 (2026-06-08)
 
 ### Bug Fixes
