@@ -226,6 +226,174 @@
     };
   }
 
+  let annotateMenu = $state<{ x: number; y: number; quote: string } | null>(
+    null,
+  );
+  let annotateDialog = $state<{ quote: string } | null>(null);
+  let annotationText = $state("");
+  let annotationAddToLog = $state(false);
+  let annotationSaving = $state(false);
+  let annotationError = $state("");
+  let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function selectedQuoteInside(container: HTMLElement): string | null {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+      return null;
+    }
+    const range = selection.getRangeAt(0);
+    if (!container.contains(range.commonAncestorContainer)) return null;
+    const quote = selection.toString().trim();
+    return quote || null;
+  }
+
+  function handleNoteBodyContextMenu(event: MouseEvent) {
+    const noteBodyEl = event.currentTarget as HTMLElement;
+    const quote = selectedQuoteInside(noteBodyEl);
+    if (!quote) return;
+    event.preventDefault();
+    annotateMenu = { x: event.clientX, y: event.clientY, quote };
+  }
+
+  function clearLongPressTimer() {
+    if (longPressTimer !== null) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  }
+
+  function handleNoteBodyPointerDown(event: PointerEvent) {
+    if (event.pointerType !== "touch") return;
+    const noteBodyEl = event.currentTarget as HTMLElement;
+    const x = event.clientX;
+    const y = event.clientY;
+    clearLongPressTimer();
+    longPressTimer = setTimeout(() => {
+      const quote = selectedQuoteInside(noteBodyEl);
+      if (quote) {
+        annotateMenu = { x, y, quote };
+      }
+      longPressTimer = null;
+    }, 600);
+  }
+
+  function openAnnotateDialog() {
+    if (!annotateMenu) return;
+    annotateDialog = { quote: annotateMenu.quote };
+    annotationText = "";
+    annotationAddToLog = false;
+    annotationError = "";
+    annotateMenu = null;
+  }
+
+  function closeAnnotateDialog() {
+    annotateDialog = null;
+    annotationText = "";
+    annotationAddToLog = false;
+    annotationError = "";
+    annotationSaving = false;
+  }
+
+  function resetAnnotationState() {
+    clearLongPressTimer();
+    annotateMenu = null;
+    closeAnnotateDialog();
+  }
+
+  function listContinuation(value: string) {
+    return value
+      .split(/\r?\n/)
+      .map((line) => line.trimEnd())
+      .join("\n    ");
+  }
+
+  function appendAnnotationToBody(body: string, quote: string, text: string) {
+    const wrappedQuote = `“${quote.replace(/\s+/g, " ").trim()}”`;
+    const entry = `- ${wrappedQuote}\n  - ${listContinuation(text)}`;
+    const existing = (body ?? "").replace(/\s+$/, "");
+    if (/^## Annotations\b/m.test(existing)) {
+      return `${existing}\n${entry}\n`;
+    }
+    const separator = existing.length > 0 ? "\n\n" : "";
+    return `${existing}${separator}## Annotations\n${entry}\n`;
+  }
+
+  function isCurrentAnnotationTarget(
+    targetVault: string,
+    targetNoteId: string,
+  ) {
+    return (
+      vaultName === targetVault &&
+      noteId === targetNoteId &&
+      note?.note_id === targetNoteId
+    );
+  }
+
+  async function saveAnnotation() {
+    if (!note || !annotateDialog || annotationSaving) return;
+    const quote = annotateDialog.quote;
+    const text = annotationText.trim();
+    if (!text) {
+      annotationError = "Annotation text is required.";
+      return;
+    }
+    annotationSaving = true;
+    annotationError = "";
+    const shouldLog = annotationAddToLog;
+    const targetVault = vaultName;
+    const targetNoteId = note.note_id;
+    const encodedNoteId = encodeURIComponent(targetNoteId);
+    const updatedBody = appendAnnotationToBody(note.body ?? "", quote, text);
+
+    try {
+      const response = await apiClient(
+        `/api/v1/vault/${targetVault}/notes/${encodedNoteId}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ body: updatedBody }),
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(`PUT annotation -> ${response.status}`);
+      }
+
+      const updatedNote = (await response.json()) as Note;
+      if (!isCurrentAnnotationTarget(targetVault, targetNoteId)) return;
+      const body = updatedNote.body ?? updatedBody;
+
+      if (shouldLog) {
+        const logResponse = await apiClient(
+          `/api/v1/vault/${targetVault}/daily/today`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              type: "entry",
+              content: `Annotated [[${targetNoteId}]]: “${quote.replace(/\s+/g, " ").trim()}” — ${text}`,
+            }),
+          },
+        );
+        if (!logResponse.ok) {
+          throw new Error(`POST daily log -> ${logResponse.status}`);
+        }
+      }
+
+      if (!isCurrentAnnotationTarget(targetVault, targetNoteId)) return;
+      note = { ...updatedNote, body };
+      editorDoc = body;
+      savedDoc = body;
+      closeAnnotateDialog();
+    } catch (e) {
+      if (!isCurrentAnnotationTarget(targetVault, targetNoteId)) return;
+      annotationError =
+        e instanceof Error ? e.message : "Failed to save annotation.";
+    } finally {
+      if (isCurrentAnnotationTarget(targetVault, targetNoteId)) {
+        annotationSaving = false;
+      }
+    }
+  }
+
   async function loadNote(vault: string, id: string) {
     const token = ++loadToken;
     note = null;
@@ -238,6 +406,7 @@
     saveError = "";
     saveStatus = "";
     editMode = false;
+    resetAnnotationState();
     graphKeyNav.clearCurrentNoteNavigationContext();
 
     const noteEndpoint = dailyNoteIdPattern.test(id)
@@ -348,6 +517,7 @@
   });
 
   onDestroy(() => {
+    resetAnnotationState();
     graphKeyNav.clearCurrentNoteNavigationContext(vaultName, noteId);
   });
 </script>
@@ -478,12 +648,86 @@
         </div>
       {:else}
         <!-- Rendered markdown body -->
-        <div class="note-body prose" use:taskStateClickAction>
+        <div
+          class="note-body prose"
+          role="region"
+          aria-label="Note body"
+          use:taskStateClickAction
+          oncontextmenu={handleNoteBodyContextMenu}
+          onpointerdown={handleNoteBodyPointerDown}
+          onpointerup={clearLongPressTimer}
+          onpointercancel={clearLongPressTimer}
+          onpointerleave={clearLongPressTimer}
+        >
           <MarkdownRenderer
             markdown={note.body ?? ""}
             vault={vaultName}
             transformMarkdown={withTaskStateButtons}
           />
+        </div>
+      {/if}
+
+      {#if annotateMenu}
+        <div
+          class="annotate-menu"
+          style="left:{annotateMenu.x}px;top:{annotateMenu.y}px;"
+        >
+          <button
+            type="button"
+            aria-label="Annotate selection"
+            onclick={openAnnotateDialog}
+          >
+            Annotate
+          </button>
+        </div>
+      {/if}
+
+      {#if annotateDialog}
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Annotate selection"
+          class="annotate-dialog"
+        >
+          <p class="annotate-quote">“{annotateDialog.quote}”</p>
+          <label class="annotate-field">
+            <span>Annotation</span>
+            <textarea
+              aria-label="Annotation text"
+              bind:value={annotationText}
+              disabled={annotationSaving}
+            ></textarea>
+          </label>
+          {#if annotationError}
+            <p class="annotate-error" aria-live="polite">{annotationError}</p>
+          {/if}
+          <label class="annotate-checkbox">
+            <input
+              type="checkbox"
+              aria-label="Add annotation to daily log"
+              bind:checked={annotationAddToLog}
+              disabled={annotationSaving}
+            />
+            <span>Add to daily log</span>
+          </label>
+          <div class="annotate-actions">
+            <button
+              type="button"
+              onclick={closeAnnotateDialog}
+              aria-label="Cancel annotation"
+              disabled={annotationSaving}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              aria-label="Save annotation"
+              onclick={() => void saveAnnotation()}
+              disabled={annotationSaving}
+            >
+              {annotationSaving ? "Saving" : "Save"}
+            </button>
+          </div>
         </div>
       {/if}
 
@@ -654,6 +898,109 @@
     max-width: 100%;
     overflow-wrap: anywhere;
     word-break: break-word;
+  }
+
+  .annotate-menu {
+    position: fixed;
+    z-index: 40;
+    transform: translate(6px, 6px);
+    border: 1px solid var(--border);
+    background: var(--surface-raised, var(--bg));
+    box-shadow: 0 12px 30px color-mix(in srgb, #000 35%, transparent);
+  }
+
+  .annotate-menu button,
+  .annotate-actions button {
+    min-height: 32px;
+    padding: 0 var(--space-3, 12px);
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: var(--type-chrome-sm-size, 11px);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+  }
+
+  .annotate-menu button:hover,
+  .annotate-menu button:focus-visible,
+  .annotate-actions button:hover,
+  .annotate-actions button:focus-visible {
+    color: var(--bg);
+    background: var(--accent);
+    outline: none;
+  }
+
+  .annotate-dialog {
+    position: fixed;
+    z-index: 50;
+    right: var(--space-6, 32px);
+    bottom: var(--space-6, 32px);
+    width: min(420px, calc(100vw - 32px));
+    border: 1px solid var(--border);
+    padding: var(--space-4, 16px);
+    background: var(--surface-raised, var(--bg));
+    box-shadow: 0 18px 46px color-mix(in srgb, #000 42%, transparent);
+  }
+
+  .annotate-quote {
+    margin: 0 0 var(--space-3, 12px);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--type-chrome-size, 13px);
+  }
+
+  .annotate-field,
+  .annotate-checkbox {
+    display: grid;
+    gap: var(--space-2, 8px);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--type-chrome-sm-size, 11px);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .annotate-field textarea {
+    min-height: 96px;
+    resize: vertical;
+    border: 1px solid var(--border);
+    padding: var(--space-3, 12px);
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: var(--type-body-size, 15px);
+    line-height: var(--type-body-lh, 1.7);
+    text-transform: none;
+    letter-spacing: normal;
+  }
+
+  .annotate-field textarea:disabled,
+  .annotate-checkbox input:disabled,
+  .annotate-actions button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .annotate-error {
+    margin: var(--space-2, 8px) 0 0;
+    color: var(--signal-danger, #c0392b);
+    font-family: var(--font-mono);
+    font-size: var(--type-chrome-sm-size, 11px);
+  }
+
+  .annotate-checkbox {
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    margin-top: var(--space-3, 12px);
+  }
+
+  .annotate-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2, 8px);
+    margin-top: var(--space-4, 16px);
   }
 
   /* Prose styles for rendered markdown */
