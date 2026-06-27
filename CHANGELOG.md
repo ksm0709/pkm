@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.88.0 (2026-06-27)
+
+### Features
+
+- Add annotation source links
+  ([`72025b5`](https://github.com/ksm0709/pkm/commit/72025b50c6e691d945076b9f730eb1ceec8979b3))
+
+
 ## v2.87.2 (2026-06-27)
 
 ### Bug Fixes
