@@ -322,8 +322,12 @@ describe("note page loading", () => {
         body: expect.stringContaining("## Annotations"),
       },
     );
-    expect(JSON.parse(mocks.apiClient.mock.calls[0][1].body).body).toContain(
-      "Important context",
+    const savedAnnotationBody = JSON.parse(
+      mocks.apiClient.mock.calls[0][1].body,
+    ).body;
+    expect(savedAnnotationBody).toContain("Important context");
+    expect(savedAnnotationBody).toContain(
+      "([↩ 원문](#quote=quote%20worth%20saving.&occ=0))",
     );
     expect(mocks.apiClient).toHaveBeenNthCalledWith(
       2,
@@ -339,6 +343,306 @@ describe("note page loading", () => {
     );
     expect(target.querySelector('[role="dialog"]')).toBeNull();
 
+    unmount(component);
+  });
+
+  it("scrolls from an annotation source link back to the matching source quote occurrence", async () => {
+    mocks.apiGet.mockImplementation(async (path: string) => {
+      if (path.endsWith("/neighbors")) {
+        return {
+          note_id: "alpha-note",
+          outbound: [],
+          inbound: [],
+          semantic: [],
+        };
+      }
+      return {
+        note_id: "alpha-note",
+        title: "Alpha",
+        body: [
+          "Repeat me here.",
+          "",
+          "Second source says Repeat me here.",
+          "",
+          "## Annotations",
+          "- “Repeat me here.” ([↩ 원문](#quote=Repeat%20me%20here.&occ=1))",
+          "  - Source link should target the second source occurrence, not this copied quote.",
+        ].join("\n"),
+        frontmatter: {},
+        created: null,
+        updated: null,
+        tags: [],
+        importance: null,
+      };
+    });
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrollIntoView;
+
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+
+    await waitFor(() => {
+      expect(
+        target.querySelector<HTMLAnchorElement>('a[href^="#quote="]'),
+      ).not.toBeNull();
+    });
+
+    target
+      .querySelector<HTMLAnchorElement>('a[href^="#quote="]')!
+      .dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+    await tick();
+
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      behavior: "smooth",
+      block: "center",
+    });
+    const highlighted = target.querySelector<HTMLElement>(
+      ".annotation-source-highlight",
+    );
+    expect(highlighted?.textContent).toContain(
+      "Second source says Repeat me here.",
+    );
+    expect(highlighted?.textContent).not.toContain("Source link should target");
+
+    Element.prototype.scrollIntoView = originalScrollIntoView;
+    unmount(component);
+  });
+
+  it("deduplicates nested rendered blocks when resolving annotation source occurrences", async () => {
+    mocks.apiGet.mockImplementation(async (path: string) => {
+      if (path.endsWith("/neighbors")) {
+        return {
+          note_id: "alpha-note",
+          outbound: [],
+          inbound: [],
+          semantic: [],
+        };
+      }
+      return {
+        note_id: "alpha-note",
+        title: "Alpha",
+        body: [
+          "> Repeat me here.",
+          "",
+          "Second source says Repeat me here.",
+          "",
+          "## Annotations",
+          "- “Repeat me here.” ([↩ 원문](#quote=Repeat%20me%20here.&occ=1))",
+        ].join("\n"),
+        frontmatter: {},
+        created: null,
+        updated: null,
+        tags: [],
+        importance: null,
+      };
+    });
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrollIntoView;
+
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+
+    await waitFor(() => {
+      expect(
+        target.querySelector<HTMLAnchorElement>('a[href^="#quote="]'),
+      ).not.toBeNull();
+    });
+    target
+      .querySelector<HTMLAnchorElement>('a[href^="#quote="]')!
+      .dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+    await tick();
+
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      behavior: "smooth",
+      block: "center",
+    });
+    expect(
+      target.querySelector<HTMLElement>(".annotation-source-highlight")
+        ?.textContent,
+    ).toContain("Second source says Repeat me here.");
+
+    Element.prototype.scrollIntoView = originalScrollIntoView;
+    unmount(component);
+  });
+
+  it("keeps parent tight-list text searchable when child list items are also candidates", async () => {
+    mocks.apiGet.mockImplementation(async (path: string) => {
+      if (path.endsWith("/neighbors")) {
+        return {
+          note_id: "alpha-note",
+          outbound: [],
+          inbound: [],
+          semantic: [],
+        };
+      }
+      return {
+        note_id: "alpha-note",
+        title: "Alpha",
+        body: [
+          "- Outer quote",
+          "  - Inner quote",
+          "",
+          "## Annotations",
+          "- “Outer quote” ([↩ 원문](#quote=Outer%20quote&occ=0))",
+        ].join("\n"),
+        frontmatter: {},
+        created: null,
+        updated: null,
+        tags: [],
+        importance: null,
+      };
+    });
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrollIntoView;
+
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+
+    await waitFor(() => {
+      expect(
+        target.querySelector<HTMLAnchorElement>('a[href^="#quote="]'),
+      ).not.toBeNull();
+    });
+    target
+      .querySelector<HTMLAnchorElement>('a[href^="#quote="]')!
+      .dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+    await tick();
+
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      behavior: "smooth",
+      block: "center",
+    });
+    expect(
+      target.querySelector<HTMLElement>(".annotation-source-highlight")
+        ?.textContent,
+    ).toContain("Outer quote");
+
+    Element.prototype.scrollIntoView = originalScrollIntoView;
+    unmount(component);
+  });
+
+  it("scrolls to a matching source quote when opening the note with a quote hash", async () => {
+    mocks.apiGet.mockImplementation(async (path: string) => {
+      if (path.endsWith("/neighbors")) {
+        return {
+          note_id: "alpha-note",
+          outbound: [],
+          inbound: [],
+          semantic: [],
+        };
+      }
+      return {
+        note_id: "alpha-note",
+        title: "Alpha",
+        body: [
+          "First source mentions Anchor me.",
+          "",
+          "Second source mentions Anchor me.",
+          "",
+          "## Annotations",
+          "- “Anchor me.” ([↩ 원문](#quote=Anchor%20me.&occ=1))",
+        ].join("\n"),
+        frontmatter: {},
+        created: null,
+        updated: null,
+        tags: [],
+        importance: null,
+      };
+    });
+    window.location.hash = "#quote=Anchor%20me.&occ=1";
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrollIntoView;
+
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+
+    await waitFor(() => {
+      expect(scrollIntoView).toHaveBeenCalledWith({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
+    expect(
+      target.querySelector<HTMLElement>(".annotation-source-highlight")
+        ?.textContent,
+    ).toContain("Second source mentions Anchor me.");
+
+    Element.prototype.scrollIntoView = originalScrollIntoView;
+    window.location.hash = "";
+    unmount(component);
+  });
+
+  it("scrolls to an initial quote hash after slow note loading finishes", async () => {
+    vi.useFakeTimers();
+    mocks.apiGet.mockImplementation(async (path: string) => {
+      if (path.endsWith("/neighbors")) {
+        return {
+          note_id: "alpha-note",
+          outbound: [],
+          inbound: [],
+          semantic: [],
+        };
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1300));
+      return {
+        note_id: "alpha-note",
+        title: "Alpha",
+        body: [
+          "Slow source mentions Delayed anchor.",
+          "",
+          "## Annotations",
+          "- “Delayed anchor.” ([↩ 원문](#quote=Delayed%20anchor.&occ=0))",
+        ].join("\n"),
+        frontmatter: {},
+        created: null,
+        updated: null,
+        tags: [],
+        importance: null,
+      };
+    });
+    window.location.hash = "#quote=Delayed%20anchor.&occ=0";
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrollIntoView;
+
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+
+    await vi.advanceTimersByTimeAsync(1100);
+    await flush();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(250);
+    await flush();
+    await vi.advanceTimersByTimeAsync(1);
+    await flush();
+
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      behavior: "smooth",
+      block: "center",
+    });
+    expect(
+      target.querySelector<HTMLElement>(".annotation-source-highlight")
+        ?.textContent,
+    ).toContain("Slow source mentions Delayed anchor.");
+
+    Element.prototype.scrollIntoView = originalScrollIntoView;
+    window.location.hash = "";
     unmount(component);
   });
 

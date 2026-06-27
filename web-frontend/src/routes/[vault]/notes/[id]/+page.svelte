@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount, untrack } from "svelte";
+  import { onDestroy, onMount, tick, untrack } from "svelte";
   import { page } from "$app/stores";
   import { apiClient, apiGet } from "$lib/api/client.js";
   import MarkdownRenderer from "$lib/components/MarkdownRenderer.svelte";
@@ -202,9 +202,148 @@
     savedDoc = body;
   }
 
+  function parseAnnotationSourceHash(hash: string) {
+    const raw = hash.startsWith("#") ? hash.slice(1) : hash;
+    const params = new URLSearchParams(raw);
+    const quote = normalizeAnnotationQuote(params.get("quote") ?? "");
+    const occurrence = Number(params.get("occ") ?? "0");
+    if (!quote) return null;
+    return {
+      quote,
+      occurrence: Number.isFinite(occurrence) ? Math.max(0, occurrence) : 0,
+    };
+  }
+
+  function annotationHeading(container: HTMLElement) {
+    return Array.from(
+      container.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6"),
+    ).find(
+      (heading) =>
+        normalizeAnnotationQuote(heading.textContent ?? "") === "Annotations",
+    );
+  }
+
+  function isInAnnotationSection(
+    element: HTMLElement,
+    heading: HTMLElement | undefined,
+  ) {
+    if (!heading) return false;
+    return (
+      element === heading ||
+      Boolean(
+        heading.compareDocumentPosition(element) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      )
+    );
+  }
+
+  interface SourceSearchTarget {
+    element: HTMLElement;
+    text: string;
+  }
+
+  function textExcludingNestedCandidates(
+    element: HTMLElement,
+    candidateSet: Set<HTMLElement>,
+  ) {
+    let text = "";
+    const visit = (node: Node) => {
+      node.childNodes.forEach((child) => {
+        if (child instanceof HTMLElement && candidateSet.has(child)) return;
+        if (child.nodeType === Node.TEXT_NODE) {
+          text += child.textContent ?? "";
+          return;
+        }
+        visit(child);
+      });
+    };
+    visit(element);
+    return text;
+  }
+
+  function sourceSearchTargets(container: HTMLElement): SourceSearchTarget[] {
+    const heading = annotationHeading(container);
+    const candidates = Array.from(
+      container.querySelectorAll<HTMLElement>(
+        "p,li,blockquote,h1,h2,h3,h4,h5,h6,td,th,pre",
+      ),
+    ).filter((element) => !isInAnnotationSection(element, heading));
+    const candidateSet = new Set(candidates);
+    return candidates
+      .map((element) => {
+        const hasNestedCandidate = candidates.some(
+          (other) => other !== element && element.contains(other),
+        );
+        const text = hasNestedCandidate
+          ? textExcludingNestedCandidates(element, candidateSet)
+          : (element.textContent ?? "");
+        return { element, text: normalizeAnnotationQuote(text) };
+      })
+      .filter((target) => target.text.length > 0);
+  }
+
+  function clearAnnotationSourceHighlight() {
+    if (annotationSourceHighlightTimer !== null) {
+      clearTimeout(annotationSourceHighlightTimer);
+      annotationSourceHighlightTimer = null;
+    }
+    noteBodyElement
+      ?.querySelectorAll(".annotation-source-highlight")
+      .forEach((element) =>
+        element.classList.remove("annotation-source-highlight"),
+      );
+  }
+
+  function scrollToAnnotationSource(hash: string) {
+    if (!noteBodyElement) return false;
+    const parsed = parseAnnotationSourceHash(hash);
+    if (!parsed) return false;
+    let seen = 0;
+    let target: HTMLElement | null = null;
+    for (const candidate of sourceSearchTargets(noteBodyElement)) {
+      const count = countQuoteOccurrences(candidate.text, parsed.quote);
+      if (count === 0) continue;
+      if (seen + count > parsed.occurrence) {
+        target = candidate.element;
+        break;
+      }
+      seen += count;
+    }
+    if (!target) return false;
+    clearAnnotationSourceHighlight();
+    target.classList.add("annotation-source-highlight");
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    annotationSourceHighlightTimer = setTimeout(() => {
+      target?.classList.remove("annotation-source-highlight");
+      annotationSourceHighlightTimer = null;
+    }, 2200);
+    return true;
+  }
+
+  function scheduleAnnotationHashScroll(
+    hash = window.location.hash,
+    attempt = 0,
+  ) {
+    if (!hash.startsWith("#quote=")) return;
+    window.setTimeout(
+      () => {
+        if (!scrollToAnnotationSource(hash) && attempt < 20) {
+          scheduleAnnotationHashScroll(hash, attempt + 1);
+        }
+      },
+      attempt === 0 ? 0 : 50,
+    );
+  }
+
   function handleNoteBodyClick(event: MouseEvent) {
     const target = event.target;
     if (!(target instanceof Element)) return;
+    const sourceLink = target.closest('a[href^="#quote="]');
+    if (sourceLink instanceof HTMLAnchorElement) {
+      event.preventDefault();
+      scrollToAnnotationSource(sourceLink.getAttribute("href") ?? "");
+      return;
+    }
     const button = target.closest("button.note-task-state");
     if (!(button instanceof HTMLButtonElement)) return;
 
@@ -230,6 +369,7 @@
     quote: string;
     range: Range;
     key: string;
+    occurrence: number;
   }
 
   interface AnnotateMenu {
@@ -237,10 +377,13 @@
     y: number;
     quote: string;
     selectionKey: string;
+    occurrence: number;
   }
 
   let annotateMenu = $state<AnnotateMenu | null>(null);
-  let annotateDialog = $state<{ quote: string } | null>(null);
+  let annotateDialog = $state<{ quote: string; occurrence: number } | null>(
+    null,
+  );
   let annotationText = $state("");
   let annotationAddToLog = $state(false);
   let annotationSaving = $state(false);
@@ -248,10 +391,55 @@
   let longPressTimer: ReturnType<typeof setTimeout> | null = null;
   let noteBodyElement = $state<HTMLElement | null>(null);
   let annotateMenuInteracting = false;
+  let annotationSourceHighlightTimer: ReturnType<typeof setTimeout> | null =
+    null;
   const annotateMenuOffset = 10;
   const annotateMenuEdgeInset = 8;
   const annotateMenuEstimatedWidth = 160;
   const annotateMenuEstimatedHeight = 40;
+
+  function normalizeAnnotationQuote(value: string) {
+    return value.replace(/\s+/g, " ").trim();
+  }
+
+  function countQuoteOccurrences(haystack: string, needle: string) {
+    if (!needle) return 0;
+    let count = 0;
+    let index = 0;
+    while (index <= haystack.length) {
+      const found = haystack.indexOf(needle, index);
+      if (found < 0) break;
+      count += 1;
+      index = found + needle.length;
+    }
+    return count;
+  }
+
+  function annotationOccurrenceForRange(
+    container: HTMLElement,
+    range: Range,
+    quote: string,
+  ) {
+    const normalizedQuote = normalizeAnnotationQuote(quote);
+    if (!normalizedQuote) return 0;
+    try {
+      const beforeRange = document.createRange();
+      beforeRange.selectNodeContents(container);
+      beforeRange.setEnd(range.startContainer, range.startOffset);
+      return countQuoteOccurrences(
+        normalizeAnnotationQuote(beforeRange.toString()),
+        normalizedQuote,
+      );
+    } catch {
+      return 0;
+    }
+  }
+
+  function annotationSourceHref(quote: string, occurrence: number) {
+    const encodedQuote = encodeURIComponent(normalizeAnnotationQuote(quote));
+    const safeOccurrence = Math.max(0, Math.trunc(occurrence));
+    return `#quote=${encodedQuote}&occ=${safeOccurrence}`;
+  }
 
   function selectedAnnotationInside(
     container: HTMLElement,
@@ -268,6 +456,7 @@
       quote,
       range,
       key: `${quote}\u0000${range.startOffset}\u0000${range.endOffset}`,
+      occurrence: annotationOccurrenceForRange(container, range, quote),
     };
   }
 
@@ -329,6 +518,7 @@
       ...position,
       quote: selected.quote,
       selectionKey: selected.key,
+      occurrence: selected.occurrence,
     };
   }
 
@@ -368,7 +558,10 @@
 
   function openAnnotateDialog() {
     if (!annotateMenu) return;
-    annotateDialog = { quote: annotateMenu.quote };
+    annotateDialog = {
+      quote: annotateMenu.quote,
+      occurrence: annotateMenu.occurrence,
+    };
     annotationText = "";
     annotationAddToLog = false;
     annotationError = "";
@@ -396,9 +589,16 @@
       .join("\n    ");
   }
 
-  function appendAnnotationToBody(body: string, quote: string, text: string) {
-    const wrappedQuote = `“${quote.replace(/\s+/g, " ").trim()}”`;
-    const entry = `- ${wrappedQuote}\n  - ${listContinuation(text)}`;
+  function appendAnnotationToBody(
+    body: string,
+    quote: string,
+    text: string,
+    occurrence: number,
+  ) {
+    const normalizedQuote = normalizeAnnotationQuote(quote);
+    const wrappedQuote = `“${normalizedQuote}”`;
+    const sourceLink = `[↩ 원문](${annotationSourceHref(normalizedQuote, occurrence)})`;
+    const entry = `- ${wrappedQuote} (${sourceLink})\n  - ${listContinuation(text)}`;
     const existing = (body ?? "").replace(/\s+$/, "");
     if (/^## Annotations\b/m.test(existing)) {
       return `${existing}\n${entry}\n`;
@@ -421,6 +621,7 @@
   async function saveAnnotation() {
     if (!note || !annotateDialog || annotationSaving) return;
     const quote = annotateDialog.quote;
+    const occurrence = annotateDialog.occurrence;
     const text = annotationText.trim();
     if (!text) {
       annotationError = "Annotation text is required.";
@@ -432,7 +633,12 @@
     const targetVault = vaultName;
     const targetNoteId = note.note_id;
     const encodedNoteId = encodeURIComponent(targetNoteId);
-    const updatedBody = appendAnnotationToBody(note.body ?? "", quote, text);
+    const updatedBody = appendAnnotationToBody(
+      note.body ?? "",
+      quote,
+      text,
+      occurrence,
+    );
 
     try {
       const response = await apiClient(
@@ -538,6 +744,10 @@
     }
 
     rememberVault(vault);
+    await tick();
+    if (token === loadToken) {
+      scheduleAnnotationHashScroll(window.location.hash);
+    }
   }
 
   async function loadOrCreateNote(vault: string, id: string, endpoint: string) {
@@ -632,14 +842,20 @@
       if (event.key === "Escape") dismissAnnotateMenu();
     };
 
+    const handleHashChange = () => {
+      scheduleAnnotationHashScroll(window.location.hash);
+    };
+
     document.addEventListener("selectionchange", handleSelectionChange);
     document.addEventListener("pointerdown", handleGlobalPointerDown, true);
     document.addEventListener("keydown", handleGlobalKeyDown);
+    window.addEventListener("hashchange", handleHashChange);
     window.addEventListener("scroll", dismissAnnotateMenu, true);
     window.addEventListener("wheel", dismissAnnotateMenu, { passive: true });
     window.addEventListener("touchmove", dismissAnnotateMenu, {
       passive: true,
     });
+    scheduleAnnotationHashScroll();
 
     return () => {
       document.removeEventListener("selectionchange", handleSelectionChange);
@@ -649,6 +865,7 @@
         true,
       );
       document.removeEventListener("keydown", handleGlobalKeyDown);
+      window.removeEventListener("hashchange", handleHashChange);
       window.removeEventListener("scroll", dismissAnnotateMenu, true);
       window.removeEventListener("wheel", dismissAnnotateMenu);
       window.removeEventListener("touchmove", dismissAnnotateMenu);
@@ -657,6 +874,7 @@
 
   onDestroy(() => {
     resetAnnotationState();
+    clearAnnotationSourceHighlight();
     graphKeyNav.clearCurrentNoteNavigationContext(vaultName, noteId);
   });
 </script>
@@ -1210,6 +1428,20 @@
     color: var(--accent);
     text-decoration: underline;
     text-underline-offset: 2px;
+  }
+
+  .prose :global(.annotation-source-highlight) {
+    border-radius: 4px;
+    outline: 2px solid var(--accent);
+    outline-offset: 4px;
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    transition:
+      background-color 180ms ease,
+      outline-color 180ms ease;
+  }
+
+  :global([data-theme="light"]) .prose :global(.annotation-source-highlight) {
+    background: color-mix(in srgb, var(--accent) 14%, #fff);
   }
 
   .note-tag-chip,

@@ -25,4 +25,19 @@ describe("note page annotate menu styling", () => {
       /background:\s*color-mix\(in srgb, var\(--accent\)/,
     );
   });
+
+  it("styles annotation source highlights with a visible accent outline", () => {
+    const source = readFileSync(
+      "src/routes/[vault]/notes/[id]/+page.svelte",
+      "utf8",
+    );
+    const highlightRule =
+      source.match(
+        /\.prose :global\(\.annotation-source-highlight\)\s*\{(?<body>[\s\S]*?)\n  \}/,
+      )?.groups?.body ?? "";
+
+    expect(highlightRule).toContain("outline: 2px solid var(--accent)");
+    expect(highlightRule).toContain("outline-offset: 4px");
+    expect(highlightRule).toContain("background: color-mix");
+  });
 });
