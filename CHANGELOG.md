@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.87.1 (2026-06-27)
+
+### Bug Fixes
+
+- Tolerate missing ego graph links
+  ([`54c0518`](https://github.com/ksm0709/pkm/commit/54c0518d1684ec632e8aef71a757c0be311e1f07))
+
+
 ## v2.87.0 (2026-06-27)
 
 ### Features
