@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.87.2 (2026-06-27)
+
+### Bug Fixes
+
+- Improve annotate menu placement
+  ([`adb33ca`](https://github.com/ksm0709/pkm/commit/adb33ca7d9c51f634c12ee3f9e15be786cf39bbd))
+
+
 ## v2.87.1 (2026-06-27)
 
 ### Bug Fixes
