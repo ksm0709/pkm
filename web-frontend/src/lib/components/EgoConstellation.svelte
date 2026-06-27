@@ -23,6 +23,11 @@
     links: EgoLink[];
   }
 
+  interface EgoGraphResponse {
+    nodes?: EgoNode[];
+    links?: EgoLink[];
+  }
+
   interface NodePos {
     id: string;
     title: string;
@@ -88,11 +93,19 @@
       : [],
   );
 
+  function normalizeEgoGraph(response: EgoGraphResponse): EgoGraph {
+    return {
+      nodes: Array.isArray(response.nodes) ? response.nodes : [],
+      links: Array.isArray(response.links) ? response.links : [],
+    };
+  }
+
   onMount(async () => {
     try {
-      graph = await apiGet<EgoGraph>(
+      const response = await apiGet<EgoGraphResponse>(
         `/api/v1/vault/${vaultName}/graph/ego/${noteId}`,
       );
+      graph = normalizeEgoGraph(response);
     } catch {
       failed = true;
     } finally {

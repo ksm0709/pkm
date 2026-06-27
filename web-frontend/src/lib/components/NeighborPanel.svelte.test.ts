@@ -128,4 +128,26 @@ describe("NeighborPanel", () => {
     expect(empty.target.querySelector(".neighbor-panel")).toBeNull();
     unmount(empty.component);
   });
+
+  it("renders the ego graph without throwing when the graph API omits links", async () => {
+    vi.mocked(apiGet).mockResolvedValueOnce({
+      nodes: [
+        { id: "current-note", title: "Current" },
+        { id: "out-note", title: "Outbound" },
+      ],
+    });
+
+    const { target, component } = render();
+    await Promise.resolve();
+    await tick();
+
+    expect(target.querySelector(".neighbor-panel")).not.toBeNull();
+    expect(
+      target.querySelector(
+        '[aria-label="Ego constellation — 2-hop note graph"]',
+      ),
+    ).not.toBeNull();
+
+    unmount(component);
+  });
 });
