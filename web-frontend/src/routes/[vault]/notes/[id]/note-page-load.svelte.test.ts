@@ -724,4 +724,178 @@ describe("note page loading", () => {
 
     unmount(component);
   });
+
+  it("positions the annotate action below the selected text instead of at the pointer", async () => {
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+
+    await waitFor(() => {
+      expect(target.querySelector(".note-body")?.textContent).toContain(
+        "Alpha body",
+      );
+    });
+
+    const noteBody = target.querySelector<HTMLElement>(".note-body");
+    const textNode = document
+      .createTreeWalker(noteBody!, NodeFilter.SHOW_TEXT)
+      .nextNode() as Text;
+    const range = document.createRange();
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, "Alpha body".length);
+    range.getBoundingClientRect = () =>
+      ({
+        x: 100,
+        y: 200,
+        left: 100,
+        top: 200,
+        right: 180,
+        bottom: 220,
+        width: 80,
+        height: 20,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 800,
+    });
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+
+    noteBody!.dispatchEvent(
+      new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 12,
+        clientY: 34,
+      }),
+    );
+    await tick();
+
+    const menu = target.querySelector<HTMLElement>(".annotate-menu");
+    expect(menu?.style.left).toBe("140px");
+    expect(menu?.style.top).toBe("230px");
+
+    unmount(component);
+  });
+
+  it("dismisses the annotate action when selection collapses, scrolls, or the user clicks outside", async () => {
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+
+    await waitFor(() => {
+      expect(target.querySelector(".note-body")?.textContent).toContain(
+        "Alpha body",
+      );
+    });
+
+    const noteBody = target.querySelector<HTMLElement>(".note-body");
+    const textNode = document
+      .createTreeWalker(noteBody!, NodeFilter.SHOW_TEXT)
+      .nextNode() as Text;
+    const openMenu = async () => {
+      const range = document.createRange();
+      range.setStart(textNode, 0);
+      range.setEnd(textNode, "Alpha body".length);
+      range.getBoundingClientRect = () =>
+        ({
+          x: 100,
+          y: 200,
+          left: 100,
+          top: 200,
+          right: 180,
+          bottom: 220,
+          width: 80,
+          height: 20,
+          toJSON: () => ({}),
+        }) as DOMRect;
+      window.getSelection()?.removeAllRanges();
+      window.getSelection()?.addRange(range);
+      noteBody!.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 12,
+          clientY: 34,
+        }),
+      );
+      await tick();
+      expect(
+        target.querySelector('button[aria-label="Annotate selection"]'),
+      ).not.toBeNull();
+    };
+
+    await openMenu();
+    window.getSelection()?.removeAllRanges();
+    document.dispatchEvent(new Event("selectionchange"));
+    await tick();
+    expect(
+      target.querySelector('button[aria-label="Annotate selection"]'),
+    ).toBeNull();
+
+    await openMenu();
+    window.dispatchEvent(new Event("scroll"));
+    await tick();
+    expect(
+      target.querySelector('button[aria-label="Annotate selection"]'),
+    ).toBeNull();
+
+    await openMenu();
+    document.dispatchEvent(
+      new PointerEvent("pointerdown", { bubbles: true, pointerType: "mouse" }),
+    );
+    await tick();
+    expect(
+      target.querySelector('button[aria-label="Annotate selection"]'),
+    ).toBeNull();
+
+    unmount(component);
+  });
+
+  it("cancels a pending touch annotate action when touch scrolling starts", async () => {
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+
+    await waitFor(() => {
+      expect(target.querySelector(".note-body")?.textContent).toContain(
+        "Alpha body",
+      );
+    });
+
+    vi.useFakeTimers();
+    const noteBody = target.querySelector<HTMLElement>(".note-body");
+    const textNode = document
+      .createTreeWalker(noteBody!, NodeFilter.SHOW_TEXT)
+      .nextNode() as Text;
+    const range = document.createRange();
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, "Alpha body".length);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+
+    noteBody!.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        pointerType: "touch",
+        clientX: 24,
+        clientY: 48,
+      }),
+    );
+    window.dispatchEvent(new Event("touchmove"));
+    vi.advanceTimersByTime(650);
+    await tick();
+
+    expect(
+      target.querySelector('button[aria-label="Annotate selection"]'),
+    ).toBeNull();
+
+    vi.useRealTimers();
+    unmount(component);
+  });
 });

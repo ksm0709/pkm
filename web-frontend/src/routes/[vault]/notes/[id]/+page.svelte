@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, untrack } from "svelte";
+  import { onDestroy, onMount, untrack } from "svelte";
   import { page } from "$app/stores";
   import { apiClient, apiGet } from "$lib/api/client.js";
   import MarkdownRenderer from "$lib/components/MarkdownRenderer.svelte";
@@ -226,17 +226,36 @@
     };
   }
 
-  let annotateMenu = $state<{ x: number; y: number; quote: string } | null>(
-    null,
-  );
+  interface SelectedAnnotation {
+    quote: string;
+    range: Range;
+    key: string;
+  }
+
+  interface AnnotateMenu {
+    x: number;
+    y: number;
+    quote: string;
+    selectionKey: string;
+  }
+
+  let annotateMenu = $state<AnnotateMenu | null>(null);
   let annotateDialog = $state<{ quote: string } | null>(null);
   let annotationText = $state("");
   let annotationAddToLog = $state(false);
   let annotationSaving = $state(false);
   let annotationError = $state("");
   let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+  let noteBodyElement = $state<HTMLElement | null>(null);
+  let annotateMenuInteracting = false;
+  const annotateMenuOffset = 10;
+  const annotateMenuEdgeInset = 8;
+  const annotateMenuEstimatedWidth = 160;
+  const annotateMenuEstimatedHeight = 40;
 
-  function selectedQuoteInside(container: HTMLElement): string | null {
+  function selectedAnnotationInside(
+    container: HTMLElement,
+  ): SelectedAnnotation | null {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
       return null;
@@ -244,15 +263,81 @@
     const range = selection.getRangeAt(0);
     if (!container.contains(range.commonAncestorContainer)) return null;
     const quote = selection.toString().trim();
-    return quote || null;
+    if (!quote) return null;
+    return {
+      quote,
+      range,
+      key: `${quote}\u0000${range.startOffset}\u0000${range.endOffset}`,
+    };
+  }
+
+  function clamp(value: number, min: number, max: number) {
+    return Math.min(Math.max(value, min), max);
+  }
+
+  function rectHasLayout(rect: DOMRect) {
+    return rect.width > 0 || rect.height > 0;
+  }
+
+  function positionForSelection(
+    range: Range,
+    fallback: { x: number; y: number },
+  ) {
+    const measuredRange = range as Range & {
+      getBoundingClientRect?: () => DOMRect;
+    };
+    const rect = measuredRange.getBoundingClientRect?.();
+    if (!rect || !rectHasLayout(rect)) {
+      return {
+        x: Math.round(fallback.x),
+        y: Math.round(fallback.y),
+      };
+    }
+
+    const halfWidth = annotateMenuEstimatedWidth / 2;
+    const viewportWidth =
+      window.innerWidth || document.documentElement.clientWidth;
+    const viewportHeight =
+      window.innerHeight || document.documentElement.clientHeight;
+    const x = rect.left + rect.width / 2;
+    const y = rect.bottom + annotateMenuOffset;
+
+    return {
+      x: Math.round(
+        clamp(
+          x,
+          annotateMenuEdgeInset + halfWidth,
+          viewportWidth - annotateMenuEdgeInset - halfWidth,
+        ),
+      ),
+      y: Math.round(
+        clamp(
+          y,
+          annotateMenuEdgeInset,
+          viewportHeight - annotateMenuEdgeInset - annotateMenuEstimatedHeight,
+        ),
+      ),
+    };
+  }
+
+  function showAnnotateMenu(
+    selected: SelectedAnnotation,
+    fallback: { x: number; y: number },
+  ) {
+    const position = positionForSelection(selected.range, fallback);
+    annotateMenu = {
+      ...position,
+      quote: selected.quote,
+      selectionKey: selected.key,
+    };
   }
 
   function handleNoteBodyContextMenu(event: MouseEvent) {
     const noteBodyEl = event.currentTarget as HTMLElement;
-    const quote = selectedQuoteInside(noteBodyEl);
-    if (!quote) return;
+    const selected = selectedAnnotationInside(noteBodyEl);
+    if (!selected) return;
     event.preventDefault();
-    annotateMenu = { x: event.clientX, y: event.clientY, quote };
+    showAnnotateMenu(selected, { x: event.clientX, y: event.clientY });
   }
 
   function clearLongPressTimer() {
@@ -262,16 +347,20 @@
     }
   }
 
+  function dismissAnnotateMenu() {
+    clearLongPressTimer();
+    annotateMenu = null;
+  }
+
   function handleNoteBodyPointerDown(event: PointerEvent) {
     if (event.pointerType !== "touch") return;
     const noteBodyEl = event.currentTarget as HTMLElement;
-    const x = event.clientX;
-    const y = event.clientY;
+    const fallback = { x: event.clientX, y: event.clientY };
     clearLongPressTimer();
     longPressTimer = setTimeout(() => {
-      const quote = selectedQuoteInside(noteBodyEl);
-      if (quote) {
-        annotateMenu = { x, y, quote };
+      const selected = selectedAnnotationInside(noteBodyEl);
+      if (selected) {
+        showAnnotateMenu(selected, fallback);
       }
       longPressTimer = null;
     }, 600);
@@ -516,6 +605,56 @@
     });
   });
 
+  onMount(() => {
+    const handleSelectionChange = () => {
+      if (!annotateMenu || annotateMenuInteracting || !noteBodyElement) return;
+      const selected = selectedAnnotationInside(noteBodyElement);
+      if (!selected || selected.key !== annotateMenu.selectionKey) {
+        annotateMenu = null;
+      }
+    };
+
+    const handleGlobalPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      const isInsideMenu =
+        target instanceof Element && Boolean(target.closest(".annotate-menu"));
+      if (isInsideMenu) {
+        annotateMenuInteracting = true;
+        window.setTimeout(() => {
+          annotateMenuInteracting = false;
+        }, 250);
+        return;
+      }
+      if (annotateMenu) annotateMenu = null;
+    };
+
+    const handleGlobalKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") dismissAnnotateMenu();
+    };
+
+    document.addEventListener("selectionchange", handleSelectionChange);
+    document.addEventListener("pointerdown", handleGlobalPointerDown, true);
+    document.addEventListener("keydown", handleGlobalKeyDown);
+    window.addEventListener("scroll", dismissAnnotateMenu, true);
+    window.addEventListener("wheel", dismissAnnotateMenu, { passive: true });
+    window.addEventListener("touchmove", dismissAnnotateMenu, {
+      passive: true,
+    });
+
+    return () => {
+      document.removeEventListener("selectionchange", handleSelectionChange);
+      document.removeEventListener(
+        "pointerdown",
+        handleGlobalPointerDown,
+        true,
+      );
+      document.removeEventListener("keydown", handleGlobalKeyDown);
+      window.removeEventListener("scroll", dismissAnnotateMenu, true);
+      window.removeEventListener("wheel", dismissAnnotateMenu);
+      window.removeEventListener("touchmove", dismissAnnotateMenu);
+    };
+  });
+
   onDestroy(() => {
     resetAnnotationState();
     graphKeyNav.clearCurrentNoteNavigationContext(vaultName, noteId);
@@ -649,6 +788,7 @@
       {:else}
         <!-- Rendered markdown body -->
         <div
+          bind:this={noteBodyElement}
           class="note-body prose"
           role="region"
           aria-label="Note body"
@@ -903,13 +1043,31 @@
   .annotate-menu {
     position: fixed;
     z-index: 40;
-    transform: translate(6px, 6px);
-    border: 1px solid var(--border);
-    background: var(--surface-raised, var(--bg));
-    box-shadow: 0 12px 30px color-mix(in srgb, #000 35%, transparent);
+    transform: translateX(-50%);
+    border: 1px solid color-mix(in srgb, var(--accent) 72%, var(--border));
+    border-radius: 999px;
+    background: var(--accent);
+    --annotate-action-text: #090b0d;
+    box-shadow:
+      0 12px 30px color-mix(in srgb, #000 35%, transparent),
+      0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
   }
 
-  .annotate-menu button,
+  .annotate-menu button {
+    min-height: 36px;
+    padding: 0 var(--space-4, 16px);
+    border: 0;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--annotate-action-text);
+    font-family: var(--font-mono);
+    font-size: var(--type-chrome-sm-size, 11px);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+  }
+
   .annotate-actions button {
     min-height: 32px;
     padding: 0 var(--space-3, 12px);
@@ -924,7 +1082,14 @@
   }
 
   .annotate-menu button:hover,
-  .annotate-menu button:focus-visible,
+  .annotate-menu button:focus-visible {
+    color: var(--annotate-action-text);
+    background: var(--accent);
+    outline: 2px solid color-mix(in srgb, var(--accent) 54%, transparent);
+    outline-offset: 3px;
+    box-shadow: inset 0 0 0 999px color-mix(in srgb, #fff 12%, transparent);
+  }
+
   .annotate-actions button:hover,
   .annotate-actions button:focus-visible {
     color: var(--bg);
