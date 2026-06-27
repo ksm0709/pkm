@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.87.0 (2026-06-27)
+
+### Features
+
+- Add note selection annotations
+  ([`7522f1a`](https://github.com/ksm0709/pkm/commit/7522f1a560535f25354a8882591064e9fe398b26))
+
+
 ## v2.86.3 (2026-06-25)
 
 ### Bug Fixes
