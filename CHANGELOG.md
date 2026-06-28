@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.89.0 (2026-06-28)
+
+### Features
+
+- Show annotation source highlights
+  ([`1b32332`](https://github.com/ksm0709/pkm/commit/1b323329e6f09c0ce34b223c42daf2161be9093c))
+
+
 ## v2.88.0 (2026-06-27)
 
 ### Features

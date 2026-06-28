@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pkm"
-version = "2.88.0"
+version = "2.89.0"
 description = "Personal Knowledge Management CLI for Obsidian vaults"
 requires-python = ">=3.10"
 dependencies = [
