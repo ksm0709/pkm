@@ -1203,7 +1203,7 @@ describe("note page loading", () => {
     unmount(component);
   });
 
-  it("marks annotated source blocks persistently and opens the memo popup", async () => {
+  it("marks only the annotated text range and opens popup actions", async () => {
     mocks.apiGet.mockImplementation(async (path: string) => {
       if (path.endsWith("/neighbors")) {
         return {
@@ -1240,9 +1240,13 @@ describe("note page loading", () => {
         ".annotation-source-marked",
       );
       expect(marked).not.toBeNull();
-      expect(marked?.textContent).toContain(
+      expect(marked?.textContent).toBe("Marker one.");
+      expect(marked?.closest("p")?.textContent).toBe(
         "A source block contains Marker one.",
       );
+      expect(
+        marked?.closest("p")?.classList.contains("annotation-source-marked"),
+      ).toBe(false);
       expect(marked?.getAttribute("tabindex")).toBe("0");
       expect(marked?.getAttribute("aria-haspopup")).toBe("dialog");
     });
@@ -1264,12 +1268,250 @@ describe("note page loading", () => {
     );
     expect(popup?.textContent).toContain("Marker one.");
     expect(popup?.textContent).toContain("First memo for this source");
+    expect(
+      popup?.querySelector('button[aria-label="Edit annotation"]')?.textContent,
+    ).toContain("수정");
+    expect(
+      popup?.querySelector('button[aria-label="Delete annotation"]')
+        ?.textContent,
+    ).toContain("삭제");
 
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     await tick();
     expect(
       target.querySelector('[role="dialog"][aria-label="Annotation memo"]'),
     ).toBeNull();
+
+    unmount(component);
+  });
+
+  it("marks annotation ranges when saved quotes normalize line breaks and spaces", async () => {
+    mocks.apiGet.mockImplementation(async (path: string) => {
+      if (path.endsWith("/neighbors")) {
+        return {
+          note_id: "alpha-note",
+          outbound: [],
+          inbound: [],
+          semantic: [],
+        };
+      }
+      return {
+        note_id: "alpha-note",
+        title: "Alpha",
+        body: [
+          "Wrapped marker",
+          "continues with   spaces.",
+          "",
+          "## Annotations",
+          "- “Wrapped marker continues with spaces.” ([↩ 원문](#quote=Wrapped%20marker%20continues%20with%20spaces.&occ=0))",
+          "  - Normalized whitespace memo",
+        ].join("\n"),
+        frontmatter: {},
+        created: null,
+        updated: null,
+        tags: [],
+        importance: null,
+      };
+    });
+
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+
+    await waitFor(() => {
+      const marked = target.querySelector<HTMLElement>(
+        ".annotation-source-marked",
+      );
+      expect(marked).not.toBeNull();
+      expect(marked?.textContent).toBe(
+        "Wrapped marker\ncontinues with   spaces.",
+      );
+      expect(marked?.closest("p")?.textContent).toBe(
+        "Wrapped marker\ncontinues with   spaces.",
+      );
+    });
+
+    target
+      .querySelector<HTMLElement>(".annotation-source-marked")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await tick();
+    expect(
+      target.querySelector('[role="dialog"][aria-label="Annotation memo"]')
+        ?.textContent,
+    ).toContain("Normalized whitespace memo");
+
+    unmount(component);
+  });
+
+  it("deletes a clicked annotation from the popup", async () => {
+    const originalBody = [
+      "Keep this source with Delete marker. Other marker.",
+      "",
+      "## Annotations",
+      "- “Delete marker.” ([↩ 원문](#quote=Delete%20marker.&occ=0))",
+      "  - Memo to remove",
+      "- “Other marker.” ([↩ 원문](#quote=Other%20marker.&occ=0))",
+      "  - Other memo stays",
+    ].join("\n");
+    mocks.apiGet.mockImplementation(async (path: string) => {
+      if (path.endsWith("/neighbors")) {
+        return {
+          note_id: "alpha-note",
+          outbound: [],
+          inbound: [],
+          semantic: [],
+        };
+      }
+      return {
+        note_id: "alpha-note",
+        title: "Alpha",
+        body: originalBody,
+        frontmatter: {},
+        created: null,
+        updated: null,
+        tags: [],
+        importance: null,
+      };
+    });
+    mocks.apiClient.mockImplementation(
+      async (_path: string, init: RequestInit) => {
+        const body = JSON.parse(String(init.body)).body;
+        return new Response(
+          JSON.stringify({
+            note_id: "alpha-note",
+            title: "Alpha",
+            body,
+            frontmatter: {},
+            created: null,
+            updated: null,
+            tags: [],
+            importance: null,
+          }),
+          { status: 200 },
+        );
+      },
+    );
+
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+
+    await waitFor(() => {
+      expect(
+        target.querySelector(".annotation-source-marked")?.textContent,
+      ).toBe("Delete marker.");
+    });
+    target
+      .querySelector<HTMLElement>(".annotation-source-marked")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await tick();
+    target
+      .querySelector<HTMLButtonElement>(
+        'button[aria-label="Delete annotation"]',
+      )!
+      .click();
+    await flush();
+
+    expect(mocks.apiClient).toHaveBeenCalledWith(
+      "/api/v1/vault/main/notes/alpha-note",
+      expect.objectContaining({ method: "PUT" }),
+    );
+    const savedBody = JSON.parse(mocks.apiClient.mock.calls[0][1].body).body;
+    expect(savedBody).not.toContain("Memo to remove");
+    expect(savedBody).not.toContain("- “Delete marker.”");
+    expect(savedBody).toContain(
+      "Keep this source with Delete marker. Other marker.",
+    );
+    expect(savedBody).toContain("Other memo stays");
+    await waitFor(() => {
+      expect(
+        target.querySelector(".annotation-source-marked")?.textContent,
+      ).toBe("Other marker.");
+    });
+
+    unmount(component);
+  });
+
+  it("edits a clicked annotation memo from the popup", async () => {
+    const originalBody = [
+      "Edit source has Edit marker.",
+      "",
+      "## Annotations",
+      "- “Edit marker.” ([↩ 원문](#quote=Edit%20marker.&occ=0))",
+      "  - Old memo",
+    ].join("\n");
+    mocks.apiGet.mockImplementation(async (path: string) => {
+      if (path.endsWith("/neighbors")) {
+        return {
+          note_id: "alpha-note",
+          outbound: [],
+          inbound: [],
+          semantic: [],
+        };
+      }
+      return {
+        note_id: "alpha-note",
+        title: "Alpha",
+        body: originalBody,
+        frontmatter: {},
+        created: null,
+        updated: null,
+        tags: [],
+        importance: null,
+      };
+    });
+    mocks.apiClient.mockImplementation(
+      async (_path: string, init: RequestInit) => {
+        const body = JSON.parse(String(init.body)).body;
+        return new Response(
+          JSON.stringify({
+            note_id: "alpha-note",
+            title: "Alpha",
+            body,
+            frontmatter: {},
+            created: null,
+            updated: null,
+            tags: [],
+            importance: null,
+          }),
+          { status: 200 },
+        );
+      },
+    );
+
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+
+    await waitFor(() => {
+      expect(
+        target.querySelector(".annotation-source-marked")?.textContent,
+      ).toBe("Edit marker.");
+    });
+    target
+      .querySelector<HTMLElement>(".annotation-source-marked")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await tick();
+    target
+      .querySelector<HTMLButtonElement>('button[aria-label="Edit annotation"]')!
+      .click();
+    await tick();
+
+    const textarea = target.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="Annotation text"]',
+    );
+    expect(textarea?.value).toBe("Old memo");
+    textarea!.value = "Updated memo";
+    textarea!.dispatchEvent(new Event("input", { bubbles: true }));
+    target
+      .querySelector<HTMLButtonElement>('button[aria-label="Save annotation"]')!
+      .click();
+    await flush();
+
+    const savedBody = JSON.parse(mocks.apiClient.mock.calls[0][1].body).body;
+    expect(savedBody).toContain("Updated memo");
+    expect(savedBody).not.toContain("Old memo");
+    expect(savedBody.match(/Edit marker\./g)).toHaveLength(2);
 
     unmount(component);
   });
@@ -1364,11 +1606,112 @@ describe("note page loading", () => {
         target.querySelectorAll<HTMLElement>(".annotation-source-marked"),
       );
       expect(marked).toHaveLength(1);
-      expect(marked[0].textContent).toContain(
+      expect(marked[0].textContent).toBe("Self copied.");
+      expect(marked[0].closest("p")?.textContent).toContain(
         "Only this source has Self copied.",
       );
       expect(marked[0].textContent).not.toContain("The memo repeats");
     });
+
+    unmount(component);
+  });
+
+  it("marks duplicate quote occurrences in the same paragraph exactly", async () => {
+    mocks.apiGet.mockImplementation(async (path: string) => {
+      if (path.endsWith("/neighbors")) {
+        return {
+          note_id: "alpha-note",
+          outbound: [],
+          inbound: [],
+          semantic: [],
+        };
+      }
+      return {
+        note_id: "alpha-note",
+        title: "Alpha",
+        body: [
+          "Repeat marker then Repeat marker again.",
+          "",
+          "## Annotations",
+          "- “Repeat marker” ([↩ 원문](#quote=Repeat%20marker&occ=0))",
+          "  - First repeat memo",
+          "- “Repeat marker” ([↩ 원문](#quote=Repeat%20marker&occ=1))",
+          "  - Second repeat memo",
+        ].join("\n"),
+        frontmatter: {},
+        created: null,
+        updated: null,
+        tags: [],
+        importance: null,
+      };
+    });
+
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+
+    await waitFor(() => {
+      const marked = Array.from(
+        target.querySelectorAll<HTMLElement>(".annotation-source-marked"),
+      );
+      expect(marked.map((element) => element.textContent)).toEqual([
+        "Repeat marker",
+        "Repeat marker",
+      ]);
+      expect(marked.every((element) => element.closest("p"))).toBe(true);
+    });
+
+    unmount(component);
+  });
+
+  it("opens the annotation popup when annotated link text is clicked", async () => {
+    mocks.apiGet.mockImplementation(async (path: string) => {
+      if (path.endsWith("/neighbors")) {
+        return {
+          note_id: "alpha-note",
+          outbound: [],
+          inbound: [],
+          semantic: [],
+        };
+      }
+      return {
+        note_id: "alpha-note",
+        title: "Alpha",
+        body: [
+          "A marked [regular link](https://example.com) source.",
+          "",
+          "## Annotations",
+          "- “regular link” ([↩ 원문](#quote=regular%20link&occ=0))",
+          "  - Link memo",
+        ].join("\n"),
+        frontmatter: {},
+        created: null,
+        updated: null,
+        tags: [],
+        importance: null,
+      };
+    });
+
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+
+    await waitFor(() => {
+      expect(
+        target.querySelector("a .annotation-source-marked"),
+      ).not.toBeNull();
+    });
+    target
+      .querySelector<HTMLElement>("a .annotation-source-marked")!
+      .dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+    await tick();
+
+    expect(
+      target.querySelector('[role="dialog"][aria-label="Annotation memo"]')
+        ?.textContent,
+    ).toContain("Link memo");
 
     unmount(component);
   });
@@ -1430,7 +1773,7 @@ describe("note page loading", () => {
     unmount(component);
   });
 
-  it("does not open the memo popup when a regular link inside a marked source is clicked", async () => {
+  it("does not open the memo popup when an unmarked regular link is clicked", async () => {
     mocks.apiGet.mockImplementation(async (path: string) => {
       if (path.endsWith("/neighbors")) {
         return {
@@ -1447,8 +1790,8 @@ describe("note page loading", () => {
           "A marked [regular link](https://example.com) source.",
           "",
           "## Annotations",
-          "- “regular link” ([↩ 원문](#quote=regular%20link&occ=0))",
-          "  - Link memo",
+          "- “marked” ([↩ 원문](#quote=marked&occ=0))",
+          "  - Non-link memo",
         ].join("\n"),
         frontmatter: {},
         created: null,
@@ -1463,13 +1806,10 @@ describe("note page loading", () => {
     const component = mount(NotePage, { target });
 
     await waitFor(() => {
-      expect(
-        target.querySelector(".annotation-source-marked a"),
-      ).not.toBeNull();
+      expect(target.querySelector(".annotation-source-marked")).not.toBeNull();
+      expect(target.querySelector("a .annotation-source-marked")).toBeNull();
     });
-    const regularLink = target.querySelector<HTMLAnchorElement>(
-      ".annotation-source-marked a",
-    )!;
+    const regularLink = target.querySelector<HTMLAnchorElement>("a")!;
     regularLink.addEventListener("click", (event) => event.preventDefault());
     regularLink.dispatchEvent(
       new MouseEvent("click", { bubbles: true, cancelable: true }),

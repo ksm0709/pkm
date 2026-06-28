@@ -247,6 +247,8 @@
     quote: string;
     sourceHref: string;
     memo: string;
+    entryStartLine: number;
+    entryEndLine: number;
   }
 
   interface SourceAnnotation {
@@ -254,6 +256,8 @@
     quote: string;
     sourceHref: string;
     memo: string;
+    entryStartLine: number;
+    entryEndLine: number;
   }
 
   interface AnnotationPopup {
@@ -324,15 +328,17 @@
       index: number;
     } | null = null;
 
-    const flush = () => {
+    const flush = (endLine: number) => {
       if (!current) return;
       const memo = current.memoLines.join("\n").trim();
       if (memo) {
         annotations.push({
-          id: `${current.sourceHref}\u0000${annotations.length}`,
+          id: `${current.sourceHref}\u0000${current.index}`,
           quote: current.quote,
           sourceHref: current.sourceHref,
           memo,
+          entryStartLine: current.index,
+          entryEndLine: endLine,
         });
       }
       current = null;
@@ -340,12 +346,15 @@
 
     for (let index = headingIndex + 1; index < lines.length; index += 1) {
       const line = lines[index];
-      if (/^#{1,6}\s+/.test(line)) break;
+      if (/^#{1,6}\s+/.test(line)) {
+        flush(index);
+        break;
+      }
       const entry = line.match(
         /^-\s+[“"]?(?<quote>.*?)[”"]?\s*\(\[↩ 원문\]\((?<href>#[^)]+)\)\)\s*$/,
       );
       if (entry?.groups?.href) {
-        flush();
+        flush(index);
         const parsed = parseAnnotationSourceHash(entry.groups.href);
         if (!parsed) {
           current = null;
@@ -362,7 +371,7 @@
       }
       if (!current) continue;
       if (/^-\s+/.test(line)) {
-        flush();
+        flush(index);
         continue;
       }
       if (line.trim().length === 0) {
@@ -371,14 +380,21 @@
       }
       current.memoLines.push(annotationMemoLine(line));
     }
-    flush();
+    flush(lines.length);
     return annotations;
   }
 
-  function annotationSourceTarget(
+  interface AnnotationSourceMatch {
+    element: HTMLElement;
+    quote: string;
+    sourceHref: string;
+    occurrenceInElement: number;
+  }
+
+  function annotationSourceMatch(
     hash: string,
     targets = noteBodyElement ? sourceSearchTargets(noteBodyElement) : [],
-  ) {
+  ): AnnotationSourceMatch | null {
     const parsed = parseAnnotationSourceHash(hash);
     if (!parsed) return null;
     let seen = 0;
@@ -386,11 +402,200 @@
       const count = countQuoteOccurrences(candidate.text, parsed.quote);
       if (count === 0) continue;
       if (seen + count > parsed.occurrence) {
-        return candidate.element;
+        return {
+          element: candidate.element,
+          quote: parsed.quote,
+          sourceHref: hash,
+          occurrenceInElement: parsed.occurrence - seen,
+        };
       }
       seen += count;
     }
     return null;
+  }
+
+  function annotationSourceTarget(
+    hash: string,
+    targets = noteBodyElement ? sourceSearchTargets(noteBodyElement) : [],
+  ) {
+    return annotationSourceMatch(hash, targets)?.element ?? null;
+  }
+
+  function textNodesInside(element: HTMLElement) {
+    const nodes: Text[] = [];
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        const parent = node.parentElement;
+        if (!parent) return NodeFilter.FILTER_REJECT;
+        if (parent.closest('[data-annotation-source-marked="true"]')) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        if (!node.textContent) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    });
+    let node = walker.nextNode();
+    while (node) {
+      if (node instanceof Text) nodes.push(node);
+      node = walker.nextNode();
+    }
+    return nodes;
+  }
+
+  function nthIndexOf(value: string, needle: string, occurrence: number) {
+    let index = 0;
+    for (let seen = 0; seen <= occurrence; seen += 1) {
+      const found = value.indexOf(needle, index);
+      if (found < 0) return -1;
+      if (seen === occurrence) return found;
+      index = found + needle.length;
+    }
+    return -1;
+  }
+
+  interface TextSegment {
+    node: Text;
+    start: number;
+    end: number;
+  }
+
+  function appendTextSegment(segments: TextSegment[], segment: TextSegment) {
+    const previous = segments.at(-1);
+    if (previous?.node === segment.node && previous.end === segment.start) {
+      previous.end = segment.end;
+      return;
+    }
+    segments.push({ ...segment });
+  }
+
+  function normalizedTextMapping(textNodes: Text[]) {
+    const mappings: TextSegment[][] = [];
+    let normalizedText = "";
+    let pendingWhitespace: TextSegment[] = [];
+
+    const flushWhitespace = () => {
+      if (pendingWhitespace.length === 0) return;
+      normalizedText += " ";
+      mappings.push(pendingWhitespace);
+      pendingWhitespace = [];
+    };
+
+    for (const node of textNodes) {
+      for (let index = 0; index < node.data.length; index += 1) {
+        const char = node.data[index];
+        if (/\s/.test(char)) {
+          appendTextSegment(pendingWhitespace, {
+            node,
+            start: index,
+            end: index + 1,
+          });
+          continue;
+        }
+        flushWhitespace();
+        normalizedText += char;
+        mappings.push([{ node, start: index, end: index + 1 }]);
+      }
+    }
+    flushWhitespace();
+
+    let start = 0;
+    let end = normalizedText.length;
+    while (start < end && normalizedText[start] === " ") start += 1;
+    while (end > start && normalizedText[end - 1] === " ") end -= 1;
+    return {
+      text: normalizedText.slice(start, end),
+      mappings: mappings.slice(start, end),
+    };
+  }
+
+  function annotationTextSegments(
+    element: HTMLElement,
+    quote: string,
+    occurrenceInElement: number,
+  ): TextSegment[] {
+    const textNodes = textNodesInside(element);
+    const { text, mappings } = normalizedTextMapping(textNodes);
+    const normalizedQuote = normalizeAnnotationQuote(quote);
+    const start = nthIndexOf(text, normalizedQuote, occurrenceInElement);
+    if (start < 0) return [];
+    const end = start + normalizedQuote.length;
+    const segments: TextSegment[] = [];
+    for (const mappedSegments of mappings.slice(start, end)) {
+      mappedSegments.forEach((segment) => appendTextSegment(segments, segment));
+    }
+    return segments;
+  }
+
+  interface AnnotationSegmentPlan {
+    node: Text;
+    start: number;
+    end: number;
+    annotations: SourceAnnotation[];
+    sourceHref: string;
+  }
+
+  function createAnnotationSpan(
+    text: string,
+    annotations: SourceAnnotation[],
+    sourceHref: string,
+  ) {
+    const span = document.createElement("span");
+    span.className = "annotation-source-marked";
+    span.dataset.annotationSourceMarked = "true";
+    span.dataset.annotationSourceHref = sourceHref;
+    span.tabIndex = 0;
+    span.setAttribute("role", "button");
+    span.setAttribute("aria-haspopup", "dialog");
+    span.setAttribute(
+      "aria-label",
+      annotations.length === 1
+        ? "View annotation memo"
+        : `View ${annotations.length} annotation memos`,
+    );
+    span.textContent = text;
+    annotationSourcesByElement.set(span, annotations);
+    return span;
+  }
+
+  function wrapAnnotationSegmentPlans(plans: AnnotationSegmentPlan[]) {
+    const byNode = new Map<Text, AnnotationSegmentPlan[]>();
+    for (const plan of plans) {
+      const group = byNode.get(plan.node) ?? [];
+      group.push(plan);
+      byNode.set(plan.node, group);
+    }
+
+    let wrapped = 0;
+    byNode.forEach((nodePlans, node) => {
+      const parent = node.parentNode;
+      if (!parent) return;
+      const text = node.data;
+      const sorted = [...nodePlans].sort((a, b) => a.start - b.start);
+      const fragment = document.createDocumentFragment();
+      let cursor = 0;
+      for (const plan of sorted) {
+        if (plan.start < cursor || plan.end <= plan.start) continue;
+        if (cursor < plan.start) {
+          fragment.appendChild(
+            document.createTextNode(text.slice(cursor, plan.start)),
+          );
+        }
+        fragment.appendChild(
+          createAnnotationSpan(
+            text.slice(plan.start, plan.end),
+            plan.annotations,
+            plan.sourceHref,
+          ),
+        );
+        cursor = plan.end;
+        wrapped += 1;
+      }
+      if (cursor < text.length) {
+        fragment.appendChild(document.createTextNode(text.slice(cursor)));
+      }
+      parent.replaceChild(fragment, node);
+    });
+    return wrapped;
   }
 
   function clearPersistentAnnotationMarks() {
@@ -398,9 +603,19 @@
     noteBodyElement
       ?.querySelectorAll<HTMLElement>('[data-annotation-source-marked="true"]')
       .forEach((element) => {
+        if (element.tagName.toLowerCase() === "span") {
+          const parent = element.parentNode;
+          element.replaceWith(
+            document.createTextNode(element.textContent ?? ""),
+          );
+          parent?.normalize();
+          return;
+        }
         element.classList.remove("annotation-source-marked");
         element.removeAttribute("data-annotation-source-marked");
+        element.removeAttribute("data-annotation-source-href");
         element.removeAttribute("tabindex");
+        element.removeAttribute("role");
         element.removeAttribute("aria-haspopup");
         element.removeAttribute("aria-label");
       });
@@ -410,32 +625,40 @@
     clearPersistentAnnotationMarks();
     if (!noteBodyElement || !note?.body || editMode) return false;
 
-    const grouped = new Map<HTMLElement, SourceAnnotation[]>();
+    annotationSourcesByElement = new WeakMap<HTMLElement, SourceAnnotation[]>();
     const parsedAnnotations = parseAnnotationsFromBody(note.body);
     const targets = sourceSearchTargets(noteBodyElement);
+    const grouped = new Map<string, SourceAnnotation[]>();
     for (const annotation of parsedAnnotations) {
-      const target = annotationSourceTarget(annotation.sourceHref, targets);
-      if (!target) continue;
-      const group = grouped.get(target) ?? [];
+      const group = grouped.get(annotation.sourceHref) ?? [];
       group.push(annotation);
-      grouped.set(target, group);
+      grouped.set(annotation.sourceHref, group);
     }
 
-    annotationSourcesByElement = new WeakMap<HTMLElement, SourceAnnotation[]>();
-    grouped.forEach((annotations, element) => {
-      annotationSourcesByElement.set(element, annotations);
-      element.classList.add("annotation-source-marked");
-      element.setAttribute("data-annotation-source-marked", "true");
-      element.setAttribute("tabindex", "0");
-      element.setAttribute("aria-haspopup", "dialog");
-      element.setAttribute(
-        "aria-label",
-        annotations.length === 1
-          ? "View annotation memo"
-          : `View ${annotations.length} annotation memos`,
+    let markedGroups = 0;
+    const segmentPlans: AnnotationSegmentPlan[] = [];
+    grouped.forEach((annotations, sourceHref) => {
+      const match = annotationSourceMatch(sourceHref, targets);
+      if (!match) return;
+      const segments = annotationTextSegments(
+        match.element,
+        match.quote,
+        match.occurrenceInElement,
       );
+      if (segments.length === 0) return;
+      markedGroups += 1;
+      segments.forEach((segment) => {
+        segmentPlans.push({
+          ...segment,
+          annotations,
+          sourceHref,
+        });
+      });
     });
-    return parsedAnnotations.length === 0 || grouped.size > 0;
+    const wrappedCount = wrapAnnotationSegmentPlans(segmentPlans);
+    return (
+      parsedAnnotations.length === 0 || (markedGroups > 0 && wrappedCount > 0)
+    );
   }
 
   function cancelPersistentAnnotationMarkSchedule() {
@@ -475,14 +698,30 @@
       );
   }
 
+  function markedSourcesForHash(hash: string) {
+    if (!noteBodyElement) return [];
+    return Array.from(
+      noteBodyElement.querySelectorAll<HTMLElement>(
+        '[data-annotation-source-marked="true"]',
+      ),
+    ).filter((element) => element.dataset.annotationSourceHref === hash);
+  }
+
   function scrollToAnnotationSource(hash: string) {
-    const target = annotationSourceTarget(hash);
+    const markedSources = markedSourcesForHash(hash);
+    const target = markedSources[0] ?? annotationSourceTarget(hash);
     if (!target) return false;
     clearAnnotationSourceHighlight();
-    target.classList.add("annotation-source-highlight");
+    const highlightTargets =
+      markedSources.length > 0 ? markedSources : [target];
+    highlightTargets.forEach((element) =>
+      element.classList.add("annotation-source-highlight"),
+    );
     target.scrollIntoView({ behavior: "smooth", block: "center" });
     annotationSourceHighlightTimer = setTimeout(() => {
-      target?.classList.remove("annotation-source-highlight");
+      highlightTargets.forEach((element) =>
+        element.classList.remove("annotation-source-highlight"),
+      );
       annotationSourceHighlightTimer = null;
     }, 2200);
     return true;
@@ -576,9 +815,11 @@
   }
 
   let annotateMenu = $state<AnnotateMenu | null>(null);
-  let annotateDialog = $state<{ quote: string; occurrence: number } | null>(
-    null,
-  );
+  let annotateDialog = $state<{
+    quote: string;
+    occurrence: number;
+    editingAnnotation?: SourceAnnotation;
+  } | null>(null);
   let annotationText = $state("");
   let annotationAddToLog = $state(false);
   let annotationSaving = $state(false);
@@ -729,6 +970,7 @@
   }
 
   function isInteractiveAnnotationClickTarget(target: Element) {
+    if (target.closest(".annotation-source-marked")) return false;
     return Boolean(
       target.closest(
         'a[href],button,input,textarea,select,summary,[role="button"]:not(.annotation-source-marked)',
@@ -836,6 +1078,10 @@
       .join("\n    ");
   }
 
+  function formatAnnotationMemo(text: string) {
+    return `  - ${listContinuation(text)}`;
+  }
+
   function appendAnnotationToBody(
     body: string,
     quote: string,
@@ -845,13 +1091,77 @@
     const normalizedQuote = normalizeAnnotationQuote(quote);
     const wrappedQuote = `“${normalizedQuote}”`;
     const sourceLink = `[↩ 원문](${annotationSourceHref(normalizedQuote, occurrence)})`;
-    const entry = `- ${wrappedQuote} (${sourceLink})\n  - ${listContinuation(text)}`;
+    const entry = `- ${wrappedQuote} (${sourceLink})\n${formatAnnotationMemo(text)}`;
     const existing = (body ?? "").replace(/\s+$/, "");
     if (/^## Annotations\b/m.test(existing)) {
       return `${existing}\n${entry}\n`;
     }
     const separator = existing.length > 0 ? "\n\n" : "";
     return `${existing}${separator}## Annotations\n${entry}\n`;
+  }
+
+  function findAnnotationInBody(body: string, annotation: SourceAnnotation) {
+    return parseAnnotationsFromBody(body).find(
+      (candidate) =>
+        candidate.id === annotation.id ||
+        (candidate.entryStartLine === annotation.entryStartLine &&
+          candidate.sourceHref === annotation.sourceHref &&
+          candidate.memo === annotation.memo),
+    );
+  }
+
+  function compactEmptyAnnotationSection(lines: string[]) {
+    const headingIndex = lines.findIndex(
+      (line) => normalizeAnnotationQuote(line) === "## Annotations",
+    );
+    if (headingIndex < 0) return lines;
+    const nextHeadingIndex = lines.findIndex(
+      (line, index) => index > headingIndex && /^#{1,6}\s+/.test(line),
+    );
+    const endIndex = nextHeadingIndex < 0 ? lines.length : nextHeadingIndex;
+    const hasAnnotationEntry = lines
+      .slice(headingIndex + 1, endIndex)
+      .some((line) => /^-\s+/.test(line));
+    if (hasAnnotationEntry) return lines;
+    const compacted = [...lines];
+    compacted.splice(headingIndex, endIndex - headingIndex);
+    while (
+      compacted.length > 0 &&
+      compacted[compacted.length - 1].trim().length === 0
+    ) {
+      compacted.pop();
+    }
+    return compacted;
+  }
+
+  function removeAnnotationFromBody(
+    body: string,
+    annotation: SourceAnnotation,
+  ) {
+    const current = findAnnotationInBody(body, annotation);
+    if (!current) return body;
+    const lines = body.split(/\r?\n/);
+    lines.splice(
+      current.entryStartLine,
+      current.entryEndLine - current.entryStartLine,
+    );
+    return `${compactEmptyAnnotationSection(lines).join("\n").replace(/\s+$/, "")}\n`;
+  }
+
+  function replaceAnnotationMemoInBody(
+    body: string,
+    annotation: SourceAnnotation,
+    text: string,
+  ) {
+    const current = findAnnotationInBody(body, annotation);
+    if (!current) return body;
+    const lines = body.split(/\r?\n/);
+    lines.splice(
+      current.entryStartLine + 1,
+      Math.max(0, current.entryEndLine - current.entryStartLine - 1),
+      ...formatAnnotationMemo(text).split("\n"),
+    );
+    return `${lines.join("\n").replace(/\s+$/, "")}\n`;
   }
 
   function isCurrentAnnotationTarget(
@@ -865,6 +1175,59 @@
     );
   }
 
+  function openEditAnnotation(annotation: SourceAnnotation) {
+    const parsed = parseAnnotationSourceHash(annotation.sourceHref);
+    annotateDialog = {
+      quote: annotation.quote,
+      occurrence: parsed?.occurrence ?? 0,
+      editingAnnotation: annotation,
+    };
+    annotationText = annotation.memo;
+    annotationAddToLog = false;
+    annotationError = "";
+    dismissAnnotationPopup();
+  }
+
+  async function deleteAnnotation(annotation: SourceAnnotation) {
+    if (!note || annotationSaving) return;
+    annotationSaving = true;
+    annotationError = "";
+    const targetVault = vaultName;
+    const targetNoteId = note.note_id;
+    const encodedNoteId = encodeURIComponent(targetNoteId);
+    const updatedBody = removeAnnotationFromBody(note.body ?? "", annotation);
+
+    try {
+      const response = await apiClient(
+        `/api/v1/vault/${targetVault}/notes/${encodedNoteId}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ body: updatedBody }),
+        },
+      );
+      if (!response.ok) {
+        throw new Error(`PUT annotation delete -> ${response.status}`);
+      }
+      const updatedNote = (await response.json()) as Note;
+      if (!isCurrentAnnotationTarget(targetVault, targetNoteId)) return;
+      const body = updatedNote.body ?? updatedBody;
+      note = { ...updatedNote, body };
+      editorDoc = body;
+      savedDoc = body;
+      dismissAnnotationPopup();
+      await tick();
+      schedulePersistentAnnotationMarks();
+    } catch (e) {
+      if (!isCurrentAnnotationTarget(targetVault, targetNoteId)) return;
+      annotationError =
+        e instanceof Error ? e.message : "Failed to delete annotation.";
+    } finally {
+      if (isCurrentAnnotationTarget(targetVault, targetNoteId)) {
+        annotationSaving = false;
+      }
+    }
+  }
+
   async function saveAnnotation() {
     if (!note || !annotateDialog || annotationSaving) return;
     const quote = annotateDialog.quote;
@@ -876,16 +1239,17 @@
     }
     annotationSaving = true;
     annotationError = "";
-    const shouldLog = annotationAddToLog;
+    const shouldLog = !annotateDialog.editingAnnotation && annotationAddToLog;
     const targetVault = vaultName;
     const targetNoteId = note.note_id;
     const encodedNoteId = encodeURIComponent(targetNoteId);
-    const updatedBody = appendAnnotationToBody(
-      note.body ?? "",
-      quote,
-      text,
-      occurrence,
-    );
+    const updatedBody = annotateDialog.editingAnnotation
+      ? replaceAnnotationMemoInBody(
+          note.body ?? "",
+          annotateDialog.editingAnnotation,
+          text,
+        )
+      : appendAnnotationToBody(note.body ?? "", quote, text, occurrence);
 
     try {
       const response = await apiClient(
@@ -1386,11 +1750,32 @@
               onclick={dismissAnnotationPopup}>×</button
             >
           </div>
+          {#if annotationError}
+            <p class="annotate-error" aria-live="polite">{annotationError}</p>
+          {/if}
           <ul class="annotation-popover-list">
             {#each annotationPopup.annotations as annotation (annotation.id)}
               <li>
                 <p class="annotation-popover-quote">“{annotation.quote}”</p>
                 <p class="annotation-popover-memo">{annotation.memo}</p>
+                <div class="annotation-popover-actions">
+                  <button
+                    type="button"
+                    aria-label="Edit annotation"
+                    disabled={annotationSaving}
+                    onclick={() => openEditAnnotation(annotation)}
+                  >
+                    수정
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Delete annotation"
+                    disabled={annotationSaving}
+                    onclick={() => void deleteAnnotation(annotation)}
+                  >
+                    삭제
+                  </button>
+                </div>
               </li>
             {/each}
           </ul>
@@ -1749,22 +2134,23 @@
   }
 
   .prose :global(.annotation-source-marked) {
-    border-radius: 5px;
+    border-radius: 3px;
     background: linear-gradient(
       transparent 18%,
-      color-mix(in srgb, #ffe66d 34%, var(--accent) 12%) 18%,
-      color-mix(in srgb, #ffe66d 34%, var(--accent) 12%) 86%,
+      color-mix(in srgb, #ffe66d 42%, var(--accent) 10%) 18%,
+      color-mix(in srgb, #ffe66d 42%, var(--accent) 10%) 86%,
       transparent 86%
     );
-    box-shadow: inset 3px 0 0 color-mix(in srgb, #ffe66d 76%, var(--accent));
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
     cursor: pointer;
   }
 
   .prose :global(.annotation-source-marked:hover),
   .prose :global(.annotation-source-marked:focus-visible) {
-    background: color-mix(in srgb, #ffe66d 24%, var(--accent) 10%);
+    background: color-mix(in srgb, #ffe66d 30%, var(--accent) 10%);
     outline: 2px solid color-mix(in srgb, #ffe66d 70%, var(--accent));
-    outline-offset: 3px;
+    outline-offset: 2px;
   }
 
   .annotation-popover {
@@ -1834,6 +2220,35 @@
     color: var(--text);
     font-size: var(--type-body-size, 15px);
     line-height: var(--type-body-lh, 1.7);
+  }
+
+  .annotation-popover-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2, 8px);
+    margin-top: var(--space-2, 8px);
+  }
+
+  .annotation-popover-actions button {
+    min-height: 28px;
+    border: 1px solid var(--border);
+    padding: 0 var(--space-2, 8px);
+    background: transparent;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--type-chrome-sm-size, 11px);
+    cursor: pointer;
+  }
+
+  .annotation-popover-actions button:not(:disabled):hover {
+    border-color: var(--accent);
+    color: var(--bg);
+    background: var(--accent);
+  }
+
+  .annotation-popover-actions button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
   }
 
   :global([data-theme="light"]) .prose :global(.annotation-source-highlight) {
