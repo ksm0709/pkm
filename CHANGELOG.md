@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.90.0 (2026-06-28)
+
+### Features
+
+- Add annotation source popup actions
+  ([`fa5dded`](https://github.com/ksm0709/pkm/commit/fa5dded6aabfb66284d4e273ccc2da78f1a44b2e))
+
+
 ## v2.89.0 (2026-06-28)
 
 ### Features
