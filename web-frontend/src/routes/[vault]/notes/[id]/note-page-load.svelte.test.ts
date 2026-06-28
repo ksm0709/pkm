@@ -1202,4 +1202,284 @@ describe("note page loading", () => {
     vi.useRealTimers();
     unmount(component);
   });
+
+  it("marks annotated source blocks persistently and opens the memo popup", async () => {
+    mocks.apiGet.mockImplementation(async (path: string) => {
+      if (path.endsWith("/neighbors")) {
+        return {
+          note_id: "alpha-note",
+          outbound: [],
+          inbound: [],
+          semantic: [],
+        };
+      }
+      return {
+        note_id: "alpha-note",
+        title: "Alpha",
+        body: [
+          "A source block contains Marker one.",
+          "",
+          "## Annotations",
+          "- “Marker one.” ([↩ 원문](#quote=Marker%20one.&occ=0))",
+          "  - First memo for this source",
+        ].join("\n"),
+        frontmatter: {},
+        created: null,
+        updated: null,
+        tags: [],
+        importance: null,
+      };
+    });
+
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+
+    await waitFor(() => {
+      const marked = target.querySelector<HTMLElement>(
+        ".annotation-source-marked",
+      );
+      expect(marked).not.toBeNull();
+      expect(marked?.textContent).toContain(
+        "A source block contains Marker one.",
+      );
+      expect(marked?.getAttribute("tabindex")).toBe("0");
+      expect(marked?.getAttribute("aria-haspopup")).toBe("dialog");
+    });
+
+    target
+      .querySelector<HTMLElement>(".annotation-source-marked")!
+      .dispatchEvent(
+        new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 120,
+          clientY: 80,
+        }),
+      );
+    await tick();
+
+    const popup = target.querySelector<HTMLElement>(
+      '[role="dialog"][aria-label="Annotation memo"]',
+    );
+    expect(popup?.textContent).toContain("Marker one.");
+    expect(popup?.textContent).toContain("First memo for this source");
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    await tick();
+    expect(
+      target.querySelector('[role="dialog"][aria-label="Annotation memo"]'),
+    ).toBeNull();
+
+    unmount(component);
+  });
+
+  it("shows every annotation memo mapped to the same source block", async () => {
+    mocks.apiGet.mockImplementation(async (path: string) => {
+      if (path.endsWith("/neighbors")) {
+        return {
+          note_id: "alpha-note",
+          outbound: [],
+          inbound: [],
+          semantic: [],
+        };
+      }
+      return {
+        note_id: "alpha-note",
+        title: "Alpha",
+        body: [
+          "Shared source sentence has Shared marker.",
+          "",
+          "## Annotations",
+          "- “Shared marker.” ([↩ 원문](#quote=Shared%20marker.&occ=0))",
+          "  - First shared memo",
+          "- “Shared marker.” ([↩ 원문](#quote=Shared%20marker.&occ=0))",
+          "  - Second shared memo",
+        ].join("\n"),
+        frontmatter: {},
+        created: null,
+        updated: null,
+        tags: [],
+        importance: null,
+      };
+    });
+
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+
+    await waitFor(() => {
+      expect(target.querySelectorAll(".annotation-source-marked")).toHaveLength(
+        1,
+      );
+    });
+    target
+      .querySelector<HTMLElement>(".annotation-source-marked")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await tick();
+
+    const popupText = target.querySelector<HTMLElement>(
+      '[role="dialog"][aria-label="Annotation memo"]',
+    )?.textContent;
+    expect(popupText).toContain("First shared memo");
+    expect(popupText).toContain("Second shared memo");
+
+    unmount(component);
+  });
+
+  it("does not mark copied quotes inside the annotation section as source blocks", async () => {
+    mocks.apiGet.mockImplementation(async (path: string) => {
+      if (path.endsWith("/neighbors")) {
+        return {
+          note_id: "alpha-note",
+          outbound: [],
+          inbound: [],
+          semantic: [],
+        };
+      }
+      return {
+        note_id: "alpha-note",
+        title: "Alpha",
+        body: [
+          "Only this source has Self copied.",
+          "",
+          "## Annotations",
+          "- “Self copied.” ([↩ 원문](#quote=Self%20copied.&occ=0))",
+          "  - The memo repeats Self copied. but should not become a source target.",
+        ].join("\n"),
+        frontmatter: {},
+        created: null,
+        updated: null,
+        tags: [],
+        importance: null,
+      };
+    });
+
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+
+    await waitFor(() => {
+      const marked = Array.from(
+        target.querySelectorAll<HTMLElement>(".annotation-source-marked"),
+      );
+      expect(marked).toHaveLength(1);
+      expect(marked[0].textContent).toContain(
+        "Only this source has Self copied.",
+      );
+      expect(marked[0].textContent).not.toContain("The memo repeats");
+    });
+
+    unmount(component);
+  });
+
+  it("keeps persistent source marks separate from transient source-link highlights", async () => {
+    mocks.apiGet.mockImplementation(async (path: string) => {
+      if (path.endsWith("/neighbors")) {
+        return {
+          note_id: "alpha-note",
+          outbound: [],
+          inbound: [],
+          semantic: [],
+        };
+      }
+      return {
+        note_id: "alpha-note",
+        title: "Alpha",
+        body: [
+          "Persistent source mentions Timer marker.",
+          "",
+          "## Annotations",
+          "- “Timer marker.” ([↩ 원문](#quote=Timer%20marker.&occ=0))",
+          "  - Timer memo",
+        ].join("\n"),
+        frontmatter: {},
+        created: null,
+        updated: null,
+        tags: [],
+        importance: null,
+      };
+    });
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = vi.fn();
+
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+
+    await waitFor(() => {
+      expect(target.querySelector(".annotation-source-marked")).not.toBeNull();
+    });
+    vi.useFakeTimers();
+    target
+      .querySelector<HTMLAnchorElement>('a[href^="#quote="]')!
+      .dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+    await tick();
+    expect(target.querySelector(".annotation-source-highlight")).not.toBeNull();
+
+    await vi.advanceTimersByTimeAsync(2300);
+    await flush();
+
+    expect(target.querySelector(".annotation-source-highlight")).toBeNull();
+    expect(target.querySelector(".annotation-source-marked")).not.toBeNull();
+
+    Element.prototype.scrollIntoView = originalScrollIntoView;
+    vi.useRealTimers();
+    unmount(component);
+  });
+
+  it("does not open the memo popup when a regular link inside a marked source is clicked", async () => {
+    mocks.apiGet.mockImplementation(async (path: string) => {
+      if (path.endsWith("/neighbors")) {
+        return {
+          note_id: "alpha-note",
+          outbound: [],
+          inbound: [],
+          semantic: [],
+        };
+      }
+      return {
+        note_id: "alpha-note",
+        title: "Alpha",
+        body: [
+          "A marked [regular link](https://example.com) source.",
+          "",
+          "## Annotations",
+          "- “regular link” ([↩ 원문](#quote=regular%20link&occ=0))",
+          "  - Link memo",
+        ].join("\n"),
+        frontmatter: {},
+        created: null,
+        updated: null,
+        tags: [],
+        importance: null,
+      };
+    });
+
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+
+    await waitFor(() => {
+      expect(
+        target.querySelector(".annotation-source-marked a"),
+      ).not.toBeNull();
+    });
+    const regularLink = target.querySelector<HTMLAnchorElement>(
+      ".annotation-source-marked a",
+    )!;
+    regularLink.addEventListener("click", (event) => event.preventDefault());
+    regularLink.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, cancelable: true }),
+    );
+    await tick();
+
+    expect(
+      target.querySelector('[role="dialog"][aria-label="Annotation memo"]'),
+    ).toBeNull();
+
+    unmount(component);
+  });
 });

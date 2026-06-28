@@ -242,6 +242,26 @@
     text: string;
   }
 
+  interface ParsedAnnotation {
+    id: string;
+    quote: string;
+    sourceHref: string;
+    memo: string;
+  }
+
+  interface SourceAnnotation {
+    id: string;
+    quote: string;
+    sourceHref: string;
+    memo: string;
+  }
+
+  interface AnnotationPopup {
+    x: number;
+    y: number;
+    annotations: SourceAnnotation[];
+  }
+
   function textExcludingNestedCandidates(
     element: HTMLElement,
     candidateSet: Set<HTMLElement>,
@@ -282,6 +302,167 @@
       .filter((target) => target.text.length > 0);
   }
 
+  function annotationMemoLine(line: string) {
+    const listItem = line.match(/^\s+-\s?(?<text>.*)$/)?.groups?.text;
+    if (listItem !== undefined) return listItem.trimEnd();
+    const continuation = line.match(/^\s{4,}(?<text>.*)$/)?.groups?.text;
+    return continuation?.trimEnd() ?? "";
+  }
+
+  function parseAnnotationsFromBody(body: string): ParsedAnnotation[] {
+    const lines = (body ?? "").split(/\r?\n/);
+    const headingIndex = lines.findIndex(
+      (line) => normalizeAnnotationQuote(line) === "## Annotations",
+    );
+    if (headingIndex < 0) return [];
+
+    const annotations: ParsedAnnotation[] = [];
+    let current: {
+      quote: string;
+      sourceHref: string;
+      memoLines: string[];
+      index: number;
+    } | null = null;
+
+    const flush = () => {
+      if (!current) return;
+      const memo = current.memoLines.join("\n").trim();
+      if (memo) {
+        annotations.push({
+          id: `${current.sourceHref}\u0000${annotations.length}`,
+          quote: current.quote,
+          sourceHref: current.sourceHref,
+          memo,
+        });
+      }
+      current = null;
+    };
+
+    for (let index = headingIndex + 1; index < lines.length; index += 1) {
+      const line = lines[index];
+      if (/^#{1,6}\s+/.test(line)) break;
+      const entry = line.match(
+        /^-\s+[“"]?(?<quote>.*?)[”"]?\s*\(\[↩ 원문\]\((?<href>#[^)]+)\)\)\s*$/,
+      );
+      if (entry?.groups?.href) {
+        flush();
+        const parsed = parseAnnotationSourceHash(entry.groups.href);
+        if (!parsed) {
+          current = null;
+          continue;
+        }
+        current = {
+          quote:
+            parsed.quote || normalizeAnnotationQuote(entry.groups.quote ?? ""),
+          sourceHref: entry.groups.href,
+          memoLines: [],
+          index,
+        };
+        continue;
+      }
+      if (!current) continue;
+      if (/^-\s+/.test(line)) {
+        flush();
+        continue;
+      }
+      if (line.trim().length === 0) {
+        current.memoLines.push("");
+        continue;
+      }
+      current.memoLines.push(annotationMemoLine(line));
+    }
+    flush();
+    return annotations;
+  }
+
+  function annotationSourceTarget(
+    hash: string,
+    targets = noteBodyElement ? sourceSearchTargets(noteBodyElement) : [],
+  ) {
+    const parsed = parseAnnotationSourceHash(hash);
+    if (!parsed) return null;
+    let seen = 0;
+    for (const candidate of targets) {
+      const count = countQuoteOccurrences(candidate.text, parsed.quote);
+      if (count === 0) continue;
+      if (seen + count > parsed.occurrence) {
+        return candidate.element;
+      }
+      seen += count;
+    }
+    return null;
+  }
+
+  function clearPersistentAnnotationMarks() {
+    annotationSourcesByElement = new WeakMap<HTMLElement, SourceAnnotation[]>();
+    noteBodyElement
+      ?.querySelectorAll<HTMLElement>('[data-annotation-source-marked="true"]')
+      .forEach((element) => {
+        element.classList.remove("annotation-source-marked");
+        element.removeAttribute("data-annotation-source-marked");
+        element.removeAttribute("tabindex");
+        element.removeAttribute("aria-haspopup");
+        element.removeAttribute("aria-label");
+      });
+  }
+
+  function applyPersistentAnnotationMarks() {
+    clearPersistentAnnotationMarks();
+    if (!noteBodyElement || !note?.body || editMode) return false;
+
+    const grouped = new Map<HTMLElement, SourceAnnotation[]>();
+    const parsedAnnotations = parseAnnotationsFromBody(note.body);
+    const targets = sourceSearchTargets(noteBodyElement);
+    for (const annotation of parsedAnnotations) {
+      const target = annotationSourceTarget(annotation.sourceHref, targets);
+      if (!target) continue;
+      const group = grouped.get(target) ?? [];
+      group.push(annotation);
+      grouped.set(target, group);
+    }
+
+    annotationSourcesByElement = new WeakMap<HTMLElement, SourceAnnotation[]>();
+    grouped.forEach((annotations, element) => {
+      annotationSourcesByElement.set(element, annotations);
+      element.classList.add("annotation-source-marked");
+      element.setAttribute("data-annotation-source-marked", "true");
+      element.setAttribute("tabindex", "0");
+      element.setAttribute("aria-haspopup", "dialog");
+      element.setAttribute(
+        "aria-label",
+        annotations.length === 1
+          ? "View annotation memo"
+          : `View ${annotations.length} annotation memos`,
+      );
+    });
+    return parsedAnnotations.length === 0 || grouped.size > 0;
+  }
+
+  function cancelPersistentAnnotationMarkSchedule() {
+    persistentAnnotationMarkGeneration += 1;
+    persistentAnnotationMarkTimers.forEach((timer) => clearTimeout(timer));
+    persistentAnnotationMarkTimers.clear();
+  }
+
+  function schedulePersistentAnnotationMarks(attempt = 0, generation?: number) {
+    let scheduleGeneration = generation;
+    if (scheduleGeneration === undefined) {
+      cancelPersistentAnnotationMarkSchedule();
+      scheduleGeneration = persistentAnnotationMarkGeneration;
+    }
+    const timer = window.setTimeout(
+      () => {
+        persistentAnnotationMarkTimers.delete(timer);
+        if (scheduleGeneration !== persistentAnnotationMarkGeneration) return;
+        if (!applyPersistentAnnotationMarks() && attempt < 20) {
+          schedulePersistentAnnotationMarks(attempt + 1, scheduleGeneration);
+        }
+      },
+      attempt === 0 ? 0 : 50,
+    );
+    persistentAnnotationMarkTimers.add(timer);
+  }
+
   function clearAnnotationSourceHighlight() {
     if (annotationSourceHighlightTimer !== null) {
       clearTimeout(annotationSourceHighlightTimer);
@@ -295,20 +476,7 @@
   }
 
   function scrollToAnnotationSource(hash: string) {
-    if (!noteBodyElement) return false;
-    const parsed = parseAnnotationSourceHash(hash);
-    if (!parsed) return false;
-    let seen = 0;
-    let target: HTMLElement | null = null;
-    for (const candidate of sourceSearchTargets(noteBodyElement)) {
-      const count = countQuoteOccurrences(candidate.text, parsed.quote);
-      if (count === 0) continue;
-      if (seen + count > parsed.occurrence) {
-        target = candidate.element;
-        break;
-      }
-      seen += count;
-    }
+    const target = annotationSourceTarget(hash);
     if (!target) return false;
     clearAnnotationSourceHighlight();
     target.classList.add("annotation-source-highlight");
@@ -345,22 +513,49 @@
       return;
     }
     const button = target.closest("button.note-task-state");
-    if (!(button instanceof HTMLButtonElement)) return;
+    if (button instanceof HTMLButtonElement) {
+      const taskIndex = Number(button.dataset.taskIndex);
+      const currentState = button.dataset.taskState ?? "[ ]";
+      if (!Number.isFinite(taskIndex)) return;
 
-    const taskIndex = Number(button.dataset.taskIndex);
-    const currentState = button.dataset.taskState ?? "[ ]";
-    if (!Number.isFinite(taskIndex)) return;
+      event.preventDefault();
+      void saveTaskState(taskIndex, currentState);
+      return;
+    }
 
-    event.preventDefault();
-    void saveTaskState(taskIndex, currentState);
+    if (isInteractiveAnnotationClickTarget(target)) return;
+    const marked = target.closest<HTMLElement>(".annotation-source-marked");
+    if (!marked || !noteBodyElement?.contains(marked)) return;
+    if (
+      openAnnotationPopupForSource(marked, {
+        x: event.clientX,
+        y: event.clientY,
+      })
+    ) {
+      event.preventDefault();
+    }
+  }
+
+  function handleNoteBodyKeyDown(event: KeyboardEvent) {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    if (isInteractiveAnnotationClickTarget(target)) return;
+    const marked = target.closest<HTMLElement>(".annotation-source-marked");
+    if (!marked || !noteBodyElement?.contains(marked)) return;
+    if (openAnnotationPopupForSource(marked)) {
+      event.preventDefault();
+    }
   }
 
   function taskStateClickAction(node: HTMLElement) {
     node.addEventListener("click", handleNoteBodyClick);
+    node.addEventListener("keydown", handleNoteBodyKeyDown);
 
     return {
       destroy() {
         node.removeEventListener("click", handleNoteBodyClick);
+        node.removeEventListener("keydown", handleNoteBodyKeyDown);
       },
     };
   }
@@ -388,6 +583,13 @@
   let annotationAddToLog = $state(false);
   let annotationSaving = $state(false);
   let annotationError = $state("");
+  let annotationPopup = $state<AnnotationPopup | null>(null);
+  let annotationSourcesByElement = new WeakMap<
+    HTMLElement,
+    SourceAnnotation[]
+  >();
+  let persistentAnnotationMarkGeneration = 0;
+  const persistentAnnotationMarkTimers = new Set<number>();
   let longPressTimer: ReturnType<typeof setTimeout> | null = null;
   let noteBodyElement = $state<HTMLElement | null>(null);
   let annotateMenuInteracting = false;
@@ -522,6 +724,48 @@
     };
   }
 
+  function dismissAnnotationPopup() {
+    annotationPopup = null;
+  }
+
+  function isInteractiveAnnotationClickTarget(target: Element) {
+    return Boolean(
+      target.closest(
+        'a[href],button,input,textarea,select,summary,[role="button"]:not(.annotation-source-marked)',
+      ),
+    );
+  }
+
+  function annotationPopupPosition(
+    element: HTMLElement,
+    fallback?: { x: number; y: number },
+  ) {
+    const rect = element.getBoundingClientRect();
+    if (rectHasLayout(rect)) {
+      return {
+        x: Math.round(rect.left + Math.min(rect.width, 280) / 2),
+        y: Math.round(rect.bottom + 8),
+      };
+    }
+    return {
+      x: Math.round(fallback?.x ?? 16),
+      y: Math.round(fallback?.y ?? 16),
+    };
+  }
+
+  function openAnnotationPopupForSource(
+    element: HTMLElement,
+    fallback?: { x: number; y: number },
+  ) {
+    const annotations = annotationSourcesByElement.get(element);
+    if (!annotations?.length) return false;
+    annotationPopup = {
+      ...annotationPopupPosition(element, fallback),
+      annotations,
+    };
+    return true;
+  }
+
   function handleNoteBodyContextMenu(event: MouseEvent) {
     const noteBodyEl = event.currentTarget as HTMLElement;
     const selected = selectedAnnotationInside(noteBodyEl);
@@ -578,7 +822,10 @@
 
   function resetAnnotationState() {
     clearLongPressTimer();
+    cancelPersistentAnnotationMarkSchedule();
     annotateMenu = null;
+    dismissAnnotationPopup();
+    clearPersistentAnnotationMarks();
     closeAnnotateDialog();
   }
 
@@ -677,6 +924,8 @@
       note = { ...updatedNote, body };
       editorDoc = body;
       savedDoc = body;
+      await tick();
+      schedulePersistentAnnotationMarks();
       closeAnnotateDialog();
     } catch (e) {
       if (!isCurrentAnnotationTarget(targetVault, targetNoteId)) return;
@@ -746,6 +995,7 @@
     rememberVault(vault);
     await tick();
     if (token === loadToken) {
+      schedulePersistentAnnotationMarks();
       scheduleAnnotationHashScroll(window.location.hash);
     }
   }
@@ -815,6 +1065,27 @@
     });
   });
 
+  $effect(() => {
+    const body = note?.body ?? "";
+    const targetElement = noteBodyElement;
+    const reading = !editMode;
+    if (!targetElement || !body || !reading) {
+      cancelPersistentAnnotationMarkSchedule();
+      clearPersistentAnnotationMarks();
+      dismissAnnotationPopup();
+      return;
+    }
+    void tick().then(() => {
+      if (
+        noteBodyElement === targetElement &&
+        note?.body === body &&
+        !editMode
+      ) {
+        schedulePersistentAnnotationMarks();
+      }
+    });
+  });
+
   onMount(() => {
     const handleSelectionChange = () => {
       if (!annotateMenu || annotateMenuInteracting || !noteBodyElement) return;
@@ -828,6 +1099,14 @@
       const target = event.target;
       const isInsideMenu =
         target instanceof Element && Boolean(target.closest(".annotate-menu"));
+      const isInsideAnnotationPopup =
+        target instanceof Element &&
+        Boolean(target.closest(".annotation-popover"));
+      const isInsideMarkedSource =
+        target instanceof Element &&
+        Boolean(target.closest(".annotation-source-marked"));
+      if (isInsideAnnotationPopup || isInsideMarkedSource) return;
+      if (annotationPopup) annotationPopup = null;
       if (isInsideMenu) {
         annotateMenuInteracting = true;
         window.setTimeout(() => {
@@ -839,7 +1118,10 @@
     };
 
     const handleGlobalKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") dismissAnnotateMenu();
+      if (event.key === "Escape") {
+        dismissAnnotateMenu();
+        dismissAnnotationPopup();
+      }
     };
 
     const handleHashChange = () => {
@@ -1086,6 +1368,32 @@
               {annotationSaving ? "Saving" : "Save"}
             </button>
           </div>
+        </div>
+      {/if}
+
+      {#if annotationPopup}
+        <div
+          role="dialog"
+          aria-label="Annotation memo"
+          class="annotation-popover"
+          style="left:{annotationPopup.x}px;top:{annotationPopup.y}px;"
+        >
+          <div class="annotation-popover-header">
+            <span>Annotation</span>
+            <button
+              type="button"
+              aria-label="Close annotation memo"
+              onclick={dismissAnnotationPopup}>×</button
+            >
+          </div>
+          <ul class="annotation-popover-list">
+            {#each annotationPopup.annotations as annotation (annotation.id)}
+              <li>
+                <p class="annotation-popover-quote">“{annotation.quote}”</p>
+                <p class="annotation-popover-memo">{annotation.memo}</p>
+              </li>
+            {/each}
+          </ul>
         </div>
       {/if}
 
@@ -1438,6 +1746,94 @@
     transition:
       background-color 180ms ease,
       outline-color 180ms ease;
+  }
+
+  .prose :global(.annotation-source-marked) {
+    border-radius: 5px;
+    background: linear-gradient(
+      transparent 18%,
+      color-mix(in srgb, #ffe66d 34%, var(--accent) 12%) 18%,
+      color-mix(in srgb, #ffe66d 34%, var(--accent) 12%) 86%,
+      transparent 86%
+    );
+    box-shadow: inset 3px 0 0 color-mix(in srgb, #ffe66d 76%, var(--accent));
+    cursor: pointer;
+  }
+
+  .prose :global(.annotation-source-marked:hover),
+  .prose :global(.annotation-source-marked:focus-visible) {
+    background: color-mix(in srgb, #ffe66d 24%, var(--accent) 10%);
+    outline: 2px solid color-mix(in srgb, #ffe66d 70%, var(--accent));
+    outline-offset: 3px;
+  }
+
+  .annotation-popover {
+    position: fixed;
+    z-index: 55;
+    width: min(360px, calc(100vw - 32px));
+    max-height: min(420px, calc(100vh - 32px));
+    overflow: auto;
+    transform: translateX(-50%);
+    border: 1px solid color-mix(in srgb, var(--accent) 52%, var(--border));
+    border-radius: 8px;
+    padding: var(--space-3, 12px);
+    background: var(--surface-raised, var(--bg));
+    color: var(--text);
+    box-shadow: 0 18px 44px color-mix(in srgb, #000 42%, transparent);
+  }
+
+  .annotation-popover-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3, 12px);
+    margin-bottom: var(--space-2, 8px);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--type-chrome-sm-size, 11px);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .annotation-popover-header button {
+    border: 0;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .annotation-popover-list {
+    display: grid;
+    gap: var(--space-3, 12px);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .annotation-popover-list li {
+    list-style: none;
+  }
+
+  .annotation-popover-quote,
+  .annotation-popover-memo {
+    margin: 0;
+    font-family: var(--font-mono);
+  }
+
+  .annotation-popover-quote {
+    color: var(--text-muted);
+    font-size: var(--type-chrome-size, 13px);
+  }
+
+  .annotation-popover-memo {
+    margin-top: var(--space-1, 4px);
+    white-space: pre-wrap;
+    color: var(--text);
+    font-size: var(--type-body-size, 15px);
+    line-height: var(--type-body-lh, 1.7);
   }
 
   :global([data-theme="light"]) .prose :global(.annotation-source-highlight) {
