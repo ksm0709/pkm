@@ -1,7 +1,8 @@
-export type DataFileKind = "markdown" | "html" | "unsupported";
+export type DataFileKind = "markdown" | "html" | "pdf" | "unsupported";
 
 const markdownExtensions = new Set([".md", ".markdown"]);
 const htmlExtensions = new Set([".html", ".htm"]);
+const pdfExtensions = new Set([".pdf"]);
 
 function safeDecodeURIComponent(value: string) {
   try {
@@ -35,6 +36,7 @@ export function dataFileKind(path: string): DataFileKind {
   const extension = extensionOf(path);
   if (markdownExtensions.has(extension)) return "markdown";
   if (htmlExtensions.has(extension)) return "html";
+  if (pdfExtensions.has(extension)) return "pdf";
   return "unsupported";
 }
 

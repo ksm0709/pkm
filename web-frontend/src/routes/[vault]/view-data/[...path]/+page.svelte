@@ -2,6 +2,7 @@
   import { page } from "$app/stores";
   import { apiClient } from "$lib/api/client.js";
   import MarkdownRenderer from "$lib/components/MarkdownRenderer.svelte";
+  import PdfViewer from "$lib/data-viewer/PdfViewer.svelte";
   import {
     apiDataHref,
     dataFileKind,
@@ -25,6 +26,10 @@
   let canonicalViewerHref = $derived(viewerDataHref(vaultName, dataPath));
   let fileName = $derived(dataPath.split("/").pop() || dataPath || "Data file");
 
+  function isTextPreviewKind(value: DataFileKind) {
+    return value === "markdown" || value === "html";
+  }
+
   $effect(() => {
     const token = ++loadToken;
     const currentKind = kind;
@@ -33,7 +38,7 @@
     sanitizedHtml = "";
     error = "";
 
-    if (!vaultName || !dataPath || currentKind === "unsupported") {
+    if (!vaultName || !dataPath || !isTextPreviewKind(currentKind)) {
       loading = false;
       return;
     }
@@ -95,6 +100,12 @@
     <article class="preview markdown-preview">
       <MarkdownRenderer {markdown} vault={vaultName} />
     </article>
+  {:else if kind === "pdf"}
+    {#key `${vaultName}/${dataPath}`}
+      <article class="preview pdf-viewer-shell">
+        <PdfViewer vault={vaultName} path={dataPath} />
+      </article>
+    {/key}
   {:else}
     <article class="preview html-preview markdown-prose">
       <!-- eslint-disable-next-line svelte/no-at-html-tags -->

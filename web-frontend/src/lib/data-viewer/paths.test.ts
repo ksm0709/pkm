@@ -42,7 +42,7 @@ describe("data viewer path helpers", () => {
     expect(dataFileKind("report.markdown")).toBe("markdown");
     expect(dataFileKind("company.html")).toBe("html");
     expect(dataFileKind("company.htm")).toBe("html");
-    expect(dataFileKind("report.pdf")).toBe("unsupported");
+    expect(dataFileKind("report.pdf")).toBe("pdf");
   });
 
   it("rewrites same-vault renderable data links to the viewer", () => {
@@ -55,11 +55,20 @@ describe("data viewer path helpers", () => {
         "taeho",
       ),
     ).toBe("/taeho/view-data/a/company%20page.html#summary");
+    expect(
+      rewriteRenderableDataLinkHref("/taeho/data/a/report.pdf", "taeho"),
+    ).toBe("/taeho/view-data/a/report.pdf");
+    expect(
+      rewriteRenderableDataLinkHref(
+        "/api/v1/vault/taeho/data/a/report.pdf#page=2",
+        "taeho",
+      ),
+    ).toBe("/taeho/view-data/a/report.pdf#page=2");
   });
 
   it("does not rewrite non-renderable, cross-vault, or external links", () => {
     expect(
-      rewriteRenderableDataLinkHref("/taeho/data/a/report.pdf", "taeho"),
+      rewriteRenderableDataLinkHref("/taeho/data/a/archive.zip", "taeho"),
     ).toBeNull();
     expect(
       rewriteRenderableDataLinkHref("/other/data/a/report.md", "taeho"),

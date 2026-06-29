@@ -177,7 +177,7 @@ describe("logger page", () => {
     await waitFor(() => {
       expect(
         target.querySelector<HTMLAnchorElement>(
-          'a[href="/api/v1/vault/main/data/report.pdf"]',
+          'a[href="/main/view-data/report.pdf"]',
         )?.textContent,
       ).toBe("report.pdf");
     });

@@ -197,7 +197,7 @@ describe("rendered markdown decoration", () => {
     ).toBe("api html");
     expect(
       host.querySelector<HTMLAnchorElement>(
-        'a[href="/taeho/data/reports/raw.pdf"]',
+        'a[href="/taeho/view-data/reports/raw.pdf"]',
       )?.textContent,
     ).toBe("pdf");
     expect(

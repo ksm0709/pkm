@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 from asyncio import gather
+from hashlib import sha256
 
 import pytest
 from aiohttp import FormData
@@ -391,18 +392,18 @@ async def test_human_data_route_redirects_renderable_text_files_to_viewer(
 
 
 @pytest.mark.anyio
-async def test_human_data_route_keeps_non_renderable_download_policy(
+async def test_human_data_route_keeps_non_pdf_download_policy(
     app,
     tmp_vault: VaultConfig,
 ) -> None:
     nested = tmp_vault.data_dir / "bundle"
     nested.mkdir(parents=True)
-    (nested / "report.pdf").write_bytes(b"pdf")
+    (nested / "archive.zip").write_bytes(b"zip")
     (nested / "photo.png").write_bytes(b"png")
 
     async with TestClient(TestServer(app)) as client:
-        pdf_resp = await client.get(
-            "/test-vault/data/bundle/report.pdf",
+        zip_resp = await client.get(
+            "/test-vault/data/bundle/archive.zip",
             headers={"Authorization": f"Bearer {TOKEN}"},
             allow_redirects=False,
         )
@@ -412,14 +413,194 @@ async def test_human_data_route_keeps_non_renderable_download_policy(
             allow_redirects=False,
         )
 
-    assert pdf_resp.status == 200
-    assert pdf_resp.headers["X-Content-Type-Options"] == "nosniff"
-    assert pdf_resp.headers["Content-Type"].startswith("application/octet-stream")
-    assert 'filename="report.pdf"' in pdf_resp.headers["Content-Disposition"]
+    assert zip_resp.status == 200
+    assert zip_resp.headers["X-Content-Type-Options"] == "nosniff"
+    assert zip_resp.headers["Content-Type"].startswith("application/octet-stream")
+    assert 'filename="archive.zip"' in zip_resp.headers["Content-Disposition"]
     assert png_resp.status == 200
     assert png_resp.headers["X-Content-Type-Options"] == "nosniff"
     assert png_resp.headers["Content-Type"].startswith("image/png")
     assert "Content-Disposition" not in png_resp.headers
+
+
+@pytest.mark.anyio
+async def test_human_data_route_redirects_pdf_to_viewer(
+    app,
+    tmp_vault: VaultConfig,
+) -> None:
+    nested = tmp_vault.data_dir / "bundle"
+    nested.mkdir(parents=True)
+    (nested / "report.pdf").write_bytes(b"pdf")
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/test-vault/data/bundle/report.pdf",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+            allow_redirects=False,
+        )
+
+    assert resp.status == 303
+    assert resp.headers["Location"] == "/test-vault/view-data/bundle/report.pdf"
+
+
+@pytest.mark.anyio
+async def test_raw_pdf_data_route_preserves_attachment_policy(
+    app,
+    tmp_vault: VaultConfig,
+) -> None:
+    nested = tmp_vault.data_dir / "bundle"
+    nested.mkdir(parents=True)
+    (nested / "report.pdf").write_bytes(b"pdf")
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/data/bundle/report.pdf",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        body = await resp.read()
+
+    assert resp.status == 200
+    assert body == b"pdf"
+    assert resp.headers["X-Content-Type-Options"] == "nosniff"
+    assert resp.headers["Cache-Control"] == "no-store"
+    assert resp.headers["Content-Type"].startswith("application/octet-stream")
+    assert 'filename="report.pdf"' in resp.headers["Content-Disposition"]
+
+
+@pytest.mark.anyio
+async def test_get_pdf_annotations_returns_empty_document_for_existing_pdf(
+    app,
+    tmp_vault: VaultConfig,
+) -> None:
+    (tmp_vault.data_dir / "report.pdf").write_bytes(b"pdf")
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/data-annotations/report.pdf",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        payload = await resp.json()
+
+    assert resp.status == 200
+    assert payload == {"version": 1, "source_path": "report.pdf", "annotations": []}
+
+
+@pytest.mark.anyio
+async def test_put_pdf_annotations_persists_sidecar_outside_data_dir(
+    app,
+    tmp_vault: VaultConfig,
+) -> None:
+    nested = tmp_vault.data_dir / "reports" / "한글 report.pdf"
+    nested.parent.mkdir(parents=True)
+    nested.write_bytes(b"pdf")
+    annotation_doc = {
+        "annotations": [
+            {
+                "id": "area-1",
+                "type": "area",
+                "rects": [
+                    {"page": 1, "x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4}
+                ],
+                "comment": "important table",
+                "created_at": "2026-06-29T08:00:00Z",
+                "updated_at": "2026-06-29T08:00:00Z",
+            }
+        ]
+    }
+
+    async with TestClient(TestServer(app)) as client:
+        put_resp = await client.put(
+            "/api/v1/vault/test-vault/data-annotations/reports/%ED%95%9C%EA%B8%80%20report.pdf",
+            json=annotation_doc,
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        saved = await put_resp.json()
+        get_resp = await client.get(
+            "/api/v1/vault/test-vault/data-annotations/reports/%ED%95%9C%EA%B8%80%20report.pdf",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        loaded = await get_resp.json()
+
+    assert put_resp.status == 200
+    assert get_resp.status == 200
+    assert saved == loaded
+    assert saved["version"] == 1
+    assert saved["source_path"] == "reports/한글 report.pdf"
+    assert saved["annotations"] == annotation_doc["annotations"]
+    sidecar_name = sha256("reports/한글 report.pdf".encode("utf-8")).hexdigest() + ".json"
+    assert (tmp_vault.path / ".pkm" / "data-annotations" / sidecar_name).is_file()
+    assert not (tmp_vault.data_dir / ".pkm-annotations" / sidecar_name).exists()
+
+
+@pytest.mark.anyio
+async def test_pdf_annotations_reject_non_pdf_target(
+    app,
+    tmp_vault: VaultConfig,
+) -> None:
+    (tmp_vault.data_dir / "report.md").write_text("# report", encoding="utf-8")
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(
+            "/api/v1/vault/test-vault/data-annotations/report.md",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+
+    assert resp.status == 415
+
+
+@pytest.mark.anyio
+async def test_pdf_annotations_reject_invalid_payload_without_corrupting_sidecar(
+    app,
+    tmp_vault: VaultConfig,
+) -> None:
+    (tmp_vault.data_dir / "report.pdf").write_bytes(b"pdf")
+    valid_doc = {
+        "annotations": [
+            {
+                "id": "text-1",
+                "type": "text",
+                "rects": [
+                    {"page": 2, "x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4}
+                ],
+                "quote": "selected words",
+                "comment": "note",
+                "created_at": "2026-06-29T08:00:00Z",
+                "updated_at": "2026-06-29T08:00:00Z",
+            }
+        ]
+    }
+    invalid_doc = {
+        "annotations": [
+            {
+                "id": "bad",
+                "type": "area",
+                "rects": [
+                    {"page": 0, "x": 1.2, "y": 0.2, "width": 0, "height": 0.4}
+                ],
+            }
+        ]
+    }
+
+    async with TestClient(TestServer(app)) as client:
+        ok = await client.put(
+            "/api/v1/vault/test-vault/data-annotations/report.pdf",
+            json=valid_doc,
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        bad = await client.put(
+            "/api/v1/vault/test-vault/data-annotations/report.pdf",
+            json=invalid_doc,
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        loaded_resp = await client.get(
+            "/api/v1/vault/test-vault/data-annotations/report.pdf",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        loaded = await loaded_resp.json()
+
+    assert ok.status == 200
+    assert bad.status == 400
+    assert loaded["annotations"] == valid_doc["annotations"]
 
 
 @pytest.mark.anyio
