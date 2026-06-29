@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.91.0 (2026-06-29)
+
+### Features
+
+- Add PDF data viewer annotations
+  ([`64d2302`](https://github.com/ksm0709/pkm/commit/64d2302f01fb9c9d3d72dec2857724d1f66bd2f3))
+
+
 ## v2.90.0 (2026-06-28)
 
 ### Features
