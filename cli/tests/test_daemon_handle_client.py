@@ -611,7 +611,7 @@ async def test_idle_checker_closes_server_after_timeout(monkeypatch) -> None:
     server = Server()
     monkeypatch.delenv(daemon.KEEPALIVE_ENV, raising=False)
     monkeypatch.setattr(daemon.asyncio, "sleep", fake_sleep)
-    monkeypatch.setattr(daemon.time, "time", lambda: 10_000)
+    monkeypatch.setattr(daemon, "_activity_now", lambda: 10_000)
     daemon.DaemonState.last_activity = 0
 
     await daemon.idle_checker(server)
