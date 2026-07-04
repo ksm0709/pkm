@@ -21,6 +21,8 @@ def daemon_state(monkeypatch):
         indexing_vaults: set[str] = set()
 
     monkeypatch.setattr(daemon_mod, "DaemonState", _State)
+    monkeypatch.setattr(daemon_mod, "_index_build_lock", None)
+    monkeypatch.setattr(daemon_mod, "_index_schedule_lock", None)
     monkeypatch.setenv("PKM_DAEMON_AUTO_INDEX_ENABLED", "true")
     monkeypatch.setenv("PKM_DAEMON_AUTO_INDEX_IDLE_SECONDS", "10")
     monkeypatch.setenv("PKM_DAEMON_AUTO_INDEX_MIN_INTERVAL_SECONDS", "0")
@@ -188,7 +190,7 @@ async def test_update_index_for_vault_skips_duplicate_queued_vault(
         daemon_mod._update_index_for_vault(tmp_vault, reason="manual")
     )
     loop = daemon_mod.asyncio.get_running_loop()
-    await loop.run_in_executor(None, started.wait)
+    assert await loop.run_in_executor(None, started.wait, 2.0)
 
     duplicate = await daemon_mod._update_index_for_vault(tmp_vault, reason="manual")
 
