@@ -69,28 +69,30 @@ describe("data viewer page", () => {
     throw lastError;
   }
 
-  it("keeps data previews full-width instead of capped at a centered readable width", () => {
+  it("renders markdown and PDF previews as full-bleed content surfaces", () => {
     const source = readPageSource();
-    const headerRule = styleRule(
+    const contentOnlyRule = styleRule(
       source,
-      /\.viewer-header\s*\{(?<body>[^}]+)\}/m,
+      /\.data-viewer\.content-only\s*\{(?<body>[^}]+)\}/m,
     );
-    const previewRule = styleRule(
-      source,
-      /\.notice,\s*\.preview\s*\{(?<body>[^}]+)\}/m,
-    );
+    const previewRule = styleRule(source, /\.preview\s*\{(?<body>[^}]+)\}/m);
+    const noticeRule = styleRule(source, /\.notice\s*\{(?<body>[^}]+)\}/m);
 
     expect(source).not.toContain("max-width: 1100px");
-    expect(headerRule).toContain("width: 100%");
-    expect(headerRule).toContain("box-sizing: border-box");
-    expect(headerRule).toContain("max-width: none");
+    expect(contentOnlyRule).toContain("height: 100%");
+    expect(contentOnlyRule).toContain("min-height: 0");
+    expect(contentOnlyRule).toContain("padding: 0");
     expect(previewRule).toContain("width: 100%");
     expect(previewRule).toContain("box-sizing: border-box");
     expect(previewRule).toContain("max-width: none");
     expect(previewRule).toContain("overflow-x: auto");
+    expect(previewRule).not.toContain("border-radius");
+    expect(previewRule).not.toContain("border: 1px");
+    expect(previewRule).not.toContain("background: var(--surface");
+    expect(noticeRule).toContain("border-radius: 12px");
   });
 
-  it("fetches and renders markdown data files with a raw download link", async () => {
+  it("fetches and renders markdown data files without the internal file header", async () => {
     vi.mocked(apiClient).mockResolvedValue(
       new Response("# Deep Report\n\n본문", { status: 200 }),
     );
@@ -108,10 +110,10 @@ describe("data viewer page", () => {
       "/api/v1/vault/taeho/data/reports/deep.md",
       expect.objectContaining({ method: "GET" }),
     );
+    expect(target.querySelector(".viewer-header")).toBeNull();
     expect(
-      target.querySelector<HTMLAnchorElement>('a[data-testid="raw-download"]')
-        ?.href,
-    ).toContain("/api/v1/vault/taeho/data/reports/deep.md");
+      target.querySelector<HTMLAnchorElement>('a[data-testid="raw-download"]'),
+    ).toBeNull();
 
     unmount(component);
   });
@@ -141,6 +143,7 @@ describe("data viewer page", () => {
     });
 
     expect(target.querySelector('[data-testid="pdf-preview"]')).not.toBeNull();
+    expect(target.querySelector(".viewer-header")).toBeNull();
     expect(target.querySelector(".markdown-preview")).toBeNull();
     expect(apiClient).toHaveBeenCalledWith(
       "/api/v1/vault/taeho/data/reports/report.pdf",

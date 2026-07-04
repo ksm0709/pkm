@@ -30,6 +30,10 @@
     return value === "markdown" || value === "html";
   }
 
+  let contentOnly = $derived(
+    dataPath.toLowerCase().match(/\.(md|markdown|pdf)$/) !== null,
+  );
+
   $effect(() => {
     const token = ++loadToken;
     const currentKind = kind;
@@ -74,18 +78,20 @@
   <title>{fileName} · PKM data viewer</title>
 </svelte:head>
 
-<main class="data-viewer">
-  <header class="viewer-header">
-    <p class="eyebrow">Data preview</p>
-    <h1>{fileName}</h1>
-    <p class="path" title={dataPath}>{dataPath}</p>
-    <div class="actions">
-      <a data-testid="raw-download" class="button" href={downloadHref}
-        >Download raw</a
-      >
-      <a class="button secondary" href={canonicalViewerHref}>Viewer link</a>
-    </div>
-  </header>
+<main class="data-viewer" class:content-only={contentOnly}>
+  {#if !contentOnly}
+    <header class="viewer-header">
+      <p class="eyebrow">Data preview</p>
+      <h1>{fileName}</h1>
+      <p class="path" title={dataPath}>{dataPath}</p>
+      <div class="actions">
+        <a data-testid="raw-download" class="button" href={downloadHref}
+          >Download raw</a
+        >
+        <a class="button secondary" href={canonicalViewerHref}>Viewer link</a>
+      </div>
+    </header>
+  {/if}
 
   {#if kind === "unsupported"}
     <section class="notice" data-testid="unsupported-preview">
@@ -118,10 +124,19 @@
   .data-viewer {
     box-sizing: border-box;
     width: 100%;
-    min-height: 100vh;
+    min-height: 100%;
     padding: var(--space-6, 32px);
     color: var(--text);
     background: var(--bg);
+  }
+
+  .data-viewer.content-only {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
   }
 
   .viewer-header {
@@ -181,8 +196,15 @@
     background: transparent;
   }
 
-  .notice,
   .preview {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    overflow-x: auto;
+  }
+
+  .notice {
     box-sizing: border-box;
     width: 100%;
     max-width: none;
@@ -192,6 +214,21 @@
     border: 1px solid var(--border);
     border-radius: 12px;
     background: var(--surface, transparent);
+  }
+
+  .content-only .preview {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .markdown-preview {
+    padding: var(--space-5, 24px);
+  }
+
+  .pdf-viewer-shell {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
 
   .notice.error {
@@ -220,8 +257,11 @@
       padding: var(--space-4, 16px);
     }
 
-    .notice,
-    .preview {
+    .notice {
+      padding: var(--space-4, 16px);
+    }
+
+    .markdown-preview {
       padding: var(--space-4, 16px);
     }
   }

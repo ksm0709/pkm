@@ -25,6 +25,11 @@
   let saving = $state(false);
   let error = $state("");
   let areaMode = $state(false);
+  let selectionMenu = $state<{
+    x: number;
+    y: number;
+    annotation: PdfAnnotation;
+  } | null>(null);
   let annotationDoc = $state<PdfAnnotationDocument | null>(null);
   let cleanup: PdfRenderCleanup | null = null;
   let cancelled = false;
@@ -128,8 +133,105 @@
       : null;
   }
 
+  function clamp(value: number, minimum: number, maximum: number) {
+    return Math.min(Math.max(value, minimum), maximum);
+  }
+
+  function rectBelongsToRenderedPage(rect: DOMRect | ClientRect) {
+    if (!container) return false;
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    return Array.from(
+      container.querySelectorAll<HTMLElement>(".pdf-page"),
+    ).some((page) => {
+      const pageRect = page.getBoundingClientRect();
+      return (
+        centerX >= pageRect.left &&
+        centerX <= pageRect.right &&
+        centerY >= pageRect.top &&
+        centerY <= pageRect.bottom
+      );
+    });
+  }
+
+  function selectionAnchorRect() {
+    if (areaMode) return null;
+    const selection = window.getSelection();
+    if (
+      !selection ||
+      selection.isCollapsed ||
+      selection.rangeCount === 0 ||
+      !selection.toString().trim()
+    ) {
+      return null;
+    }
+    const range = selection.getRangeAt(0);
+    const rects = Array.from(range.getClientRects()).filter(
+      (rect) => rect.width > 0 && rect.height > 0,
+    );
+    const firstPdfRect = rects.find(rectBelongsToRenderedPage);
+    return firstPdfRect ?? null;
+  }
+
+  function textAnnotationFromCurrentSelection() {
+    return createTextAnnotationFromSelection({
+      root: container,
+      selection: window.getSelection(),
+      now: nowIso(),
+      id: annotationId("text"),
+    });
+  }
+
+  function hideSelectionMenu() {
+    selectionMenu = null;
+  }
+
+  function updateSelectionMenu() {
+    const rect = selectionAnchorRect();
+    const annotation = rect ? textAnnotationFromCurrentSelection() : null;
+    if (!rect || !annotation) {
+      hideSelectionMenu();
+      return;
+    }
+    const viewportWidth =
+      window.innerWidth || document.documentElement.clientWidth;
+    const viewportHeight =
+      window.innerHeight || document.documentElement.clientHeight;
+    selectionMenu = {
+      x: clamp(
+        rect.left + rect.width / 2,
+        48,
+        Math.max(48, viewportWidth - 48),
+      ),
+      y: clamp(rect.top - 8, 40, Math.max(40, viewportHeight - 8)),
+      annotation,
+    };
+  }
+
+  function handleDocumentSelectionChange() {
+    if (!selectionMenu) return;
+    updateSelectionMenu();
+  }
+
+  function handleDocumentPointerDown(event: PointerEvent) {
+    if (!(event.target instanceof Element)) return;
+    if (event.target.closest(".pdf-selection-menu")) return;
+    if (event.target.closest(".pdf-pages")) return;
+    hideSelectionMenu();
+  }
+
+  function handleDocumentKeydown(event: KeyboardEvent) {
+    if (event.key === "Escape") hideSelectionMenu();
+  }
+
+  function toggleAreaMode() {
+    areaMode = !areaMode;
+    hideSelectionMenu();
+  }
+
   function handlePointerDown(event: PointerEvent) {
     if (!areaMode) return;
+    hideSelectionMenu();
     const page = pageFromEventTarget(event.target);
     if (!page) return;
     areaStart = { page, clientX: event.clientX, clientY: event.clientY };
@@ -137,7 +239,11 @@
   }
 
   function handlePointerUp(event: PointerEvent) {
-    if (!areaMode || !areaStart) return;
+    if (!areaMode) {
+      updateSelectionMenu();
+      return;
+    }
+    if (!areaStart) return;
     const annotation = createAreaAnnotationFromDrag({
       page: areaStart.page,
       start: areaStart,
@@ -151,24 +257,40 @@
   }
 
   function createTextAnnotation() {
-    const annotation = createTextAnnotationFromSelection({
-      root: container,
-      selection: window.getSelection(),
-      now: nowIso(),
-      id: annotationId("text"),
-    });
+    const annotation = textAnnotationFromCurrentSelection();
     if (!annotation) {
       error = "Select text on a single PDF page before annotating.";
+      hideSelectionMenu();
       return;
     }
+    hideSelectionMenu();
+    void persistAnnotation(annotation);
+  }
+
+  function createFloatingTextAnnotation() {
+    const annotation = selectionMenu?.annotation;
+    if (!annotation) {
+      createTextAnnotation();
+      return;
+    }
+    hideSelectionMenu();
     void persistAnnotation(annotation);
   }
 
   onMount(() => {
+    document.addEventListener("selectionchange", handleDocumentSelectionChange);
+    document.addEventListener("pointerdown", handleDocumentPointerDown);
+    document.addEventListener("keydown", handleDocumentKeydown);
     void loadPdf();
   });
 
   onDestroy(() => {
+    document.removeEventListener(
+      "selectionchange",
+      handleDocumentSelectionChange,
+    );
+    document.removeEventListener("pointerdown", handleDocumentPointerDown);
+    document.removeEventListener("keydown", handleDocumentKeydown);
     cancelled = true;
     cleanup?.();
     cleanup = null;
@@ -181,7 +303,7 @@
       type="button"
       data-testid="area-annotation-mode"
       class:active={areaMode}
-      onclick={() => (areaMode = !areaMode)}
+      onclick={toggleAreaMode}
     >
       Area annotate
     </button>
@@ -208,16 +330,40 @@
     class:area-mode={areaMode}
     data-testid="pdf-pages"
     role="application"
+    tabindex="-1"
     aria-label="PDF pages and annotation surface"
     onpointerdown={handlePointerDown}
     onpointerup={handlePointerUp}
   ></div>
+  {#if selectionMenu}
+    <button
+      type="button"
+      class="pdf-selection-menu"
+      data-testid="floating-text-annotation"
+      style:left={`${selectionMenu.x}px`}
+      style:top={`${selectionMenu.y}px`}
+      onpointerdown={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      onclick={(event) => {
+        event.stopPropagation();
+        createFloatingTextAnnotation();
+      }}
+    >
+      Annotate
+    </button>
+  {/if}
 </section>
 
 <style>
   .pdf-preview {
     box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
     width: 100%;
+    height: 100%;
+    min-height: 0;
   }
 
   .annotation-toolbar {
@@ -261,10 +407,27 @@
 
   .pdf-pages {
     display: flex;
+    flex: 1 1 auto;
     flex-direction: column;
     align-items: center;
     gap: var(--space-5, 24px);
+    min-height: 0;
+    padding: var(--space-4, 16px);
     overflow: auto;
+  }
+
+  .pdf-selection-menu {
+    position: fixed;
+    z-index: 50;
+    transform: translate(-50%, -100%);
+    min-height: 32px;
+    padding: 0 var(--space-3, 12px);
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    color: var(--bg);
+    background: var(--accent);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
   }
 
   .pdf-pages.area-mode {

@@ -265,6 +265,201 @@ describe("PdfViewer", () => {
     unmount(component);
   });
 
+  it("shows a floating annotate button near selected PDF text and saves from it", async () => {
+    mockApi();
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(PdfViewer, {
+      target,
+      props: { vault: "taeho", path: "reports/report.pdf" },
+    });
+
+    await waitFor(() => {
+      expect(target.querySelector(".pdf-page")).not.toBeNull();
+    });
+    vi.spyOn(window, "getSelection").mockReturnValue({
+      toString: () => "floating selected words",
+      rangeCount: 1,
+      isCollapsed: false,
+      getRangeAt: () => ({
+        getClientRects: () => [
+          {
+            left: 120,
+            top: 90,
+            right: 160,
+            bottom: 110,
+            width: 40,
+            height: 20,
+          },
+        ],
+      }),
+    } as unknown as Selection);
+
+    target
+      .querySelector<HTMLElement>(".pdf-page")
+      ?.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
+
+    await waitFor(() => {
+      const button = target.querySelector<HTMLButtonElement>(
+        '[data-testid="floating-text-annotation"]',
+      );
+      expect(button).not.toBeNull();
+      expect(button?.style.left).toBe("140px");
+      expect(button?.style.top).toBe("82px");
+    });
+
+    target
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="floating-text-annotation"]',
+      )
+      ?.click();
+
+    await waitFor(() => {
+      const putCall = vi
+        .mocked(apiClient)
+        .mock.calls.find(
+          ([url, options]) =>
+            String(url).includes("/data-annotations/") &&
+            options?.method === "PUT",
+        );
+      expect(putCall).toBeDefined();
+      const saved = JSON.parse(String(putCall?.[1]?.body));
+      expect(saved.annotations[0]).toMatchObject({
+        type: "text",
+        quote: "floating selected words",
+        rects: [{ page: 1, x: 0.1, y: 0.1, width: 0.2, height: 0.05 }],
+      });
+    });
+    expect(
+      target.querySelector('[data-testid="floating-text-annotation"]'),
+    ).toBeNull();
+
+    unmount(component);
+  });
+
+  it("saves the floating text annotation even if the browser clears selection before click", async () => {
+    mockApi();
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(PdfViewer, {
+      target,
+      props: { vault: "taeho", path: "reports/report.pdf" },
+    });
+
+    await waitFor(() => {
+      expect(target.querySelector(".pdf-page")).not.toBeNull();
+    });
+    const selectionSpy = vi.spyOn(window, "getSelection");
+    selectionSpy.mockReturnValue({
+      toString: () => "selection that will collapse",
+      rangeCount: 1,
+      isCollapsed: false,
+      getRangeAt: () => ({
+        getClientRects: () => [
+          {
+            left: 120,
+            top: 90,
+            right: 160,
+            bottom: 110,
+            width: 40,
+            height: 20,
+          },
+        ],
+      }),
+    } as unknown as Selection);
+
+    target
+      .querySelector<HTMLElement>(".pdf-page")
+      ?.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
+
+    await waitFor(() => {
+      expect(
+        target.querySelector<HTMLButtonElement>(
+          '[data-testid="floating-text-annotation"]',
+        ),
+      ).not.toBeNull();
+    });
+
+    selectionSpy.mockReturnValue({
+      toString: () => "",
+      rangeCount: 0,
+      isCollapsed: true,
+    } as unknown as Selection);
+    const button = target.querySelector<HTMLButtonElement>(
+      '[data-testid="floating-text-annotation"]',
+    )!;
+    const pointerDown = new MouseEvent("pointerdown", {
+      bubbles: true,
+      cancelable: true,
+    });
+    button.dispatchEvent(pointerDown);
+    expect(pointerDown.defaultPrevented).toBe(true);
+    button.click();
+
+    await waitFor(() => {
+      const putCall = vi
+        .mocked(apiClient)
+        .mock.calls.find(
+          ([url, options]) =>
+            String(url).includes("/data-annotations/") &&
+            options?.method === "PUT",
+        );
+      expect(putCall).toBeDefined();
+      const saved = JSON.parse(String(putCall?.[1]?.body));
+      expect(saved.annotations[0]).toMatchObject({
+        type: "text",
+        quote: "selection that will collapse",
+        rects: [{ page: 1, x: 0.1, y: 0.1, width: 0.2, height: 0.05 }],
+      });
+    });
+
+    unmount(component);
+  });
+
+  it("does not show the text-selection floating button while area annotation mode is active", async () => {
+    mockApi();
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(PdfViewer, {
+      target,
+      props: { vault: "taeho", path: "reports/report.pdf" },
+    });
+
+    await waitFor(() => {
+      expect(target.querySelector(".pdf-page")).not.toBeNull();
+    });
+    vi.spyOn(window, "getSelection").mockReturnValue({
+      toString: () => "selected words",
+      rangeCount: 1,
+      isCollapsed: false,
+      getRangeAt: () => ({
+        getClientRects: () => [
+          {
+            left: 120,
+            top: 90,
+            right: 160,
+            bottom: 110,
+            width: 40,
+            height: 20,
+          },
+        ],
+      }),
+    } as unknown as Selection);
+    target
+      .querySelector<HTMLButtonElement>('[data-testid="area-annotation-mode"]')
+      ?.click();
+    target
+      .querySelector<HTMLElement>(".pdf-page")
+      ?.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
+    await tick();
+
+    expect(
+      target.querySelector('[data-testid="floating-text-annotation"]'),
+    ).toBeNull();
+
+    unmount(component);
+  });
+
   it("shows an error when the PDF fetch fails", async () => {
     vi.mocked(apiClient).mockResolvedValue(
       new Response("nope", { status: 404 }),
