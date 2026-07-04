@@ -108,13 +108,148 @@ describe("PdfViewer", () => {
       "/api/v1/vault/taeho/data-annotations/reports/report.pdf",
       expect.objectContaining({ method: "GET" }),
     );
-    const [container, buffer] = vi.mocked(renderPdfIntoContainer).mock.calls[0];
+    const [container, buffer, options] = vi.mocked(renderPdfIntoContainer).mock
+      .calls[0];
     expect(container).toBeInstanceOf(HTMLDivElement);
     expect(buffer).toBeInstanceOf(ArrayBuffer);
+    expect(options).toMatchObject({ scale: 1.25 });
     expect(Array.from(new Uint8Array(buffer as ArrayBuffer))).toEqual([
       37, 80, 68, 70,
     ]);
     expect(target.querySelector('[data-testid="pdf-preview"]')).not.toBeNull();
+
+    unmount(component);
+  });
+
+  it("still renders the PDF when annotation loading fails", async () => {
+    vi.mocked(apiClient).mockImplementation(async (url, options = {}) => {
+      const method = options.method ?? "GET";
+      if (String(url).includes("/data-annotations/") && method === "GET") {
+        return new Response("annotation service unavailable", { status: 503 });
+      }
+      return new Response(pdfBytes.slice(0), { status: 200 });
+    });
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(PdfViewer, {
+      target,
+      props: { vault: "taeho", path: "reports/report.pdf" },
+    });
+
+    await waitFor(() => {
+      expect(renderPdfIntoContainer).toHaveBeenCalledTimes(1);
+      expect(target.querySelector(".pdf-page")).not.toBeNull();
+    });
+    await waitFor(() => {
+      expect(target.querySelector(".notice.error")?.textContent).toContain(
+        "GET PDF annotations → 503",
+      );
+    });
+
+    unmount(component);
+  });
+
+  it("zooms the rendered PDF without re-fetching bytes and uses fresh buffers", async () => {
+    const firstCleanup = vi.fn();
+    const secondCleanup = vi.fn();
+    vi.mocked(renderPdfIntoContainer).mockImplementation(async (container) => {
+      installOnePage(container);
+      return vi.mocked(renderPdfIntoContainer).mock.calls.length === 1
+        ? firstCleanup
+        : secondCleanup;
+    });
+    mockApi();
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(PdfViewer, {
+      target,
+      props: { vault: "taeho", path: "reports/report.pdf" },
+    });
+
+    await waitFor(() => {
+      expect(renderPdfIntoContainer).toHaveBeenCalledTimes(1);
+    });
+
+    expect(
+      target.querySelector('[data-testid="pdf-zoom-label"]')?.textContent,
+    ).toBe("125%");
+    target
+      .querySelector<HTMLButtonElement>('[data-testid="pdf-zoom-in"]')
+      ?.click();
+
+    await waitFor(() => {
+      expect(renderPdfIntoContainer).toHaveBeenCalledTimes(2);
+    });
+
+    expect(firstCleanup).toHaveBeenCalledTimes(1);
+    expect(secondCleanup).not.toHaveBeenCalled();
+    expect(
+      target.querySelector('[data-testid="pdf-zoom-label"]')?.textContent,
+    ).toBe("150%");
+    expect(vi.mocked(renderPdfIntoContainer).mock.calls[1][2]).toMatchObject({
+      scale: 1.5,
+    });
+    expect(vi.mocked(renderPdfIntoContainer).mock.calls[0][1]).not.toBe(
+      vi.mocked(renderPdfIntoContainer).mock.calls[1][1],
+    );
+    const pdfFetches = vi
+      .mocked(apiClient)
+      .mock.calls.filter(
+        ([url, options]) =>
+          String(url).endsWith("/data/reports/report.pdf") &&
+          options?.method === "GET",
+      );
+    expect(pdfFetches).toHaveLength(1);
+
+    unmount(component);
+    expect(secondCleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it("clamps zoom controls and can reset to the default scale", async () => {
+    mockApi();
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(PdfViewer, {
+      target,
+      props: { vault: "taeho", path: "reports/report.pdf" },
+    });
+
+    await waitFor(() => {
+      expect(renderPdfIntoContainer).toHaveBeenCalledTimes(1);
+    });
+    const zoomOut = target.querySelector<HTMLButtonElement>(
+      '[data-testid="pdf-zoom-out"]',
+    )!;
+    const zoomIn = target.querySelector<HTMLButtonElement>(
+      '[data-testid="pdf-zoom-in"]',
+    )!;
+    const reset = target.querySelector<HTMLButtonElement>(
+      '[data-testid="pdf-zoom-reset"]',
+    )!;
+    expect(reset.getAttribute("aria-label")).toBe("Reset zoom");
+
+    for (let i = 0; i < 10; i += 1) zoomOut.click();
+    await waitFor(() => {
+      expect(
+        target.querySelector('[data-testid="pdf-zoom-label"]')?.textContent,
+      ).toBe("75%");
+    });
+    expect(zoomOut.disabled).toBe(true);
+
+    for (let i = 0; i < 20; i += 1) zoomIn.click();
+    await waitFor(() => {
+      expect(
+        target.querySelector('[data-testid="pdf-zoom-label"]')?.textContent,
+      ).toBe("300%");
+    });
+    expect(zoomIn.disabled).toBe(true);
+
+    reset.click();
+    await waitFor(() => {
+      expect(
+        target.querySelector('[data-testid="pdf-zoom-label"]')?.textContent,
+      ).toBe("125%");
+    });
 
     unmount(component);
   });
@@ -151,6 +286,57 @@ describe("PdfViewer", () => {
         .querySelector(".pdf-annotation-overlay")
         ?.getAttribute("data-annotation-id"),
     ).toBe("area-1");
+
+    unmount(component);
+  });
+
+  it("repaints persisted annotation overlays after zooming", async () => {
+    vi.mocked(renderPdfIntoContainer).mockImplementation(async (container) => {
+      const page = installOnePage(container);
+      return () => page.remove();
+    });
+    mockApi({
+      version: 1,
+      source_path: "reports/report.pdf",
+      annotations: [
+        {
+          id: "area-zoom-1",
+          type: "area",
+          rects: [{ page: 1, x: 0.1, y: 0.2, width: 0.3, height: 0.4 }],
+          comment: "",
+          created_at: "2026-06-29T08:00:00Z",
+          updated_at: "2026-06-29T08:00:00Z",
+        },
+      ],
+    });
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(PdfViewer, {
+      target,
+      props: { vault: "taeho", path: "reports/report.pdf" },
+    });
+
+    await waitFor(() => {
+      expect(target.querySelectorAll(".pdf-annotation-overlay")).toHaveLength(
+        1,
+      );
+    });
+    target
+      .querySelector<HTMLButtonElement>('[data-testid="pdf-zoom-in"]')
+      ?.click();
+
+    await waitFor(() => {
+      expect(renderPdfIntoContainer).toHaveBeenCalledTimes(2);
+      expect(target.querySelectorAll(".pdf-page")).toHaveLength(1);
+      expect(target.querySelectorAll(".pdf-annotation-overlay")).toHaveLength(
+        1,
+      );
+      expect(
+        target
+          .querySelector(".pdf-annotation-overlay")
+          ?.getAttribute("data-annotation-id"),
+      ).toBe("area-zoom-1");
+    });
 
     unmount(component);
   });

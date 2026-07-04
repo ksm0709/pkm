@@ -20,6 +20,11 @@
 
   let { vault, path }: { vault: string; path: string } = $props();
 
+  const DEFAULT_ZOOM = 1.25;
+  const MIN_ZOOM = 0.75;
+  const MAX_ZOOM = 3;
+  const ZOOM_STEP = 0.25;
+
   let container: HTMLDivElement;
   let loading = $state(false);
   let saving = $state(false);
@@ -31,7 +36,11 @@
     annotation: PdfAnnotation;
   } | null>(null);
   let annotationDoc = $state<PdfAnnotationDocument | null>(null);
+  let pdfBytes = $state<Uint8Array | null>(null);
+  let zoomScale = $state(DEFAULT_ZOOM);
   let cleanup: PdfRenderCleanup | null = null;
+  let renderAbortController: AbortController | null = null;
+  let renderToken = 0;
   let cancelled = false;
   let areaStart: {
     page: HTMLElement;
@@ -79,6 +88,62 @@
     }
   }
 
+  function zoomLabel() {
+    return `${Math.round(zoomScale * 100)}%`;
+  }
+
+  function clampZoom(value: number) {
+    return Math.min(Math.max(value, MIN_ZOOM), MAX_ZOOM);
+  }
+
+  function freshPdfBuffer() {
+    return pdfBytes ? pdfBytes.slice().buffer : null;
+  }
+
+  function isAbortError(error: unknown) {
+    return error instanceof DOMException && error.name === "AbortError";
+  }
+
+  async function renderCurrentPdf() {
+    if (!container) return;
+    const buffer = freshPdfBuffer();
+    if (!buffer) return;
+    const token = ++renderToken;
+    renderAbortController?.abort();
+    const controller = new AbortController();
+    renderAbortController = controller;
+    hideSelectionMenu();
+    areaStart = null;
+    cleanup?.();
+    cleanup = null;
+    try {
+      const nextCleanup = await renderPdfIntoContainer(container, buffer, {
+        scale: zoomScale,
+        signal: controller.signal,
+      });
+      if (cancelled || token !== renderToken || controller.signal.aborted) {
+        nextCleanup();
+        return;
+      }
+      cleanup = nextCleanup;
+      paintAnnotationOverlays();
+    } catch (err) {
+      if (isAbortError(err) || token !== renderToken) return;
+      error = err instanceof Error ? err.message : "Failed to render PDF";
+    }
+  }
+
+  function setZoom(nextZoom: number) {
+    const next = clampZoom(nextZoom);
+    if (next === zoomScale) return;
+    zoomScale = next;
+    void renderCurrentPdf();
+  }
+
+  function resetZoom() {
+    setZoom(DEFAULT_ZOOM);
+  }
+
   async function persistAnnotation(annotation: PdfAnnotation) {
     const current = annotationDoc ?? emptyAnnotationDoc();
     const next: PdfAnnotationDocument = {
@@ -103,7 +168,9 @@
     if (!vault || !path || !container) return;
     loading = true;
     error = "";
+    pdfBytes = null;
     annotationDoc = null;
+    renderAbortController?.abort();
     cleanup?.();
     cleanup = null;
 
@@ -115,10 +182,20 @@
       if (!response.ok) throw new Error(`GET PDF → ${response.status}`);
       const buffer = await response.arrayBuffer();
       if (cancelled) return;
-      cleanup = await renderPdfIntoContainer(container, buffer);
+      pdfBytes = new Uint8Array(buffer);
+      await renderCurrentPdf();
       if (cancelled) return;
-      annotationDoc = await loadDataAnnotations(vault, path);
-      paintAnnotationOverlays();
+      try {
+        annotationDoc = await loadDataAnnotations(vault, path);
+        if (!cancelled) paintAnnotationOverlays();
+      } catch (annotationError) {
+        if (cancelled) return;
+        annotationDoc = emptyAnnotationDoc();
+        error =
+          annotationError instanceof Error
+            ? annotationError.message
+            : "Failed to load PDF annotations";
+      }
     } catch (err) {
       if (cancelled) return;
       error = err instanceof Error ? err.message : "Failed to load PDF";
@@ -292,6 +369,7 @@
     document.removeEventListener("pointerdown", handleDocumentPointerDown);
     document.removeEventListener("keydown", handleDocumentKeydown);
     cancelled = true;
+    renderAbortController?.abort();
     cleanup?.();
     cleanup = null;
   });
@@ -299,6 +377,36 @@
 
 <section class="pdf-preview" data-testid="pdf-preview" aria-label="PDF preview">
   <div class="annotation-toolbar" aria-label="PDF annotation tools">
+    <div class="zoom-toolbar" aria-label="PDF zoom controls">
+      <button
+        type="button"
+        data-testid="pdf-zoom-out"
+        disabled={zoomScale <= MIN_ZOOM}
+        onclick={() => setZoom(zoomScale - ZOOM_STEP)}
+        aria-label="Zoom out"
+      >
+        −
+      </button>
+      <span class="zoom-label" data-testid="pdf-zoom-label">{zoomLabel()}</span>
+      <button
+        type="button"
+        data-testid="pdf-zoom-in"
+        disabled={zoomScale >= MAX_ZOOM}
+        onclick={() => setZoom(zoomScale + ZOOM_STEP)}
+        aria-label="Zoom in"
+      >
+        +
+      </button>
+      <button
+        type="button"
+        data-testid="pdf-zoom-reset"
+        disabled={zoomScale === DEFAULT_ZOOM}
+        onclick={resetZoom}
+        aria-label="Reset zoom"
+      >
+        Reset
+      </button>
+    </div>
     <button
       type="button"
       data-testid="area-annotation-mode"
@@ -374,6 +482,22 @@
     margin: 0 0 var(--space-3, 12px);
   }
 
+  .zoom-toolbar {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1, 4px);
+    padding-right: var(--space-2, 8px);
+    border-right: 1px solid var(--border);
+  }
+
+  .zoom-label {
+    min-width: 46px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    text-align: center;
+  }
+
   .annotation-toolbar button {
     min-height: 32px;
     padding: 0 var(--space-3, 12px);
@@ -388,6 +512,11 @@
     border-color: var(--accent);
     color: var(--bg);
     background: var(--accent);
+  }
+
+  .annotation-toolbar button:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
   }
 
   .saving,
