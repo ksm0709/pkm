@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.93.0 (2026-07-04)
+
+### Features
+
+- Improve data file preview viewer
+  ([`72e96b9`](https://github.com/ksm0709/pkm/commit/72e96b9ba34d959ebb0fbe24705231350d0229dc))
+
+
 ## v2.92.0 (2026-07-04)
 
 ### Features
