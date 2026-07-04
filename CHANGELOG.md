@@ -2,6 +2,22 @@
 
 <!-- version list -->
 
+## v2.92.0 (2026-07-04)
+
+### Features
+
+- Auto-index stale vaults after daemon idle
+  ([`c57d424`](https://github.com/ksm0709/pkm/commit/c57d4244fd33d6a401cd9fadf4db9ce477346cca))
+
+### Testing
+
+- Align idle checker test with monotonic clock
+  ([`b43e6fa`](https://github.com/ksm0709/pkm/commit/b43e6faac11fc82b5642e43fb5cad5842d008342))
+
+- Prevent daemon auto-index test hangs
+  ([`af5b087`](https://github.com/ksm0709/pkm/commit/af5b087a6c6e822c7646dcecccace55bde51c2a4))
+
+
 ## v2.91.0 (2026-06-29)
 
 ### Features
