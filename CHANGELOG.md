@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.94.0 (2026-07-04)
+
+### Features
+
+- Add crisp PDF zoom controls
+  ([`4a8fb5d`](https://github.com/ksm0709/pkm/commit/4a8fb5d6422a3204158ba12609f83cdf9d28649f))
+
+
 ## v2.93.0 (2026-07-04)
 
 ### Features
