@@ -162,6 +162,8 @@ async def test_handle_client_index_reload_and_queue_task_paths(
     assert no_vault_writer.json_lines == [{"error": "vault not found"}]
 
     run_calls: list[tuple[str, object]] = []
+    update_calls: list[tuple[VaultConfig, str]] = []
+    scheduled_coroutines = []
 
     class InlineLoop:
         def run_in_executor(self, executor, fn, arg):
@@ -171,15 +173,26 @@ async def test_handle_client_index_reload_and_queue_task_paths(
             future.set_result(None)
             return future
 
+    async def fake_update_index(vault, *, reason):
+        update_calls.append((vault, reason))
+        return {"status": "indexed"}
+
+    def fake_create_task(coro):
+        scheduled_coroutines.append(coro)
+        return SimpleNamespace(cancel=lambda: None)
+
     monkeypatch.setattr(daemon.asyncio, "get_running_loop", lambda: InlineLoop())
+    monkeypatch.setattr(daemon.asyncio, "create_task", fake_create_task)
     monkeypatch.setattr(daemon, "discover_vaults", lambda: {"vault": tmp_vault})
-    monkeypatch.setattr("pkm.search_engine.build_index", lambda vault: None)
+    monkeypatch.setattr(daemon, "_update_index_for_vault", fake_update_index)
     monkeypatch.setattr(daemon, "_reload_vault_caches", lambda vault: None)
 
     update_writer = FakeWriter()
     await daemon.handle_client(FakeReader({"action": "update_index"}), update_writer)
     assert update_writer.json_lines == [{"status": "ok"}]
-    assert run_calls[0][0] == "_bg_update"
+    assert len(scheduled_coroutines) == 1
+    await scheduled_coroutines.pop()
+    assert update_calls == [(tmp_vault, "manual")]
 
     reload_writer = FakeWriter()
     await daemon.handle_client(FakeReader({"action": "RELOAD_INDEX"}), reload_writer)

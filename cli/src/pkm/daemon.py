@@ -23,7 +23,7 @@ from pkm.config import discover_vaults, get_vault
 from pkm.credential_store import agent_credential_env
 from pkm.workflows import WorkflowConfig, load_workflows, jitter_minutes
 from pkm.frontmatter import parse
-from pkm.search_engine import search, _require_transformers
+from pkm.search_engine import is_index_stale, search, _require_transformers
 from pkm.search_service import get_cached_index, resolve_search_vault, run_in_process_search
 
 SOCKET_PATH = Path.home() / ".config" / "pkm" / "daemon.sock"
@@ -32,6 +32,13 @@ LOG_PATH = Path.home() / ".config" / "pkm" / "daemon.log"
 LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 IDLE_TIMEOUT = 3600
 KEEPALIVE_ENV = "PKM_DAEMON_KEEPALIVE"
+AUTO_INDEX_ENABLED_ENV = "PKM_DAEMON_AUTO_INDEX_ENABLED"
+AUTO_INDEX_IDLE_ENV = "PKM_DAEMON_AUTO_INDEX_IDLE_SECONDS"
+AUTO_INDEX_POLL_ENV = "PKM_DAEMON_AUTO_INDEX_POLL_SECONDS"
+AUTO_INDEX_MIN_INTERVAL_ENV = "PKM_DAEMON_AUTO_INDEX_MIN_INTERVAL_SECONDS"
+DEFAULT_AUTO_INDEX_IDLE_SECONDS = 300.0
+DEFAULT_AUTO_INDEX_POLL_SECONDS = 60.0
+DEFAULT_AUTO_INDEX_MIN_INTERVAL_SECONDS = 300.0
 
 logging.basicConfig(
     filename=str(LOG_PATH),
@@ -39,6 +46,14 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 logger = logging.getLogger("pkm.daemon")
+
+_index_build_lock: asyncio.Lock | None = None
+_index_schedule_lock: asyncio.Lock | None = None
+
+
+def _activity_now() -> float:
+    """Return monotonic time for idle accounting."""
+    return time.monotonic()
 
 
 def _web_listen_url(bind: str, port: int) -> str:
@@ -144,11 +159,197 @@ def redact(data: Any) -> Any:
 
 
 class DaemonState:
-    last_activity = time.time()
+    last_activity = _activity_now()
+    active_requests = 0
     graph_ready = False
     shutdown_gate = None  # ShutdownGate | None
     web_runner = None  # aiohttp.web.AppRunner | None
     current_task: Optional[Dict[str, Any]] = None
+    auto_index_last_attempt: dict[str, float] = {}
+    indexing_vaults: set[str] = set()
+
+
+def _bump_activity() -> None:
+    DaemonState.last_activity = _activity_now()
+
+
+def _begin_request() -> None:
+    DaemonState.active_requests = getattr(DaemonState, "active_requests", 0) + 1
+    _bump_activity()
+
+
+def _end_request() -> None:
+    DaemonState.active_requests = max(
+        0, getattr(DaemonState, "active_requests", 0) - 1
+    )
+    _bump_activity()
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
+def _env_float(name: str, default: float, *, minimum: float = 0.0) -> float:
+    try:
+        value = float(os.environ.get(name, ""))
+    except ValueError:
+        return default
+    return value if value >= minimum else default
+
+
+def _auto_index_enabled() -> bool:
+    return _env_bool(AUTO_INDEX_ENABLED_ENV, True)
+
+
+def _auto_index_idle_seconds() -> float:
+    return _env_float(AUTO_INDEX_IDLE_ENV, DEFAULT_AUTO_INDEX_IDLE_SECONDS)
+
+
+def _auto_index_poll_seconds() -> float:
+    return _env_float(AUTO_INDEX_POLL_ENV, DEFAULT_AUTO_INDEX_POLL_SECONDS, minimum=1.0)
+
+
+def _auto_index_min_interval_seconds() -> float:
+    return _env_float(
+        AUTO_INDEX_MIN_INTERVAL_ENV, DEFAULT_AUTO_INDEX_MIN_INTERVAL_SECONDS
+    )
+
+
+def _get_index_build_lock() -> asyncio.Lock:
+    global _index_build_lock
+    if _index_build_lock is None:
+        _index_build_lock = asyncio.Lock()
+    return _index_build_lock
+
+
+def _get_index_schedule_lock() -> asyncio.Lock:
+    global _index_schedule_lock
+    if _index_schedule_lock is None:
+        _index_schedule_lock = asyncio.Lock()
+    return _index_schedule_lock
+
+
+def _latest_indexable_source_mtime(vault) -> float:
+    latest = 0.0
+    for directory in (vault.notes_dir, vault.daily_dir, vault.tags_dir):
+        if not directory.is_dir():
+            continue
+        for md_file in directory.glob("*.md"):
+            try:
+                latest = max(latest, md_file.stat().st_mtime)
+            except OSError:
+                continue
+    return latest
+
+
+def _run_index_update(vault, *, max_passes: int = 2) -> int:
+    """Rebuild a vault index and refresh daemon caches."""
+    from pkm.search_engine import build_index
+
+    result = None
+    for pass_index in range(max_passes):
+        build_started_at = time.time()
+        result = build_index(vault)
+        get_cached_index.cache_clear()
+        get_cached_graph.cache_clear()
+        _reload_vault_caches(vault)
+        if _latest_indexable_source_mtime(vault) <= build_started_at:
+            break
+        logger.info(
+            "Vault '%s' changed during index build pass %d; retrying once.",
+            vault.name,
+            pass_index + 1,
+        )
+    return len(result.entries) if result is not None else 0
+
+
+async def _update_index_for_vault(vault, *, reason: str) -> dict[str, Any]:
+    vault_key = str(vault.path)
+    async with _get_index_schedule_lock():
+        indexing_vaults = getattr(DaemonState, "indexing_vaults", set())
+        if vault_key in indexing_vaults:
+            return {"status": "skipped", "reason": "already-indexing", "vault": vault.name}
+        indexing_vaults.add(vault_key)
+        DaemonState.indexing_vaults = indexing_vaults
+
+    try:
+        async with _get_index_build_lock():
+            if reason.startswith("auto") and not is_index_stale(vault):
+                return {"status": "skipped", "reason": "fresh", "vault": vault.name}
+            loop = asyncio.get_running_loop()
+            count = await loop.run_in_executor(None, _run_index_update, vault)
+            logger.info(
+                "Index updated for vault '%s' via %s (%d entries).",
+                vault.name,
+                reason,
+                count,
+            )
+            return {
+                "status": "indexed",
+                "vault": vault.name,
+                "reason": reason,
+                "count": count,
+            }
+    except Exception as exc:
+        logger.exception(
+            "Failed to update index for vault '%s' via %s", vault.name, reason
+        )
+        return {
+            "status": "error",
+            "vault": vault.name,
+            "reason": reason,
+            "error": str(exc),
+        }
+    finally:
+        async with _get_index_schedule_lock():
+            getattr(DaemonState, "indexing_vaults", set()).discard(vault_key)
+
+
+def _daemon_has_active_work() -> bool:
+    return bool(
+        getattr(DaemonState, "active_requests", 0) > 0
+        or getattr(DaemonState, "current_task", None) is not None
+        or getattr(DaemonState, "indexing_vaults", set())
+    )
+
+
+async def run_auto_index_once(now: float | None = None) -> list[dict[str, Any]]:
+    """Run one idle auto-index pass for stale vaults, if daemon is idle."""
+    if not _auto_index_enabled():
+        return []
+    current = _activity_now() if now is None else now
+    if _daemon_has_active_work():
+        return []
+    if current - getattr(DaemonState, "last_activity", current) < _auto_index_idle_seconds():
+        return []
+
+    results: list[dict[str, Any]] = []
+    min_interval = _auto_index_min_interval_seconds()
+    last_attempts = getattr(DaemonState, "auto_index_last_attempt", {})
+    for vault in discover_vaults().values():
+        vault_key = str(vault.path)
+        previous_attempt = last_attempts.get(vault_key)
+        if previous_attempt is not None and current - previous_attempt < min_interval:
+            continue
+        try:
+            if not is_index_stale(vault):
+                continue
+        except Exception:
+            logger.exception("Failed to check stale index state for vault '%s'", vault.name)
+            continue
+
+        last_attempts[vault_key] = current
+        DaemonState.auto_index_last_attempt = last_attempts
+        results.append(await _update_index_for_vault(vault, reason="auto-idle"))
+    return results
 
 
 @lru_cache(maxsize=4)
@@ -309,7 +510,7 @@ def _decode_worker_stdout_line(line: bytes) -> dict[str, Any] | None:
 
 
 async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-    DaemonState.last_activity = time.time()
+    _begin_request()
     try:
         data = await reader.readline()
         if not data:
@@ -371,21 +572,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                 return
 
             if action == "update_index":
-
-                def _bg_update(v):
-                    from pkm.search_engine import build_index
-
-                    try:
-                        build_index(v)
-                    except Exception:
-                        logger.exception("Failed to build index in background")
-                    finally:
-                        get_cached_index.cache_clear()
-                        get_cached_graph.cache_clear()
-                        _reload_vault_caches(v)
-
-                loop = asyncio.get_running_loop()
-                loop.run_in_executor(None, _bg_update, vault)
+                asyncio.create_task(_update_index_for_vault(vault, reason="manual"))
             else:
                 get_cached_index.cache_clear()
                 get_cached_graph.cache_clear()
@@ -546,7 +733,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
         await writer.drain()
         writer.close()
         await writer.wait_closed()
-        DaemonState.last_activity = time.time()
+        _end_request()
 
 
 async def idle_checker(server: asyncio.Server):
@@ -555,10 +742,23 @@ async def idle_checker(server: asyncio.Server):
         return
     while True:
         await asyncio.sleep(60)
-        if time.time() - DaemonState.last_activity > IDLE_TIMEOUT:
+        if _activity_now() - DaemonState.last_activity > IDLE_TIMEOUT:
             logger.info("Idle timeout reached. Shutting down daemon.")
             server.close()
             break
+
+
+async def auto_index_checker():
+    while True:
+        await asyncio.sleep(_auto_index_poll_seconds())
+        try:
+            results = await run_auto_index_once()
+            for result in results:
+                logger.info("Auto-index result: %s", result)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Idle auto-index check failed")
 
 
 def _idle_timeout_disabled() -> bool:
@@ -861,9 +1061,6 @@ async def async_main():
         from pkm.web.shutdown import ShutdownGate
         import aiohttp.web as _aiohttp_web
 
-        def _bump_activity() -> None:
-            DaemonState.last_activity = time.time()
-
         web_cfg = get_web_config()
         gate = ShutdownGate()
         DaemonState.shutdown_gate = gate
@@ -885,6 +1082,7 @@ async def async_main():
         logger.exception("Failed to start web server — continuing without it")
 
     checker_task = asyncio.create_task(idle_checker(server))
+    auto_index_task = asyncio.create_task(auto_index_checker())
     workflows = load_workflows()
     workflow_tasks = [asyncio.create_task(workflow_checker(wf)) for wf in workflows]
     bg_task = asyncio.create_task(process_background_tasks())
@@ -900,6 +1098,7 @@ async def async_main():
     finally:
         logger.info("Daemon shutting down.")
         checker_task.cancel()
+        auto_index_task.cancel()
         for wt in workflow_tasks:
             wt.cancel()
         bg_task.cancel()

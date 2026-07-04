@@ -18,6 +18,7 @@ import numpy as np
 from pkm.config import VaultConfig, load_config
 from pkm.frontmatter import parse as parse_note
 from pkm.note_summary import note_description
+from pkm.search_engine import atomic_write_json
 from pkm.relations import (
     RelationMarker,
     collect_relation_state,
@@ -521,10 +522,7 @@ def build_enriched_graph(
     )
     data["model"] = "all-MiniLM-L6-v2"
     data["clusters"] = clusters_meta
-    enriched_path.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2, default=_default),
-        encoding="utf-8",
-    )
+    atomic_write_json(enriched_path, data, default=_default, indent=2)
 
 
 def find_surprising_connections(vault: VaultConfig, top_n: int = 20) -> list[dict]:
@@ -854,8 +852,5 @@ def build_ast_and_graph(vault: VaultConfig) -> None:
                     graph.add_edge(tagged_id, tag_note_id, type="uses_tag_note")
 
     graph_data = nx.node_link_data(graph)
-    graph_path.write_text(
-        json.dumps(graph_data, ensure_ascii=False, indent=2, default=_default),
-        encoding="utf-8",
-    )
+    atomic_write_json(graph_path, graph_data, default=_default, indent=2)
     write_relation_outputs(vault, collect_relation_state(vault))

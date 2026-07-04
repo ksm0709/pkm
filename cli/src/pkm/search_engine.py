@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import datetime
+import fcntl
 import json
 import logging
 import os
@@ -81,6 +83,37 @@ class SearchResult:
     related_notes: dict | None = None
 
 
+def _json_default(obj: object) -> str:
+    if isinstance(obj, (datetime.date, datetime.datetime)):
+        return str(obj)
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+
+def atomic_write_json(
+    path: Path,
+    payload: dict[str, Any],
+    *,
+    default: Any | None = None,
+    indent: int | None = None,
+) -> None:
+    """Atomically replace a JSON file so readers never observe partial content."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        tmp_path.write_text(
+            json.dumps(
+                payload,
+                ensure_ascii=False,
+                default=default or _json_default,
+                indent=indent,
+            ),
+            encoding="utf-8",
+        )
+        os.replace(tmp_path, path)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
 def _extract_created_at(
     note_path: Path, frontmatter_data: dict[str, Any]
 ) -> str | None:
@@ -103,10 +136,31 @@ def _parse_indexable_notes(md_files: list[Path]) -> list[Any]:
     return notes
 
 
+@contextlib.contextmanager
+def index_build_lock(vault: VaultConfig):
+    """Serialize full index rebuilds across daemon, CLI, and MCP processes."""
+    vault.pkm_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = vault.pkm_dir / "index.lock"
+    with lock_path.open("w", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
 def build_index(
     vault: VaultConfig, model_name: str = "all-MiniLM-L6-v2"
 ) -> VectorIndex:
     """Build a vector index for all notes and daily notes in the vault."""
+    with index_build_lock(vault):
+        return _build_index_unlocked(vault, model_name=model_name)
+
+
+def _build_index_unlocked(
+    vault: VaultConfig, model_name: str = "all-MiniLM-L6-v2"
+) -> VectorIndex:
+    """Build a vector index without acquiring the cross-process build lock."""
     model = _require_transformers(model_name)
 
     import numpy as np
@@ -233,24 +287,15 @@ def build_index(
         pass
 
     index_path = vault.pkm_dir / "index.json"
-
-    def _default(obj: object) -> str:
-        if isinstance(obj, (datetime.date, datetime.datetime)):
-            return str(obj)
-        raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
-
-    index_path.write_text(
-        json.dumps(
-            {
-                "model": index.model,
-                "created_at": index.created_at,
-                "schema_version": index.schema_version,
-                "entries": [asdict(e) for e in index.entries],
-            },
-            ensure_ascii=False,
-            default=_default,
-        ),
-        encoding="utf-8",
+    atomic_write_json(
+        index_path,
+        {
+            "model": index.model,
+            "created_at": index.created_at,
+            "schema_version": index.schema_version,
+            "entries": [asdict(e) for e in index.entries],
+        },
+        default=_json_default,
     )
 
     # Build enriched graph (semantic_similar edges + Louvain community + centroids).
