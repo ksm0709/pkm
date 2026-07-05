@@ -25,6 +25,8 @@
   const MAX_ZOOM = 3;
   const ZOOM_STEP = 0.25;
 
+  type AnnotationMenuAnchor = { x: number; y: number };
+
   let container: HTMLDivElement;
   let loading = $state(false);
   let saving = $state(false);
@@ -165,28 +167,45 @@
   async function persistAnnotationDocument(
     document: PdfAnnotationDocument,
     fallbackError: string,
+    options: { closeMenuOnSuccess?: boolean } = {},
   ) {
     saving = true;
     error = "";
     try {
-      annotationDoc = await saveDataAnnotations(vault, path, document);
+      const savedDocument = await saveDataAnnotations(vault, path, document);
+      annotationDoc = savedDocument;
       paintAnnotationOverlays();
-      hideAnnotationMenu();
+      if (options.closeMenuOnSuccess ?? true) hideAnnotationMenu();
+      return savedDocument;
     } catch (err) {
       error = err instanceof Error ? err.message : fallbackError;
+      return null;
     } finally {
       saving = false;
     }
   }
 
-  async function persistAnnotation(annotation: PdfAnnotation) {
+  async function persistAnnotation(
+    annotation: PdfAnnotation,
+    options: { openMenuAt?: AnnotationMenuAnchor } = {},
+  ) {
     const current = annotationDoc ?? emptyAnnotationDoc();
     const next: PdfAnnotationDocument = {
       version: 1,
       source_path: path,
       annotations: [...current.annotations, annotation],
     };
-    await persistAnnotationDocument(next, "Failed to save PDF annotation");
+    const savedDocument = await persistAnnotationDocument(
+      next,
+      "Failed to save PDF annotation",
+      { closeMenuOnSuccess: !options.openMenuAt },
+    );
+    const savedAnnotation = savedDocument?.annotations.find(
+      (candidate) => candidate.id === annotation.id,
+    );
+    if (savedAnnotation && options.openMenuAt) {
+      openAnnotationMenuForAnnotation(savedAnnotation, options.openMenuAt);
+    }
   }
 
   function selectedAnnotation() {
@@ -344,6 +363,31 @@
       : null;
   }
 
+  function annotationMenuPosition(anchor: AnnotationMenuAnchor) {
+    const viewportWidth =
+      window.innerWidth || document.documentElement.clientWidth;
+    const viewportHeight =
+      window.innerHeight || document.documentElement.clientHeight;
+    return {
+      x: clamp(anchor.x, 72, Math.max(72, viewportWidth - 72)),
+      y: clamp(anchor.y, 72, Math.max(72, viewportHeight - 8)),
+    };
+  }
+
+  function openAnnotationMenuForAnnotation(
+    annotation: PdfAnnotation,
+    anchor: AnnotationMenuAnchor,
+  ) {
+    const position = annotationMenuPosition(anchor);
+    hideSelectionMenu();
+    annotationDraftComment = annotation.comment ?? "";
+    annotationMenu = {
+      annotationId: annotation.id,
+      x: position.x,
+      y: position.y,
+    };
+  }
+
   function openAnnotationMenuFromOverlay(overlay: HTMLElement) {
     const annotationId = overlay.dataset.annotationId;
     const annotation = annotationDoc?.annotations.find(
@@ -351,21 +395,10 @@
     );
     if (!annotation) return;
     const rect = overlay.getBoundingClientRect();
-    const viewportWidth =
-      window.innerWidth || document.documentElement.clientWidth;
-    const viewportHeight =
-      window.innerHeight || document.documentElement.clientHeight;
-    hideSelectionMenu();
-    annotationDraftComment = annotation.comment ?? "";
-    annotationMenu = {
-      annotationId: annotation.id,
-      x: clamp(
-        rect.left + rect.width / 2,
-        72,
-        Math.max(72, viewportWidth - 72),
-      ),
-      y: clamp(rect.bottom + 8, 72, Math.max(72, viewportHeight - 8)),
-    };
+    openAnnotationMenuForAnnotation(annotation, {
+      x: rect.left + rect.width / 2,
+      y: rect.bottom + 8,
+    });
   }
 
   function requestFrame(callback: () => void) {
@@ -496,13 +529,16 @@
   }
 
   function createFloatingTextAnnotation() {
-    const annotation = selectionMenu?.annotation;
-    if (!annotation) {
+    const menu = selectionMenu;
+    const annotation = menu?.annotation;
+    if (!annotation || !menu) {
       createTextAnnotation();
       return;
     }
     hideSelectionMenu();
-    void persistAnnotation(annotation);
+    void persistAnnotation(annotation, {
+      openMenuAt: { x: menu.x, y: menu.y },
+    });
   }
 
   function scheduleResizeRender() {

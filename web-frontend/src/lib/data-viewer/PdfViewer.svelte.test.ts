@@ -693,6 +693,16 @@ describe("PdfViewer", () => {
     expect(
       target.querySelector('[data-testid="floating-text-annotation"]'),
     ).toBeNull();
+    await waitFor(() => {
+      expect(
+        target.querySelector('[data-testid="pdf-annotation-menu"]'),
+      ).not.toBeNull();
+    });
+    expect(
+      target.querySelector<HTMLTextAreaElement>(
+        '[data-testid="pdf-annotation-comment"]',
+      )?.value,
+    ).toBe("");
 
     unmount(component);
   });
