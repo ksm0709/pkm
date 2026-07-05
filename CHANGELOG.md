@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.94.4 (2026-07-05)
+
+### Bug Fixes
+
+- Simplify PDF annotation UX
+  ([`dd65ebb`](https://github.com/ksm0709/pkm/commit/dd65ebb597982f605b1a3d4200eb986ebc78ce32))
+
+
 ## v2.94.3 (2026-07-05)
 
 ### Bug Fixes
