@@ -938,7 +938,11 @@
   }
 
   .pdf-annotations-panel {
+    box-sizing: border-box;
     display: block;
+    flex: 0 0 auto;
+    position: relative;
+    z-index: 2;
     max-height: min(360px, 45vh);
     margin: 0 0 var(--space-3, 12px);
     padding: var(--space-3, 12px);
@@ -1024,7 +1028,9 @@
 
   .pdf-pages {
     display: flex;
-    flex: 1 1 auto;
+    flex: 1 1 0;
+    position: relative;
+    z-index: 1;
     flex-direction: column;
     align-items: flex-start;
     gap: var(--space-5, 24px);
