@@ -585,14 +585,10 @@
     });
   }
 
-  function handleDocumentAnnotationCardClick(event: MouseEvent) {
-    const action =
-      event.target instanceof Element
-        ? event.target.closest<HTMLButtonElement>(
-            ".pdf-annotations-panel button[data-annotation-id]",
-          )
-        : null;
-    if (!action) return;
+  function handleAnnotationCardAction(
+    action: HTMLButtonElement,
+    event: MouseEvent | PointerEvent,
+  ) {
     const annotationId = action.dataset.annotationId;
     const annotation =
       annotationDoc?.annotations.find(
@@ -601,6 +597,7 @@
     if (!annotation) return;
     event.preventDefault();
     event.stopPropagation();
+    event.stopImmediatePropagation();
     if (action.dataset.annotationAction === "edit") {
       openAnnotationMenuFromCard(annotation, action);
       return;
@@ -608,6 +605,34 @@
     if (action.dataset.annotationAction === "delete") {
       deleteAnnotation(annotation);
     }
+  }
+
+  function handleAnnotationCardPointerDown(event: PointerEvent) {
+    if (event.currentTarget instanceof HTMLButtonElement) {
+      handleAnnotationCardAction(event.currentTarget, event);
+    }
+  }
+
+  function handleDocumentAnnotationCardPointerDown(event: PointerEvent) {
+    const action =
+      event.target instanceof Element
+        ? event.target.closest<HTMLButtonElement>(
+            ".pdf-annotations-panel button[data-annotation-id]",
+          )
+        : null;
+    if (!action) return;
+    handleAnnotationCardAction(action, event);
+  }
+
+  function handleDocumentAnnotationCardClick(event: MouseEvent) {
+    const action =
+      event.target instanceof Element
+        ? event.target.closest<HTMLButtonElement>(
+            ".pdf-annotations-panel button[data-annotation-id]",
+          )
+        : null;
+    if (!action) return;
+    handleAnnotationCardAction(action, event);
   }
 
   function scheduleResizeRender() {
@@ -621,6 +646,11 @@
 
   onMount(() => {
     document.addEventListener("selectionchange", handleDocumentSelectionChange);
+    document.addEventListener(
+      "pointerdown",
+      handleDocumentAnnotationCardPointerDown,
+      true,
+    );
     document.addEventListener("pointerdown", handleDocumentPointerDown);
     document.addEventListener("click", handleDocumentAnnotationCardClick);
     document.addEventListener("keydown", handleDocumentKeydown);
@@ -636,6 +666,11 @@
     document.removeEventListener(
       "selectionchange",
       handleDocumentSelectionChange,
+    );
+    document.removeEventListener(
+      "pointerdown",
+      handleDocumentAnnotationCardPointerDown,
+      true,
     );
     document.removeEventListener("pointerdown", handleDocumentPointerDown);
     document.removeEventListener("click", handleDocumentAnnotationCardClick);
@@ -742,6 +777,7 @@
                   data-annotation-created-at={annotation.created_at}
                   data-annotation-updated-at={annotation.updated_at}
                   data-annotation-action="edit"
+                  onpointerdown={handleAnnotationCardPointerDown}
                 >
                   Edit
                 </button>
@@ -757,6 +793,7 @@
                   data-annotation-created-at={annotation.created_at}
                   data-annotation-updated-at={annotation.updated_at}
                   data-annotation-action="delete"
+                  onpointerdown={handleAnnotationCardPointerDown}
                 >
                   Delete
                 </button>
