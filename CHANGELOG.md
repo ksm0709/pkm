@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.94.3 (2026-07-05)
+
+### Bug Fixes
+
+- Keep zoomed PDF pages horizontally scrollable
+  ([`0720adc`](https://github.com/ksm0709/pkm/commit/0720adc279a32788ca0b13d37e10377e1d731623))
+
+
 ## v2.94.2 (2026-07-05)
 
 ### Bug Fixes
