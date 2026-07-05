@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.94.7 (2026-07-05)
+
+### Bug Fixes
+
+- Keep PDF annotations panel visible
+  ([`12dc519`](https://github.com/ksm0709/pkm/commit/12dc5195b661abba84fba0697289bf284a210712))
+
+
 ## v2.94.6 (2026-07-05)
 
 ### Bug Fixes
