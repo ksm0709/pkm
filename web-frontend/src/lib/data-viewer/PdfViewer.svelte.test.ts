@@ -625,6 +625,80 @@ describe("PdfViewer", () => {
     unmount(component);
   });
 
+  it("keeps the PDF stable when resize fires with the annotations panel open", async () => {
+    mockApi();
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(PdfViewer, {
+      target,
+      props: { vault: "taeho", path: "reports/report.pdf" },
+    });
+
+    await waitFor(() => {
+      expect(renderPdfIntoContainer).toHaveBeenCalledTimes(1);
+    });
+    target
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="pdf-annotations-toggle"]',
+      )
+      ?.click();
+    await waitFor(() => {
+      expect(
+        target.querySelector('[data-testid="pdf-annotations-panel"]'),
+      ).not.toBeNull();
+    });
+
+    window.dispatchEvent(new Event("resize"));
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    await tick();
+
+    expect(renderPdfIntoContainer).toHaveBeenCalledTimes(1);
+    expect(
+      target.querySelector('[data-testid="pdf-annotations-panel"]'),
+    ).not.toBeNull();
+    expect(
+      target
+        .querySelector<HTMLButtonElement>(
+          '[data-testid="pdf-annotations-toggle"]',
+        )
+        ?.classList.contains("active"),
+    ).toBe(true);
+
+    unmount(component);
+  });
+
+  it("cancels a pending resize render when opening the annotations panel", async () => {
+    mockApi();
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(PdfViewer, {
+      target,
+      props: { vault: "taeho", path: "reports/report.pdf" },
+    });
+
+    await waitFor(() => {
+      expect(renderPdfIntoContainer).toHaveBeenCalledTimes(1);
+    });
+    window.dispatchEvent(new Event("resize"));
+    target
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="pdf-annotations-toggle"]',
+      )
+      ?.click();
+    await waitFor(() => {
+      expect(
+        target.querySelector('[data-testid="pdf-annotations-panel"]'),
+      ).not.toBeNull();
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    await tick();
+
+    expect(renderPdfIntoContainer).toHaveBeenCalledTimes(1);
+
+    unmount(component);
+  });
+
   it("opens an unsaved text annotation draft popup from selected PDF text and saves only on Save", async () => {
     mockApi();
     const target = document.createElement("div");

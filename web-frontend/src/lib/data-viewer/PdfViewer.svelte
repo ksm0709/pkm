@@ -541,9 +541,20 @@
     }
   }
 
+  function clearResizeTimer() {
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = null;
+  }
+
   function toggleAnnotationsPanel() {
-    annotationsPanelOpen = !annotationsPanelOpen;
-    if (annotationsPanelOpen) hideAnnotationMenu();
+    const nextOpen = !annotationsPanelOpen;
+    annotationsPanelOpen = nextOpen;
+    if (nextOpen) {
+      clearResizeTimer();
+      hideAnnotationMenu();
+      return;
+    }
+    scheduleResizeRender();
   }
 
   function handlePointerDown(event: PointerEvent) {
@@ -636,10 +647,11 @@
   }
 
   function scheduleResizeRender() {
-    if (!pdfBytes || annotationMenu) return;
-    if (resizeTimer) clearTimeout(resizeTimer);
+    if (!pdfBytes || annotationMenu || annotationsPanelOpen) return;
+    clearResizeTimer();
     resizeTimer = setTimeout(() => {
       resizeTimer = null;
+      if (!pdfBytes || annotationMenu || annotationsPanelOpen) return;
       void renderCurrentPdf();
     }, 80);
   }
