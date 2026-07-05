@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.94.2 (2026-07-05)
+
+### Bug Fixes
+
+- Open PDF annotation editor immediately
+  ([`7bba09e`](https://github.com/ksm0709/pkm/commit/7bba09e3f748d5cda2975b7d8ba566bb64ba6188))
+
+
 ## v2.94.1 (2026-07-05)
 
 ### Bug Fixes
