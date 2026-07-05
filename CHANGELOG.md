@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.94.1 (2026-07-05)
+
+### Bug Fixes
+
+- Improve PDF viewer zoom and annotations
+  ([`5338d1b`](https://github.com/ksm0709/pkm/commit/5338d1b2ea614fd22c001ae1a3e4754a1ae0271d))
+
+
 ## v2.94.0 (2026-07-04)
 
 ### Features
