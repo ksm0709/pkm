@@ -794,7 +794,7 @@
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
-    align-items: center;
+    align-items: flex-start;
     gap: var(--space-5, 24px);
     min-height: 0;
     padding: var(--space-4, 16px);
@@ -877,6 +877,7 @@
 
   .pdf-pages :global(.pdf-page) {
     flex: 0 0 auto;
+    margin-inline: auto;
     outline: 1px solid var(--border);
     background: white;
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
