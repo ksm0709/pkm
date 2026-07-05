@@ -112,7 +112,7 @@ describe("PdfViewer", () => {
       .calls[0];
     expect(container).toBeInstanceOf(HTMLDivElement);
     expect(buffer).toBeInstanceOf(ArrayBuffer);
-    expect(options).toMatchObject({ scale: 1.25 });
+    expect(options).toMatchObject({ scale: 1, fitToContainer: true });
     expect(Array.from(new Uint8Array(buffer as ArrayBuffer))).toEqual([
       37, 80, 68, 70,
     ]);
@@ -172,7 +172,7 @@ describe("PdfViewer", () => {
 
     expect(
       target.querySelector('[data-testid="pdf-zoom-label"]')?.textContent,
-    ).toBe("125%");
+    ).toBe("100%");
     target
       .querySelector<HTMLButtonElement>('[data-testid="pdf-zoom-in"]')
       ?.click();
@@ -185,9 +185,10 @@ describe("PdfViewer", () => {
     expect(secondCleanup).not.toHaveBeenCalled();
     expect(
       target.querySelector('[data-testid="pdf-zoom-label"]')?.textContent,
-    ).toBe("150%");
+    ).toBe("125%");
     expect(vi.mocked(renderPdfIntoContainer).mock.calls[1][2]).toMatchObject({
-      scale: 1.5,
+      scale: 1.25,
+      fitToContainer: true,
     });
     expect(vi.mocked(renderPdfIntoContainer).mock.calls[0][1]).not.toBe(
       vi.mocked(renderPdfIntoContainer).mock.calls[1][1],
@@ -248,7 +249,7 @@ describe("PdfViewer", () => {
     await waitFor(() => {
       expect(
         target.querySelector('[data-testid="pdf-zoom-label"]')?.textContent,
-      ).toBe("125%");
+      ).toBe("100%");
     });
 
     unmount(component);
@@ -286,6 +287,179 @@ describe("PdfViewer", () => {
         .querySelector(".pdf-annotation-overlay")
         ?.getAttribute("data-annotation-id"),
     ).toBe("area-1");
+
+    unmount(component);
+  });
+  it("opens a popup for a persisted annotation and saves an edited comment", async () => {
+    mockApi({
+      version: 1,
+      source_path: "reports/report.pdf",
+      annotations: [
+        {
+          id: "area-edit-1",
+          type: "area",
+          rects: [{ page: 1, x: 0.1, y: 0.2, width: 0.3, height: 0.4 }],
+          comment: "old comment",
+          created_at: "2026-06-29T08:00:00Z",
+          updated_at: "2026-06-29T08:00:00Z",
+        },
+      ],
+    });
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(PdfViewer, {
+      target,
+      props: { vault: "taeho", path: "reports/report.pdf" },
+    });
+
+    await waitFor(() => {
+      expect(target.querySelector(".pdf-annotation-overlay")).not.toBeNull();
+    });
+    target
+      .querySelector<HTMLElement>(".pdf-annotation-overlay")
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    await waitFor(() => {
+      expect(
+        target.querySelector('[data-testid="pdf-annotation-menu"]'),
+      ).not.toBeNull();
+    });
+    const textarea = target.querySelector<HTMLTextAreaElement>(
+      '[data-testid="pdf-annotation-comment"]',
+    )!;
+    expect(textarea.value).toBe("old comment");
+    textarea.value = "updated comment";
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    target
+      .querySelector<HTMLButtonElement>('[data-testid="pdf-annotation-save"]')
+      ?.click();
+
+    await waitFor(() => {
+      const putCall = vi
+        .mocked(apiClient)
+        .mock.calls.find(
+          ([url, options]) =>
+            String(url).includes("/data-annotations/") &&
+            options?.method === "PUT",
+        );
+      expect(putCall).toBeDefined();
+      const saved = JSON.parse(String(putCall?.[1]?.body));
+      expect(saved.annotations[0]).toMatchObject({
+        id: "area-edit-1",
+        comment: "updated comment",
+        created_at: "2026-06-29T08:00:00Z",
+      });
+      expect(saved.annotations[0].updated_at).not.toBe("2026-06-29T08:00:00Z");
+    });
+
+    unmount(component);
+  });
+
+  it("keeps an open annotation popup and draft intact during viewport resize", async () => {
+    mockApi({
+      version: 1,
+      source_path: "reports/report.pdf",
+      annotations: [
+        {
+          id: "area-resize-1",
+          type: "area",
+          rects: [{ page: 1, x: 0.1, y: 0.2, width: 0.3, height: 0.4 }],
+          comment: "before resize",
+          created_at: "2026-06-29T08:00:00Z",
+          updated_at: "2026-06-29T08:00:00Z",
+        },
+      ],
+    });
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(PdfViewer, {
+      target,
+      props: { vault: "taeho", path: "reports/report.pdf" },
+    });
+
+    await waitFor(() => {
+      expect(target.querySelector(".pdf-annotation-overlay")).not.toBeNull();
+    });
+    target
+      .querySelector<HTMLElement>(".pdf-annotation-overlay")
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await waitFor(() => {
+      expect(
+        target.querySelector('[data-testid="pdf-annotation-menu"]'),
+      ).not.toBeNull();
+    });
+    const textarea = target.querySelector<HTMLTextAreaElement>(
+      '[data-testid="pdf-annotation-comment"]',
+    )!;
+    textarea.value = "draft survives resize";
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+
+    window.dispatchEvent(new Event("resize"));
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    await tick();
+
+    expect(renderPdfIntoContainer).toHaveBeenCalledTimes(1);
+    expect(
+      target.querySelector('[data-testid="pdf-annotation-menu"]'),
+    ).not.toBeNull();
+    expect(
+      target.querySelector<HTMLTextAreaElement>(
+        '[data-testid="pdf-annotation-comment"]',
+      )?.value,
+    ).toBe("draft survives resize");
+
+    unmount(component);
+  });
+
+  it("deletes a persisted annotation from its popup", async () => {
+    mockApi({
+      version: 1,
+      source_path: "reports/report.pdf",
+      annotations: [
+        {
+          id: "area-delete-1",
+          type: "area",
+          rects: [{ page: 1, x: 0.1, y: 0.2, width: 0.3, height: 0.4 }],
+          comment: "remove me",
+          created_at: "2026-06-29T08:00:00Z",
+          updated_at: "2026-06-29T08:00:00Z",
+        },
+      ],
+    });
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(PdfViewer, {
+      target,
+      props: { vault: "taeho", path: "reports/report.pdf" },
+    });
+
+    await waitFor(() => {
+      expect(target.querySelector(".pdf-annotation-overlay")).not.toBeNull();
+    });
+    target
+      .querySelector<HTMLElement>(".pdf-annotation-overlay")
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await waitFor(() => {
+      expect(
+        target.querySelector('[data-testid="pdf-annotation-delete"]'),
+      ).not.toBeNull();
+    });
+    target
+      .querySelector<HTMLButtonElement>('[data-testid="pdf-annotation-delete"]')
+      ?.click();
+
+    await waitFor(() => {
+      const putCall = vi
+        .mocked(apiClient)
+        .mock.calls.find(
+          ([url, options]) =>
+            String(url).includes("/data-annotations/") &&
+            options?.method === "PUT",
+        );
+      expect(putCall).toBeDefined();
+      const saved = JSON.parse(String(putCall?.[1]?.body));
+      expect(saved.annotations).toEqual([]);
+    });
 
     unmount(component);
   });
@@ -519,6 +693,49 @@ describe("PdfViewer", () => {
     expect(
       target.querySelector('[data-testid="floating-text-annotation"]'),
     ).toBeNull();
+
+    unmount(component);
+  });
+  it("creates the floating annotate button from selectionchange without a pointerup", async () => {
+    mockApi();
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(PdfViewer, {
+      target,
+      props: { vault: "taeho", path: "reports/report.pdf" },
+    });
+
+    await waitFor(() => {
+      expect(target.querySelector(".pdf-page")).not.toBeNull();
+    });
+    vi.spyOn(window, "getSelection").mockReturnValue({
+      toString: () => "selectionchange selected words",
+      rangeCount: 1,
+      isCollapsed: false,
+      getRangeAt: () => ({
+        getClientRects: () => [
+          {
+            left: 120,
+            top: 90,
+            right: 160,
+            bottom: 110,
+            width: 40,
+            height: 20,
+          },
+        ],
+      }),
+    } as unknown as Selection);
+
+    document.dispatchEvent(new Event("selectionchange"));
+
+    await waitFor(() => {
+      const button = target.querySelector<HTMLButtonElement>(
+        '[data-testid="floating-text-annotation"]',
+      );
+      expect(button).not.toBeNull();
+      expect(button?.style.left).toBe("140px");
+      expect(button?.style.top).toBe("82px");
+    });
 
     unmount(component);
   });

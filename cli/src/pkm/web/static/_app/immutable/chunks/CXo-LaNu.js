@@ -1,2 +1,0 @@
-import{z as w,e as T,r as x,u as A,o as E,A as O,S as Y}from"./B8X4_lHH.js";function n(r,f){return r===f||(r==null?void 0:r[Y])===f}function B(r={},f,i,k){var p=w.r,S=E;return T(()=>{var a,t;return x(()=>{a=t,t=[],A(()=>{r!==i(...t)&&(f(r,...t),a&&n(i(...a),r)&&f(null,...a))})}),()=>{let s=S;for(;s!==p&&s.parent!==null&&s.parent.f&O;)s=s.parent;const h=()=>{t&&n(i(...t),r)&&f(null,...t)},c=s.teardown;s.teardown=()=>{h(),c==null||c()}}}),r}export{B as b};
-//# sourceMappingURL=CXo-LaNu.js.map

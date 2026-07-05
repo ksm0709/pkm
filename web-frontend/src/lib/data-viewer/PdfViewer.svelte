@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount } from "svelte";
+  import { onDestroy, onMount, tick } from "svelte";
   import { apiClient } from "$lib/api/client.js";
   import {
     loadDataAnnotations,
@@ -20,7 +20,7 @@
 
   let { vault, path }: { vault: string; path: string } = $props();
 
-  const DEFAULT_ZOOM = 1.25;
+  const DEFAULT_ZOOM = 1;
   const MIN_ZOOM = 0.75;
   const MAX_ZOOM = 3;
   const ZOOM_STEP = 0.25;
@@ -35,11 +35,20 @@
     y: number;
     annotation: PdfAnnotation;
   } | null>(null);
+  let annotationMenu = $state<{
+    x: number;
+    y: number;
+    annotationId: string;
+  } | null>(null);
+  let annotationDraftComment = $state("");
   let annotationDoc = $state<PdfAnnotationDocument | null>(null);
   let pdfBytes = $state<Uint8Array | null>(null);
   let zoomScale = $state(DEFAULT_ZOOM);
   let cleanup: PdfRenderCleanup | null = null;
   let renderAbortController: AbortController | null = null;
+  let resizeObserver: ResizeObserver | null = null;
+  let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+  let selectionFrame: number | null = null;
   let renderToken = 0;
   let cancelled = false;
   let areaStart: {
@@ -80,6 +89,13 @@
         overlay.className = `pdf-annotation-overlay ${annotation.type}`;
         overlay.dataset.annotationId = annotation.id;
         overlay.dataset.annotationType = annotation.type;
+        overlay.dataset.testid = "pdf-annotation-overlay";
+        overlay.tabIndex = 0;
+        overlay.setAttribute("role", "button");
+        overlay.setAttribute(
+          "aria-label",
+          `Edit ${annotation.type} PDF annotation`,
+        );
         overlay.setAttribute("style", overlayStyleForRect(rect));
         overlay.title =
           annotation.quote || annotation.comment || annotation.type;
@@ -113,12 +129,14 @@
     const controller = new AbortController();
     renderAbortController = controller;
     hideSelectionMenu();
+    hideAnnotationMenu();
     areaStart = null;
     cleanup?.();
     cleanup = null;
     try {
       const nextCleanup = await renderPdfIntoContainer(container, buffer, {
         scale: zoomScale,
+        fitToContainer: true,
         signal: controller.signal,
       });
       if (cancelled || token !== renderToken || controller.signal.aborted) {
@@ -144,6 +162,23 @@
     setZoom(DEFAULT_ZOOM);
   }
 
+  async function persistAnnotationDocument(
+    document: PdfAnnotationDocument,
+    fallbackError: string,
+  ) {
+    saving = true;
+    error = "";
+    try {
+      annotationDoc = await saveDataAnnotations(vault, path, document);
+      paintAnnotationOverlays();
+      hideAnnotationMenu();
+    } catch (err) {
+      error = err instanceof Error ? err.message : fallbackError;
+    } finally {
+      saving = false;
+    }
+  }
+
   async function persistAnnotation(annotation: PdfAnnotation) {
     const current = annotationDoc ?? emptyAnnotationDoc();
     const next: PdfAnnotationDocument = {
@@ -151,17 +186,50 @@
       source_path: path,
       annotations: [...current.annotations, annotation],
     };
-    saving = true;
-    error = "";
-    try {
-      annotationDoc = await saveDataAnnotations(vault, path, next);
-      paintAnnotationOverlays();
-    } catch (err) {
-      error =
-        err instanceof Error ? err.message : "Failed to save PDF annotation";
-    } finally {
-      saving = false;
-    }
+    await persistAnnotationDocument(next, "Failed to save PDF annotation");
+  }
+
+  function selectedAnnotation() {
+    const id = annotationMenu?.annotationId;
+    if (!id) return null;
+    return (
+      annotationDoc?.annotations.find((annotation) => annotation.id === id) ??
+      null
+    );
+  }
+
+  function saveSelectedAnnotationComment() {
+    const selected = selectedAnnotation();
+    if (!selected) return;
+    const current = annotationDoc ?? emptyAnnotationDoc();
+    const next: PdfAnnotationDocument = {
+      version: 1,
+      source_path: path,
+      annotations: current.annotations.map((annotation) =>
+        annotation.id === selected.id
+          ? {
+              ...annotation,
+              comment: annotationDraftComment,
+              updated_at: nowIso(),
+            }
+          : annotation,
+      ),
+    };
+    void persistAnnotationDocument(next, "Failed to update PDF annotation");
+  }
+
+  function deleteSelectedAnnotation() {
+    const selected = selectedAnnotation();
+    if (!selected) return;
+    const current = annotationDoc ?? emptyAnnotationDoc();
+    const next: PdfAnnotationDocument = {
+      version: 1,
+      source_path: path,
+      annotations: current.annotations.filter(
+        (annotation) => annotation.id !== selected.id,
+      ),
+    };
+    void persistAnnotationDocument(next, "Failed to delete PDF annotation");
   }
 
   async function loadPdf() {
@@ -183,6 +251,8 @@
       const buffer = await response.arrayBuffer();
       if (cancelled) return;
       pdfBytes = new Uint8Array(buffer);
+      loading = false;
+      await tick();
       await renderCurrentPdf();
       if (cancelled) return;
       try {
@@ -232,7 +302,7 @@
   }
 
   function selectionAnchorRect() {
-    if (areaMode) return null;
+    if (areaMode || annotationMenu) return null;
     const selection = window.getSelection();
     if (
       !selection ||
@@ -263,6 +333,49 @@
     selectionMenu = null;
   }
 
+  function hideAnnotationMenu() {
+    annotationMenu = null;
+    annotationDraftComment = "";
+  }
+
+  function overlayFromTarget(target: EventTarget | null) {
+    return target instanceof Element
+      ? target.closest<HTMLElement>(".pdf-annotation-overlay")
+      : null;
+  }
+
+  function openAnnotationMenuFromOverlay(overlay: HTMLElement) {
+    const annotationId = overlay.dataset.annotationId;
+    const annotation = annotationDoc?.annotations.find(
+      (candidate) => candidate.id === annotationId,
+    );
+    if (!annotation) return;
+    const rect = overlay.getBoundingClientRect();
+    const viewportWidth =
+      window.innerWidth || document.documentElement.clientWidth;
+    const viewportHeight =
+      window.innerHeight || document.documentElement.clientHeight;
+    hideSelectionMenu();
+    annotationDraftComment = annotation.comment ?? "";
+    annotationMenu = {
+      annotationId: annotation.id,
+      x: clamp(
+        rect.left + rect.width / 2,
+        72,
+        Math.max(72, viewportWidth - 72),
+      ),
+      y: clamp(rect.bottom + 8, 72, Math.max(72, viewportHeight - 8)),
+    };
+  }
+
+  function requestFrame(callback: () => void) {
+    return (window.requestAnimationFrame ?? window.setTimeout)(callback);
+  }
+
+  function cancelFrame(frame: number) {
+    (window.cancelAnimationFrame ?? window.clearTimeout)(frame);
+  }
+
   function updateSelectionMenu() {
     const rect = selectionAnchorRect();
     const annotation = rect ? textAnnotationFromCurrentSelection() : null;
@@ -285,20 +398,36 @@
     };
   }
 
+  function scheduleSelectionMenuUpdate() {
+    if (selectionFrame !== null) cancelFrame(selectionFrame);
+    selectionFrame = requestFrame(() => {
+      selectionFrame = null;
+      updateSelectionMenu();
+    });
+  }
+
   function handleDocumentSelectionChange() {
-    if (!selectionMenu) return;
-    updateSelectionMenu();
+    scheduleSelectionMenuUpdate();
   }
 
   function handleDocumentPointerDown(event: PointerEvent) {
     if (!(event.target instanceof Element)) return;
     if (event.target.closest(".pdf-selection-menu")) return;
-    if (event.target.closest(".pdf-pages")) return;
+    if (event.target.closest(".pdf-annotation-menu")) return;
+    if (event.target.closest(".pdf-annotation-overlay")) return;
+    if (event.target.closest(".pdf-pages")) {
+      hideAnnotationMenu();
+      return;
+    }
     hideSelectionMenu();
+    hideAnnotationMenu();
   }
 
   function handleDocumentKeydown(event: KeyboardEvent) {
-    if (event.key === "Escape") hideSelectionMenu();
+    if (event.key === "Escape") {
+      hideSelectionMenu();
+      hideAnnotationMenu();
+    }
   }
 
   function toggleAreaMode() {
@@ -307,6 +436,10 @@
   }
 
   function handlePointerDown(event: PointerEvent) {
+    if (overlayFromTarget(event.target)) {
+      event.stopPropagation();
+      return;
+    }
     if (!areaMode) return;
     hideSelectionMenu();
     const page = pageFromEventTarget(event.target);
@@ -316,6 +449,7 @@
   }
 
   function handlePointerUp(event: PointerEvent) {
+    if (overlayFromTarget(event.target)) return;
     if (!areaMode) {
       updateSelectionMenu();
       return;
@@ -331,6 +465,23 @@
     areaStart = null;
     if (!annotation) return;
     void persistAnnotation(annotation);
+  }
+
+  function handlePdfPagesClick(event: MouseEvent) {
+    const overlay = overlayFromTarget(event.target);
+    if (!overlay) return;
+    event.preventDefault();
+    event.stopPropagation();
+    openAnnotationMenuFromOverlay(overlay);
+  }
+
+  function handlePdfPagesKeydown(event: KeyboardEvent) {
+    const overlay = overlayFromTarget(event.target);
+    if (!overlay) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    event.stopPropagation();
+    openAnnotationMenuFromOverlay(overlay);
   }
 
   function createTextAnnotation() {
@@ -354,10 +505,24 @@
     void persistAnnotation(annotation);
   }
 
+  function scheduleResizeRender() {
+    if (!pdfBytes || annotationMenu) return;
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      resizeTimer = null;
+      void renderCurrentPdf();
+    }, 80);
+  }
+
   onMount(() => {
     document.addEventListener("selectionchange", handleDocumentSelectionChange);
     document.addEventListener("pointerdown", handleDocumentPointerDown);
     document.addEventListener("keydown", handleDocumentKeydown);
+    window.addEventListener("resize", scheduleResizeRender);
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(scheduleResizeRender);
+      if (container) resizeObserver.observe(container);
+    }
     void loadPdf();
   });
 
@@ -368,6 +533,13 @@
     );
     document.removeEventListener("pointerdown", handleDocumentPointerDown);
     document.removeEventListener("keydown", handleDocumentKeydown);
+    window.removeEventListener("resize", scheduleResizeRender);
+    resizeObserver?.disconnect();
+    resizeObserver = null;
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = null;
+    if (selectionFrame !== null) cancelFrame(selectionFrame);
+    selectionFrame = null;
     cancelled = true;
     renderAbortController?.abort();
     cleanup?.();
@@ -432,6 +604,7 @@
   {#if error}
     <p class="notice error" role="alert">{error}</p>
   {/if}
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div
     bind:this={container}
     class="pdf-pages"
@@ -442,6 +615,8 @@
     aria-label="PDF pages and annotation surface"
     onpointerdown={handlePointerDown}
     onpointerup={handlePointerUp}
+    onclick={handlePdfPagesClick}
+    onkeydown={handlePdfPagesKeydown}
   ></div>
   {#if selectionMenu}
     <button
@@ -461,6 +636,51 @@
     >
       Annotate
     </button>
+  {/if}
+  {#if annotationMenu}
+    <div
+      class="pdf-annotation-menu"
+      data-testid="pdf-annotation-menu"
+      style:left={`${annotationMenu.x}px`}
+      style:top={`${annotationMenu.y}px`}
+      role="dialog"
+      tabindex="-1"
+      aria-label="PDF annotation actions"
+      onpointerdown={(event) => event.stopPropagation()}
+    >
+      <label>
+        Comment
+        <textarea
+          data-testid="pdf-annotation-comment"
+          bind:value={annotationDraftComment}
+          rows="3"
+        ></textarea>
+      </label>
+      <div class="annotation-menu-actions">
+        <button
+          type="button"
+          data-testid="pdf-annotation-save"
+          onclick={saveSelectedAnnotationComment}
+        >
+          Save
+        </button>
+        <button
+          type="button"
+          class="danger"
+          data-testid="pdf-annotation-delete"
+          onclick={deleteSelectedAnnotation}
+        >
+          Delete
+        </button>
+        <button
+          type="button"
+          data-testid="pdf-annotation-cancel"
+          onclick={hideAnnotationMenu}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
   {/if}
 </section>
 
@@ -545,9 +765,14 @@
     overflow: auto;
   }
 
-  .pdf-selection-menu {
+  .pdf-selection-menu,
+  .pdf-annotation-menu {
     position: fixed;
     z-index: 50;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
+  }
+
+  .pdf-selection-menu {
     transform: translate(-50%, -100%);
     min-height: 32px;
     padding: 0 var(--space-3, 12px);
@@ -555,8 +780,59 @@
     border-radius: 999px;
     color: var(--bg);
     background: var(--accent);
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
     cursor: pointer;
+  }
+
+  .pdf-annotation-menu {
+    box-sizing: border-box;
+    transform: translate(-50%, 0);
+    width: min(320px, calc(100vw - 32px));
+    padding: var(--space-3, 12px);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    color: var(--text);
+    background: var(--surface, var(--bg));
+  }
+
+  .pdf-annotation-menu label {
+    display: grid;
+    gap: var(--space-2, 8px);
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  .pdf-annotation-menu textarea {
+    box-sizing: border-box;
+    width: 100%;
+    resize: vertical;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: var(--space-2, 8px);
+    color: var(--text);
+    background: var(--bg);
+    font: inherit;
+  }
+
+  .annotation-menu-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2, 8px);
+    margin-top: var(--space-3, 12px);
+  }
+
+  .annotation-menu-actions button {
+    min-height: 30px;
+    padding: 0 var(--space-3, 12px);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text);
+    background: var(--bg);
+    cursor: pointer;
+  }
+
+  .annotation-menu-actions button.danger {
+    border-color: color-mix(in srgb, #ff5a5f 70%, var(--border));
+    color: #ffb4b4;
   }
 
   .pdf-pages.area-mode {
@@ -565,7 +841,7 @@
 
   .pdf-pages :global(.pdf-page) {
     flex: 0 0 auto;
-    border: 1px solid var(--border);
+    outline: 1px solid var(--border);
     background: white;
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
   }
@@ -583,7 +859,13 @@
     z-index: 5;
     border: 2px solid rgba(255, 193, 7, 0.9);
     background: rgba(255, 235, 59, 0.22);
-    pointer-events: none;
+    pointer-events: auto;
+    cursor: pointer;
+  }
+
+  .pdf-pages :global(.pdf-annotation-overlay:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 
   .pdf-pages :global(.pdf-annotation-overlay.text) {

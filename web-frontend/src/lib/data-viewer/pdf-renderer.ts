@@ -75,6 +75,7 @@ function installPdfJsCollectionPolyfills() {
 
 export interface PdfRenderOptions {
   scale?: number;
+  fitToContainer?: boolean;
   outputScale?: number;
   maxOutputScale?: number;
   signal?: AbortSignal;
@@ -109,6 +110,38 @@ function resolvedOutputScale(options: PdfRenderOptions) {
   return Math.min(Math.max(rawScale, 1), maxOutputScale);
 }
 
+function cssPixels(value: string) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function containerContentSize(container: HTMLElement) {
+  const style = window.getComputedStyle(container);
+  const width =
+    container.clientWidth -
+    cssPixels(style.paddingLeft) -
+    cssPixels(style.paddingRight);
+  const height =
+    container.clientHeight -
+    cssPixels(style.paddingTop) -
+    cssPixels(style.paddingBottom);
+  if (width <= 0 || height <= 0) return null;
+  return { width, height };
+}
+
+function fitScaleForContainer(
+  container: HTMLElement,
+  pages: Array<{ width: number; height: number }>,
+) {
+  const size = containerContentSize(container);
+  if (!size || !pages.length) return 1;
+  const ratios = pages
+    .map((page) => Math.min(size.width / page.width, size.height / page.height))
+    .filter((ratio) => Number.isFinite(ratio) && ratio > 0);
+  if (!ratios.length) return 1;
+  return Math.min(...ratios);
+}
+
 export async function renderPdfIntoContainer(
   container: HTMLElement,
   data: ArrayBuffer,
@@ -125,8 +158,8 @@ export async function renderPdfIntoContainer(
   throwIfAborted(signal);
   clearElement(container);
   const loadingTask = pdfjs.getDocument({ data: data.slice(0) });
-  let pdf: { destroy?: () => Promise<void> | void } | null = null;
-  const scale = options.scale ?? 1.25;
+  let pdf: any = null;
+  const zoomScale = options.scale ?? 1.25;
   const outputScale = resolvedOutputScale(options);
   const renderTasks: Array<{ cancel: () => void }> = [];
   const pageElements: HTMLElement[] = [];
@@ -141,9 +174,23 @@ export async function renderPdfIntoContainer(
     pdf = await loadingTask.promise;
     throwIfAborted(signal);
 
+    const pageRecords = [];
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
       throwIfAborted(signal);
       const page = await pdf.getPage(pageNumber);
+      throwIfAborted(signal);
+      const naturalViewport = page.getViewport({ scale: 1 });
+      pageRecords.push({ pageNumber, page, naturalViewport });
+    }
+    const fitScale = options.fitToContainer
+      ? fitScaleForContainer(
+          container,
+          pageRecords.map(({ naturalViewport }) => naturalViewport),
+        )
+      : 1;
+    const scale = fitScale * zoomScale;
+
+    for (const { pageNumber, page } of pageRecords) {
       throwIfAborted(signal);
       const viewport = page.getViewport({ scale });
       const pageElement = document.createElement("section");

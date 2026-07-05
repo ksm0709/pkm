@@ -104,6 +104,31 @@ describe("renderPdfIntoContainer", () => {
     );
   });
 
+  it("treats 100% fit zoom as the largest scale that keeps the whole page visible", async () => {
+    const container = document.createElement("div");
+    Object.defineProperty(container, "clientWidth", {
+      configurable: true,
+      value: 500,
+    });
+    Object.defineProperty(container, "clientHeight", {
+      configurable: true,
+      value: 900,
+    });
+    container.style.padding = "16px";
+
+    await renderPdfIntoContainer(container, new Uint8Array([1, 2, 3]).buffer, {
+      scale: 1,
+      outputScale: 1,
+      fitToContainer: true,
+    });
+
+    const page = container.querySelector<HTMLElement>(".pdf-page")!;
+    expect(getViewport).toHaveBeenCalledWith({ scale: 1 });
+    expect(getViewport).toHaveBeenCalledWith({ scale: 2.17 });
+    expect(page.style.width).toBe("434px");
+    expect(page.style.height).toBe("868px");
+  });
+
   it("clamps very high devicePixelRatio values to a bounded output scale", async () => {
     Object.defineProperty(window, "devicePixelRatio", {
       configurable: true,
