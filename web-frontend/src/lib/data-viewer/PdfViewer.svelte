@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount, tick } from "svelte";
+  import { flushSync, onDestroy, onMount, tick } from "svelte";
   import { apiClient } from "$lib/api/client.js";
   import {
     loadDataAnnotations,
@@ -8,7 +8,6 @@
     type PdfAnnotationDocument,
   } from "./annotations";
   import {
-    createAreaAnnotationFromDrag,
     createTextAnnotationFromSelection,
     overlayStyleForRect,
   } from "./annotation-geometry";
@@ -31,12 +30,10 @@
   let loading = $state(false);
   let saving = $state(false);
   let error = $state("");
-  let areaMode = $state(false);
-  let selectionMenu = $state<{
-    x: number;
-    y: number;
-    annotation: PdfAnnotation;
-  } | null>(null);
+  let annotationsPanelOpen = $state(false);
+  let draftAnnotation = $state<PdfAnnotation | null>(null);
+  let activeAnnotationSnapshot = $state<PdfAnnotation | null>(null);
+  let lastDraftSignature: string | null = null;
   let annotationMenu = $state<{
     x: number;
     y: number;
@@ -53,11 +50,6 @@
   let selectionFrame: number | null = null;
   let renderToken = 0;
   let cancelled = false;
-  let areaStart: {
-    page: HTMLElement;
-    clientX: number;
-    clientY: number;
-  } | null = null;
 
   function nowIso() {
     return new Date().toISOString();
@@ -72,6 +64,37 @@
 
   function emptyAnnotationDoc(): PdfAnnotationDocument {
     return { version: 1, source_path: path, annotations: [] };
+  }
+
+  function annotationCount() {
+    return annotationDoc?.annotations.length ?? 0;
+  }
+
+  function annotationPageLabel(annotation: PdfAnnotation) {
+    const pages = Array.from(
+      new Set(annotation.rects.map((rect) => rect.page).filter(Boolean)),
+    ).sort((a, b) => a - b);
+    if (!pages.length) return "Page ?";
+    return pages.length === 1
+      ? `Page ${pages[0]}`
+      : `Pages ${pages[0]}-${pages[pages.length - 1]}`;
+  }
+
+  function annotationKindLabel(annotation: PdfAnnotation) {
+    return annotation.type === "text" ? "Text" : "Area";
+  }
+
+  function annotationTimeLabel(annotation: PdfAnnotation) {
+    const raw = annotation.updated_at || annotation.created_at;
+    if (!raw) return "";
+    return raw.replace("T", " ").replace(/\.\d+Z$/, "Z");
+  }
+
+  function annotationSignature(annotation: PdfAnnotation) {
+    return JSON.stringify({
+      quote: annotation.quote ?? "",
+      rects: annotation.rects,
+    });
   }
 
   function paintAnnotationOverlays() {
@@ -91,6 +114,11 @@
         overlay.className = `pdf-annotation-overlay ${annotation.type}`;
         overlay.dataset.annotationId = annotation.id;
         overlay.dataset.annotationType = annotation.type;
+        overlay.dataset.annotationRects = JSON.stringify(annotation.rects);
+        overlay.dataset.annotationQuote = annotation.quote ?? "";
+        overlay.dataset.annotationComment = annotation.comment ?? "";
+        overlay.dataset.annotationCreatedAt = annotation.created_at;
+        overlay.dataset.annotationUpdatedAt = annotation.updated_at;
         overlay.dataset.testid = "pdf-annotation-overlay";
         overlay.tabIndex = 0;
         overlay.setAttribute("role", "button");
@@ -132,7 +160,6 @@
     renderAbortController = controller;
     hideSelectionMenu();
     hideAnnotationMenu();
-    areaStart = null;
     cleanup?.();
     cleanup = null;
     try {
@@ -211,9 +238,17 @@
   function selectedAnnotation() {
     const id = annotationMenu?.annotationId;
     if (!id) return null;
+    if (draftAnnotation?.id === id) return draftAnnotation;
+    if (activeAnnotationSnapshot?.id === id) return activeAnnotationSnapshot;
     return (
       annotationDoc?.annotations.find((annotation) => annotation.id === id) ??
       null
+    );
+  }
+
+  function selectedAnnotationIsDraft() {
+    return Boolean(
+      draftAnnotation && annotationMenu?.annotationId === draftAnnotation.id,
     );
   }
 
@@ -221,34 +256,43 @@
     const selected = selectedAnnotation();
     if (!selected) return;
     const current = annotationDoc ?? emptyAnnotationDoc();
+    const updated = {
+      ...selected,
+      comment: annotationDraftComment,
+      updated_at: nowIso(),
+    };
     const next: PdfAnnotationDocument = {
       version: 1,
       source_path: path,
-      annotations: current.annotations.map((annotation) =>
-        annotation.id === selected.id
-          ? {
-              ...annotation,
-              comment: annotationDraftComment,
-              updated_at: nowIso(),
-            }
-          : annotation,
-      ),
+      annotations: selectedAnnotationIsDraft()
+        ? [...current.annotations, updated]
+        : current.annotations.map((annotation) =>
+            annotation.id === selected.id ? updated : annotation,
+          ),
     };
-    void persistAnnotationDocument(next, "Failed to update PDF annotation");
+    void persistAnnotationDocument(next, "Failed to save PDF annotation");
   }
 
-  function deleteSelectedAnnotation() {
-    const selected = selectedAnnotation();
-    if (!selected) return;
+  function deleteAnnotation(annotation: PdfAnnotation) {
+    if (draftAnnotation?.id === annotation.id) {
+      hideAnnotationMenu();
+      return;
+    }
     const current = annotationDoc ?? emptyAnnotationDoc();
     const next: PdfAnnotationDocument = {
       version: 1,
       source_path: path,
       annotations: current.annotations.filter(
-        (annotation) => annotation.id !== selected.id,
+        (candidate) => candidate.id !== annotation.id,
       ),
     };
     void persistAnnotationDocument(next, "Failed to delete PDF annotation");
+  }
+
+  function deleteSelectedAnnotation() {
+    const selected = selectedAnnotation();
+    if (!selected) return;
+    deleteAnnotation(selected);
   }
 
   async function loadPdf() {
@@ -321,7 +365,7 @@
   }
 
   function selectionAnchorRect() {
-    if (areaMode || annotationMenu) return null;
+    if (annotationMenu) return null;
     const selection = window.getSelection();
     if (
       !selection ||
@@ -349,12 +393,15 @@
   }
 
   function hideSelectionMenu() {
-    selectionMenu = null;
+    lastDraftSignature = null;
   }
 
   function hideAnnotationMenu() {
     annotationMenu = null;
     annotationDraftComment = "";
+    draftAnnotation = null;
+    activeAnnotationSnapshot = null;
+    lastDraftSignature = null;
   }
 
   function overlayFromTarget(target: EventTarget | null) {
@@ -380,19 +427,52 @@
   ) {
     const position = annotationMenuPosition(anchor);
     hideSelectionMenu();
+    activeAnnotationSnapshot = annotation;
     annotationDraftComment = annotation.comment ?? "";
     annotationMenu = {
       annotationId: annotation.id,
       x: position.x,
       y: position.y,
     };
+    flushSync();
+  }
+
+  function annotationFromElement(element: HTMLElement): PdfAnnotation | null {
+    const id = element.dataset.annotationId;
+    const type = element.dataset.annotationType;
+    const createdAt = element.dataset.annotationCreatedAt;
+    const updatedAt = element.dataset.annotationUpdatedAt;
+    if (
+      !id ||
+      (type !== "text" && type !== "area") ||
+      !createdAt ||
+      !updatedAt
+    ) {
+      return null;
+    }
+    try {
+      const rects = JSON.parse(element.dataset.annotationRects ?? "[]");
+      if (!Array.isArray(rects) || rects.length === 0) return null;
+      return {
+        id,
+        type,
+        rects,
+        quote: element.dataset.annotationQuote || undefined,
+        comment: element.dataset.annotationComment ?? "",
+        created_at: createdAt,
+        updated_at: updatedAt,
+      };
+    } catch {
+      return null;
+    }
   }
 
   function openAnnotationMenuFromOverlay(overlay: HTMLElement) {
     const annotationId = overlay.dataset.annotationId;
-    const annotation = annotationDoc?.annotations.find(
-      (candidate) => candidate.id === annotationId,
-    );
+    const annotation =
+      annotationDoc?.annotations.find(
+        (candidate) => candidate.id === annotationId,
+      ) ?? annotationFromElement(overlay);
     if (!annotation) return;
     const rect = overlay.getBoundingClientRect();
     openAnnotationMenuForAnnotation(annotation, {
@@ -413,22 +493,18 @@
     const rect = selectionAnchorRect();
     const annotation = rect ? textAnnotationFromCurrentSelection() : null;
     if (!rect || !annotation) {
-      hideSelectionMenu();
+      lastDraftSignature = null;
       return;
     }
-    const viewportWidth =
-      window.innerWidth || document.documentElement.clientWidth;
-    const viewportHeight =
-      window.innerHeight || document.documentElement.clientHeight;
-    selectionMenu = {
-      x: clamp(
-        rect.left + rect.width / 2,
-        48,
-        Math.max(48, viewportWidth - 48),
-      ),
-      y: clamp(rect.top - 8, 40, Math.max(40, viewportHeight - 8)),
-      annotation,
-    };
+    const signature = annotationSignature(annotation);
+    if (signature === lastDraftSignature) return;
+    lastDraftSignature = signature;
+    draftAnnotation = annotation;
+    annotationsPanelOpen = false;
+    openAnnotationMenuForAnnotation(annotation, {
+      x: rect.left + rect.width / 2,
+      y: rect.bottom + 8,
+    });
   }
 
   function scheduleSelectionMenuUpdate() {
@@ -445,7 +521,8 @@
 
   function handleDocumentPointerDown(event: PointerEvent) {
     if (!(event.target instanceof Element)) return;
-    if (event.target.closest(".pdf-selection-menu")) return;
+    if (event.target.closest(".annotation-toolbar")) return;
+    if (event.target.closest(".pdf-annotations-panel")) return;
     if (event.target.closest(".pdf-annotation-menu")) return;
     if (event.target.closest(".pdf-annotation-overlay")) return;
     if (event.target.closest(".pdf-pages")) {
@@ -460,44 +537,24 @@
     if (event.key === "Escape") {
       hideSelectionMenu();
       hideAnnotationMenu();
+      annotationsPanelOpen = false;
     }
   }
 
-  function toggleAreaMode() {
-    areaMode = !areaMode;
-    hideSelectionMenu();
+  function toggleAnnotationsPanel() {
+    annotationsPanelOpen = !annotationsPanelOpen;
+    if (annotationsPanelOpen) hideAnnotationMenu();
   }
 
   function handlePointerDown(event: PointerEvent) {
     if (overlayFromTarget(event.target)) {
       event.stopPropagation();
-      return;
     }
-    if (!areaMode) return;
-    hideSelectionMenu();
-    const page = pageFromEventTarget(event.target);
-    if (!page) return;
-    areaStart = { page, clientX: event.clientX, clientY: event.clientY };
-    event.preventDefault();
   }
 
   function handlePointerUp(event: PointerEvent) {
     if (overlayFromTarget(event.target)) return;
-    if (!areaMode) {
-      updateSelectionMenu();
-      return;
-    }
-    if (!areaStart) return;
-    const annotation = createAreaAnnotationFromDrag({
-      page: areaStart.page,
-      start: areaStart,
-      end: event,
-      now: nowIso(),
-      id: annotationId("area"),
-    });
-    areaStart = null;
-    if (!annotation) return;
-    void persistAnnotation(annotation);
+    updateSelectionMenu();
   }
 
   function handlePdfPagesClick(event: MouseEvent) {
@@ -517,28 +574,40 @@
     openAnnotationMenuFromOverlay(overlay);
   }
 
-  function createTextAnnotation() {
-    const annotation = textAnnotationFromCurrentSelection();
-    if (!annotation) {
-      error = "Select text on a single PDF page before annotating.";
-      hideSelectionMenu();
-      return;
-    }
-    hideSelectionMenu();
-    void persistAnnotation(annotation);
+  function openAnnotationMenuFromCard(
+    annotation: PdfAnnotation,
+    target: HTMLElement,
+  ) {
+    const rect = target.getBoundingClientRect();
+    openAnnotationMenuForAnnotation(annotation, {
+      x: rect.left + rect.width / 2,
+      y: rect.bottom + 8,
+    });
   }
 
-  function createFloatingTextAnnotation() {
-    const menu = selectionMenu;
-    const annotation = menu?.annotation;
-    if (!annotation || !menu) {
-      createTextAnnotation();
+  function handleDocumentAnnotationCardClick(event: MouseEvent) {
+    const action =
+      event.target instanceof Element
+        ? event.target.closest<HTMLButtonElement>(
+            ".pdf-annotations-panel button[data-annotation-id]",
+          )
+        : null;
+    if (!action) return;
+    const annotationId = action.dataset.annotationId;
+    const annotation =
+      annotationDoc?.annotations.find(
+        (candidate) => candidate.id === annotationId,
+      ) ?? annotationFromElement(action);
+    if (!annotation) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (action.dataset.annotationAction === "edit") {
+      openAnnotationMenuFromCard(annotation, action);
       return;
     }
-    hideSelectionMenu();
-    void persistAnnotation(annotation, {
-      openMenuAt: { x: menu.x, y: menu.y },
-    });
+    if (action.dataset.annotationAction === "delete") {
+      deleteAnnotation(annotation);
+    }
   }
 
   function scheduleResizeRender() {
@@ -553,6 +622,7 @@
   onMount(() => {
     document.addEventListener("selectionchange", handleDocumentSelectionChange);
     document.addEventListener("pointerdown", handleDocumentPointerDown);
+    document.addEventListener("click", handleDocumentAnnotationCardClick);
     document.addEventListener("keydown", handleDocumentKeydown);
     window.addEventListener("resize", scheduleResizeRender);
     if (typeof ResizeObserver !== "undefined") {
@@ -568,6 +638,7 @@
       handleDocumentSelectionChange,
     );
     document.removeEventListener("pointerdown", handleDocumentPointerDown);
+    document.removeEventListener("click", handleDocumentAnnotationCardClick);
     document.removeEventListener("keydown", handleDocumentKeydown);
     window.removeEventListener("resize", scheduleResizeRender);
     resizeObserver?.disconnect();
@@ -617,23 +688,85 @@
     </div>
     <button
       type="button"
-      data-testid="area-annotation-mode"
-      class:active={areaMode}
-      onclick={toggleAreaMode}
+      data-testid="pdf-annotations-toggle"
+      class:active={annotationsPanelOpen}
+      onclick={toggleAnnotationsPanel}
+      aria-expanded={annotationsPanelOpen}
     >
-      Area annotate
-    </button>
-    <button
-      type="button"
-      data-testid="text-annotation"
-      onclick={createTextAnnotation}
-    >
-      Annotate selected text
+      Annotations ({annotationCount()})
     </button>
     {#if saving}
       <span class="saving">Saving…</span>
     {/if}
   </div>
+  {#if annotationsPanelOpen}
+    <div
+      class="pdf-annotations-panel"
+      data-testid="pdf-annotations-panel"
+      role="region"
+      aria-label="PDF annotations"
+      onpointerdown={(event) => event.stopPropagation()}
+    >
+      {#if annotationCount() === 0}
+        <p class="annotations-empty" data-testid="pdf-annotations-empty">
+          No annotations yet. Drag PDF text to add one.
+        </p>
+      {:else}
+        <div class="annotation-card-list">
+          {#each annotationDoc?.annotations ?? [] as annotation (annotation.id)}
+            <article class="annotation-card" data-testid="pdf-annotation-card">
+              <div class="annotation-card-meta">
+                <span>{annotationKindLabel(annotation)}</span>
+                <span>{annotationPageLabel(annotation)}</span>
+                {#if annotationTimeLabel(annotation)}
+                  <span>{annotationTimeLabel(annotation)}</span>
+                {/if}
+              </div>
+              {#if annotation.quote}
+                <blockquote>{annotation.quote}</blockquote>
+              {/if}
+              {#if annotation.comment}
+                <p>{annotation.comment}</p>
+              {:else}
+                <p class="annotation-card-muted">No comment</p>
+              {/if}
+              <div class="annotation-card-actions">
+                <button
+                  type="button"
+                  data-testid="pdf-annotation-card-edit"
+                  data-annotation-id={annotation.id}
+                  data-annotation-type={annotation.type}
+                  data-annotation-rects={JSON.stringify(annotation.rects)}
+                  data-annotation-quote={annotation.quote ?? ""}
+                  data-annotation-comment={annotation.comment ?? ""}
+                  data-annotation-created-at={annotation.created_at}
+                  data-annotation-updated-at={annotation.updated_at}
+                  data-annotation-action="edit"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  class="danger"
+                  data-testid="pdf-annotation-card-delete"
+                  data-annotation-id={annotation.id}
+                  data-annotation-type={annotation.type}
+                  data-annotation-rects={JSON.stringify(annotation.rects)}
+                  data-annotation-quote={annotation.quote ?? ""}
+                  data-annotation-comment={annotation.comment ?? ""}
+                  data-annotation-created-at={annotation.created_at}
+                  data-annotation-updated-at={annotation.updated_at}
+                  data-annotation-action="delete"
+                >
+                  Delete
+                </button>
+              </div>
+            </article>
+          {/each}
+        </div>
+      {/if}
+    </div>
+  {/if}
   {#if loading}
     <p class="notice">Loading PDF…</p>
   {/if}
@@ -644,7 +777,6 @@
   <div
     bind:this={container}
     class="pdf-pages"
-    class:area-mode={areaMode}
     data-testid="pdf-pages"
     role="application"
     tabindex="-1"
@@ -654,25 +786,6 @@
     onclick={handlePdfPagesClick}
     onkeydown={handlePdfPagesKeydown}
   ></div>
-  {#if selectionMenu}
-    <button
-      type="button"
-      class="pdf-selection-menu"
-      data-testid="floating-text-annotation"
-      style:left={`${selectionMenu.x}px`}
-      style:top={`${selectionMenu.y}px`}
-      onpointerdown={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      }}
-      onclick={(event) => {
-        event.stopPropagation();
-        createFloatingTextAnnotation();
-      }}
-    >
-      Annotate
-    </button>
-  {/if}
   {#if annotationMenu}
     <div
       class="pdf-annotation-menu"
@@ -775,6 +888,76 @@
     opacity: 0.45;
   }
 
+  .pdf-annotations-panel {
+    display: block;
+    max-height: min(360px, 45vh);
+    margin: 0 0 var(--space-3, 12px);
+    padding: var(--space-3, 12px);
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface, var(--bg));
+  }
+
+  .annotation-card-list {
+    display: grid;
+    gap: var(--space-3, 12px);
+  }
+
+  .annotation-card {
+    display: grid;
+    gap: var(--space-2, 8px);
+    padding: var(--space-3, 12px);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg);
+  }
+
+  .annotation-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2, 8px);
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+
+  .annotation-card blockquote,
+  .annotation-card p {
+    margin: 0;
+  }
+
+  .annotation-card blockquote {
+    padding-left: var(--space-2, 8px);
+    border-left: 3px solid rgba(255, 235, 59, 0.7);
+    color: var(--text);
+  }
+
+  .annotation-card-muted,
+  .annotations-empty {
+    color: var(--text-muted);
+  }
+
+  .annotation-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2, 8px);
+  }
+
+  .annotation-card-actions button {
+    min-height: 28px;
+    padding: 0 var(--space-3, 12px);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text);
+    background: var(--surface, transparent);
+    cursor: pointer;
+  }
+
+  .annotation-card-actions button.danger {
+    border-color: color-mix(in srgb, #ff5a5f 70%, var(--border));
+    color: #ffb4b4;
+  }
+
   .saving,
   .notice {
     margin: 0 0 var(--space-3, 12px);
@@ -801,22 +984,10 @@
     overflow: auto;
   }
 
-  .pdf-selection-menu,
   .pdf-annotation-menu {
     position: fixed;
     z-index: 50;
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
-  }
-
-  .pdf-selection-menu {
-    transform: translate(-50%, -100%);
-    min-height: 32px;
-    padding: 0 var(--space-3, 12px);
-    border: 1px solid var(--accent);
-    border-radius: 999px;
-    color: var(--bg);
-    background: var(--accent);
-    cursor: pointer;
   }
 
   .pdf-annotation-menu {
@@ -869,10 +1040,6 @@
   .annotation-menu-actions button.danger {
     border-color: color-mix(in srgb, #ff5a5f 70%, var(--border));
     color: #ffb4b4;
-  }
-
-  .pdf-pages.area-mode {
-    cursor: crosshair;
   }
 
   .pdf-pages :global(.pdf-page) {
