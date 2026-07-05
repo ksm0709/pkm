@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.94.6 (2026-07-05)
+
+### Bug Fixes
+
+- Stabilize PDF annotations panel
+  ([`97f8a40`](https://github.com/ksm0709/pkm/commit/97f8a40e1d1895270ca66cfdb91094255d812b07))
+
+
 ## v2.94.5 (2026-07-05)
 
 ### Bug Fixes
