@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.94.5 (2026-07-05)
+
+### Bug Fixes
+
+- Stabilize PDF annotation card actions
+  ([`686bed1`](https://github.com/ksm0709/pkm/commit/686bed10d824bbfb6e40b4ef74c8dfec07d537d5))
+
+
 ## v2.94.4 (2026-07-05)
 
 ### Bug Fixes
