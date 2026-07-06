@@ -53,6 +53,9 @@
   let resizeObserver: ResizeObserver | null = null;
   let resizeTimer: ReturnType<typeof setTimeout> | null = null;
   let selectionFrame: number | null = null;
+  let renderingPdf = false;
+  let pendingResizeAfterRender = false;
+  let initialRenderComplete = $state(false);
   let renderToken = 0;
   let cancelled = false;
 
@@ -155,11 +158,22 @@
     return error instanceof DOMException && error.name === "AbortError";
   }
 
-  async function renderCurrentPdf() {
+  function queueResizeRenderAfterCurrentRender() {
+    pendingResizeAfterRender = true;
+  }
+
+  async function renderCurrentPdf(
+    reason: "initial" | "zoom" | "resize" = "zoom",
+  ) {
     if (!container) return;
     const buffer = freshPdfBuffer();
     if (!buffer) return;
+    if (reason === "resize" && renderingPdf) {
+      if (initialRenderComplete) queueResizeRenderAfterCurrentRender();
+      return;
+    }
     const token = ++renderToken;
+    renderingPdf = true;
     renderAbortController?.abort();
     const controller = new AbortController();
     renderAbortController = controller;
@@ -182,6 +196,22 @@
     } catch (err) {
       if (isAbortError(err) || token !== renderToken) return;
       error = err instanceof Error ? err.message : "Failed to render PDF";
+    } finally {
+      if (token === renderToken) {
+        renderingPdf = false;
+        const shouldRenderPendingResize = pendingResizeAfterRender;
+        pendingResizeAfterRender = false;
+        if (
+          shouldRenderPendingResize &&
+          !cancelled &&
+          initialRenderComplete &&
+          pdfBytes &&
+          !annotationMenu &&
+          !annotationsPanelOpen
+        ) {
+          scheduleResizeRender();
+        }
+      }
     }
   }
 
@@ -189,7 +219,7 @@
     const next = clampZoom(nextZoom);
     if (next === zoomScale) return;
     zoomScale = next;
-    void renderCurrentPdf();
+    void renderCurrentPdf("zoom");
   }
 
   function resetZoom() {
@@ -306,6 +336,8 @@
     error = "";
     pdfBytes = null;
     annotationDoc = null;
+    initialRenderComplete = false;
+    pendingResizeAfterRender = false;
     renderAbortController?.abort();
     cleanup?.();
     cleanup = null;
@@ -319,10 +351,11 @@
       const buffer = await response.arrayBuffer();
       if (cancelled) return;
       pdfBytes = new Uint8Array(buffer);
-      loading = false;
       await tick();
-      await renderCurrentPdf();
+      await renderCurrentPdf("initial");
       if (cancelled) return;
+      initialRenderComplete = true;
+      loading = false;
       try {
         annotationDoc = await loadDataAnnotations(vault, path);
         if (!cancelled) paintAnnotationOverlays();
@@ -662,11 +695,19 @@
 
   function scheduleResizeRender() {
     if (!pdfBytes || annotationMenu || annotationsPanelOpen) return;
+    if (renderingPdf) {
+      if (initialRenderComplete) queueResizeRenderAfterCurrentRender();
+      return;
+    }
     clearResizeTimer();
     resizeTimer = setTimeout(() => {
       resizeTimer = null;
       if (!pdfBytes || annotationMenu || annotationsPanelOpen) return;
-      void renderCurrentPdf();
+      if (renderingPdf) {
+        if (initialRenderComplete) queueResizeRenderAfterCurrentRender();
+        return;
+      }
+      void renderCurrentPdf("resize");
     }, 80);
   }
 
@@ -721,7 +762,7 @@
       <button
         type="button"
         data-testid="pdf-zoom-out"
-        disabled={zoomScale <= MIN_ZOOM}
+        disabled={loading || zoomScale <= MIN_ZOOM}
         onclick={() => setZoom(zoomScale - ZOOM_STEP)}
         aria-label="Zoom out"
       >
@@ -731,7 +772,7 @@
       <button
         type="button"
         data-testid="pdf-zoom-in"
-        disabled={zoomScale >= MAX_ZOOM}
+        disabled={loading || zoomScale >= MAX_ZOOM}
         onclick={() => setZoom(zoomScale + ZOOM_STEP)}
         aria-label="Zoom in"
       >
@@ -740,7 +781,7 @@
       <button
         type="button"
         data-testid="pdf-zoom-reset"
-        disabled={zoomScale === DEFAULT_ZOOM}
+        disabled={loading || zoomScale === DEFAULT_ZOOM}
         onclick={resetZoom}
         aria-label="Reset zoom"
       >
@@ -831,7 +872,9 @@
     </div>
   {/if}
   {#if loading}
-    <p class="notice">Loading PDF…</p>
+    <p class="notice pdf-loading-overlay" data-testid="pdf-loading">
+      Loading PDF…
+    </p>
   {/if}
   {#if error}
     <p class="notice error" role="alert">{error}</p>
@@ -840,6 +883,7 @@
   <div
     bind:this={container}
     class="pdf-pages"
+    class:initial-rendering={loading && !initialRenderComplete}
     data-testid="pdf-pages"
     role="application"
     tabindex="-1"
@@ -916,6 +960,7 @@
   .pdf-preview {
     box-sizing: border-box;
     display: flex;
+    position: relative;
     flex-direction: column;
     width: 100%;
     height: 100%;
@@ -1052,6 +1097,20 @@
     font-size: 13px;
   }
 
+  .pdf-loading-overlay {
+    position: absolute;
+    z-index: 20;
+    top: calc(32px + var(--space-3, 12px));
+    right: var(--space-4, 16px);
+    margin: 0;
+    padding: var(--space-2, 8px) var(--space-3, 12px);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface, var(--bg)) 92%, transparent);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.25);
+    pointer-events: none;
+  }
+
   .notice.error {
     color: #ffb4b4;
   }
@@ -1067,6 +1126,10 @@
     min-height: 0;
     padding: var(--space-4, 16px);
     overflow: auto;
+  }
+
+  .pdf-pages.initial-rendering {
+    visibility: hidden;
   }
 
   .pdf-annotation-menu {
