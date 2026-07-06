@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## v2.94.10 (2026-07-06)
+
+### Bug Fixes
+
+- Reveal PDF pages after the first page renders instead of waiting for the full document
+
+
 ## v2.94.9 (2026-07-06)
 
 ### Bug Fixes
