@@ -2,6 +2,18 @@
 
 <!-- version list -->
 
+## v2.94.8 (2026-07-06)
+
+### Features
+
+- Store PDF and note annotations through unified v2 sidecars
+- Show note annotations in the PDF-style annotation card panel
+
+### Bug Fixes
+
+- Show the PDF Annotate action before opening the annotation editor
+
+
 ## v2.94.7 (2026-07-05)
 
 ### Bug Fixes
