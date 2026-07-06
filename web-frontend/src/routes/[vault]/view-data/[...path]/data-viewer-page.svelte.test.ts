@@ -122,11 +122,12 @@ describe("data viewer page", () => {
     const bytes = new Uint8Array([37, 80, 68, 70]).buffer;
     mockPage.set({ params: { vault: "taeho", path: "reports/report.pdf" } });
     vi.mocked(apiClient).mockImplementation(async (url) => {
-      if (String(url).includes("/data-annotations/")) {
+      if (String(url).includes("/annotations/data/")) {
         return new Response(
           JSON.stringify({
-            version: 1,
-            source_path: "reports/report.pdf",
+            version: 2,
+            source_key: "data:reports/report.pdf",
+            source: { kind: "data", path: "reports/report.pdf" },
             annotations: [],
           }),
           { status: 200 },
@@ -157,9 +158,14 @@ describe("data viewer page", () => {
     const bytes = new Uint8Array([37, 80, 68, 70]).buffer;
     mockPage.set({ params: { vault: "taeho", path: "reports/first.pdf" } });
     vi.mocked(apiClient).mockImplementation(async (url) => {
-      if (String(url).includes("/data-annotations/")) {
+      if (String(url).includes("/annotations/data/")) {
         return new Response(
-          JSON.stringify({ version: 1, source_path: "", annotations: [] }),
+          JSON.stringify({
+            version: 2,
+            source_key: "data:reports/first.pdf",
+            source: { kind: "data", path: "reports/first.pdf" },
+            annotations: [],
+          }),
           { status: 200 },
         );
       }
@@ -183,7 +189,7 @@ describe("data viewer page", () => {
       expect.objectContaining({ method: "GET" }),
     );
     expect(apiClient).toHaveBeenCalledWith(
-      "/api/v1/vault/taeho/data-annotations/reports/second.pdf",
+      "/api/v1/vault/taeho/annotations/data/reports/second.pdf",
       expect.objectContaining({ method: "GET" }),
     );
 
@@ -194,11 +200,12 @@ describe("data viewer page", () => {
     const bytes = new Uint8Array([37, 80, 68, 70]).buffer;
     mockPage.set({ params: { vault: "alpha", path: "reports/shared.pdf" } });
     vi.mocked(apiClient).mockImplementation(async (url) => {
-      if (String(url).includes("/data-annotations/")) {
+      if (String(url).includes("/annotations/data/")) {
         return new Response(
           JSON.stringify({
-            version: 1,
-            source_path: "reports/shared.pdf",
+            version: 2,
+            source_key: "data:reports/shared.pdf",
+            source: { kind: "data", path: "reports/shared.pdf" },
             annotations: [],
           }),
           { status: 200 },
@@ -224,7 +231,7 @@ describe("data viewer page", () => {
       expect.objectContaining({ method: "GET" }),
     );
     expect(apiClient).toHaveBeenCalledWith(
-      "/api/v1/vault/beta/data-annotations/reports/shared.pdf",
+      "/api/v1/vault/beta/annotations/data/reports/shared.pdf",
       expect.objectContaining({ method: "GET" }),
     );
 

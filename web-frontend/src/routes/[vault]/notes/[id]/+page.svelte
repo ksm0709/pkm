@@ -59,6 +59,8 @@
   let vaultName = $derived($page.params.vault);
   let noteId = $derived($page.params.id);
   let editorDirty = $derived(editorDoc !== savedDoc);
+  let noteAnnotationsPanelOpen = $state(false);
+  let noteAnnotations = $state<SourceAnnotation[]>([]);
   let loadToken = 0;
   const dailyNoteIdPattern = /^\d{4}-\d{2}-\d{2}$/;
   const taskStateOrder = ["[ ]", "[>]", "[x]", "[~]"] as const;
@@ -258,6 +260,26 @@
     memo: string;
     entryStartLine: number;
     entryEndLine: number;
+  }
+
+  interface NoteAnnotationV2 {
+    id: string;
+    kind: "note";
+    anchor: {
+      kind: "text_quote";
+      quote: string;
+      occurrence: number;
+    };
+    comment: string;
+    created_at: string;
+    updated_at: string;
+  }
+
+  interface NoteAnnotationDocumentV2 {
+    version: 2;
+    source_key: string;
+    source: { kind: "note"; note_id: string };
+    annotations: NoteAnnotationV2[];
   }
 
   interface AnnotationPopup {
@@ -626,7 +648,7 @@
     if (!noteBodyElement || !note?.body || editMode) return false;
 
     annotationSourcesByElement = new WeakMap<HTMLElement, SourceAnnotation[]>();
-    const parsedAnnotations = parseAnnotationsFromBody(note.body);
+    const parsedAnnotations = noteAnnotations;
     const targets = sourceSearchTargets(noteBodyElement);
     const grouped = new Map<string, SourceAnnotation[]>();
     for (const annotation of parsedAnnotations) {
@@ -884,6 +906,126 @@
     return `#quote=${encodedQuote}&occ=${safeOccurrence}`;
   }
 
+  function noteAnnotationsHref(vault: string, id: string) {
+    return `/api/v1/vault/${encodeURIComponent(vault)}/annotations/note/${encodeURIComponent(id)}`;
+  }
+
+  function emptyNoteAnnotationDocument(
+    note_id: string,
+  ): NoteAnnotationDocumentV2 {
+    return {
+      version: 2,
+      source_key: `note:${note_id}`,
+      source: { kind: "note", note_id },
+      annotations: [],
+    };
+  }
+
+  function sourceAnnotationFromV2(
+    annotation: NoteAnnotationV2,
+  ): SourceAnnotation {
+    const sourceHref = annotationSourceHref(
+      annotation.anchor.quote,
+      annotation.anchor.occurrence,
+    );
+    return {
+      id: annotation.id,
+      quote: normalizeAnnotationQuote(annotation.anchor.quote),
+      sourceHref,
+      memo: annotation.comment ?? "",
+      entryStartLine: 0,
+      entryEndLine: 0,
+    };
+  }
+
+  function sourceAnnotationToV2(
+    annotation: SourceAnnotation,
+  ): NoteAnnotationV2 {
+    const parsed = parseAnnotationSourceHash(annotation.sourceHref);
+    return {
+      id: annotation.id,
+      kind: "note",
+      anchor: {
+        kind: "text_quote",
+        quote: parsed?.quote ?? annotation.quote,
+        occurrence: parsed?.occurrence ?? 0,
+      },
+      comment: annotation.memo,
+      created_at: "",
+      updated_at: "",
+    };
+  }
+
+  function noteAnnotationDocumentFromSources(
+    note_id: string,
+    annotations: SourceAnnotation[],
+  ): NoteAnnotationDocumentV2 {
+    const document = emptyNoteAnnotationDocument(note_id);
+    document.annotations = annotations.map(sourceAnnotationToV2);
+    return document;
+  }
+
+  function sourceAnnotationsFromDocument(payload: unknown): SourceAnnotation[] {
+    if (!payload || typeof payload !== "object") return [];
+    const raw = (payload as { annotations?: unknown }).annotations;
+    if (!Array.isArray(raw)) return [];
+    return raw.flatMap((annotation) => {
+      if (!annotation || typeof annotation !== "object") return [];
+      const candidate = annotation as Partial<NoteAnnotationV2>;
+      if (
+        candidate.kind !== "note" ||
+        !candidate.anchor ||
+        candidate.anchor.kind !== "text_quote" ||
+        typeof candidate.anchor.quote !== "string" ||
+        typeof candidate.anchor.occurrence !== "number" ||
+        typeof candidate.id !== "string"
+      ) {
+        return [];
+      }
+      return [sourceAnnotationFromV2(candidate as NoteAnnotationV2)];
+    });
+  }
+
+  async function loadNoteAnnotationSources(vault: string, id: string) {
+    return sourceAnnotationsFromDocument(
+      await apiGet<NoteAnnotationDocumentV2>(noteAnnotationsHref(vault, id)),
+    );
+  }
+
+  async function putNoteAnnotationSources(
+    vault: string,
+    id: string,
+    annotations: SourceAnnotation[],
+  ) {
+    const document = noteAnnotationDocumentFromSources(id, annotations);
+    const response = await apiClient(noteAnnotationsHref(vault, id), {
+      method: "PUT",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(document),
+    });
+    if (!response.ok) throw new Error(`PUT annotation -> ${response.status}`);
+    return sourceAnnotationsFromDocument(await response.json());
+  }
+
+  function selectedAnnotationDraft(
+    quote: string,
+    occurrence: number,
+    memo: string,
+  ): SourceAnnotation {
+    const sourceHref = annotationSourceHref(quote, occurrence);
+    return {
+      id: `note-ann-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
+      quote: normalizeAnnotationQuote(quote),
+      sourceHref,
+      memo,
+      entryStartLine: 0,
+      entryEndLine: 0,
+    };
+  }
+
   function selectedAnnotationInside(
     container: HTMLElement,
   ): SelectedAnnotation | null {
@@ -1008,6 +1150,30 @@
     return true;
   }
 
+  function toggleNoteAnnotationsPanel() {
+    noteAnnotationsPanelOpen = !noteAnnotationsPanelOpen;
+    if (noteAnnotationsPanelOpen) {
+      dismissAnnotateMenu();
+      dismissAnnotationPopup();
+    }
+  }
+
+  function openNoteAnnotationSource(annotation: SourceAnnotation) {
+    dismissAnnotateMenu();
+    dismissAnnotationPopup();
+    scrollToAnnotationSource(annotation.sourceHref);
+  }
+
+  function openNoteAnnotationEditor(annotation: SourceAnnotation) {
+    dismissAnnotateMenu();
+    openEditAnnotation(annotation);
+  }
+
+  async function deleteNoteAnnotationFromPanel(annotation: SourceAnnotation) {
+    dismissAnnotateMenu();
+    await deleteAnnotation(annotation);
+  }
+
   function handleNoteBodyContextMenu(event: MouseEvent) {
     const noteBodyEl = event.currentTarget as HTMLElement;
     const selected = selectedAnnotationInside(noteBodyEl);
@@ -1065,103 +1231,12 @@
   function resetAnnotationState() {
     clearLongPressTimer();
     cancelPersistentAnnotationMarkSchedule();
+    noteAnnotationsPanelOpen = false;
+    noteAnnotations = [];
     annotateMenu = null;
     dismissAnnotationPopup();
     clearPersistentAnnotationMarks();
     closeAnnotateDialog();
-  }
-
-  function listContinuation(value: string) {
-    return value
-      .split(/\r?\n/)
-      .map((line) => line.trimEnd())
-      .join("\n    ");
-  }
-
-  function formatAnnotationMemo(text: string) {
-    return `  - ${listContinuation(text)}`;
-  }
-
-  function appendAnnotationToBody(
-    body: string,
-    quote: string,
-    text: string,
-    occurrence: number,
-  ) {
-    const normalizedQuote = normalizeAnnotationQuote(quote);
-    const wrappedQuote = `“${normalizedQuote}”`;
-    const sourceLink = `[↩ 원문](${annotationSourceHref(normalizedQuote, occurrence)})`;
-    const entry = `- ${wrappedQuote} (${sourceLink})\n${formatAnnotationMemo(text)}`;
-    const existing = (body ?? "").replace(/\s+$/, "");
-    if (/^## Annotations\b/m.test(existing)) {
-      return `${existing}\n${entry}\n`;
-    }
-    const separator = existing.length > 0 ? "\n\n" : "";
-    return `${existing}${separator}## Annotations\n${entry}\n`;
-  }
-
-  function findAnnotationInBody(body: string, annotation: SourceAnnotation) {
-    return parseAnnotationsFromBody(body).find(
-      (candidate) =>
-        candidate.id === annotation.id ||
-        (candidate.entryStartLine === annotation.entryStartLine &&
-          candidate.sourceHref === annotation.sourceHref &&
-          candidate.memo === annotation.memo),
-    );
-  }
-
-  function compactEmptyAnnotationSection(lines: string[]) {
-    const headingIndex = lines.findIndex(
-      (line) => normalizeAnnotationQuote(line) === "## Annotations",
-    );
-    if (headingIndex < 0) return lines;
-    const nextHeadingIndex = lines.findIndex(
-      (line, index) => index > headingIndex && /^#{1,6}\s+/.test(line),
-    );
-    const endIndex = nextHeadingIndex < 0 ? lines.length : nextHeadingIndex;
-    const hasAnnotationEntry = lines
-      .slice(headingIndex + 1, endIndex)
-      .some((line) => /^-\s+/.test(line));
-    if (hasAnnotationEntry) return lines;
-    const compacted = [...lines];
-    compacted.splice(headingIndex, endIndex - headingIndex);
-    while (
-      compacted.length > 0 &&
-      compacted[compacted.length - 1].trim().length === 0
-    ) {
-      compacted.pop();
-    }
-    return compacted;
-  }
-
-  function removeAnnotationFromBody(
-    body: string,
-    annotation: SourceAnnotation,
-  ) {
-    const current = findAnnotationInBody(body, annotation);
-    if (!current) return body;
-    const lines = body.split(/\r?\n/);
-    lines.splice(
-      current.entryStartLine,
-      current.entryEndLine - current.entryStartLine,
-    );
-    return `${compactEmptyAnnotationSection(lines).join("\n").replace(/\s+$/, "")}\n`;
-  }
-
-  function replaceAnnotationMemoInBody(
-    body: string,
-    annotation: SourceAnnotation,
-    text: string,
-  ) {
-    const current = findAnnotationInBody(body, annotation);
-    if (!current) return body;
-    const lines = body.split(/\r?\n/);
-    lines.splice(
-      current.entryStartLine + 1,
-      Math.max(0, current.entryEndLine - current.entryStartLine - 1),
-      ...formatAnnotationMemo(text).split("\n"),
-    );
-    return `${lines.join("\n").replace(/\s+$/, "")}\n`;
   }
 
   function isCurrentAnnotationTarget(
@@ -1194,29 +1269,23 @@
     annotationError = "";
     const targetVault = vaultName;
     const targetNoteId = note.note_id;
-    const encodedNoteId = encodeURIComponent(targetNoteId);
-    const updatedBody = removeAnnotationFromBody(note.body ?? "", annotation);
+    const nextAnnotations = noteAnnotations.filter(
+      (candidate) => candidate.id !== annotation.id,
+    );
 
     try {
-      const response = await apiClient(
-        `/api/v1/vault/${targetVault}/notes/${encodedNoteId}`,
-        {
-          method: "PUT",
-          body: JSON.stringify({ body: updatedBody }),
-        },
+      const savedAnnotations = await putNoteAnnotationSources(
+        targetVault,
+        targetNoteId,
+        nextAnnotations,
       );
-      if (!response.ok) {
-        throw new Error(`PUT annotation delete -> ${response.status}`);
-      }
-      const updatedNote = (await response.json()) as Note;
       if (!isCurrentAnnotationTarget(targetVault, targetNoteId)) return;
-      const body = updatedNote.body ?? updatedBody;
-      note = { ...updatedNote, body };
-      editorDoc = body;
-      savedDoc = body;
+      noteAnnotations = savedAnnotations;
       dismissAnnotationPopup();
       await tick();
-      schedulePersistentAnnotationMarks();
+      if (!applyPersistentAnnotationMarks()) {
+        schedulePersistentAnnotationMarks();
+      }
     } catch (e) {
       if (!isCurrentAnnotationTarget(targetVault, targetNoteId)) return;
       annotationError =
@@ -1242,31 +1311,38 @@
     const shouldLog = !annotateDialog.editingAnnotation && annotationAddToLog;
     const targetVault = vaultName;
     const targetNoteId = note.note_id;
-    const encodedNoteId = encodeURIComponent(targetNoteId);
-    const updatedBody = annotateDialog.editingAnnotation
-      ? replaceAnnotationMemoInBody(
-          note.body ?? "",
-          annotateDialog.editingAnnotation,
-          text,
+    const editingAnnotation = annotateDialog.editingAnnotation;
+    const nextAnnotation = editingAnnotation
+      ? { ...editingAnnotation, memo: text }
+      : selectedAnnotationDraft(quote, occurrence, text);
+    const nextAnnotations = editingAnnotation
+      ? noteAnnotations.some(
+          (annotation) => annotation.id === editingAnnotation.id,
         )
-      : appendAnnotationToBody(note.body ?? "", quote, text, occurrence);
+        ? noteAnnotations.map((annotation) =>
+            annotation.id === editingAnnotation.id
+              ? nextAnnotation
+              : annotation,
+          )
+        : [...noteAnnotations, nextAnnotation]
+      : [...noteAnnotations, nextAnnotation];
 
     try {
-      const response = await apiClient(
-        `/api/v1/vault/${targetVault}/notes/${encodedNoteId}`,
-        {
-          method: "PUT",
-          body: JSON.stringify({ body: updatedBody }),
-        },
+      const savedAnnotations = await putNoteAnnotationSources(
+        targetVault,
+        targetNoteId,
+        nextAnnotations,
       );
-
-      if (!response.ok) {
-        throw new Error(`PUT annotation -> ${response.status}`);
-      }
-
-      const updatedNote = (await response.json()) as Note;
       if (!isCurrentAnnotationTarget(targetVault, targetNoteId)) return;
-      const body = updatedNote.body ?? updatedBody;
+      noteAnnotations = savedAnnotations;
+      annotateDialog = {
+        quote,
+        occurrence,
+        editingAnnotation:
+          savedAnnotations.find(
+            (annotation) => annotation.id === nextAnnotation.id,
+          ) ?? nextAnnotation,
+      };
 
       if (shouldLog) {
         const logResponse = await apiClient(
@@ -1285,9 +1361,6 @@
       }
 
       if (!isCurrentAnnotationTarget(targetVault, targetNoteId)) return;
-      note = { ...updatedNote, body };
-      editorDoc = body;
-      savedDoc = body;
       await tick();
       schedulePersistentAnnotationMarks();
       closeAnnotateDialog();
@@ -1321,10 +1394,12 @@
       ? `/api/v1/vault/${vault}/daily/${id}`
       : `/api/v1/vault/${vault}/notes/${id}`;
 
-    const [noteResult, neighborsResult] = await Promise.allSettled([
-      loadOrCreateNote(vault, id, noteEndpoint),
-      apiGet<NeighborData>(`/api/v1/vault/${vault}/notes/${id}/neighbors`),
-    ]);
+    const [noteResult, neighborsResult, annotationsResult] =
+      await Promise.allSettled([
+        loadOrCreateNote(vault, id, noteEndpoint),
+        apiGet<NeighborData>(`/api/v1/vault/${vault}/notes/${id}/neighbors`),
+        loadNoteAnnotationSources(vault, id),
+      ]);
 
     if (token !== loadToken) return;
 
@@ -1343,6 +1418,11 @@
 
     if (neighborsResult.status === "fulfilled") {
       neighbors = neighborsResult.value;
+    }
+    if (annotationsResult.status === "fulfilled") {
+      noteAnnotations = annotationsResult.value;
+    } else {
+      noteAnnotations = [];
     }
     loadingNeighbors = false;
 
@@ -1430,7 +1510,14 @@
   });
 
   $effect(() => {
+    if (editMode && noteAnnotationsPanelOpen) {
+      noteAnnotationsPanelOpen = false;
+    }
+  });
+
+  $effect(() => {
     const body = note?.body ?? "";
+    const annotationCount = noteAnnotations.length;
     const targetElement = noteBodyElement;
     const reading = !editMode;
     if (!targetElement || !body || !reading) {
@@ -1443,6 +1530,7 @@
       if (
         noteBodyElement === targetElement &&
         note?.body === body &&
+        noteAnnotations.length === annotationCount &&
         !editMode
       ) {
         schedulePersistentAnnotationMarks();
@@ -1466,10 +1554,18 @@
       const isInsideAnnotationPopup =
         target instanceof Element &&
         Boolean(target.closest(".annotation-popover"));
+      const isInsideNoteAnnotationsPanel =
+        target instanceof Element &&
+        Boolean(target.closest(".note-annotations-panel"));
       const isInsideMarkedSource =
         target instanceof Element &&
         Boolean(target.closest(".annotation-source-marked"));
-      if (isInsideAnnotationPopup || isInsideMarkedSource) return;
+      if (
+        isInsideAnnotationPopup ||
+        isInsideNoteAnnotationsPanel ||
+        isInsideMarkedSource
+      )
+        return;
       if (annotationPopup) annotationPopup = null;
       if (isInsideMenu) {
         annotateMenuInteracting = true;
@@ -1567,6 +1663,19 @@
           {/if}
         </div>
         <div class="note-header-actions">
+          {#if !editMode}
+            <button
+              type="button"
+              class="note-annotations-toggle"
+              class:active={noteAnnotationsPanelOpen}
+              data-testid="note-annotations-toggle"
+              aria-expanded={noteAnnotationsPanelOpen}
+              aria-controls="note-annotations-panel"
+              onclick={toggleNoteAnnotationsPanel}
+            >
+              Annotations ({noteAnnotations.length})
+            </button>
+          {/if}
           <div class="mode-toggle" aria-label="Display mode">
             <button
               type="button"
@@ -1597,6 +1706,67 @@
           </p>
         {/if}
       </header>
+
+      {#if !editMode && noteAnnotationsPanelOpen}
+        <section
+          id="note-annotations-panel"
+          class="note-annotations-panel"
+          data-testid="note-annotations-panel"
+          aria-label="Note annotations"
+        >
+          {#if noteAnnotations.length === 0}
+            <p
+              class="note-annotations-empty"
+              data-testid="note-annotations-empty"
+            >
+              No annotations yet. Select note text to add one.
+            </p>
+          {:else}
+            <div class="note-annotation-card-list">
+              {#each noteAnnotations as annotation (annotation.id)}
+                <article
+                  class="note-annotation-card"
+                  data-testid="note-annotation-card"
+                >
+                  <div class="note-annotation-card-meta">
+                    <span>Note annotation</span>
+                    <span>line {annotation.entryStartLine + 1}</span>
+                  </div>
+                  <blockquote>{annotation.quote}</blockquote>
+                  <p class="note-annotation-card-memo">{annotation.memo}</p>
+                  <div class="note-annotation-card-actions">
+                    <button
+                      type="button"
+                      data-testid="note-annotation-card-source"
+                      onclick={() => openNoteAnnotationSource(annotation)}
+                    >
+                      원문 보기
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="note-annotation-card-edit"
+                      disabled={annotationSaving}
+                      onclick={() => openNoteAnnotationEditor(annotation)}
+                    >
+                      수정
+                    </button>
+                    <button
+                      type="button"
+                      class="danger"
+                      data-testid="note-annotation-card-delete"
+                      disabled={annotationSaving}
+                      onclick={() =>
+                        void deleteNoteAnnotationFromPanel(annotation)}
+                    >
+                      삭제
+                    </button>
+                  </div>
+                </article>
+              {/each}
+            </div>
+          {/if}
+        </section>
+      {/if}
 
       {#if editMode}
         <div class="editor-toolbar" aria-label="Editor controls">
@@ -1824,7 +1994,9 @@
 
   .note-header-actions {
     display: flex;
+    align-items: center;
     justify-content: flex-end;
+    gap: var(--space-2, 8px);
     margin-top: var(--space-3, 12px);
   }
 
@@ -1841,6 +2013,119 @@
     width: 124px;
     flex-shrink: 0;
     border: 1px solid var(--border);
+  }
+
+  .note-annotations-toggle {
+    min-height: 32px;
+    padding: 0 var(--space-3, 12px);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text-muted);
+    background: transparent;
+    font-family: var(--font-mono);
+    font-size: var(--type-chrome-sm-size, 11px);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+  }
+
+  .note-annotations-toggle.active,
+  .note-annotations-toggle:hover,
+  .note-annotations-toggle:focus-visible {
+    color: var(--bg);
+    background: var(--accent);
+    border-color: var(--accent);
+    outline: none;
+  }
+
+  .note-annotations-panel {
+    box-sizing: border-box;
+    display: block;
+    max-height: min(360px, 45vh);
+    margin: 0 0 var(--space-5, 24px);
+    padding: var(--space-3, 12px);
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface, var(--bg));
+  }
+
+  .note-annotation-card-list {
+    display: grid;
+    gap: var(--space-3, 12px);
+  }
+
+  .note-annotation-card {
+    display: grid;
+    gap: var(--space-2, 8px);
+    padding: var(--space-3, 12px);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg);
+  }
+
+  .note-annotation-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2, 8px);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--type-chrome-sm-size, 11px);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .note-annotation-card blockquote,
+  .note-annotation-card p {
+    margin: 0;
+  }
+
+  .note-annotation-card blockquote {
+    padding-left: var(--space-2, 8px);
+    border-left: 3px solid color-mix(in srgb, var(--accent) 68%, transparent);
+    color: var(--text);
+    font-family: var(--font-mono);
+  }
+
+  .note-annotation-card-memo {
+    white-space: pre-wrap;
+  }
+
+  .note-annotations-empty {
+    margin: 0;
+    color: var(--text-muted);
+  }
+
+  .note-annotation-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2, 8px);
+  }
+
+  .note-annotation-card-actions button {
+    min-height: 28px;
+    padding: 0 var(--space-3, 12px);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text);
+    background: var(--surface, transparent);
+    cursor: pointer;
+  }
+
+  .note-annotation-card-actions button:hover,
+  .note-annotation-card-actions button:focus-visible {
+    border-color: var(--accent);
+    outline: none;
+  }
+
+  .note-annotation-card-actions button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .note-annotation-card-actions button.danger {
+    border-color: color-mix(in srgb, #ff5a5f 70%, var(--border));
+    color: #ffb4b4;
   }
 
   .mode-toggle button {

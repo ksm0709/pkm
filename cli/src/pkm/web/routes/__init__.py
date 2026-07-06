@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from aiohttp import web
 
+from pkm.web.routes.annotations import (
+    get_data_annotations,
+    get_note_annotations,
+    put_data_annotations,
+    put_note_annotations,
+)
 from pkm.web.routes.ask import get_ask_options, get_ask_run, post_ask
 from pkm.web.routes.configs import (
     delete_ask_credential,
@@ -71,6 +77,20 @@ def register_routes(app: web.Application) -> None:
     app.router.add_post("/api/v1/vault/{name}/daily/today", post_daily_today)
     app.router.add_get("/api/v1/vault/{name}/daily/{date}", get_daily_date)
     app.router.add_get("/api/v1/vault/{name}/daily", list_daily)
+
+    # Unified annotations — source-scoped v2 sidecars.
+    app.router.add_get(
+        "/api/v1/vault/{name}/annotations/data/{path:.+}", get_data_annotations
+    )
+    app.router.add_put(
+        "/api/v1/vault/{name}/annotations/data/{path:.+}", put_data_annotations
+    )
+    app.router.add_get(
+        "/api/v1/vault/{name}/annotations/note/{id}", get_note_annotations
+    )
+    app.router.add_put(
+        "/api/v1/vault/{name}/annotations/note/{id}", put_note_annotations
+    )
 
     # Data files — flat and nested files under vault data/
     app.router.add_post("/api/v1/vault/{name}/data", post_data_file)

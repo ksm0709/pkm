@@ -4,6 +4,7 @@ import { mount, tick, unmount } from "svelte";
 import { apiClient } from "$lib/api/client.js";
 import PdfViewer from "./PdfViewer.svelte";
 import { renderPdfIntoContainer } from "./pdf-renderer";
+import type { PdfAnnotationDocument } from "./annotations";
 
 vi.mock("$lib/api/client.js", () => ({
   apiClient: vi.fn(),
@@ -14,7 +15,7 @@ vi.mock("./pdf-renderer", () => ({
 }));
 
 const pdfBytes = new Uint8Array([37, 80, 68, 70]).buffer;
-const emptyDoc = {
+const emptyDoc: PdfAnnotationDocument = {
   version: 1,
   source_path: "reports/report.pdf",
   annotations: [],
@@ -74,12 +75,36 @@ describe("PdfViewer", () => {
   }
 
   function mockApi(annotationDoc = emptyDoc) {
+    const toV2 = (doc: typeof emptyDoc) => ({
+      version: 2,
+      source_key: `data:${doc.source_path}`,
+      source: { kind: "data", path: doc.source_path },
+      annotations: doc.annotations.map((annotation) => {
+        const anchor: Record<string, unknown> = {
+          kind: annotation.type === "text" ? "pdf_text" : "pdf_rects",
+          rects: annotation.rects,
+        };
+        if (annotation.type === "text" && "quote" in annotation) {
+          anchor.quote = annotation.quote;
+        }
+        return {
+          id: annotation.id,
+          kind: annotation.type,
+          anchor,
+          comment: annotation.comment,
+          created_at: annotation.created_at,
+          updated_at: annotation.updated_at,
+        };
+      }),
+    });
     vi.mocked(apiClient).mockImplementation(async (url, options = {}) => {
       const method = options.method ?? "GET";
-      if (String(url).includes("/data-annotations/") && method === "GET") {
-        return new Response(JSON.stringify(annotationDoc), { status: 200 });
+      if (String(url).includes("/annotations/data/") && method === "GET") {
+        return new Response(JSON.stringify(toV2(annotationDoc)), {
+          status: 200,
+        });
       }
-      if (String(url).includes("/data-annotations/") && method === "PUT") {
+      if (String(url).includes("/annotations/data/") && method === "PUT") {
         return new Response(String(options.body), { status: 200 });
       }
       return new Response(pdfBytes.slice(0), { status: 200 });
@@ -105,7 +130,7 @@ describe("PdfViewer", () => {
       expect.objectContaining({ method: "GET" }),
     );
     expect(apiClient).toHaveBeenCalledWith(
-      "/api/v1/vault/taeho/data-annotations/reports/report.pdf",
+      "/api/v1/vault/taeho/annotations/data/reports/report.pdf",
       expect.objectContaining({ method: "GET" }),
     );
     const [container, buffer, options] = vi.mocked(renderPdfIntoContainer).mock
@@ -124,7 +149,7 @@ describe("PdfViewer", () => {
   it("still renders the PDF when annotation loading fails", async () => {
     vi.mocked(apiClient).mockImplementation(async (url, options = {}) => {
       const method = options.method ?? "GET";
-      if (String(url).includes("/data-annotations/") && method === "GET") {
+      if (String(url).includes("/annotations/data/") && method === "GET") {
         return new Response("annotation service unavailable", { status: 503 });
       }
       return new Response(pdfBytes.slice(0), { status: 200 });
@@ -197,7 +222,7 @@ describe("PdfViewer", () => {
       .mocked(apiClient)
       .mock.calls.filter(
         ([url, options]) =>
-          String(url).endsWith("/data/reports/report.pdf") &&
+          String(url).includes("/api/v1/vault/taeho/data/reports/report.pdf") &&
           options?.method === "GET",
       );
     expect(pdfFetches).toHaveLength(1);
@@ -339,7 +364,7 @@ describe("PdfViewer", () => {
         .mocked(apiClient)
         .mock.calls.find(
           ([url, options]) =>
-            String(url).includes("/data-annotations/") &&
+            String(url).includes("/annotations/data/") &&
             options?.method === "PUT",
         );
       expect(putCall).toBeDefined();
@@ -453,7 +478,7 @@ describe("PdfViewer", () => {
         .mocked(apiClient)
         .mock.calls.find(
           ([url, options]) =>
-            String(url).includes("/data-annotations/") &&
+            String(url).includes("/annotations/data/") &&
             options?.method === "PUT",
         );
       expect(putCall).toBeDefined();
@@ -699,7 +724,7 @@ describe("PdfViewer", () => {
     unmount(component);
   });
 
-  it("opens an unsaved text annotation draft popup from selected PDF text and saves only on Save", async () => {
+  it("shows a floating Annotate button for selected PDF text before opening the draft popup", async () => {
     mockApi();
     const target = document.createElement("div");
     document.body.appendChild(target);
@@ -737,10 +762,10 @@ describe("PdfViewer", () => {
 
     await waitFor(() => {
       expect(
-        target.querySelector('[data-testid="pdf-annotation-menu"]'),
+        target.querySelector('[data-testid="floating-text-annotation"]'),
       ).not.toBeNull();
       expect(
-        target.querySelector('[data-testid="floating-text-annotation"]'),
+        target.querySelector('[data-testid="pdf-annotation-menu"]'),
       ).toBeNull();
     });
     expect(
@@ -748,11 +773,22 @@ describe("PdfViewer", () => {
         .mocked(apiClient)
         .mock.calls.find(
           ([url, options]) =>
-            String(url).includes("/data-annotations/") &&
+            String(url).includes("/annotations/data/") &&
             options?.method === "PUT",
         ),
     ).toBeUndefined();
 
+    target
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="floating-text-annotation"]',
+      )
+      ?.click();
+
+    await waitFor(() => {
+      expect(
+        target.querySelector('[data-testid="pdf-annotation-menu"]'),
+      ).not.toBeNull();
+    });
     target
       .querySelector<HTMLButtonElement>('[data-testid="pdf-annotation-save"]')
       ?.click();
@@ -762,15 +798,18 @@ describe("PdfViewer", () => {
         .mocked(apiClient)
         .mock.calls.filter(
           ([url, options]) =>
-            String(url).includes("/data-annotations/") &&
+            String(url).includes("/annotations/data/") &&
             options?.method === "PUT",
         );
       expect(putCalls).toHaveLength(1);
       const saved = JSON.parse(String(putCalls[0]?.[1]?.body));
       expect(saved.annotations[0]).toMatchObject({
-        type: "text",
-        quote: "draft selected words",
-        rects: [{ page: 1, x: 0.1, y: 0.1, width: 0.2, height: 0.05 }],
+        kind: "text",
+        anchor: {
+          kind: "pdf_text",
+          quote: "draft selected words",
+          rects: [{ page: 1, x: 0.1, y: 0.1, width: 0.2, height: 0.05 }],
+        },
       });
     });
 
@@ -812,6 +851,16 @@ describe("PdfViewer", () => {
       ?.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
     await waitFor(() => {
       expect(
+        target.querySelector('[data-testid="floating-text-annotation"]'),
+      ).not.toBeNull();
+    });
+    target
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="floating-text-annotation"]',
+      )
+      ?.click();
+    await waitFor(() => {
+      expect(
         target.querySelector('[data-testid="pdf-annotation-menu"]'),
       ).not.toBeNull();
     });
@@ -829,7 +878,7 @@ describe("PdfViewer", () => {
         .mocked(apiClient)
         .mock.calls.find(
           ([url, options]) =>
-            String(url).includes("/data-annotations/") &&
+            String(url).includes("/annotations/data/") &&
             options?.method === "PUT",
         ),
     ).toBeUndefined();
@@ -879,7 +928,7 @@ describe("PdfViewer", () => {
       .querySelector<HTMLButtonElement>(
         '[data-testid="pdf-annotation-card-edit"]',
       )
-      ?.click();
+      ?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
 
     await waitFor(() => {
       expect(
@@ -902,7 +951,7 @@ describe("PdfViewer", () => {
         .mocked(apiClient)
         .mock.calls.find(
           ([url, options]) =>
-            String(url).includes("/data-annotations/") &&
+            String(url).includes("/annotations/data/") &&
             options?.method === "PUT" &&
             String(options.body).includes("panel updated comment"),
         );
@@ -918,7 +967,7 @@ describe("PdfViewer", () => {
     await waitFor(() => {
       const putCall = vi.mocked(apiClient).mock.calls.find(([url, options]) => {
         if (
-          !String(url).includes("/data-annotations/") ||
+          !String(url).includes("/annotations/data/") ||
           options?.method !== "PUT"
         )
           return false;
@@ -967,7 +1016,7 @@ describe("PdfViewer", () => {
         .mocked(apiClient)
         .mock.calls.find(
           ([url, options]) =>
-            String(url).includes("/data-annotations/") &&
+            String(url).includes("/annotations/data/") &&
             options?.method === "PUT",
         ),
     ).toBeUndefined();

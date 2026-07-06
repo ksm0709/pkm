@@ -76,6 +76,14 @@ describe("note page loading", () => {
           semantic: [{ note_id: "beta-note", title: "Beta", confidence: 0.91 }],
         };
       }
+      if (path.includes("/annotations/note/")) {
+        return {
+          version: 2,
+          source_key: "note:alpha-note",
+          source: { kind: "note", note_id: "alpha-note" },
+          annotations: [],
+        };
+      }
       return {
         note_id: "alpha-note",
         title: "Alpha",
@@ -117,6 +125,121 @@ describe("note page loading", () => {
     throw lastError;
   }
 
+  function annotationSourceHref(quote: string, occurrence: number) {
+    return `#quote=${encodeURIComponent(quote.replace(/\s+/g, " ").trim())}&occ=${occurrence}`;
+  }
+
+  function parseLegacyAnnotations(body: string) {
+    const lines = (body ?? "").split(/\r?\n/);
+    const headingIndex = lines.findIndex(
+      (line) => line.trim() === "## Annotations",
+    );
+    if (headingIndex < 0) return [];
+    const annotations: unknown[] = [];
+    let current: {
+      quote: string;
+      sourceHref: string;
+      memoLines: string[];
+      index: number;
+    } | null = null;
+    const flush = () => {
+      if (!current) return;
+      const memo = current.memoLines.join("\n").trim();
+      if (memo) {
+        const params = new URLSearchParams(current.sourceHref.slice(1));
+        const quote = params.get("quote") || current.quote;
+        const occurrence = Number(params.get("occ") || "0");
+        annotations.push({
+          id: `${current.sourceHref}\u0000${current.index}`,
+          kind: "note",
+          anchor: {
+            kind: "text_quote",
+            quote,
+            occurrence: Number.isFinite(occurrence) ? occurrence : 0,
+          },
+          comment: memo,
+          created_at: "",
+          updated_at: "",
+        });
+      }
+      current = null;
+    };
+    for (let index = headingIndex + 1; index < lines.length; index += 1) {
+      const line = lines[index];
+      if (/^#{1,6}\s+/.test(line)) {
+        flush();
+        break;
+      }
+      const entry = line.match(
+        /^-\s+[“"]?(?<quote>.*?)[”"]?\s*\(\[↩ 원문\]\((?<href>#[^)]+)\)\)\s*$/,
+      );
+      if (entry?.groups?.href) {
+        flush();
+        current = {
+          quote: entry.groups.quote ?? "",
+          sourceHref: entry.groups.href,
+          memoLines: [],
+          index,
+        };
+        continue;
+      }
+      if (!current) continue;
+      if (/^-\s+/.test(line)) {
+        flush();
+        continue;
+      }
+      if (!line.trim()) {
+        current.memoLines.push("");
+        continue;
+      }
+      current.memoLines.push(
+        line.match(/^\s+-\s?(?<text>.*)$/)?.groups?.text?.trimEnd() ??
+          line.match(/^\s{4,}(?<text>.*)$/)?.groups?.text?.trimEnd() ??
+          "",
+      );
+    }
+    flush();
+    return annotations;
+  }
+
+  function noteAnnotationDocument(
+    noteId: string,
+    body: string,
+    annotations?: unknown[],
+  ) {
+    return {
+      version: 2,
+      source_key: `note:${noteId}`,
+      source: { kind: "note", note_id: noteId },
+      annotations: annotations ?? parseLegacyAnnotations(body),
+    };
+  }
+
+  function mockApiGetWithAnnotationReadThrough(
+    impl: (path: string) => Promise<unknown>,
+  ) {
+    mocks.apiGet.mockImplementation(async (path: string) => {
+      if (path.includes("/annotations/note/")) {
+        const direct = (await impl(path)) as
+          | { version?: number; annotations?: unknown[] }
+          | { body?: string; note_id?: string };
+        if (direct?.version === 2 && Array.isArray(direct.annotations)) {
+          return direct;
+        }
+        const noteId = decodeURIComponent(
+          path.split("/annotations/note/")[1] ?? "alpha-note",
+        );
+        const notePath = `/api/v1/vault/main/notes/${encodeURIComponent(noteId)}`;
+        const note = (await impl(notePath)) as {
+          body?: string;
+          note_id?: string;
+        };
+        return noteAnnotationDocument(note.note_id ?? noteId, note.body ?? "");
+      }
+      return impl(path);
+    });
+  }
+
   it("does not reload the note when graph navigation context is published", async () => {
     const target = document.createElement("div");
     document.body.appendChild(target);
@@ -138,7 +261,7 @@ describe("note page loading", () => {
   });
 
   it("renders note bodies through the sanitized markdown renderer", async () => {
-    mocks.apiGet.mockImplementation(async (path: string) => {
+    mockApiGetWithAnnotationReadThrough(async (path: string) => {
       if (path.endsWith("/neighbors")) {
         return {
           note_id: "alpha-note",
@@ -201,13 +324,21 @@ describe("note page loading", () => {
   });
 
   it("annotates the selected note text and optionally adds a daily log entry", async () => {
-    mocks.apiGet.mockImplementation(async (path: string) => {
+    mockApiGetWithAnnotationReadThrough(async (path: string) => {
       if (path.endsWith("/neighbors")) {
         return {
           note_id: "alpha-note",
           outbound: [],
           inbound: [],
           semantic: [],
+        };
+      }
+      if (path.includes("/annotations/note/")) {
+        return {
+          version: 2,
+          source_key: "note:alpha-note",
+          source: { kind: "note", note_id: "alpha-note" },
+          annotations: [],
         };
       }
       return {
@@ -225,21 +356,23 @@ describe("note page loading", () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
-            note_id: "alpha-note",
-            title: "Alpha",
-            body: [
-              "Alpha body has a quote worth saving.",
-              "",
-              "## Annotations",
-              "",
-              "- “quote worth saving.”",
-              "  - Important context",
-            ].join("\n"),
-            frontmatter: {},
-            created: null,
-            updated: null,
-            tags: [],
-            importance: null,
+            version: 2,
+            source_key: "note:alpha-note",
+            source: { kind: "note", note_id: "alpha-note" },
+            annotations: [
+              {
+                id: "note-ann-0",
+                kind: "note",
+                anchor: {
+                  kind: "text_quote",
+                  quote: "quote worth saving.",
+                  occurrence: 0,
+                },
+                comment: "Important context",
+                created_at: "2026-07-06T10:00:00.000Z",
+                updated_at: "2026-07-06T10:00:00.000Z",
+              },
+            ],
           }),
           { status: 200 },
         ),
@@ -316,19 +449,42 @@ describe("note page loading", () => {
 
     expect(mocks.apiClient).toHaveBeenNthCalledWith(
       1,
-      "/api/v1/vault/main/notes/alpha-note",
+      "/api/v1/vault/main/annotations/note/alpha-note",
       {
         method: "PUT",
-        body: expect.stringContaining("## Annotations"),
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: expect.stringContaining("Important context"),
       },
     );
-    const savedAnnotationBody = JSON.parse(
+    const savedAnnotationDocument = JSON.parse(
       mocks.apiClient.mock.calls[0][1].body,
-    ).body;
-    expect(savedAnnotationBody).toContain("Important context");
-    expect(savedAnnotationBody).toContain(
-      "([↩ 원문](#quote=quote%20worth%20saving.&occ=0))",
     );
+    expect(savedAnnotationDocument).toMatchObject({
+      version: 2,
+      source_key: "note:alpha-note",
+      source: { kind: "note", note_id: "alpha-note" },
+      annotations: [
+        {
+          kind: "note",
+          anchor: {
+            kind: "text_quote",
+            quote: "quote worth saving.",
+            occurrence: 0,
+          },
+          comment: "Important context",
+        },
+      ],
+    });
+    expect(
+      mocks.apiClient.mock.calls.find(
+        ([url, options]) =>
+          String(url) === "/api/v1/vault/main/notes/alpha-note" &&
+          options?.method === "PUT",
+      ),
+    ).toBeUndefined();
     expect(mocks.apiClient).toHaveBeenNthCalledWith(
       2,
       "/api/v1/vault/main/daily/today",
@@ -346,8 +502,247 @@ describe("note page loading", () => {
     unmount(component);
   });
 
+  it("shows note annotations in a PDF-style card panel", async () => {
+    mockApiGetWithAnnotationReadThrough(async (path: string) => {
+      if (path.endsWith("/neighbors")) {
+        return {
+          note_id: "alpha-note",
+          outbound: [],
+          inbound: [],
+          semantic: [],
+        };
+      }
+      if (path.includes("/annotations/note/")) {
+        return {
+          version: 2,
+          source_key: "note:alpha-note",
+          source: { kind: "note", note_id: "alpha-note" },
+          annotations: [
+            {
+              id: "alpha-ann",
+              kind: "note",
+              anchor: {
+                kind: "text_quote",
+                quote: "Alpha quote.",
+                occurrence: 0,
+              },
+              comment: "First memo\ncontinued detail",
+              created_at: "2026-07-06T10:00:00Z",
+              updated_at: "2026-07-06T10:00:00Z",
+            },
+            {
+              id: "missing-ann",
+              kind: "note",
+              anchor: {
+                kind: "text_quote",
+                quote: "Missing quote.",
+                occurrence: 0,
+              },
+              comment: "Missing source still visible",
+              created_at: "2026-07-06T10:00:00Z",
+              updated_at: "2026-07-06T10:00:00Z",
+            },
+          ],
+        };
+      }
+      return {
+        note_id: "alpha-note",
+        title: "Alpha",
+        body: [
+          "First source mentions Alpha quote.",
+          "Second source mentions Beta quote.",
+        ].join("\n"),
+        frontmatter: {},
+        created: null,
+        updated: null,
+        tags: [],
+        importance: null,
+      };
+    });
+
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+
+    await waitFor(() => {
+      const toggle = target.querySelector(
+        '[data-testid="note-annotations-toggle"]',
+      );
+      expect(toggle).not.toBeNull();
+      expect(toggle?.textContent).toContain("Annotations (2)");
+    });
+    expect(
+      target.querySelector('[data-testid="note-annotations-panel"]'),
+    ).toBeNull();
+
+    target
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="note-annotations-toggle"]',
+      )
+      ?.click();
+    await tick();
+
+    const panel = target.querySelector(
+      '[data-testid="note-annotations-panel"]',
+    );
+    expect(panel).not.toBeNull();
+    expect(
+      target.querySelectorAll('[data-testid="note-annotation-card"]'),
+    ).toHaveLength(2);
+    expect(panel?.textContent).toContain("Alpha quote.");
+    expect(panel?.textContent).toContain("First memo\ncontinued detail");
+    expect(panel?.textContent).toContain("Missing source still visible");
+
+    unmount(component);
+  });
+
+  it("reuses note annotation card actions for source navigation, editing, and deletion", async () => {
+    const originalBody = "First source mentions Alpha quote.";
+    mockApiGetWithAnnotationReadThrough(async (path: string) => {
+      if (path.endsWith("/neighbors")) {
+        return {
+          note_id: "alpha-note",
+          outbound: [],
+          inbound: [],
+          semantic: [],
+        };
+      }
+      if (path.includes("/annotations/note/")) {
+        return {
+          version: 2,
+          source_key: "note:alpha-note",
+          source: { kind: "note", note_id: "alpha-note" },
+          annotations: [
+            {
+              id: "alpha-ann",
+              kind: "note",
+              anchor: {
+                kind: "text_quote",
+                quote: "Alpha quote.",
+                occurrence: 0,
+              },
+              comment: "First memo",
+              created_at: "2026-07-06T10:00:00Z",
+              updated_at: "2026-07-06T10:00:00Z",
+            },
+          ],
+        };
+      }
+      return {
+        note_id: "alpha-note",
+        title: "Alpha",
+        body: originalBody,
+        frontmatter: {},
+        created: null,
+        updated: null,
+        tags: [],
+        importance: null,
+      };
+    });
+    mocks.apiClient.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          version: 2,
+          source_key: "note:alpha-note",
+          source: { kind: "note", note_id: "alpha-note" },
+          annotations: [],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+
+    await waitFor(() => {
+      expect(
+        target.querySelector('[data-testid="note-annotations-toggle"]'),
+      ).not.toBeNull();
+    });
+    target
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="note-annotations-toggle"]',
+      )
+      ?.click();
+    await tick();
+
+    const sourceButton = target.querySelector<HTMLButtonElement>(
+      '[data-testid="note-annotation-card-source"]',
+    );
+    expect(sourceButton).not.toBeNull();
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrollIntoView;
+    sourceButton?.click();
+    await tick();
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      behavior: "smooth",
+      block: "center",
+    });
+    expect(
+      target.querySelector<HTMLElement>(".annotation-source-highlight")
+        ?.textContent,
+    ).toContain("First source mentions Alpha quote.");
+
+    target
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="note-annotation-card-edit"]',
+      )
+      ?.click();
+    await tick();
+    expect(
+      target.querySelector<HTMLTextAreaElement>(
+        'textarea[aria-label="Annotation text"]',
+      )?.value,
+    ).toBe("First memo");
+    target
+      .querySelector<HTMLButtonElement>(
+        'button[aria-label="Cancel annotation"]',
+      )
+      ?.click();
+    await tick();
+
+    target
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="note-annotation-card-delete"]',
+      )
+      ?.click();
+    await flush();
+    expect(mocks.apiClient).toHaveBeenCalledWith(
+      "/api/v1/vault/main/annotations/note/alpha-note",
+      {
+        method: "PUT",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          version: 2,
+          source_key: "note:alpha-note",
+          source: { kind: "note", note_id: "alpha-note" },
+          annotations: [],
+        }),
+      },
+    );
+    expect(
+      mocks.apiClient.mock.calls.find(
+        ([url, options]) =>
+          String(url) === "/api/v1/vault/main/notes/alpha-note" &&
+          options?.method === "PUT",
+      ),
+    ).toBeUndefined();
+    expect(
+      target.querySelector('[data-testid="note-annotations-toggle"]')
+        ?.textContent,
+    ).toContain("Annotations (0)");
+
+    Element.prototype.scrollIntoView = originalScrollIntoView;
+    unmount(component);
+  });
+
   it("scrolls from an annotation source link back to the matching source quote occurrence", async () => {
-    mocks.apiGet.mockImplementation(async (path: string) => {
+    mockApiGetWithAnnotationReadThrough(async (path: string) => {
       if (path.endsWith("/neighbors")) {
         return {
           note_id: "alpha-note",
@@ -413,7 +808,7 @@ describe("note page loading", () => {
   });
 
   it("deduplicates nested rendered blocks when resolving annotation source occurrences", async () => {
-    mocks.apiGet.mockImplementation(async (path: string) => {
+    mockApiGetWithAnnotationReadThrough(async (path: string) => {
       if (path.endsWith("/neighbors")) {
         return {
           note_id: "alpha-note",
@@ -474,7 +869,7 @@ describe("note page loading", () => {
   });
 
   it("keeps parent tight-list text searchable when child list items are also candidates", async () => {
-    mocks.apiGet.mockImplementation(async (path: string) => {
+    mockApiGetWithAnnotationReadThrough(async (path: string) => {
       if (path.endsWith("/neighbors")) {
         return {
           note_id: "alpha-note",
@@ -534,7 +929,7 @@ describe("note page loading", () => {
   });
 
   it("scrolls to a matching source quote when opening the note with a quote hash", async () => {
-    mocks.apiGet.mockImplementation(async (path: string) => {
+    mockApiGetWithAnnotationReadThrough(async (path: string) => {
       if (path.endsWith("/neighbors")) {
         return {
           note_id: "alpha-note",
@@ -596,6 +991,9 @@ describe("note page loading", () => {
           inbound: [],
           semantic: [],
         };
+      }
+      if (path.includes("/annotations/note/")) {
+        return noteAnnotationDocument("alpha-note", "", []);
       }
       await new Promise((resolve) => setTimeout(resolve, 1300));
       return {
@@ -690,7 +1088,7 @@ describe("note page loading", () => {
   });
 
   it("does not duplicate the annotation when retrying after daily log failure", async () => {
-    mocks.apiGet.mockImplementation(async (path: string) => {
+    mockApiGetWithAnnotationReadThrough(async (path: string) => {
       if (path.endsWith("/neighbors")) {
         return {
           note_id: "alpha-note",
@@ -818,17 +1216,16 @@ describe("note page loading", () => {
       ?.click();
     await flush();
 
-    const secondPutBody = JSON.parse(
-      mocks.apiClient.mock.calls[2][1].body,
-    ).body;
-    expect(secondPutBody.match(/Important context/g)).toHaveLength(1);
+    const secondPutBody = JSON.parse(mocks.apiClient.mock.calls[2][1].body);
+    expect(secondPutBody.annotations).toHaveLength(1);
+    expect(secondPutBody.annotations[0].comment).toBe("Important context");
     expect(target.querySelector('[role="dialog"]')).toBeNull();
 
     unmount(component);
   });
 
   it("does not apply a completed annotation save to a different note route", async () => {
-    mocks.apiGet.mockImplementation(async (path: string) => {
+    mockApiGetWithAnnotationReadThrough(async (path: string) => {
       if (path.endsWith("/neighbors")) {
         const note_id = path.includes("beta-note") ? "beta-note" : "alpha-note";
         return { note_id, outbound: [], inbound: [], semantic: [] };
@@ -945,7 +1342,7 @@ describe("note page loading", () => {
   });
 
   it("clears an in-progress annotation when navigating to another note", async () => {
-    mocks.apiGet.mockImplementation(async (path: string) => {
+    mockApiGetWithAnnotationReadThrough(async (path: string) => {
       if (path.endsWith("/neighbors")) {
         const note_id = path.includes("beta-note") ? "beta-note" : "alpha-note";
         return { note_id, outbound: [], inbound: [], semantic: [] };
@@ -1204,7 +1601,7 @@ describe("note page loading", () => {
   });
 
   it("marks only the annotated text range and opens popup actions", async () => {
-    mocks.apiGet.mockImplementation(async (path: string) => {
+    mockApiGetWithAnnotationReadThrough(async (path: string) => {
       if (path.endsWith("/neighbors")) {
         return {
           note_id: "alpha-note",
@@ -1286,7 +1683,7 @@ describe("note page loading", () => {
   });
 
   it("marks annotation ranges when saved quotes normalize line breaks and spaces", async () => {
-    mocks.apiGet.mockImplementation(async (path: string) => {
+    mockApiGetWithAnnotationReadThrough(async (path: string) => {
       if (path.endsWith("/neighbors")) {
         return {
           note_id: "alpha-note",
@@ -1353,7 +1750,7 @@ describe("note page loading", () => {
       "- “Other marker.” ([↩ 원문](#quote=Other%20marker.&occ=0))",
       "  - Other memo stays",
     ].join("\n");
-    mocks.apiGet.mockImplementation(async (path: string) => {
+    mockApiGetWithAnnotationReadThrough(async (path: string) => {
       if (path.endsWith("/neighbors")) {
         return {
           note_id: "alpha-note",
@@ -1375,20 +1772,7 @@ describe("note page loading", () => {
     });
     mocks.apiClient.mockImplementation(
       async (_path: string, init: RequestInit) => {
-        const body = JSON.parse(String(init.body)).body;
-        return new Response(
-          JSON.stringify({
-            note_id: "alpha-note",
-            title: "Alpha",
-            body,
-            frontmatter: {},
-            created: null,
-            updated: null,
-            tags: [],
-            importance: null,
-          }),
-          { status: 200 },
-        );
+        return new Response(String(init.body), { status: 200 });
       },
     );
 
@@ -1413,21 +1797,13 @@ describe("note page loading", () => {
     await flush();
 
     expect(mocks.apiClient).toHaveBeenCalledWith(
-      "/api/v1/vault/main/notes/alpha-note",
+      "/api/v1/vault/main/annotations/note/alpha-note",
       expect.objectContaining({ method: "PUT" }),
     );
-    const savedBody = JSON.parse(mocks.apiClient.mock.calls[0][1].body).body;
-    expect(savedBody).not.toContain("Memo to remove");
-    expect(savedBody).not.toContain("- “Delete marker.”");
-    expect(savedBody).toContain(
-      "Keep this source with Delete marker. Other marker.",
-    );
-    expect(savedBody).toContain("Other memo stays");
-    await waitFor(() => {
-      expect(
-        target.querySelector(".annotation-source-marked")?.textContent,
-      ).toBe("Other marker.");
-    });
+    const savedDocument = JSON.parse(mocks.apiClient.mock.calls[0][1].body);
+    expect(savedDocument.annotations).toHaveLength(1);
+    expect(savedDocument.annotations[0].comment).toBe("Other memo stays");
+    expect(savedDocument.annotations[0].anchor.quote).toBe("Other marker.");
 
     unmount(component);
   });
@@ -1440,7 +1816,7 @@ describe("note page loading", () => {
       "- “Edit marker.” ([↩ 원문](#quote=Edit%20marker.&occ=0))",
       "  - Old memo",
     ].join("\n");
-    mocks.apiGet.mockImplementation(async (path: string) => {
+    mockApiGetWithAnnotationReadThrough(async (path: string) => {
       if (path.endsWith("/neighbors")) {
         return {
           note_id: "alpha-note",
@@ -1462,20 +1838,7 @@ describe("note page loading", () => {
     });
     mocks.apiClient.mockImplementation(
       async (_path: string, init: RequestInit) => {
-        const body = JSON.parse(String(init.body)).body;
-        return new Response(
-          JSON.stringify({
-            note_id: "alpha-note",
-            title: "Alpha",
-            body,
-            frontmatter: {},
-            created: null,
-            updated: null,
-            tags: [],
-            importance: null,
-          }),
-          { status: 200 },
-        );
+        return new Response(String(init.body), { status: 200 });
       },
     );
 
@@ -1508,16 +1871,16 @@ describe("note page loading", () => {
       .click();
     await flush();
 
-    const savedBody = JSON.parse(mocks.apiClient.mock.calls[0][1].body).body;
-    expect(savedBody).toContain("Updated memo");
-    expect(savedBody).not.toContain("Old memo");
-    expect(savedBody.match(/Edit marker\./g)).toHaveLength(2);
+    const savedDocument = JSON.parse(mocks.apiClient.mock.calls[0][1].body);
+    expect(savedDocument.annotations).toHaveLength(1);
+    expect(savedDocument.annotations[0].comment).toBe("Updated memo");
+    expect(savedDocument.annotations[0].anchor.quote).toBe("Edit marker.");
 
     unmount(component);
   });
 
   it("shows every annotation memo mapped to the same source block", async () => {
-    mocks.apiGet.mockImplementation(async (path: string) => {
+    mockApiGetWithAnnotationReadThrough(async (path: string) => {
       if (path.endsWith("/neighbors")) {
         return {
           note_id: "alpha-note",
@@ -1570,7 +1933,7 @@ describe("note page loading", () => {
   });
 
   it("does not mark copied quotes inside the annotation section as source blocks", async () => {
-    mocks.apiGet.mockImplementation(async (path: string) => {
+    mockApiGetWithAnnotationReadThrough(async (path: string) => {
       if (path.endsWith("/neighbors")) {
         return {
           note_id: "alpha-note",
@@ -1617,7 +1980,7 @@ describe("note page loading", () => {
   });
 
   it("marks duplicate quote occurrences in the same paragraph exactly", async () => {
-    mocks.apiGet.mockImplementation(async (path: string) => {
+    mockApiGetWithAnnotationReadThrough(async (path: string) => {
       if (path.endsWith("/neighbors")) {
         return {
           note_id: "alpha-note",
@@ -1665,7 +2028,7 @@ describe("note page loading", () => {
   });
 
   it("opens the annotation popup when annotated link text is clicked", async () => {
-    mocks.apiGet.mockImplementation(async (path: string) => {
+    mockApiGetWithAnnotationReadThrough(async (path: string) => {
       if (path.endsWith("/neighbors")) {
         return {
           note_id: "alpha-note",
@@ -1717,7 +2080,7 @@ describe("note page loading", () => {
   });
 
   it("keeps persistent source marks separate from transient source-link highlights", async () => {
-    mocks.apiGet.mockImplementation(async (path: string) => {
+    mockApiGetWithAnnotationReadThrough(async (path: string) => {
       if (path.endsWith("/neighbors")) {
         return {
           note_id: "alpha-note",
@@ -1774,7 +2137,7 @@ describe("note page loading", () => {
   });
 
   it("does not open the memo popup when an unmarked regular link is clicked", async () => {
-    mocks.apiGet.mockImplementation(async (path: string) => {
+    mockApiGetWithAnnotationReadThrough(async (path: string) => {
       if (path.endsWith("/neighbors")) {
         return {
           note_id: "alpha-note",

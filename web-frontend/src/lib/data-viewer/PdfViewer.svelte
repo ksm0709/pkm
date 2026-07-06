@@ -34,6 +34,11 @@
   let draftAnnotation = $state<PdfAnnotation | null>(null);
   let activeAnnotationSnapshot = $state<PdfAnnotation | null>(null);
   let lastDraftSignature: string | null = null;
+  let selectionAction = $state<{
+    x: number;
+    y: number;
+    annotation: PdfAnnotation;
+  } | null>(null);
   let annotationMenu = $state<{
     x: number;
     y: number;
@@ -393,6 +398,7 @@
   }
 
   function hideSelectionMenu() {
+    selectionAction = null;
     lastDraftSignature = null;
   }
 
@@ -493,18 +499,25 @@
     const rect = selectionAnchorRect();
     const annotation = rect ? textAnnotationFromCurrentSelection() : null;
     if (!rect || !annotation) {
-      lastDraftSignature = null;
+      hideSelectionMenu();
       return;
     }
     const signature = annotationSignature(annotation);
     if (signature === lastDraftSignature) return;
     lastDraftSignature = signature;
-    draftAnnotation = annotation;
     annotationsPanelOpen = false;
-    openAnnotationMenuForAnnotation(annotation, {
+    selectionAction = {
+      annotation,
       x: rect.left + rect.width / 2,
       y: rect.bottom + 8,
-    });
+    };
+  }
+
+  function openSelectionAnnotationDraft() {
+    if (!selectionAction) return;
+    const { annotation, x, y } = selectionAction;
+    draftAnnotation = annotation;
+    openAnnotationMenuForAnnotation(annotation, { x, y });
   }
 
   function scheduleSelectionMenuUpdate() {
@@ -522,6 +535,7 @@
   function handleDocumentPointerDown(event: PointerEvent) {
     if (!(event.target instanceof Element)) return;
     if (event.target.closest(".annotation-toolbar")) return;
+    if (event.target.closest(".pdf-selection-action")) return;
     if (event.target.closest(".pdf-annotations-panel")) return;
     if (event.target.closest(".pdf-annotation-menu")) return;
     if (event.target.closest(".pdf-annotation-overlay")) return;
@@ -835,6 +849,22 @@
     onclick={handlePdfPagesClick}
     onkeydown={handlePdfPagesKeydown}
   ></div>
+  {#if selectionAction && !annotationMenu}
+    <button
+      type="button"
+      class="pdf-selection-action"
+      data-testid="floating-text-annotation"
+      style:left={`${selectionAction.x}px`}
+      style:top={`${selectionAction.y}px`}
+      onpointerdown={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      onclick={openSelectionAnnotationDraft}
+    >
+      Annotate
+    </button>
+  {/if}
   {#if annotationMenu}
     <div
       class="pdf-annotation-menu"
@@ -1043,6 +1073,20 @@
     position: fixed;
     z-index: 50;
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
+  }
+
+  .pdf-selection-action {
+    position: fixed;
+    z-index: 45;
+    transform: translate(-50%, 0);
+    min-height: 32px;
+    padding: 0 var(--space-3, 12px);
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    color: var(--bg);
+    background: var(--accent);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.24);
+    cursor: pointer;
   }
 
   .pdf-annotation-menu {
