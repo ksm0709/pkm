@@ -2,6 +2,13 @@
 
 <!-- version list -->
 
+## v2.94.9 (2026-07-06)
+
+### Bug Fixes
+
+- Stabilize the PDF viewer initial render to avoid blinking while pages load
+
+
 ## v2.94.8 (2026-07-06)
 
 ### Features
