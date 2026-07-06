@@ -155,12 +155,15 @@ describe("PdfViewer", () => {
     unmount(component);
   });
 
-  it("keeps the PDF surface covered until the initial render resolves", async () => {
+  it("shows the first rendered PDF page before the full document render resolves", async () => {
     const renderDeferred = deferred<() => void>();
-    vi.mocked(renderPdfIntoContainer).mockImplementation(async (container) => {
-      installOnePage(container);
-      return renderDeferred.promise;
-    });
+    vi.mocked(renderPdfIntoContainer).mockImplementation(
+      async (container, _buffer, options) => {
+        installOnePage(container);
+        options?.onFirstPageRendered?.();
+        return renderDeferred.promise;
+      },
+    );
     mockApi();
     const target = document.createElement("div");
     document.body.appendChild(target);
@@ -173,18 +176,31 @@ describe("PdfViewer", () => {
     await waitFor(() => {
       expect(renderPdfIntoContainer).toHaveBeenCalledTimes(1);
       expect(target.querySelector(".pdf-page")).not.toBeNull();
-    });
-    expect(target.querySelector('[data-testid="pdf-loading"]')).not.toBeNull();
-    expect(
-      target.querySelector('[data-testid="pdf-pages"]')?.classList,
-    ).toContain("initial-rendering");
-
-    renderDeferred.resolve(() => undefined);
-    await waitFor(() => {
       expect(target.querySelector('[data-testid="pdf-loading"]')).toBeNull();
       expect(
         target.querySelector('[data-testid="pdf-pages"]')?.classList,
       ).not.toContain("initial-rendering");
+    });
+
+    expect(
+      target.querySelector<HTMLButtonElement>('[data-testid="pdf-zoom-in"]')
+        ?.disabled,
+    ).toBe(false);
+    expect(
+      vi
+        .mocked(apiClient)
+        .mock.calls.find(([url]) => String(url).includes("/annotations/data/")),
+    ).toBeUndefined();
+
+    renderDeferred.resolve(() => undefined);
+    await waitFor(() => {
+      expect(
+        vi
+          .mocked(apiClient)
+          .mock.calls.find(([url]) =>
+            String(url).includes("/annotations/data/"),
+          ),
+      ).toBeDefined();
     });
 
     unmount(component);
@@ -230,10 +246,14 @@ describe("PdfViewer", () => {
 
   it("does not allow zoom controls to uncover the initial PDF render", async () => {
     const renderDeferred = deferred<() => void>();
-    vi.mocked(renderPdfIntoContainer).mockImplementation(async (container) => {
-      installOnePage(container);
-      return renderDeferred.promise;
-    });
+    let markFirstPageRendered: (() => void) | undefined;
+    vi.mocked(renderPdfIntoContainer).mockImplementation(
+      async (container, _buffer, options) => {
+        installOnePage(container);
+        markFirstPageRendered = options?.onFirstPageRendered;
+        return renderDeferred.promise;
+      },
+    );
     mockApi();
     const target = document.createElement("div");
     document.body.appendChild(target);
@@ -254,15 +274,17 @@ describe("PdfViewer", () => {
     )!;
     expect(zoomIn.disabled).toBe(true);
 
-    zoomIn.click();
-    await tick();
-    expect(renderPdfIntoContainer).toHaveBeenCalledTimes(1);
-
-    renderDeferred.resolve(() => undefined);
+    markFirstPageRendered?.();
     await waitFor(() => {
       expect(target.querySelector('[data-testid="pdf-loading"]')).toBeNull();
       expect(zoomIn.disabled).toBe(false);
     });
+
+    zoomIn.click();
+    await tick();
+    expect(renderPdfIntoContainer).toHaveBeenCalledTimes(2);
+
+    renderDeferred.resolve(() => undefined);
 
     unmount(component);
   });

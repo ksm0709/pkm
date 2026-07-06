@@ -79,6 +79,7 @@ export interface PdfRenderOptions {
   outputScale?: number;
   maxOutputScale?: number;
   signal?: AbortSignal;
+  onFirstPageRendered?: () => void;
 }
 
 function setWorkerSrc(
@@ -163,6 +164,7 @@ export async function renderPdfIntoContainer(
   const outputScale = resolvedOutputScale(options);
   const renderTasks: Array<{ cancel: () => void }> = [];
   const pageElements: HTMLElement[] = [];
+  let firstPageRendered = false;
 
   function cleanupOwnedRender() {
     for (const task of renderTasks) task.cancel();
@@ -231,6 +233,10 @@ export async function renderPdfIntoContainer(
       renderTasks.push(renderTask);
       await renderTask.promise;
       throwIfAborted(signal);
+      if (!firstPageRendered) {
+        firstPageRendered = true;
+        options.onFirstPageRendered?.();
+      }
 
       const textContent = await page.getTextContent();
       throwIfAborted(signal);

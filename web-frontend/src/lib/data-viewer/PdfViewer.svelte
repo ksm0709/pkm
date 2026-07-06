@@ -162,6 +162,18 @@
     pendingResizeAfterRender = true;
   }
 
+  function revealInitialRender(token: number, controller: AbortController) {
+    if (
+      token === renderToken &&
+      !cancelled &&
+      !controller.signal.aborted &&
+      !initialRenderComplete
+    ) {
+      initialRenderComplete = true;
+      loading = false;
+    }
+  }
+
   async function renderCurrentPdf(
     reason: "initial" | "zoom" | "resize" = "zoom",
   ) {
@@ -186,12 +198,16 @@
         scale: zoomScale,
         fitToContainer: true,
         signal: controller.signal,
+        onFirstPageRendered: () => {
+          if (reason === "initial") revealInitialRender(token, controller);
+        },
       });
       if (cancelled || token !== renderToken || controller.signal.aborted) {
         nextCleanup();
         return;
       }
       cleanup = nextCleanup;
+      if (reason === "initial") revealInitialRender(token, controller);
       paintAnnotationOverlays();
     } catch (err) {
       if (isAbortError(err) || token !== renderToken) return;

@@ -60,6 +60,33 @@ describe("renderPdfIntoContainer", () => {
     document.body.innerHTML = "";
   });
 
+  function deferred<T>() {
+    let resolve!: (value: T | PromiseLike<T>) => void;
+    const promise = new Promise<T>((next) => {
+      resolve = next;
+    });
+    return { promise, resolve };
+  }
+
+  async function flushPromises() {
+    for (let i = 0; i < 6; i += 1) await Promise.resolve();
+  }
+
+  async function waitFor(assertion: () => void | Promise<void>) {
+    let lastError: unknown;
+    for (let i = 0; i < 30; i += 1) {
+      try {
+        await assertion();
+        return;
+      } catch (error) {
+        lastError = error;
+        await flushPromises();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    }
+    throw lastError;
+  }
+
   it("renders canvases with a high-DPI backing store without changing CSS layout size", async () => {
     const container = document.createElement("div");
     await renderPdfIntoContainer(container, new Uint8Array([1, 2, 3]).buffer, {
@@ -83,6 +110,48 @@ describe("renderPdfIntoContainer", () => {
         transform: [2, 0, 0, 2, 0, 0],
       }),
     );
+  });
+
+  it("notifies when the first page canvas has rendered before the whole PDF finishes", async () => {
+    const secondPageRender = deferred<void>();
+    getDocument.mockReturnValueOnce({
+      promise: Promise.resolve({
+        numPages: 2,
+        getPage,
+        destroy: destroyPdf,
+      }),
+    });
+    pageRender
+      .mockImplementationOnce(() => ({
+        cancel: vi.fn(),
+        promise: Promise.resolve(),
+      }))
+      .mockImplementationOnce(() => ({
+        cancel: vi.fn(),
+        promise: secondPageRender.promise,
+      }));
+    const container = document.createElement("div");
+    const onFirstPageRendered = vi.fn();
+    let fullRenderResolved = false;
+
+    const renderPromise = renderPdfIntoContainer(
+      container,
+      new Uint8Array([1, 2, 3]).buffer,
+      { onFirstPageRendered },
+    ).then(() => {
+      fullRenderResolved = true;
+    });
+    try {
+      await waitFor(() => {
+        expect(onFirstPageRendered).toHaveBeenCalledTimes(1);
+      });
+      expect(container.querySelectorAll(".pdf-page")).toHaveLength(2);
+      expect(fullRenderResolved).toBe(false);
+    } finally {
+      secondPageRender.resolve();
+      await renderPromise;
+    }
+    expect(fullRenderResolved).toBe(true);
   });
 
   it("keeps PDF zoom scale separate from output pixel scale", async () => {
