@@ -112,6 +112,24 @@ describe("renderPdfIntoContainer", () => {
     );
   });
 
+  it("notifies when the PDF document page count is known", async () => {
+    getDocument.mockReturnValueOnce({
+      promise: Promise.resolve({
+        numPages: 7,
+        getPage,
+        destroy: destroyPdf,
+      }),
+    });
+    const container = document.createElement("div");
+    const onDocumentLoaded = vi.fn();
+
+    await renderPdfIntoContainer(container, new Uint8Array([1, 2, 3]).buffer, {
+      onDocumentLoaded,
+    });
+
+    expect(onDocumentLoaded).toHaveBeenCalledWith({ pageCount: 7 });
+  });
+
   it("notifies when the first page canvas has rendered before the whole PDF finishes", async () => {
     const secondPageRender = deferred<void>();
     getDocument.mockReturnValueOnce({

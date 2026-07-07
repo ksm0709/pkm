@@ -79,6 +79,7 @@ export interface PdfRenderOptions {
   outputScale?: number;
   maxOutputScale?: number;
   signal?: AbortSignal;
+  onDocumentLoaded?: (info: { pageCount: number }) => void;
   onFirstPageRendered?: () => void;
 }
 
@@ -175,6 +176,7 @@ export async function renderPdfIntoContainer(
   try {
     pdf = await loadingTask.promise;
     throwIfAborted(signal);
+    options.onDocumentLoaded?.({ pageCount: pdf.numPages });
 
     const pageRecords = [];
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {

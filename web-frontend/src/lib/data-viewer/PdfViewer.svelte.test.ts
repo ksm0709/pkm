@@ -21,24 +21,57 @@ const emptyDoc: PdfAnnotationDocument = {
   annotations: [],
 };
 
-function installOnePage(container: HTMLElement) {
+function domRect(rect: Partial<DOMRect>): DOMRect {
+  const left = rect.left ?? rect.x ?? 0;
+  const top = rect.top ?? rect.y ?? 0;
+  const width = rect.width ?? 0;
+  const height = rect.height ?? 0;
+  return {
+    x: left,
+    y: top,
+    left,
+    top,
+    right: rect.right ?? left + width,
+    bottom: rect.bottom ?? top + height,
+    width,
+    height,
+    toJSON: () => ({}),
+  } as DOMRect;
+}
+
+function setScrollMetrics(
+  element: HTMLElement,
+  metrics: { scrollTop: number; scrollHeight: number; clientHeight: number },
+) {
+  Object.defineProperty(element, "scrollTop", {
+    configurable: true,
+    writable: true,
+    value: metrics.scrollTop,
+  });
+  Object.defineProperty(element, "scrollHeight", {
+    configurable: true,
+    value: metrics.scrollHeight,
+  });
+  Object.defineProperty(element, "clientHeight", {
+    configurable: true,
+    value: metrics.clientHeight,
+  });
+}
+
+function installOnePage(
+  container: HTMLElement,
+  pageNumber = 1,
+  rect: Partial<DOMRect> = {
+    left: 100,
+    top: 50,
+    width: 200,
+    height: 400,
+  },
+) {
   const page = document.createElement("section");
   page.className = "pdf-page";
-  page.dataset.pageNumber = "1";
-  page.getBoundingClientRect = vi.fn(
-    () =>
-      ({
-        x: 100,
-        y: 50,
-        left: 100,
-        top: 50,
-        right: 300,
-        bottom: 450,
-        width: 200,
-        height: 400,
-        toJSON: () => ({}),
-      }) as DOMRect,
-  );
+  page.dataset.pageNumber = String(pageNumber);
+  page.getBoundingClientRect = vi.fn(() => domRect(rect));
   container.appendChild(page);
   return page;
 }
@@ -202,6 +235,76 @@ describe("PdfViewer", () => {
           ),
       ).toBeDefined();
     });
+
+    unmount(component);
+  });
+
+  it("shows a transient right-side scroll overlay with the current PDF page number", async () => {
+    vi.mocked(renderPdfIntoContainer).mockImplementation(
+      async (container, _buffer, options) => {
+        setScrollMetrics(container, {
+          scrollTop: 500,
+          scrollHeight: 1500,
+          clientHeight: 500,
+        });
+        container.getBoundingClientRect = vi.fn(() =>
+          domRect({ left: 0, top: 100, width: 900, height: 500 }),
+        );
+        options?.onDocumentLoaded?.({ pageCount: 3 });
+        installOnePage(container, 1, {
+          left: 100,
+          top: -450,
+          width: 600,
+          height: 400,
+        });
+        installOnePage(container, 2, {
+          left: 100,
+          top: 150,
+          width: 600,
+          height: 400,
+        });
+        installOnePage(container, 3, {
+          left: 100,
+          top: 750,
+          width: 600,
+          height: 400,
+        });
+        options?.onFirstPageRendered?.();
+        return () => undefined;
+      },
+    );
+    mockApi();
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+
+    const component = mount(PdfViewer, {
+      target,
+      props: { vault: "taeho", path: "reports/report.pdf" },
+    });
+
+    await waitFor(() => {
+      expect(target.querySelector('[data-testid="pdf-pages"]')).not.toBeNull();
+      expect(target.querySelector('[data-testid="pdf-loading"]')).toBeNull();
+    });
+    await tick();
+    await tick();
+    const pages = target.querySelector<HTMLElement>(
+      '[data-testid="pdf-pages"]',
+    )!;
+    await waitFor(() => {
+      pages.dispatchEvent(new Event("scroll"));
+      const overlay = target.querySelector(
+        '[data-testid="pdf-scroll-position-overlay"]',
+      );
+      expect(overlay).not.toBeNull();
+      expect(overlay?.textContent).toContain("50% · Page 2 / 3");
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 950));
+    await tick();
+    expect(
+      target.querySelector('[data-testid="pdf-scroll-position-overlay"]'),
+    ).toBeNull();
 
     unmount(component);
   });

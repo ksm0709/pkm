@@ -4,6 +4,7 @@
   import { apiClient, apiGet } from "$lib/api/client.js";
   import MarkdownRenderer from "$lib/components/MarkdownRenderer.svelte";
   import NeighborPanel from "$lib/components/NeighborPanel.svelte";
+  import ScrollPositionOverlay from "$lib/components/ScrollPositionOverlay.svelte";
   import CodeMirror from "$lib/editor/CodeMirror.svelte";
   import { tagHue } from "$lib/notes/rendered-markdown.js";
   import { graphKeyNav } from "$lib/navigation/graph-keynav.svelte";
@@ -55,6 +56,8 @@
   let saving = $state(false);
   let saveError = $state("");
   let saveStatus = $state("");
+  let notePageElement = $state<HTMLElement | null>(null);
+  let noteScrollElement = $state<HTMLElement | null>(null);
 
   let vaultName = $derived($page.params.vault);
   let noteId = $derived($page.params.id);
@@ -77,6 +80,25 @@
 
   function tagHref(vault: string, tag: string) {
     return `/${encodeURIComponent(vault)}/notes/${encodeURIComponent(`tag:${tag}`)}`;
+  }
+
+  function closestScrollContainer(element: HTMLElement | null) {
+    if (!element) return null;
+    const vaultContent = element.closest<HTMLElement>(".vault-content");
+    if (vaultContent) return vaultContent;
+
+    let current = element.parentElement;
+    while (current) {
+      const overflowY = window.getComputedStyle(current).overflowY;
+      if (
+        (overflowY === "auto" || overflowY === "scroll") &&
+        current.scrollHeight > current.clientHeight
+      ) {
+        return current;
+      }
+      current = current.parentElement;
+    }
+    return null;
   }
 
   function taskStateKind(state: string) {
@@ -1538,6 +1560,11 @@
     });
   });
 
+  $effect(() => {
+    const root = notePageElement;
+    noteScrollElement = closestScrollContainer(root);
+  });
+
   onMount(() => {
     const handleSelectionChange = () => {
       if (!annotateMenu || annotateMenuInteracting || !noteBodyElement) return;
@@ -1625,7 +1652,7 @@
   <title>{note?.title ?? noteId} — pkm</title>
 </svelte:head>
 
-<div class="note-page">
+<div bind:this={notePageElement} class="note-page">
   {#if loadingNote}
     <p class="status">Loading…</p>
   {:else if error}
@@ -1955,6 +1982,12 @@
       <!-- Signature NeighborPanel -->
       <NeighborPanel {vaultName} data={neighbors} loading={loadingNeighbors} />
     </article>
+  {/if}
+  {#if note && !editMode}
+    <ScrollPositionOverlay
+      scrollElement={noteScrollElement}
+      testId="note-scroll-position-overlay"
+    />
   {/if}
 </div>
 

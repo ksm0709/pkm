@@ -125,6 +125,25 @@ describe("note page loading", () => {
     throw lastError;
   }
 
+  function setScrollMetrics(
+    element: HTMLElement,
+    metrics: { scrollTop: number; scrollHeight: number; clientHeight: number },
+  ) {
+    Object.defineProperty(element, "scrollTop", {
+      configurable: true,
+      writable: true,
+      value: metrics.scrollTop,
+    });
+    Object.defineProperty(element, "scrollHeight", {
+      configurable: true,
+      value: metrics.scrollHeight,
+    });
+    Object.defineProperty(element, "clientHeight", {
+      configurable: true,
+      value: metrics.clientHeight,
+    });
+  }
+
   function annotationSourceHref(quote: string, occurrence: number) {
     return `#quote=${encodeURIComponent(quote.replace(/\s+/g, " ").trim())}&occ=${occurrence}`;
   }
@@ -256,6 +275,42 @@ describe("note page loading", () => {
         (path) => path === "/api/v1/vault/main/notes/alpha-note/neighbors",
       ),
     ).toHaveLength(1);
+
+    unmount(component);
+  });
+
+  it("shows a transient right-side scroll overlay while the note view scrolls", async () => {
+    const vaultContent = document.createElement("div");
+    vaultContent.className = "vault-content";
+    setScrollMetrics(vaultContent, {
+      scrollTop: 300,
+      scrollHeight: 1200,
+      clientHeight: 600,
+    });
+    const target = document.createElement("div");
+    vaultContent.appendChild(target);
+    document.body.appendChild(vaultContent);
+
+    const component = mount(NotePage, { target });
+    await waitFor(() => {
+      expect(target.querySelector(".note-body")).not.toBeNull();
+    });
+    vi.useFakeTimers();
+
+    vaultContent.dispatchEvent(new Event("scroll"));
+    await tick();
+
+    const overlay = target.querySelector(
+      '[data-testid="note-scroll-position-overlay"]',
+    );
+    expect(overlay).not.toBeNull();
+    expect(overlay?.textContent).toContain("50%");
+
+    await vi.advanceTimersByTimeAsync(900);
+    await tick();
+    expect(
+      target.querySelector('[data-testid="note-scroll-position-overlay"]'),
+    ).toBeNull();
 
     unmount(component);
   });

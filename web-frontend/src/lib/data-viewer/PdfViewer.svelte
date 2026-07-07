@@ -1,6 +1,7 @@
 <script lang="ts">
   import { flushSync, onDestroy, onMount, tick } from "svelte";
   import { apiClient } from "$lib/api/client.js";
+  import ScrollPositionOverlay from "$lib/components/ScrollPositionOverlay.svelte";
   import {
     loadDataAnnotations,
     saveDataAnnotations,
@@ -26,7 +27,7 @@
 
   type AnnotationMenuAnchor = { x: number; y: number };
 
-  let container: HTMLDivElement;
+  let container = $state<HTMLDivElement | null>(null);
   let loading = $state(false);
   let saving = $state(false);
   let error = $state("");
@@ -47,6 +48,7 @@
   let annotationDraftComment = $state("");
   let annotationDoc = $state<PdfAnnotationDocument | null>(null);
   let pdfBytes = $state<Uint8Array | null>(null);
+  let pdfPageCount = $state(0);
   let zoomScale = $state(DEFAULT_ZOOM);
   let cleanup: PdfRenderCleanup | null = null;
   let renderAbortController: AbortController | null = null;
@@ -146,6 +148,48 @@
     return `${Math.round(zoomScale * 100)}%`;
   }
 
+  function currentPdfPageLabel() {
+    if (!container || pdfPageCount <= 0) return null;
+    const pages = Array.from(
+      container.querySelectorAll<HTMLElement>(".pdf-page[data-page-number]"),
+    );
+    if (!pages.length) return `Page 1 / ${pdfPageCount}`;
+
+    const scrollRect = container.getBoundingClientRect();
+    const centerY = scrollRect.top + scrollRect.height / 2;
+    let bestPage = 1;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    for (const page of pages) {
+      const pageNumber = Number(page.dataset.pageNumber ?? "");
+      if (!Number.isFinite(pageNumber) || pageNumber <= 0) continue;
+      const rect = page.getBoundingClientRect();
+      if (rect.height > 0 && centerY >= rect.top && centerY <= rect.bottom) {
+        bestPage = pageNumber;
+        bestDistance = 0;
+        break;
+      }
+      const pageCenter = rect.top + rect.height / 2;
+      const distance = Math.abs(centerY - pageCenter);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestPage = pageNumber;
+      }
+    }
+
+    if (!Number.isFinite(bestDistance)) {
+      const maxScroll = Math.max(
+        container.scrollHeight - container.clientHeight,
+        1,
+      );
+      bestPage =
+        Math.round((container.scrollTop / maxScroll) * (pdfPageCount - 1)) + 1;
+    }
+
+    const clampedPage = clamp(bestPage, 1, pdfPageCount);
+    return `Page ${clampedPage} / ${pdfPageCount}`;
+  }
+
   function clampZoom(value: number) {
     return Math.min(Math.max(value, MIN_ZOOM), MAX_ZOOM);
   }
@@ -198,6 +242,15 @@
         scale: zoomScale,
         fitToContainer: true,
         signal: controller.signal,
+        onDocumentLoaded: ({ pageCount }) => {
+          if (
+            token === renderToken &&
+            !cancelled &&
+            !controller.signal.aborted
+          ) {
+            pdfPageCount = pageCount;
+          }
+        },
         onFirstPageRendered: () => {
           if (reason === "initial") revealInitialRender(token, controller);
         },
@@ -351,6 +404,7 @@
     loading = true;
     error = "";
     pdfBytes = null;
+    pdfPageCount = 0;
     annotationDoc = null;
     initialRenderComplete = false;
     pendingResizeAfterRender = false;
@@ -438,6 +492,7 @@
   }
 
   function textAnnotationFromCurrentSelection() {
+    if (!container) return null;
     return createTextAnnotationFromSelection({
       root: container,
       selection: window.getSelection(),
@@ -909,6 +964,13 @@
     onclick={handlePdfPagesClick}
     onkeydown={handlePdfPagesKeydown}
   ></div>
+  {#if initialRenderComplete}
+    <ScrollPositionOverlay
+      scrollElement={container}
+      testId="pdf-scroll-position-overlay"
+      getDetailLabel={currentPdfPageLabel}
+    />
+  {/if}
   {#if selectionAction && !annotationMenu}
     <button
       type="button"

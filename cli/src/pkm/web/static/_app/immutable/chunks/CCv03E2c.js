@@ -1,2 +1,0 @@
-import{G as y,b as u,H as _,I as o,h as t,J as g,K as i,M as l,N as d,O as p,Q as m}from"./DVWCvBHb.js";function C(n,r){let s=null,E=t;var a;if(t){s=p;for(var e=m(document.head);e!==null&&(e.nodeType!==g||e.data!==n);)e=i(e);if(e===null)l(!1);else{var f=i(e);e.remove(),d(f)}}t||(a=document.head.appendChild(y()));try{u(()=>r(a),_|o)}finally{E&&(l(!0),d(s))}}export{C as h};
-//# sourceMappingURL=CCv03E2c.js.map
