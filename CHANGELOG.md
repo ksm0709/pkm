@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.94.11 (2026-07-07)
+
+### Features
+
+- Show transient scroll-position overlays in PDF and note views
+- Include the current PDF page number in the PDF scroll overlay
+
+
 ## v2.94.10 (2026-07-06)
 
 ### Bug Fixes
