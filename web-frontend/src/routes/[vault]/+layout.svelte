@@ -128,6 +128,14 @@
     return goto(`/${vaultName}/notes/${new Date().toISOString().slice(0, 10)}`);
   }
 
+  function goBack() {
+    if (typeof history !== "undefined" && history.length > 1) {
+      history.back();
+      return true;
+    }
+    return navigateGraphTarget(graphKeyNav.popNavigationStack());
+  }
+
   let { children }: Props = $props();
 
   let vaultName = $derived($page.params.vault ?? "");
@@ -161,7 +169,7 @@
         navigateGraphTarget(graphKeyNav.navigateNextSemantic()),
       prevNeighbor: () =>
         navigateGraphTarget(graphKeyNav.navigatePreviousSemantic()),
-      back: () => navigateGraphTarget(graphKeyNav.popNavigationStack()),
+      back: () => goBack(),
       followAtCursor: () => false,
       openExternal: () => false,
       openPalette: () => openCommandPalette(),
@@ -408,6 +416,7 @@
   {drawerOpen}
   {toggleDrawer}
   {openCommandPalette}
+  {goBack}
 />
 
 <div class="vault-shell" class:drawer-open={drawerOpen}>

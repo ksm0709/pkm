@@ -336,6 +336,63 @@ def load_index(vault: VaultConfig) -> VectorIndex:
     )
 
 
+def _normalize_lexical_text(text: str) -> str:
+    """Normalize text for lightweight lexical matching."""
+    return _re.sub(r"\s+", " ", text.casefold()).strip()
+
+
+def _query_terms(query: str) -> list[str]:
+    """Return meaningful query terms while preserving short CJK/Korean tokens."""
+    normalized = _normalize_lexical_text(query)
+    if not normalized:
+        return []
+    terms = [term for term in _re.split(r"[^\w가-힣]+", normalized) if term]
+    if normalized not in terms:
+        terms.insert(0, normalized)
+    return terms
+
+
+def _entry_search_text(entry: IndexEntry) -> str:
+    """Collect title/id/tags and note body text for lexical search boosts."""
+    parts = [entry.note_id, entry.title, " ".join(entry.tags), entry.path]
+    if entry.path:
+        try:
+            path = Path(entry.path)
+            if path.is_file():
+                parts.append(path.read_text(encoding="utf-8", errors="ignore"))
+        except OSError:
+            pass
+    return _normalize_lexical_text("\n".join(part for part in parts if part))
+
+
+def _lexical_relevance(query: str, entry: IndexEntry) -> float:
+    """Score exact lexical overlap so obvious keyword hits beat embedding noise."""
+    terms = _query_terms(query)
+    if not terms:
+        return 0.0
+
+    haystack = _entry_search_text(entry)
+    if not haystack:
+        return 0.0
+
+    title_id = _normalize_lexical_text("\n".join([entry.note_id, entry.title]))
+    tags_text = _normalize_lexical_text(" ".join(entry.tags))
+    exact_query = terms[0]
+    score = 0.0
+    if exact_query in title_id:
+        score = max(score, 1.6)
+    elif exact_query in tags_text:
+        score = max(score, 1.0)
+    elif exact_query in haystack:
+        score = max(score, 0.75)
+
+    matched_terms = sum(1 for term in terms if term in haystack)
+    if matched_terms:
+        score = max(score, 0.35 + 0.45 * (matched_terms / len(terms)))
+
+    return min(score, 1.6)
+
+
 def search(
     query: str,
     index: VectorIndex,
@@ -345,7 +402,7 @@ def search(
     recency_weight: float = 0.0,
     min_importance: float = 1.0,
 ) -> list[SearchResult]:
-    """Search the index for notes semantically similar to the query."""
+    """Search the index for notes similar to the query, with exact keyword guardrails."""
     model = _require_transformers(model_name)
 
     import numpy as np
@@ -389,9 +446,11 @@ def search(
                 recency_score = 0.5  # fallback for unparseable dates
 
         importance_norm = entry.importance / 10.0
-        final_score = (
+        semantic_score = (
             1 - recency_weight
         ) * cos_sim + recency_weight * recency_score * importance_norm
+        lexical_score = _lexical_relevance(query, entry)
+        final_score = semantic_score + (2.0 * lexical_score)
 
         scored.append((final_score, entry))
 

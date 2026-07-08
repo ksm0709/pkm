@@ -87,4 +87,32 @@ describe("Topbar", () => {
 
     unmount(component);
   });
+
+  it("exposes a persistent top-level back button for desktop navigation", async () => {
+    const target = document.createElement("div");
+    const goBack = vi.fn();
+    document.body.appendChild(target);
+
+    const component = mount(Topbar, {
+      target,
+      props: {
+        vaultName: "main",
+        pageName: "daily",
+        goBack,
+      },
+    });
+    await tick();
+
+    const backButton = target.querySelector<HTMLButtonElement>(
+      '[data-testid="topbar-back"]',
+    );
+    expect(backButton).not.toBeNull();
+    expect(backButton?.getAttribute("aria-label")).toBe("Go back");
+    expect(backButton?.textContent).toContain("BACK");
+
+    backButton?.click();
+    expect(goBack).toHaveBeenCalledTimes(1);
+
+    unmount(component);
+  });
 });

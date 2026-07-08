@@ -86,6 +86,7 @@ describe("PdfViewer", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
     vi.mocked(apiClient).mockReset();
     vi.mocked(renderPdfIntoContainer).mockReset();
     document.body.innerHTML = "";
@@ -936,6 +937,62 @@ describe("PdfViewer", () => {
     ).toBe(true);
 
     unmount(component);
+  });
+
+  it("ignores ResizeObserver churn when the PDF container size is unchanged", async () => {
+    let resizeObserverCallback:
+      | ((
+          entries: Array<{ contentRect: { width: number; height: number } }>,
+        ) => void)
+      | undefined;
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(
+          callback: (
+            entries: Array<{ contentRect: { width: number; height: number } }>,
+          ) => void,
+        ) {
+          resizeObserverCallback = callback;
+        }
+        observe = vi.fn();
+        disconnect = vi.fn();
+      },
+    );
+    mockApi();
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(PdfViewer, {
+      target,
+      props: { vault: "taeho", path: "reports/report.pdf" },
+    });
+
+    try {
+      await waitFor(() => {
+        expect(renderPdfIntoContainer).toHaveBeenCalledTimes(1);
+      });
+      vi.useFakeTimers();
+      const pages = target.querySelector<HTMLElement>(
+        '[data-testid="pdf-pages"]',
+      )!;
+      setScrollMetrics(pages, {
+        scrollTop: 640,
+        scrollHeight: 1800,
+        clientHeight: 600,
+      });
+
+      resizeObserverCallback?.([
+        { contentRect: { width: 900, height: 600 } },
+        { contentRect: { width: 900, height: 600 } },
+      ]);
+      await vi.advanceTimersByTimeAsync(120);
+      await tick();
+
+      expect(renderPdfIntoContainer).toHaveBeenCalledTimes(1);
+      expect(pages.scrollTop).toBe(640);
+    } finally {
+      unmount(component);
+    }
   });
 
   it("cancels a pending resize render when opening the annotations panel", async () => {

@@ -7,6 +7,7 @@
     drawerOpen?: boolean;
     toggleDrawer?: () => void;
     openCommandPalette?: () => void;
+    goBack?: () => void;
   }
 
   let {
@@ -15,6 +16,9 @@
     drawerOpen = false,
     toggleDrawer = () => {},
     openCommandPalette = () => {},
+    goBack = () => {
+      if (typeof history !== "undefined") history.back();
+    },
   }: Props = $props();
 
   function openVaultLogger() {
@@ -25,6 +29,17 @@
 
 <header class="topbar" aria-label="Vault status rail">
   <div class="topbar-left">
+    <button
+      class="back-button"
+      type="button"
+      aria-label="Go back"
+      data-testid="topbar-back"
+      onclick={goBack}
+    >
+      <span class="back-mark" aria-hidden="true"></span>
+      <span class="back-text">BACK</span>
+    </button>
+
     <button
       class="drawer-toggle"
       type="button"
@@ -113,6 +128,7 @@
     gap: var(--space-2, 8px);
   }
 
+  .back-button,
   .drawer-toggle {
     position: relative;
     display: inline-flex;
@@ -133,6 +149,28 @@
       color var(--dur-fast, 120ms) var(--ease-out),
       border-color var(--dur-fast, 120ms) var(--ease-out),
       background-color var(--dur-fast, 120ms) var(--ease-out);
+  }
+
+  .back-button {
+    padding: 0 var(--space-3, 12px) 0 11px;
+    border-left-color: var(--accent, #ecaa4a);
+    cursor: pointer;
+  }
+
+  .back-button:hover,
+  .back-button:focus-visible {
+    color: var(--text, #e8ecef);
+    background: var(--accent-bg, rgba(236, 170, 74, 0.12));
+    border-color: var(--rail, rgba(236, 170, 74, 0.58));
+    outline: none;
+  }
+
+  .back-mark {
+    width: 10px;
+    height: 10px;
+    border-left: 2px solid var(--signal, var(--accent, #ecaa4a));
+    border-top: 2px solid var(--signal, var(--accent, #ecaa4a));
+    transform: rotate(-45deg);
   }
 
   .drawer-toggle:hover,
@@ -261,6 +299,11 @@
       display: none;
     }
 
+    .back-text {
+      display: none;
+    }
+
+    .back-button,
     .drawer-toggle {
       width: 34px;
       padding: 0;
@@ -269,6 +312,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .back-button,
     .drawer-toggle,
     .toggle-mark,
     .command-button {

@@ -3,7 +3,6 @@
 import datetime
 import json
 import logging
-import re
 import sqlite3
 from collections import Counter
 from dataclasses import dataclass

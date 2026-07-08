@@ -24,6 +24,7 @@
   const MIN_ZOOM = 0.75;
   const MAX_ZOOM = 3;
   const ZOOM_STEP = 0.25;
+  const RESIZE_EPSILON_PX = 2;
 
   type AnnotationMenuAnchor = { x: number; y: number };
 
@@ -60,6 +61,8 @@
   let initialRenderComplete = $state(false);
   let renderToken = 0;
   let cancelled = false;
+  let lastObservedContainerSize: { width: number; height: number } | null =
+    null;
 
   function nowIso() {
     return new Date().toISOString();
@@ -664,6 +667,36 @@
     resizeTimer = null;
   }
 
+  function observedSizeFromEntry(entry: ResizeObserverEntry | undefined) {
+    const rect = entry?.contentRect;
+    const width = rect?.width ?? container?.clientWidth ?? 0;
+    const height = rect?.height ?? container?.clientHeight ?? 0;
+    if (width <= 0 || height <= 0) return null;
+    return { width, height };
+  }
+
+  function containerSizeChanged(
+    previous: { width: number; height: number },
+    next: { width: number; height: number },
+  ) {
+    return (
+      Math.abs(previous.width - next.width) >= RESIZE_EPSILON_PX ||
+      Math.abs(previous.height - next.height) >= RESIZE_EPSILON_PX
+    );
+  }
+
+  function handleContainerResize(entries: ResizeObserverEntry[]) {
+    const nextSize = observedSizeFromEntry(entries[0]);
+    if (!nextSize) return;
+    if (!lastObservedContainerSize) {
+      lastObservedContainerSize = nextSize;
+      return;
+    }
+    if (!containerSizeChanged(lastObservedContainerSize, nextSize)) return;
+    lastObservedContainerSize = nextSize;
+    scheduleResizeRender();
+  }
+
   function toggleAnnotationsPanel() {
     const nextOpen = !annotationsPanelOpen;
     annotationsPanelOpen = nextOpen;
@@ -794,26 +827,30 @@
     document.addEventListener("keydown", handleDocumentKeydown);
     window.addEventListener("resize", scheduleResizeRender);
     if (typeof ResizeObserver !== "undefined") {
-      resizeObserver = new ResizeObserver(scheduleResizeRender);
+      resizeObserver = new ResizeObserver(handleContainerResize);
       if (container) resizeObserver.observe(container);
     }
     void loadPdf();
   });
 
   onDestroy(() => {
-    document.removeEventListener(
-      "selectionchange",
-      handleDocumentSelectionChange,
-    );
-    document.removeEventListener(
-      "pointerdown",
-      handleDocumentAnnotationCardPointerDown,
-      true,
-    );
-    document.removeEventListener("pointerdown", handleDocumentPointerDown);
-    document.removeEventListener("click", handleDocumentAnnotationCardClick);
-    document.removeEventListener("keydown", handleDocumentKeydown);
-    window.removeEventListener("resize", scheduleResizeRender);
+    if (typeof document !== "undefined") {
+      document.removeEventListener(
+        "selectionchange",
+        handleDocumentSelectionChange,
+      );
+      document.removeEventListener(
+        "pointerdown",
+        handleDocumentAnnotationCardPointerDown,
+        true,
+      );
+      document.removeEventListener("pointerdown", handleDocumentPointerDown);
+      document.removeEventListener("click", handleDocumentAnnotationCardClick);
+      document.removeEventListener("keydown", handleDocumentKeydown);
+    }
+    if (typeof window !== "undefined") {
+      window.removeEventListener("resize", scheduleResizeRender);
+    }
     resizeObserver?.disconnect();
     resizeObserver = null;
     if (resizeTimer) clearTimeout(resizeTimer);

@@ -203,6 +203,131 @@ def test_search_backlink_tiebreaker(tmp_vault: VaultConfig, monkeypatch):
     assert results[0].backlink_count >= results[1].backlink_count
 
 
+def test_search_exact_korean_query_match_outranks_semantic_noise(
+    tmp_vault: VaultConfig, monkeypatch
+):
+    """Exact Korean title/tag/body matches must outrank unrelated semantic noise."""
+    import numpy as np
+
+    class NoisyKoreanModel:
+        def encode(self, texts, **kwargs):
+            texts_list = texts if isinstance(texts, list) else [texts]
+            vectors = []
+            for text in texts_list:
+                # Simulate the observed regression: the embedding model thinks
+                # the unrelated dopamine note is closer to the short Korean query.
+                if text == "2차전지" or "도파민" in text:
+                    vectors.append([1.0, 0.0, 0.0])
+                else:
+                    vectors.append([0.0, 1.0, 0.0])
+            return np.array(vectors)
+
+    monkeypatch.setattr(
+        "pkm.search_engine._require_transformers", lambda name: NoisyKoreanModel()
+    )
+
+    dopamine_path = tmp_vault.notes_dir / "dopamine.md"
+    dopamine_path.write_text(
+        "---\nid: dopamine\ntitle: 도파민\naliases: []\ntags: []\n---\n\n",
+        encoding="utf-8",
+    )
+    battery_path = tmp_vault.daily_dir / "2026-06-27-2차전지.md"
+    battery_path.write_text(
+        "---\nid: battery-sector\ntitle: 2차전지 산업리포트\ntags:\n  - 투자\n  - 2차전지\n---\n\n"
+        "2차전지 섹터는 ESS와 배터리 공급망을 함께 봐야 한다.\n",
+        encoding="utf-8",
+    )
+
+    index = VectorIndex(
+        model="test",
+        created_at="2026-07-08T00:00:00Z",
+        entries=[
+            IndexEntry(
+                note_id="dopamine",
+                path=str(dopamine_path),
+                embedding=[1.0, 0.0, 0.0],
+                backlink_count=0,
+                tags=[],
+                title="도파민",
+            ),
+            IndexEntry(
+                note_id="battery-sector",
+                path=str(battery_path),
+                embedding=[0.0, 1.0, 0.0],
+                backlink_count=0,
+                tags=["투자", "2차전지"],
+                title="2차전지 산업리포트",
+            ),
+        ],
+    )
+
+    results = search("2차전지", index, top_n=2)
+
+    assert [result.note_id for result in results] == ["battery-sector", "dopamine"]
+
+
+def test_search_title_match_outranks_tag_only_match_for_short_query(
+    tmp_vault: VaultConfig, monkeypatch
+):
+    """For short exact queries, title/id matches should outrank broader tag-only hits."""
+    import numpy as np
+
+    class TagBiasedModel:
+        def encode(self, texts, **kwargs):
+            texts_list = texts if isinstance(texts, list) else [texts]
+            vectors = []
+            for text in texts_list:
+                if text == "2차전지" or "삼성SDI" in text:
+                    vectors.append([1.0, 0.0, 0.0])
+                else:
+                    vectors.append([0.0, 1.0, 0.0])
+            return np.array(vectors)
+
+    monkeypatch.setattr(
+        "pkm.search_engine._require_transformers", lambda name: TagBiasedModel()
+    )
+
+    tag_only_path = tmp_vault.daily_dir / "samsung-sdi.md"
+    tag_only_path.write_text(
+        "---\nid: samsung-sdi\ntitle: 삼성SDI ESS 실적 스터디\ntags:\n  - 2차전지\n---\n\n"
+        "삼성SDI의 ESS 실적을 점검한다.\n",
+        encoding="utf-8",
+    )
+    title_path = tmp_vault.daily_dir / "2026-06-27-2차전지.md"
+    title_path.write_text(
+        "---\nid: battery-sector\ntitle: 2차전지 산업리포트\ntags:\n  - 2차전지\n---\n\n"
+        "산업 전체 리포트 스터디.\n",
+        encoding="utf-8",
+    )
+
+    index = VectorIndex(
+        model="test",
+        created_at="2026-07-08T00:00:00Z",
+        entries=[
+            IndexEntry(
+                note_id="samsung-sdi",
+                path=str(tag_only_path),
+                embedding=[1.0, 0.0, 0.0],
+                backlink_count=0,
+                tags=["2차전지"],
+                title="삼성SDI ESS 실적 스터디",
+            ),
+            IndexEntry(
+                note_id="battery-sector",
+                path=str(title_path),
+                embedding=[0.0, 1.0, 0.0],
+                backlink_count=0,
+                tags=["2차전지"],
+                title="2차전지 산업리포트",
+            ),
+        ],
+    )
+
+    results = search("2차전지", index, top_n=2)
+
+    assert [result.note_id for result in results] == ["battery-sector", "samsung-sdi"]
+
+
 def test_is_index_stale_no_index(tmp_vault: VaultConfig):
     """is_index_stale returns True when index.json doesn't exist."""
     assert is_index_stale(tmp_vault) is True
