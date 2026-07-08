@@ -2,11 +2,11 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 describe("service worker lifecycle", () => {
-  it("does not immediately take over a running installed PWA", async () => {
+  it("immediately activates and claims clients so installed PWAs do not keep stale app shells", async () => {
     const source = await readFile("src/service-worker.ts", "utf8");
 
-    expect(source).not.toContain("skipWaiting");
-    expect(source).not.toContain("clients.claim");
+    expect(source).toContain("skipWaiting");
+    expect(source).toContain("clients.claim");
   });
 });
 
