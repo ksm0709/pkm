@@ -58,6 +58,7 @@
   let selectionFrame: number | null = null;
   let renderingPdf = false;
   let pendingResizeAfterRender = false;
+  let pendingZoomAfterRender = false;
   let initialRenderComplete = $state(false);
   let renderToken = 0;
   let cancelled = false;
@@ -209,6 +210,10 @@
     pendingResizeAfterRender = true;
   }
 
+  function queueZoomRenderAfterCurrentRender() {
+    pendingZoomAfterRender = true;
+  }
+
   function revealInitialRender(token: number, controller: AbortController) {
     if (
       token === renderToken &&
@@ -227,8 +232,11 @@
     if (!container) return;
     const buffer = freshPdfBuffer();
     if (!buffer) return;
-    if (reason === "resize" && renderingPdf) {
-      if (initialRenderComplete) queueResizeRenderAfterCurrentRender();
+    if (renderingPdf) {
+      if (reason === "zoom") queueZoomRenderAfterCurrentRender();
+      if (reason === "resize" && initialRenderComplete) {
+        queueResizeRenderAfterCurrentRender();
+      }
       return;
     }
     const token = ++renderToken;
@@ -238,8 +246,7 @@
     renderAbortController = controller;
     hideSelectionMenu();
     hideAnnotationMenu();
-    cleanup?.();
-    cleanup = null;
+    const previousCleanup = cleanup;
     try {
       const nextCleanup = await renderPdfIntoContainer(container, buffer, {
         scale: zoomScale,
@@ -263,6 +270,7 @@
         return;
       }
       cleanup = nextCleanup;
+      previousCleanup?.();
       if (reason === "initial") revealInitialRender(token, controller);
       paintAnnotationOverlays();
     } catch (err) {
@@ -271,9 +279,18 @@
     } finally {
       if (token === renderToken) {
         renderingPdf = false;
+        const shouldRenderPendingZoom = pendingZoomAfterRender;
         const shouldRenderPendingResize = pendingResizeAfterRender;
+        pendingZoomAfterRender = false;
         pendingResizeAfterRender = false;
         if (
+          shouldRenderPendingZoom &&
+          !cancelled &&
+          initialRenderComplete &&
+          pdfBytes
+        ) {
+          void renderCurrentPdf("zoom");
+        } else if (
           shouldRenderPendingResize &&
           !cancelled &&
           initialRenderComplete &&
@@ -411,6 +428,7 @@
     annotationDoc = null;
     initialRenderComplete = false;
     pendingResizeAfterRender = false;
+    pendingZoomAfterRender = false;
     renderAbortController?.abort();
     cleanup?.();
     cleanup = null;

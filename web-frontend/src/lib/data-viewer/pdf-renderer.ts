@@ -153,13 +153,13 @@ function scrollProgressSnapshot(container: HTMLElement) {
   };
 }
 
-function restoreScrollProgressAfterGrowth(
+function restoreScrollProgressAfterReplacement(
   container: HTMLElement,
   snapshot: { ratio: number; maxScroll: number } | null,
 ) {
   if (!snapshot) return;
   const nextMaxScroll = container.scrollHeight - container.clientHeight;
-  if (nextMaxScroll <= snapshot.maxScroll) return;
+  if (nextMaxScroll <= 0) return;
   container.scrollTop = snapshot.ratio * nextMaxScroll;
 }
 
@@ -177,7 +177,6 @@ export async function renderPdfIntoContainer(
   setWorkerSrc(pdfjs, workerSrc);
 
   throwIfAborted(signal);
-  clearElement(container);
   const loadingTask = pdfjs.getDocument({ data: data.slice(0) });
   let pdf: any = null;
   const zoomScale = options.scale ?? 1.25;
@@ -212,6 +211,8 @@ export async function renderPdfIntoContainer(
         )
       : 1;
     const scale = fitScale * zoomScale;
+    const replacingExistingPages =
+      container.querySelector(".pdf-page") !== null;
     const renderedPages = pageRecords.map(({ pageNumber, page }) => {
       const viewport = page.getViewport({ scale });
       const pageElement = document.createElement("section");
@@ -237,18 +238,21 @@ export async function renderPdfIntoContainer(
       textLayer.style.lineHeight = "1";
       pageElement.appendChild(textLayer);
 
+      pageElements.push(pageElement);
       return { pageNumber, page, viewport, pageElement, canvas, textLayer };
     });
 
     throwIfAborted(signal);
-    const scrollSnapshot = scrollProgressSnapshot(container);
     const fragment = document.createDocumentFragment();
     for (const { pageElement } of renderedPages) {
       fragment.appendChild(pageElement);
-      pageElements.push(pageElement);
     }
-    container.appendChild(fragment);
-    restoreScrollProgressAfterGrowth(container, scrollSnapshot);
+    if (!replacingExistingPages) {
+      const scrollSnapshot = scrollProgressSnapshot(container);
+      clearElement(container);
+      container.appendChild(fragment);
+      restoreScrollProgressAfterReplacement(container, scrollSnapshot);
+    }
 
     for (const {
       pageNumber,
@@ -296,6 +300,14 @@ export async function renderPdfIntoContainer(
         span.dataset.pageNumber = String(pageNumber);
         textLayer.appendChild(span);
       }
+    }
+
+    if (replacingExistingPages) {
+      throwIfAborted(signal);
+      const scrollSnapshot = scrollProgressSnapshot(container);
+      clearElement(container);
+      container.appendChild(fragment);
+      restoreScrollProgressAfterReplacement(container, scrollSnapshot);
     }
 
     return cleanupOwnedRender;
