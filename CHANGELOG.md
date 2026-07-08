@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.95.4 (2026-07-08)
+
+### Bug Fixes
+
+- Activate updated service worker immediately
+  ([`77a4399`](https://github.com/ksm0709/pkm/commit/77a43996fa2cd7cf61b99790f58059c44fb99f64))
+
+
 ## v2.95.3 (2026-07-08)
 
 ### Bug Fixes
