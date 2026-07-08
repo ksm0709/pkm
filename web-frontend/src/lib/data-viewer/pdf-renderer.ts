@@ -212,9 +212,7 @@ export async function renderPdfIntoContainer(
         )
       : 1;
     const scale = fitScale * zoomScale;
-
-    for (const { pageNumber, page } of pageRecords) {
-      throwIfAborted(signal);
+    const renderedPages = pageRecords.map(({ pageNumber, page }) => {
       const viewport = page.getViewport({ scale });
       const pageElement = document.createElement("section");
       pageElement.className = "pdf-page";
@@ -239,12 +237,27 @@ export async function renderPdfIntoContainer(
       textLayer.style.lineHeight = "1";
       pageElement.appendChild(textLayer);
 
-      throwIfAborted(signal);
-      const scrollSnapshot = scrollProgressSnapshot(container);
-      container.appendChild(pageElement);
-      pageElements.push(pageElement);
-      restoreScrollProgressAfterGrowth(container, scrollSnapshot);
+      return { pageNumber, page, viewport, pageElement, canvas, textLayer };
+    });
 
+    throwIfAborted(signal);
+    const scrollSnapshot = scrollProgressSnapshot(container);
+    const fragment = document.createDocumentFragment();
+    for (const { pageElement } of renderedPages) {
+      fragment.appendChild(pageElement);
+      pageElements.push(pageElement);
+    }
+    container.appendChild(fragment);
+    restoreScrollProgressAfterGrowth(container, scrollSnapshot);
+
+    for (const {
+      pageNumber,
+      page,
+      viewport,
+      canvas,
+      textLayer,
+    } of renderedPages) {
+      throwIfAborted(signal);
       const context = canvas.getContext("2d");
       if (!context) throw new Error("Canvas 2D context is not available");
       const renderTask = page.render({

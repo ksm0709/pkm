@@ -172,7 +172,51 @@ describe("renderPdfIntoContainer", () => {
     expect(fullRenderResolved).toBe(true);
   });
 
-  it("preserves scroll progress when later pages stream in after the first page", async () => {
+  it("lays out all page placeholders before the first rendered page is revealed", async () => {
+    const secondPageRender = deferred<void>();
+    getDocument.mockReturnValueOnce({
+      promise: Promise.resolve({
+        numPages: 3,
+        getPage,
+        destroy: destroyPdf,
+      }),
+    });
+    pageRender
+      .mockImplementationOnce(() => ({
+        cancel: vi.fn(),
+        promise: Promise.resolve(),
+      }))
+      .mockImplementationOnce(() => ({
+        cancel: vi.fn(),
+        promise: secondPageRender.promise,
+      }))
+      .mockImplementationOnce(() => ({
+        cancel: vi.fn(),
+        promise: Promise.resolve(),
+      }));
+    const container = document.createElement("div");
+    let pageCountAtFirstReveal = 0;
+
+    const renderPromise = renderPdfIntoContainer(
+      container,
+      new Uint8Array([1, 2, 3]).buffer,
+      {
+        onFirstPageRendered: () => {
+          pageCountAtFirstReveal =
+            container.querySelectorAll(".pdf-page").length;
+        },
+      },
+    );
+    await waitFor(() => {
+      expect(pageCountAtFirstReveal).toBe(3);
+    });
+    expect(container.querySelectorAll(".pdf-page")).toHaveLength(3);
+
+    secondPageRender.resolve();
+    await renderPromise;
+  });
+
+  it("keeps user scroll stable after first reveal because all pages are already laid out", async () => {
     getDocument.mockReturnValueOnce({
       promise: Promise.resolve({
         numPages: 3,
@@ -200,7 +244,8 @@ describe("renderPdfIntoContainer", () => {
 
     await renderPdfIntoContainer(container, new Uint8Array([1, 2, 3]).buffer, {
       onFirstPageRendered: () => {
-        container.scrollTop = 450;
+        expect(container.querySelectorAll(".pdf-page")).toHaveLength(3);
+        container.scrollTop = 1450;
       },
     });
 
