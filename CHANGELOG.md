@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.95.0 (2026-07-08)
+
+### Features
+
+- Stabilize navigation pdf and search ranking
+  ([`97f0eaa`](https://github.com/ksm0709/pkm/commit/97f0eaab5a14af09605df92bb104581ebcfe06d7))
+
+
 ## v2.94.11 (2026-07-07)
 
 ### Features
