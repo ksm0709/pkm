@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.95.6 (2026-07-08)
+
+### Bug Fixes
+
+- Avoid pdf reload on zoom rerender
+  ([`f57a78b`](https://github.com/ksm0709/pkm/commit/f57a78bc7ff418e77c5315c0b28a1766af2c3e53))
+
+
 ## v2.95.5 (2026-07-08)
 
 ### Bug Fixes
