@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.95.3 (2026-07-08)
+
+### Bug Fixes
+
+- Preserve pdf scroll during page streaming
+  ([`da38a12`](https://github.com/ksm0709/pkm/commit/da38a1229b96a1df7ad22c6dfd36fab983ce0453))
+
+
 ## v2.95.2 (2026-07-08)
 
 ### Bug Fixes
