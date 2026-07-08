@@ -260,6 +260,12 @@ def _detect_pkm_mcp() -> bool:
     return False
 
 
+def _filter_turn_start_results(results: list) -> list:
+    """Keep hook context high-precision when strong lexical/search hits exist."""
+    strong = [r for r in results if getattr(r, "score", 0.0) >= 1.0]
+    return strong or results
+
+
 def _strip_chat_sender_prefix(text: str) -> str:
     """Remove leading chat sender labels like '[Taeho] ' from search queries."""
     return re.sub(r"^\s*\[[^\[\]\n]{1,80}\]\s+", "", text).strip()
@@ -506,6 +512,7 @@ def _handle_turn_start(
             )
 
         if results:
+            results = _filter_turn_start_results(results)
             lines.append("## Relevant Notes")
             for r in results:
                 mt = r.memory_type or "semantic"

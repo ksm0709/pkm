@@ -403,10 +403,18 @@ def test_turn_end_exit2_behaviors(runner, vault_env, payload_dict, expected_exit
 class _FakeNote:
     """Minimal SearchResult stand-in."""
 
-    def __init__(self, title: str, importance: float, memory_type: str = "semantic"):
+    def __init__(
+        self,
+        title: str,
+        importance: float,
+        memory_type: str = "semantic",
+        score: float | None = None,
+    ):
         self.title = title
         self.importance = importance
         self.memory_type = memory_type
+        if score is not None:
+            self.score = score
 
 
 def test_turn_start_footer_injects_top_note_id(runner, vault_env, monkeypatch):
@@ -426,6 +434,29 @@ def test_turn_start_footer_injects_top_note_id(runner, vault_env, monkeypatch):
     assert result.exit_code == 0, result.output
     assert 'note_id="top-note-abc"' in result.output
     assert "<slug>" not in result.output
+
+
+def test_turn_start_omits_weak_semantic_noise_when_strong_matches_exist(
+    runner, vault_env, monkeypatch
+):
+    """Hook context should prefer precision once strong lexical results exist."""
+    notes = [
+        _FakeNote("battery-sector", 5.0, score=1.4),
+        _FakeNote("samsung-sdi", 5.0, score=1.2),
+        _FakeNote("workout-routine", 5.0, score=0.7),
+    ]
+    monkeypatch.setattr("pkm.search_engine.search_via_daemon", lambda *a, **kw: notes)
+    monkeypatch.setattr("pkm.commands.hook._detect_pkm_mcp", lambda: True)
+
+    payload = json.dumps({"user_prompt": "2차전지"})
+    result = runner.invoke(
+        main, ["hook", "run", "turn-start", "--format", "plain"], input=payload
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "battery-sector" in result.output
+    assert "samsung-sdi" in result.output
+    assert "workout-routine" not in result.output
 
 
 def test_turn_start_footer_fallback_slug_when_no_results(
