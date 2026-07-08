@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import functools
 import json
+import re
 import sys
 import traceback
 from datetime import date, datetime, timedelta, timezone
@@ -259,6 +260,11 @@ def _detect_pkm_mcp() -> bool:
     return False
 
 
+def _strip_chat_sender_prefix(text: str) -> str:
+    """Remove leading chat sender labels like '[Taeho] ' from search queries."""
+    return re.sub(r"^\s*\[[^\[\]\n]{1,80}\]\s+", "", text).strip()
+
+
 def _extract_user_prompt(payload: dict[str, Any]) -> str:
     """Extract the user's message from an agent hook payload.
 
@@ -474,12 +480,12 @@ def _handle_turn_start(
     except Exception:
         pass
 
-    query_parts = []
     if user_prompt:
-        query_parts.append(user_prompt[:150])
-    if daily_snippet:
-        query_parts.append(daily_snippet[:100])
-    query = " ".join(query_parts).strip() or "important decision error finding pattern"
+        query = _strip_chat_sender_prefix(user_prompt[:150])
+    elif daily_snippet:
+        query = daily_snippet[:100].strip()
+    else:
+        query = "important decision error finding pattern"
 
     # --- Relevant Notes first: highest priority, must survive any truncation ---
     results: list = []

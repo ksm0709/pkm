@@ -462,6 +462,36 @@ def test_turn_start_footer_fallback_slug_when_search_fails(
     assert "<slug>" in result.output
 
 
+def test_turn_start_search_query_uses_user_prompt_not_daily_context(
+    runner, vault_env, tmp_vault, monkeypatch
+):
+    """Daily snippets should be recent context only, not noise in note search queries."""
+    today_path = tmp_vault.daily_dir / f"{date.today().isoformat()}.md"
+    today_path.write_text(
+        "---\nid: today\n---\n\n## Logs\n"
+        "- [09:00] unrelated daily contamination about 2026-07-08 releases\n",
+        encoding="utf-8",
+    )
+    captured_queries: list[str] = []
+
+    def _capture_search(query, *args, **kwargs):
+        captured_queries.append(query)
+        return [_FakeNote("battery-note", 5.0)]
+
+    monkeypatch.setattr("pkm.search_engine.search_via_daemon", _capture_search)
+    monkeypatch.setattr("pkm.commands.hook._detect_pkm_mcp", lambda: True)
+
+    payload = json.dumps(
+        {"extra": {"platform": "hermes", "user_message": "[Taeho] 2차전지 찾아줘"}}
+    )
+    result = runner.invoke(
+        main, ["hook", "run", "turn-start", "--format", "plain"], input=payload
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured_queries == ["2차전지 찾아줘"]
+
+
 def test_session_start_consumes_zettel_signal_and_uses_mcp_reference(
     runner, vault_env, monkeypatch
 ):
