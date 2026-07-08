@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.95.5 (2026-07-08)
+
+### Bug Fixes
+
+- Stabilize pdf page layout before reveal
+  ([`a535609`](https://github.com/ksm0709/pkm/commit/a5356093188317464e227e2d30b33a07880f63f5))
+
+
 ## v2.95.4 (2026-07-08)
 
 ### Bug Fixes
