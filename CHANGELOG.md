@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.95.1 (2026-07-08)
+
+### Bug Fixes
+
+- Keep hook search focused on user prompt
+  ([`b046353`](https://github.com/ksm0709/pkm/commit/b0463535401633bf9c83249ceb1a8da36b63e2c7))
+
+
 ## v2.95.0 (2026-07-08)
 
 ### Features
