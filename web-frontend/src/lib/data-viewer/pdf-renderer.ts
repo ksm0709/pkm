@@ -144,6 +144,25 @@ function fitScaleForContainer(
   return Math.min(...ratios);
 }
 
+function scrollProgressSnapshot(container: HTMLElement) {
+  const maxScroll = container.scrollHeight - container.clientHeight;
+  if (maxScroll <= 0 || container.scrollTop <= 0) return null;
+  return {
+    ratio: container.scrollTop / maxScroll,
+    maxScroll,
+  };
+}
+
+function restoreScrollProgressAfterGrowth(
+  container: HTMLElement,
+  snapshot: { ratio: number; maxScroll: number } | null,
+) {
+  if (!snapshot) return;
+  const nextMaxScroll = container.scrollHeight - container.clientHeight;
+  if (nextMaxScroll <= snapshot.maxScroll) return;
+  container.scrollTop = snapshot.ratio * nextMaxScroll;
+}
+
 export async function renderPdfIntoContainer(
   container: HTMLElement,
   data: ArrayBuffer,
@@ -221,8 +240,10 @@ export async function renderPdfIntoContainer(
       pageElement.appendChild(textLayer);
 
       throwIfAborted(signal);
+      const scrollSnapshot = scrollProgressSnapshot(container);
       container.appendChild(pageElement);
       pageElements.push(pageElement);
+      restoreScrollProgressAfterGrowth(container, scrollSnapshot);
 
       const context = canvas.getContext("2d");
       if (!context) throw new Error("Canvas 2D context is not available");

@@ -1,2 +1,0 @@
-import"../chunks/CWj6FrbW.js";import{Y as f,ae as g,$ as v,a0 as d,a1 as l,a3 as _,a6 as s,a7 as o,a8 as x,a9 as p}from"../chunks/eAFNmk4P.js";import{s as $,p as c}from"../chunks/wQfgphcd.js";const k={get error(){return c.error},get status(){return c.status}};$.updated.check;const m=k;var b=_("<h1> </h1> <p> </p>",1);function q(n,u){f(u,!0);var t=b(),a=g(t),h=s(a,!0);o(a);var r=x(a,2),i=s(r,!0);o(r),v(()=>{var e;p(h,m.status),p(i,(e=m.error)==null?void 0:e.message)}),d(n,t),l()}export{q as component};
-//# sourceMappingURL=1.3LH7gE0v.js.map

@@ -172,6 +172,42 @@ describe("renderPdfIntoContainer", () => {
     expect(fullRenderResolved).toBe(true);
   });
 
+  it("preserves scroll progress when later pages stream in after the first page", async () => {
+    getDocument.mockReturnValueOnce({
+      promise: Promise.resolve({
+        numPages: 3,
+        getPage,
+        destroy: destroyPdf,
+      }),
+    });
+    const container = document.createElement("div");
+    let scrollTopValue = 0;
+    Object.defineProperty(container, "scrollTop", {
+      configurable: true,
+      get: () => scrollTopValue,
+      set: (value) => {
+        scrollTopValue = value;
+      },
+    });
+    Object.defineProperty(container, "scrollHeight", {
+      configurable: true,
+      get: () => container.querySelectorAll(".pdf-page").length * 1000,
+    });
+    Object.defineProperty(container, "clientHeight", {
+      configurable: true,
+      value: 100,
+    });
+
+    await renderPdfIntoContainer(container, new Uint8Array([1, 2, 3]).buffer, {
+      onFirstPageRendered: () => {
+        container.scrollTop = 450;
+      },
+    });
+
+    expect(container.querySelectorAll(".pdf-page")).toHaveLength(3);
+    expect(container.scrollTop).toBeCloseTo(1450, 0);
+  });
+
   it("keeps PDF zoom scale separate from output pixel scale", async () => {
     const container = document.createElement("div");
     await renderPdfIntoContainer(container, new Uint8Array([1, 2, 3]).buffer, {
