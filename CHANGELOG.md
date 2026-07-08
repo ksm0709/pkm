@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.95.2 (2026-07-08)
+
+### Bug Fixes
+
+- Filter weak hook search noise
+  ([`a06e20b`](https://github.com/ksm0709/pkm/commit/a06e20b1663f507a2af372ed8734a424d6863055))
+
+
 ## v2.95.1 (2026-07-08)
 
 ### Bug Fixes
