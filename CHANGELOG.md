@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.95.8 (2026-07-09)
+
+### Bug Fixes
+
+- Keep large pdf zoom responsive
+  ([`439a56f`](https://github.com/ksm0709/pkm/commit/439a56f8f05d71024ec13b3e2cefda134a69dc0e))
+
+
 ## v2.95.7 (2026-07-09)
 
 ### Bug Fixes
