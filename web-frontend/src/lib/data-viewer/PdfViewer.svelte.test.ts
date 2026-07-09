@@ -568,6 +568,8 @@ describe("PdfViewer", () => {
     expect(renderPdfIntoContainer).toHaveBeenCalledTimes(1);
     expect(firstCleanup).not.toHaveBeenCalled();
     expect(target.querySelector(".pdf-page")).toBe(oldPage);
+    expect(oldPage?.style.width).toBe("250px");
+    expect(oldPage?.style.height).toBe("500px");
     expect(
       target.querySelector('[data-testid="pdf-zoom-label"]')?.textContent,
     ).toBe("125%");

@@ -60,6 +60,8 @@
   let pendingResizeAfterRender = false;
   let pendingZoomAfterRender = false;
   let initialRenderComplete = $state(false);
+  let renderedZoomScale = DEFAULT_ZOOM;
+  let optimisticZoomActive = false;
   let renderToken = 0;
   let cancelled = false;
   let lastObservedContainerSize: { width: number; height: number } | null =
@@ -202,6 +204,98 @@
     return pdfBytes ? pdfBytes.slice().buffer : null;
   }
 
+  function numericStylePx(element: HTMLElement, property: "width" | "height") {
+    const parsed = Number.parseFloat(element.style[property]);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    const rect = element.getBoundingClientRect();
+    return property === "width" ? rect.width : rect.height;
+  }
+
+  function scrollProgressSnapshot() {
+    if (!container) return null;
+    const maxScroll = container.scrollHeight - container.clientHeight;
+    if (maxScroll <= 0 || container.scrollTop <= 0) return null;
+    return container.scrollTop / maxScroll;
+  }
+
+  function restoreScrollProgress(ratio: number | null) {
+    if (!container || ratio === null) return;
+    const maxScroll = container.scrollHeight - container.clientHeight;
+    if (maxScroll <= 0) return;
+    container.scrollTop = ratio * maxScroll;
+  }
+
+  function clearOptimisticZoomPreview() {
+    if (!container || !optimisticZoomActive) return;
+    for (const page of container.querySelectorAll<HTMLElement>(".pdf-page")) {
+      const baseWidth = page.dataset.optimisticZoomBaseWidth;
+      const baseHeight = page.dataset.optimisticZoomBaseHeight;
+      if (baseWidth) page.style.width = `${baseWidth}px`;
+      if (baseHeight) page.style.height = `${baseHeight}px`;
+      delete page.dataset.optimisticZoomBaseWidth;
+      delete page.dataset.optimisticZoomBaseHeight;
+      page.classList.remove("pdf-optimistic-zoom");
+      for (const child of page.querySelectorAll<HTMLElement>(
+        ".pdf-page-canvas, .pdf-annotation-overlay",
+      )) {
+        child.style.transform = child.dataset.optimisticZoomTransform ?? "";
+        child.style.transformOrigin =
+          child.dataset.optimisticZoomTransformOrigin ?? "";
+        delete child.dataset.optimisticZoomTransform;
+        delete child.dataset.optimisticZoomTransformOrigin;
+      }
+    }
+    optimisticZoomActive = false;
+  }
+
+  function applyOptimisticZoomPreview() {
+    if (!container || !initialRenderComplete) return;
+    const pages = Array.from(
+      container.querySelectorAll<HTMLElement>(".pdf-page"),
+    );
+    if (!pages.length) return;
+    const ratio = zoomScale / renderedZoomScale;
+    const scrollRatio = scrollProgressSnapshot();
+    if (!Number.isFinite(ratio) || Math.abs(ratio - 1) < 0.001) {
+      clearOptimisticZoomPreview();
+      restoreScrollProgress(scrollRatio);
+      return;
+    }
+
+    for (const page of pages) {
+      if (!page.dataset.optimisticZoomBaseWidth) {
+        page.dataset.optimisticZoomBaseWidth = String(
+          numericStylePx(page, "width"),
+        );
+        page.dataset.optimisticZoomBaseHeight = String(
+          numericStylePx(page, "height"),
+        );
+      }
+      const baseWidth = Number.parseFloat(
+        page.dataset.optimisticZoomBaseWidth ?? "0",
+      );
+      const baseHeight = Number.parseFloat(
+        page.dataset.optimisticZoomBaseHeight ?? "0",
+      );
+      if (baseWidth > 0) page.style.width = `${baseWidth * ratio}px`;
+      if (baseHeight > 0) page.style.height = `${baseHeight * ratio}px`;
+      page.classList.add("pdf-optimistic-zoom");
+      for (const child of page.querySelectorAll<HTMLElement>(
+        ".pdf-page-canvas, .pdf-annotation-overlay",
+      )) {
+        if (child.dataset.optimisticZoomTransform === undefined) {
+          child.dataset.optimisticZoomTransform = child.style.transform;
+          child.dataset.optimisticZoomTransformOrigin =
+            child.style.transformOrigin;
+        }
+        child.style.transform = `scale(${ratio})`;
+        child.style.transformOrigin = "0 0";
+      }
+    }
+    optimisticZoomActive = true;
+    restoreScrollProgress(scrollRatio);
+  }
+
   function isAbortError(error: unknown) {
     return error instanceof DOMException && error.name === "AbortError";
   }
@@ -240,6 +334,7 @@
       return;
     }
     const token = ++renderToken;
+    const renderZoomScale = zoomScale;
     renderingPdf = true;
     renderAbortController?.abort();
     const controller = new AbortController();
@@ -271,10 +366,13 @@
       }
       cleanup = nextCleanup;
       previousCleanup?.();
+      renderedZoomScale = renderZoomScale;
+      optimisticZoomActive = false;
       if (reason === "initial") revealInitialRender(token, controller);
       paintAnnotationOverlays();
     } catch (err) {
       if (isAbortError(err) || token !== renderToken) return;
+      clearOptimisticZoomPreview();
       error = err instanceof Error ? err.message : "Failed to render PDF";
     } finally {
       if (token === renderToken) {
@@ -308,6 +406,7 @@
     const next = clampZoom(nextZoom);
     if (next === zoomScale) return;
     zoomScale = next;
+    applyOptimisticZoomPreview();
     void renderCurrentPdf("zoom");
   }
 
@@ -429,6 +528,8 @@
     initialRenderComplete = false;
     pendingResizeAfterRender = false;
     pendingZoomAfterRender = false;
+    clearOptimisticZoomPreview();
+    renderedZoomScale = zoomScale;
     renderAbortController?.abort();
     cleanup?.();
     cleanup = null;
