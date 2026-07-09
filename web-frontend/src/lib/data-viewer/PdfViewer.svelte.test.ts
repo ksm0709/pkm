@@ -526,18 +526,27 @@ describe("PdfViewer", () => {
     expect(secondCleanup).toHaveBeenCalledTimes(1);
   });
 
-  it("queues zoom until the visible initial render finishes instead of aborting it", async () => {
-    const firstRender = deferred<() => void>();
+  it("aborts an obsolete visible render on zoom while keeping the old pages visible", async () => {
+    let rejectFirstRender!: (error: unknown) => void;
+    const firstRender = new Promise<() => void>((_resolve, reject) => {
+      rejectFirstRender = reject;
+    });
     const secondRender = deferred<() => void>();
     let oldPage: HTMLElement | null = null;
-    const firstCleanup = vi.fn(() => oldPage?.remove());
+    let firstSignal: AbortSignal | undefined;
     const secondCleanup = vi.fn();
     vi.mocked(renderPdfIntoContainer).mockImplementation(
       async (container, _buffer, options) => {
         if (vi.mocked(renderPdfIntoContainer).mock.calls.length === 1) {
+          firstSignal = options?.signal;
           oldPage = installOnePage(container);
           options?.onFirstPageRendered?.();
-          return firstRender.promise;
+          options?.signal?.addEventListener("abort", () => {
+            rejectFirstRender(
+              new DOMException("PDF render aborted", "AbortError"),
+            );
+          });
+          return firstRender;
         }
         installOnePage(container, 2);
         return secondRender.promise;
@@ -563,32 +572,24 @@ describe("PdfViewer", () => {
     target
       .querySelector<HTMLButtonElement>('[data-testid="pdf-zoom-in"]')
       ?.click();
-    await tick();
+    await waitFor(() => {
+      expect(firstSignal?.aborted).toBe(true);
+      expect(renderPdfIntoContainer).toHaveBeenCalledTimes(2);
+    });
 
-    expect(renderPdfIntoContainer).toHaveBeenCalledTimes(1);
-    expect(firstCleanup).not.toHaveBeenCalled();
     expect(target.querySelector(".pdf-page")).toBe(oldPage);
-    expect(oldPage?.style.width).toBe("250px");
-    expect(oldPage?.style.height).toBe("500px");
+    expect((oldPage as HTMLElement).style.width).toBe("250px");
+    expect((oldPage as HTMLElement).style.height).toBe("500px");
     expect(
       target.querySelector('[data-testid="pdf-zoom-label"]')?.textContent,
     ).toBe("125%");
-
-    firstRender.resolve(firstCleanup);
-    await waitFor(() => {
-      expect(renderPdfIntoContainer).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(renderPdfIntoContainer).mock.calls[0][2]).toMatchObject({
+      preservePagesOnAbort: true,
     });
-    expect(firstCleanup).not.toHaveBeenCalled();
-    expect(target.querySelector(".pdf-page")).toBe(oldPage);
 
     secondRender.resolve(secondCleanup);
     await waitFor(() => {
-      expect(firstCleanup).toHaveBeenCalledTimes(1);
-    });
-    await waitFor(() => {
-      expect(
-        target.querySelector('[data-testid="pdf-zoom-label"]')?.textContent,
-      ).toBe("125%");
+      expect(secondCleanup).not.toHaveBeenCalled();
     });
 
     unmount(component);

@@ -377,6 +377,25 @@ describe("renderPdfIntoContainer", () => {
     expect(container.querySelectorAll(".pdf-page")).toHaveLength(2);
   });
 
+  it("yields while building large text layers so input events are not starved", async () => {
+    getTextContent.mockResolvedValueOnce({
+      items: Array.from({ length: 520 }, (_, index) => ({
+        str: `word-${index}`,
+        transform: [1, 0, 0, 12, 30, 60],
+      })),
+    });
+    const cooperativeYield = vi.fn(async () => undefined);
+    const container = document.createElement("div");
+
+    await renderPdfIntoContainer(container, new Uint8Array([1, 2, 3]).buffer, {
+      cooperativeYield,
+    });
+
+    expect(container.querySelectorAll(".pdf-text-item")).toHaveLength(520);
+    expect(cooperativeYield).toHaveBeenCalled();
+    expect(cooperativeYield.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
   it("keeps PDF zoom scale separate from output pixel scale", async () => {
     const container = document.createElement("div");
     await renderPdfIntoContainer(container, new Uint8Array([1, 2, 3]).buffer, {

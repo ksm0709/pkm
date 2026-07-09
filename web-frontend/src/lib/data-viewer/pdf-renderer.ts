@@ -1,5 +1,10 @@
 export type PdfRenderCleanup = () => void;
 
+type CooperativeYield = () => Promise<void>;
+
+const TEXT_LAYER_YIELD_CHUNK_SIZE = 200;
+const PAGE_RENDER_YIELD_CHUNK_SIZE = 4;
+
 declare global {
   interface Map<K, V> {
     getOrInsertComputed?(key: K, callback: (key: K) => V): V;
@@ -79,6 +84,8 @@ export interface PdfRenderOptions {
   outputScale?: number;
   maxOutputScale?: number;
   signal?: AbortSignal;
+  cooperativeYield?: CooperativeYield;
+  preservePagesOnAbort?: boolean;
   onDocumentLoaded?: (info: { pageCount: number }) => void;
   onFirstPageRendered?: () => void;
 }
@@ -100,8 +107,34 @@ function abortError() {
   return new DOMException("PDF render aborted", "AbortError");
 }
 
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
 function throwIfAborted(signal?: AbortSignal) {
   if (signal?.aborted) throw abortError();
+}
+
+async function defaultCooperativeYield() {
+  const scheduler = (
+    globalThis as typeof globalThis & {
+      scheduler?: { yield?: () => Promise<void> };
+    }
+  ).scheduler;
+  if (scheduler?.yield) {
+    await scheduler.yield();
+    return;
+  }
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
+
+async function yieldCooperatively(
+  cooperativeYield: CooperativeYield,
+  signal?: AbortSignal,
+) {
+  throwIfAborted(signal);
+  await cooperativeYield();
+  throwIfAborted(signal);
 }
 
 function resolvedOutputScale(options: PdfRenderOptions) {
@@ -169,6 +202,7 @@ export async function renderPdfIntoContainer(
   options: PdfRenderOptions = {},
 ): Promise<PdfRenderCleanup> {
   const signal = options.signal;
+  const cooperativeYield = options.cooperativeYield ?? defaultCooperativeYield;
   installPdfJsCollectionPolyfills();
   const [{ default: workerSrc }, pdfjs] = await Promise.all([
     import("pdfjs-dist/legacy/build/pdf.worker.mjs?url"),
@@ -185,10 +219,13 @@ export async function renderPdfIntoContainer(
   const pageElements: HTMLElement[] = [];
   let firstPageRendered = false;
 
-  function cleanupOwnedRender() {
+  function cleanupOwnedRender(options: { removePages?: boolean } = {}) {
+    const removePages = options.removePages ?? true;
     for (const task of renderTasks) task.cancel();
     void pdf?.destroy?.();
-    for (const pageElement of pageElements) pageElement.remove();
+    if (removePages) {
+      for (const pageElement of pageElements) pageElement.remove();
+    }
   }
 
   try {
@@ -203,6 +240,9 @@ export async function renderPdfIntoContainer(
       throwIfAborted(signal);
       const naturalViewport = page.getViewport({ scale: 1 });
       pageRecords.push({ pageNumber, page, naturalViewport });
+      if (pageNumber % PAGE_RENDER_YIELD_CHUNK_SIZE === 0) {
+        await yieldCooperatively(cooperativeYield, signal);
+      }
     }
     const fitScale = options.fitToContainer
       ? fitScaleForContainer(
@@ -243,43 +283,20 @@ export async function renderPdfIntoContainer(
     });
 
     throwIfAborted(signal);
-    const fragment = document.createDocumentFragment();
-    for (const { pageElement } of renderedPages) {
-      fragment.appendChild(pageElement);
-    }
-    if (!replacingExistingPages) {
-      const scrollSnapshot = scrollProgressSnapshot(container);
-      clearElement(container);
-      container.appendChild(fragment);
-      restoreScrollProgressAfterReplacement(container, scrollSnapshot);
-    }
-
-    for (const {
+    async function populateTextLayer({
       pageNumber,
       page,
       viewport,
-      canvas,
       textLayer,
-    } of renderedPages) {
-      throwIfAborted(signal);
-      const context = canvas.getContext("2d");
-      if (!context) throw new Error("Canvas 2D context is not available");
-      const renderTask = page.render({
-        canvas,
-        canvasContext: context,
-        viewport,
-        transform: [outputScale, 0, 0, outputScale, 0, 0],
-      });
-      renderTasks.push(renderTask);
-      await renderTask.promise;
-      throwIfAborted(signal);
-      if (!firstPageRendered) {
-        firstPageRendered = true;
-        options.onFirstPageRendered?.();
-      }
-
+    }: {
+      pageNumber: number;
+      page: any;
+      viewport: any;
+      textLayer: HTMLElement;
+    }) {
       const textContent = await page.getTextContent();
       throwIfAborted(signal);
+      let appendedTextItems = 0;
       for (const item of textContent.items) {
         if (!("str" in item) || !item.str) continue;
         const transform = pdfjs.Util.transform(
@@ -299,6 +316,53 @@ export async function renderPdfIntoContainer(
         span.style.userSelect = "text";
         span.dataset.pageNumber = String(pageNumber);
         textLayer.appendChild(span);
+        appendedTextItems += 1;
+        if (appendedTextItems % TEXT_LAYER_YIELD_CHUNK_SIZE === 0) {
+          await yieldCooperatively(cooperativeYield, signal);
+        }
+      }
+      if (appendedTextItems > 0) {
+        await yieldCooperatively(cooperativeYield, signal);
+      }
+    }
+
+    const fragment = document.createDocumentFragment();
+    for (const { pageElement } of renderedPages) {
+      fragment.appendChild(pageElement);
+    }
+    if (!replacingExistingPages) {
+      const scrollSnapshot = scrollProgressSnapshot(container);
+      clearElement(container);
+      container.appendChild(fragment);
+      restoreScrollProgressAfterReplacement(container, scrollSnapshot);
+    }
+
+    for (const [
+      renderIndex,
+      { pageNumber, page, viewport, canvas, textLayer },
+    ] of renderedPages.entries()) {
+      throwIfAborted(signal);
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Canvas 2D context is not available");
+      const renderTask = page.render({
+        canvas,
+        canvasContext: context,
+        viewport,
+        transform: [outputScale, 0, 0, outputScale, 0, 0],
+      });
+      renderTasks.push(renderTask);
+      await renderTask.promise;
+      throwIfAborted(signal);
+      if (!firstPageRendered) {
+        firstPageRendered = true;
+        options.onFirstPageRendered?.();
+      }
+      if ((renderIndex + 1) % PAGE_RENDER_YIELD_CHUNK_SIZE === 0) {
+        await yieldCooperatively(cooperativeYield, signal);
+      }
+
+      if (!replacingExistingPages) {
+        await populateTextLayer({ pageNumber, page, viewport, textLayer });
       }
     }
 
@@ -308,11 +372,16 @@ export async function renderPdfIntoContainer(
       clearElement(container);
       container.appendChild(fragment);
       restoreScrollProgressAfterReplacement(container, scrollSnapshot);
+      for (const { pageNumber, page, viewport, textLayer } of renderedPages) {
+        await populateTextLayer({ pageNumber, page, viewport, textLayer });
+      }
     }
 
     return cleanupOwnedRender;
   } catch (error) {
-    cleanupOwnedRender();
+    cleanupOwnedRender({
+      removePages: !(isAbortError(error) && options.preservePagesOnAbort),
+    });
     throw error;
   }
 }

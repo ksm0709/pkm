@@ -327,7 +327,10 @@
     const buffer = freshPdfBuffer();
     if (!buffer) return;
     if (renderingPdf) {
-      if (reason === "zoom") queueZoomRenderAfterCurrentRender();
+      if (reason === "zoom") {
+        queueZoomRenderAfterCurrentRender();
+        renderAbortController?.abort();
+      }
       if (reason === "resize" && initialRenderComplete) {
         queueResizeRenderAfterCurrentRender();
       }
@@ -347,6 +350,7 @@
         scale: zoomScale,
         fitToContainer: true,
         signal: controller.signal,
+        preservePagesOnAbort: true,
         onDocumentLoaded: ({ pageCount }) => {
           if (
             token === renderToken &&
