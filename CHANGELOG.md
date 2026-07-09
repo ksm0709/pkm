@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.95.7 (2026-07-09)
+
+### Bug Fixes
+
+- Make pdf zoom respond immediately
+  ([`b8f7247`](https://github.com/ksm0709/pkm/commit/b8f72474eeb14b78927522998494457639cc1f5b))
+
+
 ## v2.95.6 (2026-07-08)
 
 ### Bug Fixes
