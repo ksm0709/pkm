@@ -3,6 +3,12 @@
   import { apiClient } from "$lib/api/client.js";
   import ScrollPositionOverlay from "$lib/components/ScrollPositionOverlay.svelte";
   import {
+    clampFloatingPosition,
+    floatingSizeForViewport,
+    floatingTopLeftFromAnchor,
+    viewportSize,
+  } from "$lib/ui/floating-position";
+  import {
     loadDataAnnotations,
     saveDataAnnotations,
     type PdfAnnotation,
@@ -12,7 +18,7 @@
     createTextAnnotationFromSelection,
     overlayStyleForRect,
   } from "./annotation-geometry";
-  import { apiDataHref } from "$lib/data-viewer/paths";
+  import { apiDataHref, viewerDataHref } from "$lib/data-viewer/paths";
   import {
     renderPdfIntoContainer,
     type PdfRenderCleanup,
@@ -25,8 +31,11 @@
   const MAX_ZOOM = 3;
   const ZOOM_STEP = 0.25;
   const RESIZE_EPSILON_PX = 2;
+  const ANNOTATION_MENU_EDGE_INSET = 8;
+  const ANNOTATION_MENU_MAX_SIZE = { width: 320, height: 260 };
 
   type AnnotationMenuAnchor = { x: number; y: number };
+  type FloatingDragState = { offsetX: number; offsetY: number };
 
   let container = $state<HTMLDivElement | null>(null);
   let loading = $state(false);
@@ -46,7 +55,9 @@
     y: number;
     annotationId: string;
   } | null>(null);
+  let annotationMenuDrag = $state<FloatingDragState | null>(null);
   let annotationDraftComment = $state("");
+  let annotationAddToLog = $state(false);
   let annotationDoc = $state<PdfAnnotationDocument | null>(null);
   let pdfBytes = $state<Uint8Array | null>(null);
   let pdfPageCount = $state(0);
@@ -479,13 +490,43 @@
     );
   }
 
-  function saveSelectedAnnotationComment() {
+  function pdfAnnotationDailyLogContent(
+    annotation: PdfAnnotation,
+    comment: string,
+  ) {
+    const source = `[${path}](${viewerDataHref(vault, path)})`;
+    const quote = (annotation.quote || annotationPageLabel(annotation))
+      .replace(/\s+/g, " ")
+      .trim();
+    return `Annotated ${source}: “${quote}” — ${comment.trim()}`;
+  }
+
+  async function postAnnotationDailyLog(
+    annotation: PdfAnnotation,
+    comment: string,
+  ) {
+    const response = await apiClient(
+      `/api/v1/vault/${encodeURIComponent(vault)}/daily/today`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: "entry",
+          content: pdfAnnotationDailyLogContent(annotation, comment),
+        }),
+      },
+    );
+    if (!response.ok) throw new Error(`POST daily log -> ${response.status}`);
+  }
+
+  async function saveSelectedAnnotationComment() {
     const selected = selectedAnnotation();
     if (!selected) return;
     const current = annotationDoc ?? emptyAnnotationDoc();
+    const comment = annotationDraftComment;
+    const shouldLog = selectedAnnotationIsDraft() && annotationAddToLog;
     const updated = {
       ...selected,
-      comment: annotationDraftComment,
+      comment,
       updated_at: nowIso(),
     };
     const next: PdfAnnotationDocument = {
@@ -497,7 +538,23 @@
             annotation.id === selected.id ? updated : annotation,
           ),
     };
-    void persistAnnotationDocument(next, "Failed to save PDF annotation");
+    const savedDocument = await persistAnnotationDocument(
+      next,
+      "Failed to save PDF annotation",
+      { closeMenuOnSuccess: !shouldLog },
+    );
+    if (!savedDocument) return;
+    if (!shouldLog) return;
+    saving = true;
+    error = "";
+    try {
+      await postAnnotationDailyLog(updated, comment);
+      hideAnnotationMenu();
+    } catch (err) {
+      error = err instanceof Error ? err.message : "Failed to add daily log";
+    } finally {
+      saving = false;
+    }
   }
 
   function deleteAnnotation(annotation: PdfAnnotation) {
@@ -634,7 +691,9 @@
 
   function hideAnnotationMenu() {
     annotationMenu = null;
+    annotationMenuDrag = null;
     annotationDraftComment = "";
+    annotationAddToLog = false;
     draftAnnotation = null;
     activeAnnotationSnapshot = null;
     lastDraftSignature = null;
@@ -646,15 +705,21 @@
       : null;
   }
 
+  function annotationMenuSize() {
+    return floatingSizeForViewport(
+      ANNOTATION_MENU_MAX_SIZE,
+      viewportSize(),
+      ANNOTATION_MENU_EDGE_INSET,
+    );
+  }
+
   function annotationMenuPosition(anchor: AnnotationMenuAnchor) {
-    const viewportWidth =
-      window.innerWidth || document.documentElement.clientWidth;
-    const viewportHeight =
-      window.innerHeight || document.documentElement.clientHeight;
-    return {
-      x: clamp(anchor.x, 72, Math.max(72, viewportWidth - 72)),
-      y: clamp(anchor.y, 72, Math.max(72, viewportHeight - 8)),
-    };
+    return floatingTopLeftFromAnchor(
+      anchor,
+      annotationMenuSize(),
+      viewportSize(),
+      ANNOTATION_MENU_EDGE_INSET,
+    );
   }
 
   function openAnnotationMenuForAnnotation(
@@ -665,12 +730,47 @@
     hideSelectionMenu();
     activeAnnotationSnapshot = annotation;
     annotationDraftComment = annotation.comment ?? "";
+    annotationAddToLog = false;
     annotationMenu = {
       annotationId: annotation.id,
       x: position.x,
       y: position.y,
     };
     flushSync();
+  }
+
+  function startAnnotationMenuDrag(event: PointerEvent) {
+    if (!annotationMenu) return;
+    const menu = (event.currentTarget as HTMLElement).closest<HTMLElement>(
+      ".pdf-annotation-menu",
+    );
+    const rect = menu?.getBoundingClientRect();
+    const currentLeft = rect && rect.width > 0 ? rect.left : annotationMenu.x;
+    const currentTop = rect && rect.height > 0 ? rect.top : annotationMenu.y;
+    annotationMenuDrag = {
+      offsetX: event.clientX - currentLeft,
+      offsetY: event.clientY - currentTop,
+    };
+    (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  }
+
+  function dragAnnotationMenu(event: PointerEvent) {
+    if (!annotationMenu || !annotationMenuDrag) return;
+    const position = clampFloatingPosition(
+      {
+        x: event.clientX - annotationMenuDrag.offsetX,
+        y: event.clientY - annotationMenuDrag.offsetY,
+      },
+      annotationMenuSize(),
+      viewportSize(),
+      ANNOTATION_MENU_EDGE_INSET,
+    );
+    annotationMenu = { ...annotationMenu, ...position };
+  }
+
+  function endAnnotationMenuDrag() {
+    annotationMenuDrag = null;
   }
 
   function annotationFromElement(element: HTMLElement): PdfAnnotation | null {
@@ -1158,27 +1258,51 @@
       aria-label="PDF annotation actions"
       onpointerdown={(event) => event.stopPropagation()}
     >
-      <label>
+      <div
+        class="pdf-annotation-menu-header"
+        data-testid="pdf-annotation-menu-header"
+        role="group"
+        aria-label="Draggable PDF annotation header"
+        onpointerdown={startAnnotationMenuDrag}
+        onpointermove={dragAnnotationMenu}
+        onpointerup={endAnnotationMenuDrag}
+        onpointercancel={endAnnotationMenuDrag}
+      >
+        PDF annotation
+      </div>
+      <label class="pdf-annotation-field">
         Comment
         <textarea
           data-testid="pdf-annotation-comment"
           bind:value={annotationDraftComment}
           rows="3"
+          disabled={saving}
         ></textarea>
+      </label>
+      <label class="pdf-annotation-checkbox">
+        <input
+          type="checkbox"
+          aria-label="Add annotation to daily log"
+          bind:checked={annotationAddToLog}
+          disabled={saving}
+        />
+        <span>Add to daily log</span>
       </label>
       <div class="annotation-menu-actions">
         <button
           type="button"
           data-testid="pdf-annotation-save"
-          onclick={saveSelectedAnnotationComment}
+          onclick={() => void saveSelectedAnnotationComment()}
+          disabled={saving}
         >
-          Save
+          {saving ? "Saving" : "Save"}
         </button>
         <button
           type="button"
           class="danger"
           data-testid="pdf-annotation-delete"
           onclick={deleteSelectedAnnotation}
+          disabled={saving}
         >
           Delete
         </button>
@@ -1186,6 +1310,7 @@
           type="button"
           data-testid="pdf-annotation-cancel"
           onclick={hideAnnotationMenu}
+          disabled={saving}
         >
           Cancel
         </button>
@@ -1392,8 +1517,9 @@
 
   .pdf-annotation-menu {
     box-sizing: border-box;
-    transform: translate(-50%, 0);
     width: min(320px, calc(100vw - 32px));
+    max-height: min(420px, calc(100vh - 32px));
+    overflow: auto;
     padding: var(--space-3, 12px);
     border: 1px solid var(--border);
     border-radius: 12px;
@@ -1401,11 +1527,36 @@
     background: var(--surface, var(--bg));
   }
 
+  .pdf-annotation-menu-header {
+    margin: calc(var(--space-1, 4px) * -1) 0 var(--space-2, 8px);
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+  }
+
   .pdf-annotation-menu label {
     display: grid;
     gap: var(--space-2, 8px);
     color: var(--text-muted);
     font-size: 13px;
+  }
+
+  .pdf-annotation-checkbox {
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    margin-top: var(--space-3, 12px);
+  }
+
+  .pdf-annotation-menu textarea:disabled,
+  .pdf-annotation-checkbox input:disabled,
+  .annotation-menu-actions button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
   }
 
   .pdf-annotation-menu textarea {

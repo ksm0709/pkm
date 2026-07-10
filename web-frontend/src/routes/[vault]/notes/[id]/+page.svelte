@@ -8,6 +8,12 @@
   import CodeMirror from "$lib/editor/CodeMirror.svelte";
   import { tagHue } from "$lib/notes/rendered-markdown.js";
   import { graphKeyNav } from "$lib/navigation/graph-keynav.svelte";
+  import {
+    clampFloatingPosition,
+    floatingSizeForViewport,
+    floatingTopLeftFromAnchor,
+    viewportSize,
+  } from "$lib/ui/floating-position";
   import { rememberVault } from "$lib/vault/remembered-vault";
 
   interface Note {
@@ -308,6 +314,11 @@
     x: number;
     y: number;
     annotations: SourceAnnotation[];
+  }
+
+  interface FloatingDragState {
+    offsetX: number;
+    offsetY: number;
   }
 
   function textExcludingNestedCandidates(
@@ -884,6 +895,9 @@
   const annotateMenuEdgeInset = 8;
   const annotateMenuEstimatedWidth = 160;
   const annotateMenuEstimatedHeight = 40;
+  const annotationPopupEdgeInset = 8;
+  const annotationPopupMaxSize = { width: 360, height: 420 };
+  let annotationPopupDrag = $state<FloatingDragState | null>(null);
 
   function normalizeAnnotationQuote(value: string) {
     return value.replace(/\s+/g, " ").trim();
@@ -1131,6 +1145,7 @@
 
   function dismissAnnotationPopup() {
     annotationPopup = null;
+    annotationPopupDrag = null;
   }
 
   function isInteractiveAnnotationClickTarget(target: Element) {
@@ -1142,21 +1157,74 @@
     );
   }
 
+  function annotationPopupSize() {
+    return floatingSizeForViewport(
+      annotationPopupMaxSize,
+      viewportSize(),
+      annotationPopupEdgeInset,
+    );
+  }
+
   function annotationPopupPosition(
     element: HTMLElement,
     fallback?: { x: number; y: number },
   ) {
     const rect = element.getBoundingClientRect();
+    const viewport = viewportSize();
+    const size = annotationPopupSize();
     if (rectHasLayout(rect)) {
-      return {
-        x: Math.round(rect.left + Math.min(rect.width, 280) / 2),
-        y: Math.round(rect.bottom + 8),
-      };
+      return floatingTopLeftFromAnchor(
+        {
+          x: rect.left + Math.min(rect.width, 280) / 2,
+          y: rect.bottom + 8,
+        },
+        size,
+        viewport,
+        annotationPopupEdgeInset,
+      );
     }
-    return {
-      x: Math.round(fallback?.x ?? 16),
-      y: Math.round(fallback?.y ?? 16),
+    return floatingTopLeftFromAnchor(
+      { x: fallback?.x ?? 16, y: fallback?.y ?? 16 },
+      size,
+      viewport,
+      annotationPopupEdgeInset,
+    );
+  }
+
+  function startAnnotationPopupDrag(event: PointerEvent) {
+    if (!annotationPopup) return;
+    const target = event.target;
+    if (target instanceof Element && target.closest("button")) return;
+    const popup = (event.currentTarget as HTMLElement).closest<HTMLElement>(
+      ".annotation-popover",
+    );
+    const rect = popup?.getBoundingClientRect();
+    const currentLeft = rect && rect.width > 0 ? rect.left : annotationPopup.x;
+    const currentTop = rect && rect.height > 0 ? rect.top : annotationPopup.y;
+    annotationPopupDrag = {
+      offsetX: event.clientX - currentLeft,
+      offsetY: event.clientY - currentTop,
     };
+    (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  }
+
+  function dragAnnotationPopup(event: PointerEvent) {
+    if (!annotationPopup || !annotationPopupDrag) return;
+    const position = clampFloatingPosition(
+      {
+        x: event.clientX - annotationPopupDrag.offsetX,
+        y: event.clientY - annotationPopupDrag.offsetY,
+      },
+      annotationPopupSize(),
+      viewportSize(),
+      annotationPopupEdgeInset,
+    );
+    annotationPopup = { ...annotationPopup, ...position };
+  }
+
+  function endAnnotationPopupDrag() {
+    annotationPopupDrag = null;
   }
 
   function openAnnotationPopupForSource(
@@ -1939,7 +2007,15 @@
           class="annotation-popover"
           style="left:{annotationPopup.x}px;top:{annotationPopup.y}px;"
         >
-          <div class="annotation-popover-header">
+          <div
+            class="annotation-popover-header"
+            role="group"
+            aria-label="Draggable annotation memo header"
+            onpointerdown={startAnnotationPopupDrag}
+            onpointermove={dragAnnotationPopup}
+            onpointerup={endAnnotationPopupDrag}
+            onpointercancel={endAnnotationPopupDrag}
+          >
             <span>Annotation</span>
             <button
               type="button"
@@ -2477,7 +2553,6 @@
     width: min(360px, calc(100vw - 32px));
     max-height: min(420px, calc(100vh - 32px));
     overflow: auto;
-    transform: translateX(-50%);
     border: 1px solid color-mix(in srgb, var(--accent) 52%, var(--border));
     border-radius: 8px;
     padding: var(--space-3, 12px);
@@ -2498,6 +2573,9 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
   }
 
   .annotation-popover-header button {

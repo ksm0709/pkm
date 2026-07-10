@@ -745,6 +745,83 @@ describe("PdfViewer", () => {
     unmount(component);
   });
 
+  it("keeps the PDF annotation popup inside a narrow mobile viewport and lets users drag it", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 320,
+    });
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 640,
+    });
+    mockApi({
+      version: 1,
+      source_path: "reports/report.pdf",
+      annotations: [
+        {
+          id: "area-mobile-1",
+          type: "area",
+          rects: [{ page: 1, x: 0.1, y: 0.2, width: 0.3, height: 0.4 }],
+          comment: "mobile comment",
+          created_at: "2026-06-29T08:00:00Z",
+          updated_at: "2026-06-29T08:00:00Z",
+        },
+      ],
+    });
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(PdfViewer, {
+      target,
+      props: { vault: "taeho", path: "reports/report.pdf" },
+    });
+
+    await waitFor(() => {
+      expect(target.querySelector(".pdf-annotation-overlay")).not.toBeNull();
+    });
+    target
+      .querySelector<HTMLElement>(".pdf-annotation-overlay")
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    await waitFor(() => {
+      expect(
+        target.querySelector('[data-testid="pdf-annotation-menu"]'),
+      ).not.toBeNull();
+    });
+    const menu = target.querySelector<HTMLElement>(
+      '[data-testid="pdf-annotation-menu"]',
+    )!;
+    expect(Number.parseFloat(menu.style.left)).toBeGreaterThanOrEqual(8);
+    expect(Number.parseFloat(menu.style.left)).toBeLessThanOrEqual(24);
+    expect(Number.parseFloat(menu.style.top)).toBeGreaterThanOrEqual(8);
+
+    const header = target.querySelector<HTMLElement>(
+      '[data-testid="pdf-annotation-menu-header"]',
+    )!;
+    header.dispatchEvent(
+      new MouseEvent("pointerdown", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 16,
+        clientY: 32,
+      }),
+    );
+    header.dispatchEvent(
+      new MouseEvent("pointermove", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 96,
+        clientY: 132,
+      }),
+    );
+    await tick();
+
+    expect(Number.parseFloat(menu.style.left)).toBeGreaterThan(8);
+    expect(Number.parseFloat(menu.style.top)).toBeGreaterThan(8);
+    expect(Number.parseFloat(menu.style.left)).toBeLessThanOrEqual(24);
+
+    unmount(component);
+  });
+
   it("keeps an open annotation popup and draft intact during viewport resize", async () => {
     mockApi({
       version: 1,
@@ -1210,6 +1287,16 @@ describe("PdfViewer", () => {
         target.querySelector('[data-testid="pdf-annotation-menu"]'),
       ).not.toBeNull();
     });
+    const textarea = target.querySelector<HTMLTextAreaElement>(
+      '[data-testid="pdf-annotation-comment"]',
+    )!;
+    textarea.value = "selected memo";
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    const addToDaily = target.querySelector<HTMLInputElement>(
+      '[aria-label="Add annotation to daily log"]',
+    )!;
+    expect(addToDaily).not.toBeNull();
+    addToDaily.click();
     target
       .querySelector<HTMLButtonElement>('[data-testid="pdf-annotation-save"]')
       ?.click();
@@ -1226,11 +1313,25 @@ describe("PdfViewer", () => {
       const saved = JSON.parse(String(putCalls[0]?.[1]?.body));
       expect(saved.annotations[0]).toMatchObject({
         kind: "text",
+        comment: "selected memo",
         anchor: {
           kind: "pdf_text",
           quote: "draft selected words",
           rects: [{ page: 1, x: 0.1, y: 0.1, width: 0.2, height: 0.05 }],
         },
+      });
+      const dailyPost = vi
+        .mocked(apiClient)
+        .mock.calls.find(
+          ([url, options]) =>
+            String(url) === "/api/v1/vault/taeho/daily/today" &&
+            options?.method === "POST",
+        );
+      expect(dailyPost).toBeDefined();
+      expect(JSON.parse(String(dailyPost?.[1]?.body))).toEqual({
+        type: "entry",
+        content:
+          "Annotated [reports/report.pdf](/taeho/view-data/reports/report.pdf): “draft selected words” — selected memo",
       });
     });
 

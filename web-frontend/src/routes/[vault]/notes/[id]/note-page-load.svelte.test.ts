@@ -2134,6 +2134,96 @@ describe("note page loading", () => {
     unmount(component);
   });
 
+  it("keeps the annotation popup inside a narrow mobile viewport and lets users drag it", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 320,
+    });
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 640,
+    });
+    mockApiGetWithAnnotationReadThrough(async (path: string) => {
+      if (path.endsWith("/neighbors")) {
+        return {
+          note_id: "alpha-note",
+          outbound: [],
+          inbound: [],
+          semantic: [],
+        };
+      }
+      return {
+        note_id: "alpha-note",
+        title: "Alpha",
+        body: [
+          "Mobile marker source.",
+          "",
+          "## Annotations",
+          "- “Mobile marker” ([↩ 원문](#quote=Mobile%20marker&occ=0))",
+          "  - Mobile memo",
+        ].join("\n"),
+        frontmatter: {},
+        created: null,
+        updated: null,
+        tags: [],
+        importance: null,
+      };
+    });
+
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+
+    await waitFor(() => {
+      expect(target.querySelector(".annotation-source-marked")).not.toBeNull();
+    });
+    target
+      .querySelector<HTMLElement>(".annotation-source-marked")!
+      .dispatchEvent(
+        new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 2,
+          clientY: 24,
+        }),
+      );
+    await tick();
+
+    const popup = target.querySelector<HTMLElement>(
+      '[role="dialog"][aria-label="Annotation memo"]',
+    )!;
+    expect(Number.parseFloat(popup.style.left)).toBeGreaterThanOrEqual(8);
+    expect(Number.parseFloat(popup.style.left)).toBeLessThanOrEqual(24);
+    expect(Number.parseFloat(popup.style.top)).toBeGreaterThanOrEqual(8);
+
+    const header = popup.querySelector<HTMLElement>(
+      ".annotation-popover-header",
+    )!;
+    header.dispatchEvent(
+      new MouseEvent("pointerdown", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 16,
+        clientY: 32,
+      }),
+    );
+    header.dispatchEvent(
+      new MouseEvent("pointermove", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 96,
+        clientY: 132,
+      }),
+    );
+    await tick();
+
+    expect(Number.parseFloat(popup.style.left)).toBeGreaterThan(8);
+    expect(Number.parseFloat(popup.style.top)).toBeGreaterThan(8);
+    expect(Number.parseFloat(popup.style.left)).toBeLessThanOrEqual(24);
+
+    unmount(component);
+  });
+
   it("keeps persistent source marks separate from transient source-link highlights", async () => {
     mockApiGetWithAnnotationReadThrough(async (path: string) => {
       if (path.endsWith("/neighbors")) {
