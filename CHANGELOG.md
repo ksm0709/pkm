@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.96.0 (2026-07-10)
+
+### Features
+
+- Improve annotation popup workflows
+  ([`5282622`](https://github.com/ksm0709/pkm/commit/528262277c728ab8b96682847efaf5ec47498b0d))
+
+
 ## v2.95.8 (2026-07-09)
 
 ### Bug Fixes
