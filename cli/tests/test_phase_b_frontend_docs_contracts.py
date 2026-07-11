@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 
@@ -87,6 +88,21 @@ def test_retired_feature_docs_are_deleted_and_active_guidance_has_no_runtime_ux(
     assert not (REPO_ROOT / "docs/cli/pkm-ask.md").exists()
     assert not (REPO_ROOT / "docs/cli/pkm-workflow.md").exists()
     assert all(path.exists() for path in ACTIVE_GUIDANCE)
+
+    if (REPO_ROOT / ".git").exists():
+        tracked = set(
+            subprocess.run(
+                ["git", "ls-files"],
+                cwd=REPO_ROOT,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.splitlines()
+        )
+        expected_tracked = {
+            str(path.relative_to(REPO_ROOT)) for path in ACTIVE_GUIDANCE
+        }
+        assert expected_tracked <= tracked
 
     assert _matches(ACTIVE_GUIDANCE, RETIRED_LITERALS) == []
 
