@@ -88,7 +88,11 @@ describe("logger page", () => {
     );
     expect(subnoteAction?.textContent).toContain("Add sub-note");
     subnoteAction?.click();
-    await flush();
+    await waitFor(() => {
+      expect(goto).toHaveBeenCalledWith(
+        "/main/notes/2026-05-12-research-notes",
+      );
+    });
 
     expect(prompt).toHaveBeenCalledWith("Subnote title");
     expect(apiClient).toHaveBeenCalledWith("/api/v1/vault/main/daily/today", {
@@ -99,7 +103,6 @@ describe("logger page", () => {
         content: "",
       }),
     });
-    expect(goto).toHaveBeenCalledWith("/main/notes/2026-05-12-research-notes");
     expect(target.querySelector('[role="menu"]')).toBeNull();
 
     unmount(component);
@@ -157,7 +160,9 @@ describe("logger page", () => {
       value: [file],
     });
     fileInput?.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush();
+    await waitFor(() => {
+      expect(apiClient).toHaveBeenCalledTimes(2);
+    });
 
     expect(apiClient).toHaveBeenNthCalledWith(1, "/api/v1/vault/main/data", {
       method: "POST",
@@ -235,12 +240,13 @@ describe("logger page", () => {
       ],
     });
     fileInput?.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush();
+    await waitFor(() => {
+      expect(textarea?.value).toContain(
+        "See [report.pdf](/api/v1/vault/main/data/report.pdf)",
+      );
+    });
 
     expect(apiClient).toHaveBeenCalledTimes(1);
-    expect(textarea?.value).toContain(
-      "See [report.pdf](/api/v1/vault/main/data/report.pdf)",
-    );
 
     unmount(component);
   });
