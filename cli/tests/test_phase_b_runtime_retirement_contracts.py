@@ -98,7 +98,8 @@ def test_project_dependencies_keep_search_without_embedded_llm_runtime() -> None
     project = tomllib.loads((CLI_DIR / "pyproject.toml").read_text(encoding="utf-8"))
     main = project["project"]["dependencies"]
     optional = project["project"]["optional-dependencies"]
-    declared = {_dependency_name(requirement) for requirement in main}
+    main_dependencies = {_dependency_name(requirement) for requirement in main}
+    declared = set(main_dependencies)
     declared.update(
         _dependency_name(requirement)
         for requirements in optional.values()
@@ -106,6 +107,7 @@ def test_project_dependencies_keep_search_without_embedded_llm_runtime() -> None
     )
 
     assert declared.isdisjoint({"litellm", "tiny-agent-py", "keyring"})
+    assert "aiohttp" in main_dependencies
     assert "search" in optional
     search_dependencies = {
         _dependency_name(requirement) for requirement in optional["search"]
