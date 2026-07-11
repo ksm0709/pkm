@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.96.3 (2026-07-11)
+
+### Bug Fixes
+
+- Leave temporary checkout before installer cleanup
+  ([`02813c3`](https://github.com/ksm0709/pkm/commit/02813c3c4d567d5aae91e89e3f724c78928ddee2))
+
+
 ## v2.96.2 (2026-07-11)
 
 ### Bug Fixes
