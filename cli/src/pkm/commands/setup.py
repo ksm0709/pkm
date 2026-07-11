@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 import click
+from importlib.resources import files
 from rich.console import Console
 
 from pkm.commands.vault import init_vault_dirs
@@ -32,7 +33,7 @@ def _sync_dir(src: Path, dst: Path) -> None:
 
 
 def _find_skill_src() -> Path | None:
-    """Locate the plugin/skills/pkm/ directory from the repo root."""
+    """Locate editable-repo or wheel-bundled PKM skill assets."""
     from pkm._install_source import find_local_cli_dir
 
     cli_dir = find_local_cli_dir()
@@ -40,6 +41,10 @@ def _find_skill_src() -> Path | None:
         candidate = cli_dir.parent / "plugin" / "skills" / "pkm"
         if candidate.is_dir():
             return candidate
+
+    bundled = Path(str(files("pkm").joinpath("_bundled_skill")))
+    if bundled.is_dir():
+        return bundled
     return None
 
 

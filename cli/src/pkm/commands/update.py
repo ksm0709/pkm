@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import os
+import shlex
+import shutil
 import subprocess
+import sys
 from importlib.util import find_spec
 from pathlib import Path
 
@@ -10,21 +14,88 @@ import click
 from rich.console import Console
 
 from pkm._install_source import cli_source, find_local_cli_dir
-from pkm.commands.setup import (
-    install_shell_aliases,
-    install_skill_files,
-    sync_existing_web_unit,
-)
 from pkm.config import load_config
 from pkm.version_check import get_recent_versions
-from pkm.workflows import sync_installed_workflow_defaults
 
 console = Console()
+_BRIDGE_BASELINE = (2, 96, 1)
 
 
 def _normalize_tag(version: str) -> str:
     """Ensure version has a 'v' prefix (e.g. '0.3.0' → 'v0.3.0')."""
     return version if version.startswith("v") else f"v{version}"
+
+
+def _semver_core(version: str) -> tuple[int, int, int] | None:
+    """Return a semantic-version core tuple for a valid release tag."""
+    import re
+
+    number = r"(?:0|[1-9]\d*)"
+    prerelease_id = rf"(?:{number}|\d*[A-Za-z-][0-9A-Za-z-]*)"
+    identifier = r"[0-9A-Za-z-]+"
+    match = re.fullmatch(
+        rf"v?({number})\.({number})\.({number})"
+        rf"(?:-{prerelease_id}(?:\.{prerelease_id})*)?"
+        rf"(?:\+{identifier}(?:\.{identifier})*)?",
+        version,
+    )
+    if match is None:
+        return None
+    major, minor, patch = match.groups()
+    return int(major), int(minor), int(patch)
+
+
+def _block_pre_bridge_downgrade(version: str | None) -> None:
+    """Reject invalid targets and rollbacks that predate the safe Phase A bridge."""
+    if version is None:
+        return
+    target = _semver_core(version)
+    if target is None:
+        raise click.ClickException(
+            f"Invalid update target {version!r}; expected a semantic version release tag "
+            "such as v2.96.1. Branches and Git revision expressions are not allowed."
+        )
+    prerelease = "-" in version.removeprefix("v").split("+", 1)[0]
+    if target < _BRIDGE_BASELINE or (
+        target == _BRIDGE_BASELINE and prerelease
+    ):
+        raise click.ClickException(
+            "pkm update cannot roll back below v2.96.1 because older releases do not "
+            "contain the safe update bridge. Manual rollback requires stop/quarantine "
+            "of PKM services followed by a direct install of the target version."
+        )
+
+
+def _resolve_current_pkm_executable(argv0: str | None = None) -> Path:
+    """Resolve the exact current pkm entrypoint before update mutates the install."""
+    invocation = sys.argv[0] if argv0 is None else argv0
+    invoked_path = Path(invocation).expanduser()
+    has_path_component = os.sep in invocation or (
+        os.altsep is not None and os.altsep in invocation
+    )
+    is_direct_pkm = invoked_path.name in {"pkm", "pkm.exe"} and (
+        invoked_path.is_absolute() or has_path_component
+    )
+
+    if is_direct_pkm:
+        candidate = Path(os.path.abspath(invoked_path))
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return candidate
+        raise click.ClickException(
+            "The directly invoked current pkm executable does not exist or is not "
+            f"executable: {candidate}"
+        )
+
+    discovered = shutil.which("pkm")
+    if discovered is not None:
+        candidate = Path(os.path.abspath(os.path.expanduser(discovered)))
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return candidate
+
+    raise click.ClickException(
+        "Could not resolve the current pkm executable before updating; no files or "
+        "repositories were changed. Invoke pkm by its absolute path or restore it on PATH."
+    )
 
 
 def _extra_installed(import_check: str) -> bool:
@@ -134,6 +205,22 @@ def _select_update_cli_dir(cli_dir: Path, *, dev_current_branch: bool) -> Path:
     )
 
 
+def _run_fresh_post_update(executable: Path, prev_version: str) -> None:
+    """Run post-install synchronization through the newly installed CLI process."""
+    command = [str(executable), "post-update", "--from-version", prev_version]
+    try:
+        result = subprocess.run(command)
+    except OSError as exc:
+        raise click.ClickException(
+            f"pkm was reinstalled, but post-update could not start: {exc}"
+        ) from exc
+    if result.returncode != 0:
+        raise click.ClickException(
+            "pkm was reinstalled, but post-update failed "
+            f"(exit code {result.returncode}). Retry with: {shlex.join(command)}"
+        )
+
+
 @click.command("update")
 @click.argument("version", default=None, required=False)
 @click.option(
@@ -145,6 +232,8 @@ def update_cmd(version: str | None, dev_current_branch: bool) -> None:
     """Update pkm to the latest version, or a specific VERSION tag (e.g. v0.3.0)."""
     from pkm import __version__ as prev_version
 
+    _block_pre_bridge_downgrade(version)
+    pkm_executable = _resolve_current_pkm_executable()
     cli_dir = find_local_cli_dir()
     in_git_repo = cli_dir is not None and (cli_dir.parent / ".git").exists()
 
@@ -248,17 +337,8 @@ def update_cmd(version: str | None, dev_current_branch: bool) -> None:
         except RuntimeError as e:
             raise click.ClickException(str(e))
 
+    _run_fresh_post_update(pkm_executable, prev_version)
     console.print("[green]✓ pkm updated.[/green]")
-
-    # Sync skill and command files — removes stale commands from old versions
-    install_skill_files()
-    install_shell_aliases()
-    unit_path = sync_existing_web_unit()
-    if unit_path is not None:
-        console.print(f"[green]✓ PKM web unit synced:[/green] {unit_path}")
-    workflow_path = sync_installed_workflow_defaults()
-    if workflow_path is not None:
-        console.print(f"[green]✓ PKM workflow settings synced:[/green] {workflow_path}")
 
     try:
         if in_git_repo:
@@ -299,7 +379,9 @@ def update_cmd(version: str | None, dev_current_branch: bool) -> None:
     except Exception:
         pass
 
-    result = subprocess.run(["pkm", "--version"], capture_output=True, text=True)
+    result = subprocess.run(
+        [str(pkm_executable), "--version"], capture_output=True, text=True
+    )
     if result.returncode == 0:
         first_line = result.stdout.strip().split("\n")[0]
         console.print(f"\n[bold green]Now running: {first_line}[/bold green]")

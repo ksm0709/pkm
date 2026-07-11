@@ -19,6 +19,7 @@ from pkm.commands.setup import setup_cmd
 from pkm.commands.hook import hook as hook_group
 from pkm.commands.consolidate import consolidate
 from pkm.commands.update import update_cmd
+from pkm.commands.post_update import post_update_cmd
 from pkm.commands.vault import vault
 from pkm.commands.data import data
 from pkm.commands.daemon import daemon_group
@@ -33,6 +34,7 @@ VAULT_FREE_COMMANDS = {
     "config",
     "setup",
     "update",
+    "post-update",
     "hook",
     "daemon",
     "mcp",
@@ -115,6 +117,7 @@ main.add_command(vault)
 main.add_command(config)
 main.add_command(setup_cmd)
 main.add_command(update_cmd)
+main.add_command(post_update_cmd)
 main.add_command(hook_group, name="hook")
 main.add_command(consolidate)
 main.add_command(data)

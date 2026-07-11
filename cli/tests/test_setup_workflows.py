@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import os
 from pathlib import Path
+import subprocess
+import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -100,6 +103,70 @@ def test_install_skill_files_reports_missing_source(
     monkeypatch.setattr(setup_mod, "_find_skill_src", lambda: None)
 
     assert setup_mod.install_skill_files() is False
+
+
+def test_wheel_install_finds_and_syncs_real_bundled_skill_files(tmp_path: Path) -> None:
+    """A non-editable wheel install can sync the repository's real PKM skill tree."""
+    cli_dir = Path(__file__).resolve().parents[1]
+    dist_dir = tmp_path / "dist"
+    subprocess.run(
+        ["uv", "build", "--wheel", "--out-dir", str(dist_dir)],
+        cwd=cli_dir,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    wheel = next(dist_dir.glob("pkm-*.whl"))
+    site_dir = tmp_path / "installed"
+    subprocess.run(
+        [
+            "uv",
+            "pip",
+            "install",
+            "--offline",
+            "--no-deps",
+            "--target",
+            str(site_dir),
+            str(wheel),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    home = tmp_path / "home"
+    script = """
+from pathlib import Path
+import os
+import pkm
+import pkm._install_source
+from pkm.commands.setup import _find_skill_src, install_skill_files
+
+assert Path(pkm.__file__).is_relative_to(Path(os.environ["PKM_TEST_SITE_DIR"]))
+pkm._install_source.find_local_cli_dir = lambda: None
+source = _find_skill_src()
+assert source is not None
+assert (source / "SKILL.md").is_file()
+assert (source / "diagnosis" / "SKILL.md").is_file()
+assert install_skill_files() is True
+home = Path.home()
+for root in (home / ".claude", home / ".agents"):
+    assert (root / "skills" / "pkm" / "SKILL.md").is_file()
+    assert (root / "skills" / "pkm" / "diagnosis" / "SKILL.md").is_file()
+"""
+    subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "HOME": str(home),
+            "PKM_TEST_SITE_DIR": str(site_dir),
+            "PYTHONPATH": str(site_dir),
+        },
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
 
 def test_load_setup_choices_requires_complete_saved_setup(
