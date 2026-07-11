@@ -168,6 +168,19 @@ def test_installer_supports_canonical_tag_archive_selection() -> None:
     assert 'PKM_ARCHIVE_REF="refs/heads/main"' in installer
 
 
+def test_installer_leaves_temporary_checkout_before_cleanup() -> None:
+    installer = (Path(__file__).resolve().parents[1] / "install.sh").read_text(
+        encoding="utf-8"
+    )
+
+    install_position = installer.index('uv tool install ".[search]"')
+    leave_position = installer.index("  cd /", install_position)
+    cleanup_position = installer.index('rm -rf "$TMP_DIR"', leave_position)
+    follow_up_position = installer.index('TOOL_BIN_DIR="$(uv tool dir --bin)"')
+
+    assert install_position < leave_position < cleanup_position < follow_up_position
+
+
 def test_cli_source_rejects_malformed_tarball_layout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

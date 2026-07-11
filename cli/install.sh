@@ -145,6 +145,9 @@ cd "$SCRIPT_DIR"
 if [[ "$CLEANUP_TMP" == "true" ]]; then
   # Temp source dir — install normally (editable would require the dir to persist)
   uv tool install ".[search]"
+  # Leave the temporary checkout before deleting it. Later uv commands inspect
+  # the current directory and fail if the installer removed its own cwd.
+  cd /
   rm -rf "$TMP_DIR"
 else
   uv tool install --editable ".[search]"
