@@ -52,8 +52,9 @@ def test_bundled_skill_mirror_matches_plugin_source() -> None:
     repo_root = cli_root.parent
     if (repo_root / ".git").exists():
         expected_tracked = {
-            str((bundled / relative).relative_to(repo_root))
-            for relative in bundled_files
+            str((root / relative).relative_to(repo_root))
+            for root, files in ((plugin, plugin_files), (bundled, bundled_files))
+            for relative in files
         }
         tracked = set(
             subprocess.run(
