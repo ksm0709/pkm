@@ -159,7 +159,10 @@ def test_web_setup_port_option_writes_web_config(
     mock_home: Path, runner: CliRunner, monkeypatch
 ) -> None:
     """`pkm setup --web --port` persists the daemon port in [web]."""
-    import tomllib
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # pragma: no cover - Python 3.10 fallback
+        import tomli as tomllib
     import pkm.config as config_mod
 
     config_path = mock_home / ".config" / "pkm" / "config"

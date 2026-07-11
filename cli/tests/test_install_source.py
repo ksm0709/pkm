@@ -121,6 +121,53 @@ def test_cli_source_downloads_tarball_and_ignores_macosx_directory(
     assert tar_opens == [(temp_dir / "pkm.tar.gz", "r:gz")]
 
 
+def test_cli_source_downloads_canonical_release_tag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pinned non-Git installs download the requested canonical release tag."""
+    temp_dir = tmp_path / "tagged-download"
+    downloads: list[str] = []
+
+    def fake_tar_open(_path: Path, _mode: str):
+        return _FakeTarFile(
+            lambda target: (target / "pkm-2.96.2" / "cli").mkdir(parents=True)
+        )
+
+    monkeypatch.setattr(install_source, "find_local_cli_dir", lambda: None)
+    monkeypatch.setattr(
+        install_source.tempfile,
+        "TemporaryDirectory",
+        lambda: _FakeTemporaryDirectory(temp_dir, []),
+    )
+    monkeypatch.setattr(
+        install_source.urllib.request,
+        "urlretrieve",
+        lambda url, destination: (
+            downloads.append(url),
+            destination.write_text("placeholder", encoding="utf-8"),
+        ),
+    )
+    monkeypatch.setattr(install_source.tarfile, "open", fake_tar_open)
+
+    with install_source.cli_source(ref="v2.96.2") as (source_dir, is_local):
+        assert source_dir == temp_dir / "pkm-2.96.2" / "cli"
+        assert is_local is False
+
+    assert downloads == [
+        f"https://github.com/{install_source.GITHUB_REPO}/archive/refs/tags/v2.96.2.tar.gz"
+    ]
+
+
+def test_installer_supports_canonical_tag_archive_selection() -> None:
+    installer = (Path(__file__).resolve().parents[1] / "install.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "PKM_INSTALL_REF" in installer
+    assert 'PKM_ARCHIVE_REF="refs/tags/$PKM_INSTALL_REF"' in installer
+    assert 'PKM_ARCHIVE_REF="refs/heads/main"' in installer
+
+
 def test_cli_source_rejects_malformed_tarball_layout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

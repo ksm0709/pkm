@@ -4,6 +4,17 @@
 # Requires: Python 3.10+
 set -euo pipefail
 
+GITHUB_REPO="ksm0709/pkm"
+PKM_INSTALL_REF="${PKM_INSTALL_REF:-main}"
+if [[ "$PKM_INSTALL_REF" == "main" ]]; then
+  PKM_ARCHIVE_REF="refs/heads/main"
+elif [[ "$PKM_INSTALL_REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  PKM_ARCHIVE_REF="refs/tags/$PKM_INSTALL_REF"
+else
+  echo "Error: PKM_INSTALL_REF must be 'main' or a canonical tag such as v2.96.2." >&2
+  exit 1
+fi
+
 # ── Termux (Android) detection ───────────────────────────────────────────────
 # Termux needs Rust for native wheels, serialized builds for cargo registry
 # races, and skips [search] (no PyTorch Android wheel).  Delegate to the
@@ -19,7 +30,7 @@ if [[ -n "${TERMUX_VERSION:-}" || -d "/data/data/com.termux" ]]; then
   if [[ -z "$TERMUX_SCRIPT" ]]; then
     echo "Termux detected — downloading Termux installer..."
     _tmp="$(mktemp -d)"
-    curl -fsSL "https://github.com/ksm0709/pkm/archive/refs/heads/main.tar.gz" \
+    curl -fsSL "https://github.com/$GITHUB_REPO/archive/$PKM_ARCHIVE_REF.tar.gz" \
       | tar -xz -C "$_tmp" --strip-components=1
     TERMUX_SCRIPT="$_tmp/cli/install-termux.sh"
   fi
@@ -32,7 +43,6 @@ echo ""
 
 # When run via `curl | bash`, BASH_SOURCE[0] is unbound (stdin).
 # Detect this and download the source from GitHub instead.
-GITHUB_REPO="ksm0709/pkm"
 CLEANUP_TMP=false
 
 install_cloudflared() {
@@ -87,7 +97,7 @@ else
   CLEANUP_TMP=true
   # Extract the full repo (not just cli/) so that symlinks inside cli/ that
   # point to sibling directories (e.g. src/pkm/skill -> ../../../skill) resolve.
-  curl -fsSL "https://github.com/$GITHUB_REPO/archive/refs/heads/main.tar.gz" \
+  curl -fsSL "https://github.com/$GITHUB_REPO/archive/$PKM_ARCHIVE_REF.tar.gz" \
     | tar -xz -C "$TMP_DIR" --strip-components=1
   SCRIPT_DIR="$TMP_DIR/cli"
 fi

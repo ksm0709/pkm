@@ -221,6 +221,68 @@ def _run_fresh_post_update(executable: Path, prev_version: str) -> None:
         )
 
 
+_WEB_SERVICE = "pkm-web.service"
+
+
+def _quiesce_running_web_service() -> bool:
+    """Stop an active v2/v3 web service before mutating source or packages."""
+    if shutil.which("systemctl") is None:
+        return False
+
+    active = subprocess.run(
+        ["systemctl", "--user", "is-active", "--quiet", _WEB_SERVICE],
+        capture_output=True,
+        text=True,
+    )
+    if active.returncode != 0:
+        return False
+
+    console.print(f"[cyan]Stopping {_WEB_SERVICE} for a safe update...[/cyan]")
+    stopped = subprocess.run(
+        ["systemctl", "--user", "stop", _WEB_SERVICE],
+        capture_output=True,
+        text=True,
+    )
+    if stopped.returncode != 0:
+        raise click.ClickException(
+            f"Could not stop {_WEB_SERVICE}; no source or package changes were made."
+        )
+
+    still_active = subprocess.run(
+        ["systemctl", "--user", "is-active", "--quiet", _WEB_SERVICE],
+        capture_output=True,
+        text=True,
+    )
+    if still_active.returncode == 0:
+        raise click.ClickException(
+            f"{_WEB_SERVICE} is still active; refusing to update while the old runtime can run."
+        )
+    return True
+
+
+def _restart_web_service() -> None:
+    """Restart and verify a service that was active before the update."""
+    started = subprocess.run(
+        ["systemctl", "--user", "start", _WEB_SERVICE],
+        capture_output=True,
+        text=True,
+    )
+    if started.returncode != 0:
+        raise click.ClickException(
+            f"pkm was updated, but {_WEB_SERVICE} could not be restarted."
+        )
+    active = subprocess.run(
+        ["systemctl", "--user", "is-active", "--quiet", _WEB_SERVICE],
+        capture_output=True,
+        text=True,
+    )
+    if active.returncode != 0:
+        raise click.ClickException(
+            f"pkm was updated, but {_WEB_SERVICE} did not become active."
+        )
+    console.print(f"[green]✓ {_WEB_SERVICE} restarted.[/green]")
+
+
 @click.command("update")
 @click.argument("version", default=None, required=False)
 @click.option(
@@ -228,12 +290,18 @@ def _run_fresh_post_update(executable: Path, prev_version: str) -> None:
     is_flag=True,
     help="Development-only: pull/reinstall the currently installed git branch instead of main.",
 )
-def update_cmd(version: str | None, dev_current_branch: bool) -> None:
+@click.pass_context
+def update_cmd(
+    ctx: click.Context, version: str | None, dev_current_branch: bool
+) -> None:
     """Update pkm to the latest version, or a specific VERSION tag (e.g. v0.3.0)."""
     from pkm import __version__ as prev_version
 
     _block_pre_bridge_downgrade(version)
     pkm_executable = _resolve_current_pkm_executable()
+    service_was_active = _quiesce_running_web_service()
+    if service_was_active:
+        ctx.call_on_close(_restart_web_service)
     cli_dir = find_local_cli_dir()
     in_git_repo = cli_dir is not None and (cli_dir.parent / ".git").exists()
 
@@ -307,16 +375,13 @@ def update_cmd(version: str | None, dev_current_branch: bool) -> None:
             raise click.ClickException("uv tool install failed.")
 
     else:
-        if version:
-            raise click.ClickException(
-                "Specific version installs require a local git checkout. "
-                "Clone the repo: git clone https://github.com/ksm0709/pkm ~/repos/pkm"
-            )
         # Installed without a local git repo (e.g. via curl | bash).
-        # Re-download the latest tarball from GitHub and reinstall.
-        console.print("[cyan]Downloading latest from GitHub...[/cyan]")
+        # Re-download the requested release tag or latest main tarball and reinstall.
+        tag = _normalize_tag(version) if version else None
+        label = tag or "latest"
+        console.print(f"[cyan]Downloading {label} from GitHub...[/cyan]")
         try:
-            with cli_source() as (dl_cli_dir, is_local):
+            with cli_source(ref=tag) as (dl_cli_dir, is_local):
                 suffix = _extras_suffix()
                 if suffix:
                     console.print(f"[dim]Extras detected: {suffix}[/dim]")

@@ -137,6 +137,15 @@ def mock_home(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def disable_real_update_service_lifecycle(monkeypatch):
+    """Unit tests must never inspect or mutate the developer's real user service."""
+    import pkm.commands.update as update_mod
+
+    monkeypatch.setattr(update_mod, "_quiesce_running_web_service", lambda: False)
+    monkeypatch.setattr(update_mod, "_restart_web_service", lambda: None)
+
+
+@pytest.fixture(autouse=True)
 def disable_auto_vault(monkeypatch, tmp_path):
     """Disable auto git project and local config mapping during tests."""
     from pkm import config

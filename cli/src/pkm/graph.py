@@ -517,7 +517,9 @@ def build_enriched_graph(
     data["graph_tier"] = "enriched"
     data["schema_version"] = 1
     data["built_at"] = (
-        datetime.datetime.now(datetime.UTC).isoformat().replace("+00:00", "Z")
+        datetime.datetime.now(datetime.timezone.utc)
+        .isoformat()
+        .replace("+00:00", "Z")
     )
     data["model"] = "all-MiniLM-L6-v2"
     data["clusters"] = clusters_meta

@@ -800,21 +800,18 @@ def test_update_local_git_failures_do_not_run_post_install_hooks(monkeypatch, tm
     assert hooks == []
 
 
-def test_update_non_git_version_refusal_and_tarball_install(monkeypatch, tmp_path):
-    """Non-git installs reject pinned versions but can reinstall downloaded source."""
+def test_update_non_git_version_and_latest_tarball_install(monkeypatch, tmp_path):
+    """Non-git installs support pinned release tags and latest source downloads."""
     hooks = _patch_post_install(monkeypatch)
     monkeypatch.setattr(update_mod, "find_local_cli_dir", lambda: None)
 
-    result = _runner().invoke(update_cmd, ["2.96.2"])
-    assert result.exit_code == 1
-    assert "Specific version installs require a local git checkout" in result.stderr
-    assert hooks == []
-
     downloaded = tmp_path / "downloaded-cli"
     downloaded.mkdir()
+    requested_refs: list[str | None] = []
 
     @contextmanager
-    def fake_cli_source():
+    def fake_cli_source(ref=None):
+        requested_refs.append(ref)
         yield downloaded, False
 
     monkeypatch.setattr(update_mod, "cli_source", fake_cli_source)
@@ -832,12 +829,15 @@ def test_update_non_git_version_refusal_and_tarball_install(monkeypatch, tmp_pat
     )
     monkeypatch.setattr(update_mod.subprocess, "run", dispatcher)
 
-    result = _runner().invoke(update_cmd, [])
+    pinned = _runner().invoke(update_cmd, ["2.96.2"])
+    latest = _runner().invoke(update_cmd, [])
 
-    assert result.exit_code == 0
-    assert "Downloading latest from GitHub" in result.output
-    assert "pkm updated" in result.output
-    assert hooks == ["post-update"]
+    assert pinned.exit_code == 0, pinned.output
+    assert "Downloading v2.96.2 from GitHub" in pinned.output
+    assert latest.exit_code == 0, latest.output
+    assert "Downloading latest from GitHub" in latest.output
+    assert requested_refs == ["v2.96.2", None]
+    assert hooks == ["post-update", "post-update"]
 
 
 def test_update_non_git_download_and_install_failures(monkeypatch, tmp_path):
@@ -846,7 +846,7 @@ def test_update_non_git_download_and_install_failures(monkeypatch, tmp_path):
     monkeypatch.setattr(update_mod, "find_local_cli_dir", lambda: None)
 
     @contextmanager
-    def broken_cli_source():
+    def broken_cli_source(ref=None):
         raise RuntimeError("download failed")
         yield
 
@@ -860,7 +860,7 @@ def test_update_non_git_download_and_install_failures(monkeypatch, tmp_path):
     downloaded.mkdir()
 
     @contextmanager
-    def fake_cli_source():
+    def fake_cli_source(ref=None):
         yield downloaded, False
 
     monkeypatch.setattr(update_mod, "cli_source", fake_cli_source)

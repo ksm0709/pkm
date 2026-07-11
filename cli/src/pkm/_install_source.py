@@ -23,7 +23,7 @@ def find_local_cli_dir() -> Path | None:
 
 
 @contextmanager
-def cli_source() -> Generator[tuple[Path, bool], None, None]:
+def cli_source(ref: str | None = None) -> Generator[tuple[Path, bool], None, None]:
     """Yield ``(cli_dir, is_local)``.
 
     *is_local=True*: ``cli_dir`` is the on-disk clone; the caller may pass
@@ -34,11 +34,12 @@ def cli_source() -> Generator[tuple[Path, bool], None, None]:
     ``--editable`` (the source won't persist after install).
     """
     local = find_local_cli_dir()
-    if local is not None:
+    if ref is None and local is not None:
         yield local, True
         return
 
-    tarball_url = f"https://github.com/{GITHUB_REPO}/archive/refs/heads/main.tar.gz"
+    archive_ref = f"refs/tags/{ref}" if ref is not None else "refs/heads/main"
+    tarball_url = f"https://github.com/{GITHUB_REPO}/archive/{archive_ref}.tar.gz"
     with tempfile.TemporaryDirectory() as tmp:
         tarball_path = Path(tmp) / "pkm.tar.gz"
         urllib.request.urlretrieve(tarball_url, tarball_path)

@@ -29,7 +29,10 @@ def _patch_config_path(monkeypatch, tmp_path: Path) -> Path:
 def _load(path: Path) -> dict:
     if not path.exists():
         return {}
-    import tomllib
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # pragma: no cover - Python 3.10 fallback
+        import tomli as tomllib
 
     with open(path, "rb") as f:
         return tomllib.load(f)
