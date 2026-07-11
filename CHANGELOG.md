@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.96.5 (2026-07-11)
+
+### Bug Fixes
+
+- Make failed update recovery deterministic
+  ([`7223d06`](https://github.com/ksm0709/pkm/commit/7223d06d478a21742854642fea205da586b1926e))
+
+
 ## v2.96.4 (2026-07-11)
 
 ### Bug Fixes
