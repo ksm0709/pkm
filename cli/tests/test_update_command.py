@@ -853,13 +853,13 @@ def test_update_non_git_download_and_install_failures(monkeypatch, tmp_path):
 
     @contextmanager
     def broken_cli_source(ref=None):
-        raise RuntimeError("download failed")
+        raise OSError("HTTP Error 404: Not Found")
         yield
 
     monkeypatch.setattr(update_mod, "cli_source", broken_cli_source)
     result = _runner().invoke(update_cmd, [])
     assert result.exit_code == 1
-    assert "download failed" in result.stderr
+    assert "HTTP Error 404: Not Found" in result.stderr
     assert hooks == []
 
     downloaded = tmp_path / "downloaded-cli"

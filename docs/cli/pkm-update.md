@@ -12,7 +12,7 @@ After a successful reinstall, `pkm update` also refreshes installed skill files,
 shell aliases, an existing web unit, and recognizable locally copied bundled
 workflow settings in `~/.config/pkm/workflow.json`.
 
-`v2.96.4` is the supported forward-migration bridge from v2 to v3. It stops an
+`v2.96.5` is the supported forward-migration bridge from v2 to v3. It stops an
 active web service before replacement and restarts it only after reinstall,
 fresh post-update synchronization, and version verification all succeed. If an
 update fails, the service remains stopped and the command prints a manual
@@ -21,5 +21,5 @@ recovery command. `v2.96.1` remains the temporary rollback target only.
 ## Examples
 ```bash
 pkm update
-pkm update v2.96.4
+pkm update v2.96.5
 ```

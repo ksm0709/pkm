@@ -311,6 +311,7 @@ def update_cmd(
                 f"[yellow]Update did not complete; {_WEB_SERVICE} remains stopped.[/yellow]\n"
                 f"After correcting the update failure, retry `pkm update`. To restore the "
                 f"previously installed runtime manually, run:\n"
+                f"  systemctl --user daemon-reload\n"
                 f"  systemctl --user start {_WEB_SERVICE}"
             )
 
@@ -412,7 +413,7 @@ def update_cmd(
                 )
                 if result.returncode != 0:
                     raise click.ClickException("uv tool install failed.")
-        except RuntimeError as e:
+        except (RuntimeError, OSError) as e:
             raise click.ClickException(str(e))
 
     _run_fresh_post_update(pkm_executable, prev_version)
