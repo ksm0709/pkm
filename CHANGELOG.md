@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v3.0.1 (2026-07-11)
+
+### Bug Fixes
+
+- Retain web server dependency in v3
+  ([`f371923`](https://github.com/ksm0709/pkm/commit/f371923e32db9184bc5e1d9c919c348c7b54448a))
+
+
 ## v3.0.0 (2026-07-11)
 
 ### Bug Fixes
