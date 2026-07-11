@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.96.6 (2026-07-11)
+
+### Bug Fixes
+
+- Reload synchronized unit before restart
+  ([`b41fff1`](https://github.com/ksm0709/pkm/commit/b41fff1f231cabc073909ca8f6391777873e4ac4))
+
+
 ## v2.96.5 (2026-07-11)
 
 ### Bug Fixes
