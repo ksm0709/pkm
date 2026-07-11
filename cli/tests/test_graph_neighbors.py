@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from pathlib import Path
 
@@ -70,88 +69,81 @@ def _make_base_graph() -> nx.DiGraph:
 # ---------------------------------------------------------------------------
 
 
-def test_get_note_neighbors_outbound(tmp_path, monkeypatch):
+def test_get_note_neighbors_outbound(tmp_path):
     """outbound list contains wikilink target note."""
     vault = _make_vault(tmp_path)
     _write_graph(vault.pkm_dir, _make_base_graph())
-    monkeypatch.setenv("PKM_VAULT_DIR", str(vault.path))
 
-    from pkm.tools.links import get_note_neighbors
+    from pkm.tools.links import _get_note_neighbors_data
 
-    result = json.loads(asyncio.run(get_note_neighbors(note_id="note-a")))
+    result = _get_note_neighbors_data(vault, note_id="note-a")
     outbound_ids = [x["note_id"] for x in result["outbound"]]
     assert "note-b" in outbound_ids
 
 
-def test_get_note_neighbors_inbound(tmp_path, monkeypatch):
+def test_get_note_neighbors_inbound(tmp_path):
     """inbound list contains note that links to target."""
     vault = _make_vault(tmp_path)
     _write_graph(vault.pkm_dir, _make_base_graph())
-    monkeypatch.setenv("PKM_VAULT_DIR", str(vault.path))
 
-    from pkm.tools.links import get_note_neighbors
+    from pkm.tools.links import _get_note_neighbors_data
 
-    result = json.loads(asyncio.run(get_note_neighbors(note_id="note-a")))
+    result = _get_note_neighbors_data(vault, note_id="note-a")
     inbound_ids = [x["note_id"] for x in result["inbound"]]
     assert "note-c" in inbound_ids
 
 
-def test_get_note_neighbors_tag(tmp_path, monkeypatch):
+def test_get_note_neighbors_tag(tmp_path):
     """tag nodes appear in outbound with type='tag'."""
     vault = _make_vault(tmp_path)
     _write_graph(vault.pkm_dir, _make_base_graph())
-    monkeypatch.setenv("PKM_VAULT_DIR", str(vault.path))
 
-    from pkm.tools.links import get_note_neighbors
+    from pkm.tools.links import _get_note_neighbors_data
 
-    result = json.loads(asyncio.run(get_note_neighbors(note_id="note-a")))
+    result = _get_note_neighbors_data(vault, note_id="note-a")
     tag_items = [x for x in result["outbound"] if x["type"] == "tag"]
     assert len(tag_items) == 1
     assert tag_items[0]["note_id"] == "tag:science"
 
 
-def test_get_note_neighbors_ghost(tmp_path, monkeypatch):
+def test_get_note_neighbors_ghost(tmp_path):
     """note_or_unresolved nodes appear in outbound."""
     vault = _make_vault(tmp_path)
     _write_graph(vault.pkm_dir, _make_base_graph())
-    monkeypatch.setenv("PKM_VAULT_DIR", str(vault.path))
 
-    from pkm.tools.links import get_note_neighbors
+    from pkm.tools.links import _get_note_neighbors_data
 
-    result = json.loads(asyncio.run(get_note_neighbors(note_id="note-a")))
+    result = _get_note_neighbors_data(vault, note_id="note-a")
     ghost_items = [x for x in result["outbound"] if x["type"] == "note_or_unresolved"]
     assert len(ghost_items) == 1
     assert ghost_items[0]["note_id"] == "ghost-note"
 
 
-def test_get_note_neighbors_no_graph(tmp_path, monkeypatch):
-    """Returns error message when graph.json is missing."""
+def test_get_note_neighbors_no_graph(tmp_path):
+    """Raises FileNotFoundError when graph.json is missing."""
     vault = _make_vault(tmp_path)
-    monkeypatch.setenv("PKM_VAULT_DIR", str(vault.path))
 
-    from pkm.tools.links import get_note_neighbors
+    from pkm.tools.links import _get_note_neighbors_data
 
-    result = json.loads(asyncio.run(get_note_neighbors(note_id="note-a")))
-    assert "error" in result
-    assert "pkm index" in result["error"]
+    with pytest.raises(FileNotFoundError, match="pkm index"):
+        _get_note_neighbors_data(vault, note_id="note-a")
 
 
-def test_get_note_neighbors_unknown_note(tmp_path, monkeypatch):
+def test_get_note_neighbors_unknown_note(tmp_path):
     """Note not in graph returns empty lists, not an error."""
     vault = _make_vault(tmp_path)
     _write_graph(vault.pkm_dir, _make_base_graph())
-    monkeypatch.setenv("PKM_VAULT_DIR", str(vault.path))
 
-    from pkm.tools.links import get_note_neighbors
+    from pkm.tools.links import _get_note_neighbors_data
 
-    result = json.loads(asyncio.run(get_note_neighbors(note_id="does-not-exist")))
+    result = _get_note_neighbors_data(vault, note_id="does-not-exist")
     assert "error" not in result
     assert result["outbound"] == []
     assert result["inbound"] == []
     assert result["semantic"] == []
 
 
-def test_get_note_neighbors_semantic_dedup(tmp_path, monkeypatch):
+def test_get_note_neighbors_semantic_dedup(tmp_path):
     """Bidirectional semantic edges appear only once in results."""
     vault = _make_vault(tmp_path)
     base_G = _make_base_graph()
@@ -162,18 +154,15 @@ def test_get_note_neighbors_semantic_dedup(tmp_path, monkeypatch):
     enriched_G.add_edge("note-a", "note-b", type="semantic_similar", confidence=0.85)
     enriched_G.add_edge("note-b", "note-a", type="semantic_similar", confidence=0.85)
     _write_enriched(vault.pkm_dir, enriched_G)
-    monkeypatch.setenv("PKM_VAULT_DIR", str(vault.path))
 
-    from pkm.tools.links import get_note_neighbors
+    from pkm.tools.links import _get_note_neighbors_data
 
-    result = json.loads(
-        asyncio.run(get_note_neighbors(note_id="note-a", include_semantic=True))
-    )
+    result = _get_note_neighbors_data(vault, note_id="note-a", include_semantic=True)
     sem_ids = [x["note_id"] for x in result["semantic"]]
     assert sem_ids.count("note-b") == 1
 
 
-def test_get_note_neighbors_semantic(tmp_path, monkeypatch):
+def test_get_note_neighbors_semantic(tmp_path):
     """semantic list populated when include_semantic=True and enriched graph exists."""
     vault = _make_vault(tmp_path)
     base_G = _make_base_graph()
@@ -182,20 +171,17 @@ def test_get_note_neighbors_semantic(tmp_path, monkeypatch):
     enriched_G = base_G.copy()
     enriched_G.add_edge("note-a", "note-b", type="semantic_similar", confidence=0.85)
     _write_enriched(vault.pkm_dir, enriched_G)
-    monkeypatch.setenv("PKM_VAULT_DIR", str(vault.path))
 
-    from pkm.tools.links import get_note_neighbors
+    from pkm.tools.links import _get_note_neighbors_data
 
-    result = json.loads(
-        asyncio.run(get_note_neighbors(note_id="note-a", include_semantic=True))
-    )
+    result = _get_note_neighbors_data(vault, note_id="note-a", include_semantic=True)
     assert len(result["semantic"]) >= 1
     sem_ids = [x["note_id"] for x in result["semantic"]]
     assert "note-b" in sem_ids
     assert all("confidence" in x for x in result["semantic"])
 
 
-def test_build_graph_links_inline_body_tags_to_tag_node(tmp_path, monkeypatch):
+def test_build_graph_links_inline_body_tags_to_tag_node(tmp_path):
     """Body hashtags like #TODO create has_tag edges and tag-page inbound neighbors."""
     vault = _make_vault(tmp_path)
     (vault.notes_dir / "task-note.md").write_text(
@@ -212,10 +198,9 @@ def test_build_graph_links_inline_body_tags_to_tag_node(tmp_path, monkeypatch):
     assert graph.has_edge("task-note", "tag:TODO")
     assert graph.edges["task-note", "tag:TODO"]["type"] == "has_tag"
 
-    from pkm.tools.links import get_note_neighbors
+    from pkm.tools.links import _get_note_neighbors_data
 
-    monkeypatch.setenv("PKM_VAULT_DIR", str(vault.path))
-    result = json.loads(asyncio.run(get_note_neighbors(note_id="tag:TODO")))
+    result = _get_note_neighbors_data(vault, note_id="tag:TODO")
     inbound_ids = [x["note_id"] for x in result["inbound"]]
     assert "task-note" in inbound_ids
 

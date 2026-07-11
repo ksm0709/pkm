@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 try:
@@ -27,6 +28,43 @@ def test_force_included_static_assets_exist_for_source_archive_builds() -> None:
     for source in force_include:
         source_path = cli_root / source
         assert source_path.exists(), f"Missing force-include source: {source}"
+
+
+def test_bundled_skill_mirror_matches_plugin_source() -> None:
+    cli_root = Path(__file__).resolve().parents[1]
+    plugin = cli_root.parent / "plugin" / "skills" / "pkm"
+    bundled = cli_root / "src" / "pkm" / "_bundled_skill"
+
+    plugin_files = {
+        path.relative_to(plugin): path.read_bytes()
+        for path in plugin.rglob("*")
+        if path.is_file()
+    }
+    bundled_files = {
+        path.relative_to(bundled): path.read_bytes()
+        for path in bundled.rglob("*")
+        if path.is_file()
+    }
+
+    assert plugin_files
+    assert bundled_files == plugin_files
+
+    repo_root = cli_root.parent
+    if (repo_root / ".git").exists():
+        expected_tracked = {
+            str((bundled / relative).relative_to(repo_root))
+            for relative in bundled_files
+        }
+        tracked = set(
+            subprocess.run(
+                ["git", "ls-files", *sorted(expected_tracked)],
+                cwd=repo_root,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.splitlines()
+        )
+        assert tracked == expected_tracked
 
 
 def test_bundled_web_static_entrypoint_is_tracked_in_source_tree() -> None:

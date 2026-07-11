@@ -74,7 +74,6 @@ We have extracted detailed documentation for each CLI command into the `docs/cli
 - [Daily Notes (`pkm daily`)](docs/cli/pkm-daily.md): Daily note workflows that stay lightweight.
 - [Atomic Notes (`pkm note`)](docs/cli/pkm-note.md): Atomic note management built for actual use.
 - [Semantic Search (`pkm search`)](docs/cli/pkm-search.md): Search your vault by meaning, not just exact wording.
-- [Ask (`pkm ask`)](docs/cli/pkm-ask.md): Ask a natural language question about your vault (uses semantic search for RAG context retrieval, powered by `tiny-agent-py` running in an air-gapped LLM worker, with real-time reasoning streaming).
 - [Index (`pkm index`)](docs/cli/pkm-index.md): Build the semantic search index.
 - [Multi-Vault Management (`pkm vault`)](docs/cli/pkm-vault.md): Manage multiple vaults natively.
 - [Tags (`pkm tags`)](docs/cli/pkm-tags.md): Tag navigation and vault maintenance.
@@ -84,7 +83,7 @@ We have extracted detailed documentation for each CLI command into the `docs/cli
 - [Data (`pkm data`)](docs/cli/pkm-data.md): Manage data files in the vault.
 - [Stats (`pkm stats`)](docs/cli/pkm-stats.md): View vault statistics.
 - [Consolidate (`pkm consolidate`)](docs/cli/pkm-consolidate.md): Nightly knowledge distillation.
-- [Daemon (`pkm daemon`)](docs/cli/pkm-daemon.md): Background ML daemon (Host Daemon + Sandbox Worker) for fast semantic search and LLM tasks.
+- [Daemon (`pkm daemon`)](docs/cli/pkm-daemon.md): Background service for indexed search and the local web app.
 - [Web (`pkm web`)](docs/cli/pkm-web.md): Set up and manage the local web service.
 - [Setup (`pkm setup`)](docs/cli/pkm-setup.md): Interactive setup wizard.
 - [Update (`pkm update`)](docs/cli/pkm-update.md): Update the CLI.
@@ -106,16 +105,19 @@ pnpm build      # static output → dist/
 pnpm bundle:check  # gzip budget check (≤ 220 KB JS+CSS)
 ```
 
-Quality gates run from the repository Stop hook when code changes are present.
-Frontend changes run Prettier on changed files, `pnpm build`, and Vitest with
-90% coverage thresholds. Browser e2e is intentionally manual; run
-`pnpm run test:e2e` when a change needs Playwright coverage.
+Frontend formatting, unit tests, production builds, bundle checks, and focused
+Playwright browser regressions are required in CI and the release workflow.
+Run the same commands locally before submitting frontend changes.
 
 ### MCP Server Integration
 
-PKM includes a built-in MCP (Model Context Protocol) server to expose your vault to AI coding assistants (like Claude Desktop, Cursor, or Cline). It includes tools like `pkm_ask` for safe, parameterized natural language queries against your vault.
+PKM includes a built-in MCP (Model Context Protocol) server to expose your vault to AI coding assistants (like Claude Desktop, Cursor, or Cline). FastMCP publishes direct note, daily-log, search, index, and graph tools. For cross-note answers, the agent host searches, follows relevant neighbors (at most two graph depths), reads the source notes, and performs the synthesis itself.
 
 For full details and registration instructions, see: **[MCP Server Registration How-To](docs/mcp-server.md)**
+
+Upgrading from v2 is covered by the **[v3 migration guide](docs/migrations/v3.md)**.
+If you need the retired v2 runtime temporarily, follow the
+**[v2.96.1 rollback guide](docs/rollback-v2.96.1.md)**.
 
 ---
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime
 from pathlib import Path
 
@@ -212,61 +211,3 @@ def test_extract_tasks_missing_daily_dir(tmp_path):
     result = extract_tasks(vault, scan_days=1)
     for items in result.values():
         assert items == []
-
-
-# ---------------------------------------------------------------------------
-# create_daily_subnote @tool
-# ---------------------------------------------------------------------------
-
-
-def test_create_daily_subnote_tool(tmp_path, monkeypatch):
-    vault = _make_vault(tmp_path)
-    monkeypatch.setenv("PKM_VAULT_DIR", str(vault.path))
-
-    from pkm.tools.daily import create_daily_subnote
-
-    result = asyncio.run(
-        create_daily_subnote(title="test-summary", content="## WIP\n- [>] task1\n")
-    )
-    assert "test-summary" in result
-
-    # Subnote file exists
-    today = datetime.now().strftime("%Y-%m-%d")
-    subnote = vault.daily_dir / f"{today}-test-summary.md"
-    assert subnote.exists()
-    assert "- daily-note" in subnote.read_text()
-
-    # Daily note has wikilink to subnote
-    daily = vault.daily_dir / f"{today}.md"
-    assert daily.exists()
-    content = daily.read_text()
-    assert "test-summary" in content
-
-
-def test_create_daily_subnote_empty_title(tmp_path, monkeypatch):
-    vault = _make_vault(tmp_path)
-    monkeypatch.setenv("PKM_VAULT_DIR", str(vault.path))
-
-    from pkm.tools.daily import create_daily_subnote
-
-    result = asyncio.run(create_daily_subnote(title="", content="some content"))
-    assert "Error" in result or "error" in result.lower()
-
-
-def test_create_daily_subnote_idempotent(tmp_path, monkeypatch):
-    """Calling twice with same title does not overwrite existing subnote."""
-    vault = _make_vault(tmp_path)
-    monkeypatch.setenv("PKM_VAULT_DIR", str(vault.path))
-
-    from pkm.tools.daily import create_daily_subnote
-
-    asyncio.run(
-        create_daily_subnote(title="idempotent-note", content="original content\n")
-    )
-    asyncio.run(create_daily_subnote(title="idempotent-note", content="new content\n"))
-
-    today = datetime.now().strftime("%Y-%m-%d")
-    subnote = vault.daily_dir / f"{today}-idempotent-note.md"
-    text = subnote.read_text()
-    assert "original content" in text
-    assert "new content" not in text

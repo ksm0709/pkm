@@ -231,20 +231,6 @@
         shortcut: coreCommand["cmd:index-vault"].shortcut,
         run: indexVault,
       },
-      {
-        kind: "command",
-        id: "cmd:ask",
-        label: coreCommand["cmd:ask"].label,
-        hint: coreCommand["cmd:ask"].hint,
-        shortcut: coreCommand["cmd:ask"].shortcut,
-        run: () => {
-          const q = query.trim();
-          const target = q
-            ? `/${vaultName}/ask?q=${encodeURIComponent(q)}`
-            : `/${vaultName}/ask`;
-          return goto(target);
-        },
-      },
       ...navCommands,
       {
         kind: "command",
@@ -302,7 +288,6 @@
     const lower = q.toLowerCase();
     return all.filter(
       (c) =>
-        c.id === "cmd:ask" ||
         c.label.toLowerCase().includes(lower) ||
         (c.hint?.toLowerCase().includes(lower) ?? false),
     );

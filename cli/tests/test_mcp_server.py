@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 import subprocess
@@ -428,209 +427,6 @@ class TestIndex:
             assert mcp_server.index() == {"error": "disk full"}
 
 
-class FakeAskReader:
-    def __init__(self, payload: bytes):
-        self.payload = payload
-
-    async def readline(self) -> bytes:
-        return self.payload
-
-
-class FakeAskWriter:
-    def __init__(self, *, wait_closed_error: Exception | None = None):
-        self.writes: list[bytes] = []
-        self.closed = False
-        self.wait_closed_error = wait_closed_error
-
-    def write(self, data: bytes) -> None:
-        self.writes.append(data)
-
-    async def drain(self) -> None:
-        return None
-
-    def close(self) -> None:
-        self.closed = True
-
-    async def wait_closed(self) -> None:
-        if self.wait_closed_error:
-            raise self.wait_closed_error
-
-
-class TestPkmAsk:
-    @pytest.mark.anyio
-    async def test_sends_daemon_payload_with_defaults_and_env_keys(
-        self, mcp_server, monkeypatch
-    ) -> None:
-        """pkm_ask sends vault, defaults, and shared agent credentials to daemon."""
-        reader = FakeAskReader(b'{"data": {"response": "answer"}}\n')
-        writer = FakeAskWriter()
-
-        async def open_socket(path: str):
-            assert path.endswith(".config/pkm/daemon.sock")
-            return reader, writer
-
-        monkeypatch.setattr(asyncio, "open_unix_connection", open_socket)
-        monkeypatch.setattr(
-            "pkm.config.load_config",
-            lambda: {"defaults": {"model": "configured-model", "graph-depth": 2}},
-        )
-        monkeypatch.setattr(
-            mcp_server,
-            "agent_credential_env",
-            lambda: {"OPENAI_API_KEY": "shared-openai"},
-        )
-        monkeypatch.setattr(
-            "pkm.models.resolve_model_candidates",
-            lambda model: [model, "fallback-model"],
-        )
-
-        result = await mcp_server.pkm_ask("What changed?")
-
-        assert result == {"result": "answer"}
-        payload = json.loads(writer.writes[0].decode("utf-8"))
-        assert payload == {
-            "action": "ask",
-            "query": "What changed?",
-            "vault_name": "test-vault",
-            "model": "configured-model",
-            "model_candidates": ["configured-model", "fallback-model"],
-            "env_keys": {"OPENAI_API_KEY": "shared-openai"},
-            "graph_depth": 2,
-        }
-        assert writer.closed is True
-
-    @pytest.mark.anyio
-    async def test_accepts_top_level_response_and_model_override(
-        self, mcp_server, monkeypatch
-    ) -> None:
-        """pkm_ask accepts legacy top-level responses and explicit model override."""
-        reader = FakeAskReader(b'{"response": "legacy answer"}\n')
-        writer = FakeAskWriter()
-
-        async def open_socket(path: str):
-            return reader, writer
-
-        monkeypatch.setattr(asyncio, "open_unix_connection", open_socket)
-        monkeypatch.setattr("pkm.config.load_config", lambda: {"defaults": {}})
-
-        result = await mcp_server.pkm_ask("Question?", model="override-model")
-
-        assert result == {"result": "legacy answer"}
-        payload = json.loads(writer.writes[0].decode("utf-8"))
-        assert payload["model"] == "override-model"
-        assert payload["graph_depth"] == 0
-
-    @pytest.mark.anyio
-    async def test_reports_daemon_start_failure_after_retrying_once_per_attempt(
-        self, mcp_server, monkeypatch
-    ) -> None:
-        """Daemon startup failure retries quickly and returns a clear MCP error."""
-        attempts = []
-        starts = []
-
-        async def open_socket(path: str):
-            attempts.append(path)
-            raise FileNotFoundError(path)
-
-        async def no_sleep(delay: float) -> None:
-            return None
-
-        monkeypatch.setattr(asyncio, "open_unix_connection", open_socket)
-        monkeypatch.setattr(asyncio, "sleep", no_sleep)
-        monkeypatch.setattr(
-            subprocess, "Popen", lambda *args, **kwargs: starts.append(args)
-        )
-        monkeypatch.setattr("pkm.config.load_config", lambda: {"defaults": {}})
-
-        result = await mcp_server.pkm_ask("Question?")
-
-        assert result == {
-            "error": "Daemon failed to start. Run 'pkm daemon start' manually."
-        }
-        assert len(attempts) == 50
-        assert len(starts) == 1
-
-    @pytest.mark.anyio
-    async def test_reports_no_response_error_and_closes_writer(
-        self, mcp_server, monkeypatch
-    ) -> None:
-        """An empty daemon response is surfaced without leaking the writer."""
-        reader = FakeAskReader(b"")
-        writer = FakeAskWriter()
-
-        async def open_socket(path: str):
-            return reader, writer
-
-        monkeypatch.setattr(asyncio, "open_unix_connection", open_socket)
-        monkeypatch.setattr("pkm.config.load_config", lambda: {"defaults": {}})
-
-        result = await mcp_server.pkm_ask("Question?")
-
-        assert result == {"error": "No response from daemon."}
-        assert writer.closed is True
-
-    @pytest.mark.anyio
-    @pytest.mark.parametrize(
-        ("payload", "expected"),
-        [
-            (b'{"type": "error", "message": "agent failed"}\n', "agent failed"),
-            (b'{"error": "bad model"}\n', "bad model"),
-            (
-                b'{"data": {"unexpected": true}}\n',
-                "Invalid response format from daemon.",
-            ),
-        ],
-    )
-    async def test_reports_daemon_error_payloads(
-        self, mcp_server, monkeypatch, payload: bytes, expected: str
-    ) -> None:
-        """Daemon error and malformed-success schemas become MCP error dicts."""
-        reader = FakeAskReader(payload)
-        writer = FakeAskWriter(wait_closed_error=RuntimeError("close already gone"))
-
-        async def open_socket(path: str):
-            return reader, writer
-
-        monkeypatch.setattr(asyncio, "open_unix_connection", open_socket)
-        monkeypatch.setattr("pkm.config.load_config", lambda: {"defaults": {}})
-
-        result = await mcp_server.pkm_ask("Question?")
-
-        assert result == {"error": expected}
-        assert writer.closed is True
-
-    @pytest.mark.anyio
-    async def test_reports_timeout_and_invalid_json_as_errors(
-        self, mcp_server, monkeypatch
-    ) -> None:
-        """Timeouts and malformed JSON take the dedicated/error fallback paths."""
-
-        async def open_socket_timeout(path: str):
-            return FakeAskReader(b"ignored"), FakeAskWriter()
-
-        async def raise_timeout(awaitable, timeout: int):
-            awaitable.close()
-            raise asyncio.TimeoutError
-
-        monkeypatch.setattr(asyncio, "open_unix_connection", open_socket_timeout)
-        monkeypatch.setattr(asyncio, "wait_for", raise_timeout)
-        monkeypatch.setattr("pkm.config.load_config", lambda: {"defaults": {}})
-
-        timeout_result = await mcp_server.pkm_ask("Slow?", timeout=1)
-        assert timeout_result == {"error": "Request timed out after 1 seconds."}
-
-        async def passthrough(awaitable, timeout: int):
-            return await awaitable
-
-        async def open_socket_bad_json(path: str):
-            return FakeAskReader(b"not json\n"), FakeAskWriter()
-
-        monkeypatch.setattr(asyncio, "open_unix_connection", open_socket_bad_json)
-        monkeypatch.setattr(asyncio, "wait_for", passthrough)
-
-        bad_json_result = await mcp_server.pkm_ask("Bad JSON?")
-        assert bad_json_result["error"].startswith("An unexpected error occurred:")
-
 
 class TestVaultInspectionTools:
     def test_lists_vault_stats_stale_orphans_and_activity_log(
@@ -843,21 +639,21 @@ class TestVaultInspectionTools:
             assert mcp_server.find_surprising_connections(top_n=3) == {
                 "result": "surprises"
             }
-            tool.assert_called_once_with(top_n=3)
+            tool.assert_called_once_with(mcp_server._get_vault(), top_n=3)
 
         with patch(
             "pkm.tools.search.list_clusters",
             new=MagicMock(return_value="clusters"),
         ) as tool:
             assert mcp_server.list_clusters() == {"result": "clusters"}
-            tool.assert_called_once_with()
+            tool.assert_called_once_with(mcp_server._get_vault())
 
         with patch(
             "pkm.tools.search.list_god_nodes",
             new=MagicMock(return_value="nodes"),
         ) as tool:
             assert mcp_server.list_god_nodes(top_n=4) == {"result": "nodes"}
-            tool.assert_called_once_with(top_n=4)
+            tool.assert_called_once_with(mcp_server._get_vault(), top_n=4)
 
         with patch(
             "pkm.tools.search.create_hub_note",
@@ -867,6 +663,7 @@ class TestVaultInspectionTools:
                 cluster_index=2, title="Hub", description="Bridge"
             ) == {"result": "hub"}
             tool.assert_called_once_with(
+                mcp_server._get_vault(),
                 cluster_index=2, title="Hub", description="Bridge"
             )
 
@@ -880,6 +677,7 @@ class TestVaultInspectionTools:
                 description="shared context",
             ) == {"result": "linked"}
             tool.assert_called_once_with(
+                mcp_server._get_vault(),
                 source_note_id="a",
                 target_note_id="b",
                 description="shared context",
@@ -1070,7 +868,7 @@ class TestMcpE2EProtocol:
             "mark_consolidated",
             "note_add",
             "patch_note",
-            "pkm_ask",
+
             "read_daily_log",
             "read_note",
             "read_recent_note_activity",

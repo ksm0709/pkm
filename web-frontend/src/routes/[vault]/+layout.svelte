@@ -300,10 +300,6 @@
     if (parts[1] === "notes" && parts[2]) return decodeURIComponent(parts[2]);
     if (parts[1] === "daily") return "daily";
     if (parts[1] === "logger") return "logger";
-    if (parts[1] === "workflows" && parts[2])
-      return `workflow:${decodeURIComponent(parts[2])}`;
-    if (parts[1] === "workflows") return "workflows";
-    if (parts[1] === "ask") return "ask";
     return parts[1] || "home";
   }
 

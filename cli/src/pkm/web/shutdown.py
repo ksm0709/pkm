@@ -1,4 +1,4 @@
-"""ShutdownGate: drain control and SSE cancel coordination for graceful restarts."""
+"""ShutdownGate: drain control for graceful restarts."""
 
 from __future__ import annotations
 
@@ -16,11 +16,10 @@ class ShutdownGate:
 
         gate.begin_drain()                           # 503 all new requests
         await asyncio.wait_for(gate.wait_idle(), 5.0)  # wait up to 5 s
-        gate.cancel_all()                            # signal SSE streams to close
         await runner.cleanup()
         os.execv(...)
 
-    Non-SSE handlers should wrap their work with::
+    Handlers should wrap their work with::
 
         async with gate.track(request):
             ...
@@ -28,7 +27,6 @@ class ShutdownGate:
 
     def __init__(self) -> None:
         self._draining: bool = False
-        self._cancel_events: list[asyncio.Event] = []
         self._in_flight: int = 0
         self._idle_event: asyncio.Event = asyncio.Event()
         self._idle_event.set()  # starts idle; cleared when first request is tracked
@@ -50,27 +48,13 @@ class ShutdownGate:
         """
         self._draining = True
 
-    def register_cancel(self, event: asyncio.Event) -> None:
-        """Register an asyncio.Event to be set when cancel_all() is called.
-
-        Intended for SSE handlers that need to tear down their response
-        stream on drain.
-        """
-        self._cancel_events.append(event)
-
-    def cancel_all(self) -> None:
-        """Set every registered SSE cancel event and clear the registry."""
-        for event in self._cancel_events:
-            event.set()
-        self._cancel_events.clear()
-
     async def wait_idle(self) -> None:
-        """Await until the in-flight non-SSE request counter reaches zero."""
+        """Await until the in-flight request counter reaches zero."""
         await self._idle_event.wait()
 
     @asynccontextmanager
     async def track(self, request: web.Request) -> AsyncGenerator[None, None]:
-        """Async context manager: track one in-flight non-SSE request.
+        """Async context manager: track one in-flight request.
 
         Increments the counter on entry and decrements on exit, setting the
         idle event when the counter returns to zero.

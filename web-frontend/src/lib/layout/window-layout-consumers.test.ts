@@ -22,8 +22,6 @@ describe("window layout CSS consumers", () => {
     const pageFiles = [
       "../../routes/[vault]/+page.svelte",
       "../../routes/[vault]/configs/+page.svelte",
-      "../../routes/[vault]/workflows/+page.svelte",
-      "../../routes/[vault]/workflows/[id]/+page.svelte",
       "../../routes/[vault]/logger/+page.svelte",
       "../../routes/[vault]/notes/[id]/+page.svelte",
     ];
@@ -34,18 +32,12 @@ describe("window layout CSS consumers", () => {
   });
 
   it("uses readable and modal width tokens where pages need narrower surfaces", () => {
-    expect(readSource("../../routes/[vault]/ask/+page.svelte")).toContain(
-      "width: var(--readable-content-width)",
-    );
     expect(readSource("../../routes/[vault]/tags/+page.svelte")).toContain(
       "width: var(--readable-content-width)",
     );
     expect(readSource("../../lib/components/CmdK.svelte")).toContain(
       "var(--modal-available-width)",
     );
-    expect(
-      readSource("../../routes/[vault]/workflows/[id]/+page.svelte"),
-    ).toContain("width: min(720px, var(--modal-available-width))");
   });
 
   it("keeps graph page opted out of centered page width constraints", () => {

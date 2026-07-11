@@ -186,14 +186,14 @@ def test_config_get_not_set(monkeypatch):
     assert "not set" in result.output
 
 
-def test_config_get_uses_effective_default_when_available(monkeypatch):
+def test_config_get_rejects_retired_model_key(monkeypatch):
     monkeypatch.setattr("pkm.commands.config.load_config", lambda: {})
 
     runner = CliRunner()
     result = runner.invoke(main, ["config", "get", "model"])
 
-    assert result.exit_code == 0
-    assert result.output.strip() == "auto"
+    assert result.exit_code != 0
+    assert "Unknown key 'model'" in result.output
 
 
 def test_config_get_invalid_key():
@@ -226,7 +226,6 @@ def test_config_list_empty(monkeypatch):
     result = runner.invoke(main, ["config", "list"])
     assert result.exit_code == 0
     data = json.loads(result.output)
-    assert data["model"] == "auto"
     assert data["graph-depth"] == "0"
     assert "auto" not in data
 

@@ -8,16 +8,25 @@ The MCP server runs a JSON-RPC 2.0 server over `stdio` and exposes the following
 
 **Write tools**
 - **`note_add`**: Create a durable atomic note in the vault. Use only for concepts, entities, processes, principles, patterns, decisions, and index-worthy knowledge.
+- **`patch_note`**: Replace, append, prepend, or upsert a section of an existing note, with optional stale-write guards.
+- **`rename_note`**: Rename a note ID and update inbound wikilinks.
+- **`add_wikilink`**: Add a reasoned link to the Related section of a source note.
+- **`create_hub_note`**: Create an index note for a discovered topic cluster.
 - **`daily_add`**: Append a timestamped log entry or TODO to today's daily note. Use for time-bound session state, progress, and transient observations.
 - **`create_daily_subnote`**: Create a dated subnote (`YYYY-MM-DD-{title}.md`) tagged `daily-note` and add a `[[wikilink]]` entry to today's daily note. Use for structured time-bound material such as meetings, investigations, and long session notes.
 
 **Search & discovery tools**
 - **`read_daily_log`**: Read a past or present daily note. Use `offset=N` for N days ago (`0`=today, `1`=yesterday) or `date_str=YYYY-MM-DD` for an explicit date (`date_str` wins if both given).
 - **`search`**: Perform semantic search across your notes to retrieve context.
+- **`read_note`**: Read a note's full body and metadata before using it as evidence.
+- **`list_notes`**: List notes, optionally filtering by title substring.
 - **`list_tags`**: List all tags used in the vault with their note counts, sorted by frequency.
 - **`tag_search`**: Filter notes by tag pattern (exact, glob `db*`, AND `python+testing`, OR `python,rust`).
 - **`find_backlinks_for_note`**: Find all notes that link TO a given note (daemon-free inbound wikilink scan).
 - **`get_note_neighbors`**: Get all neighbors of a note — outbound wikilinks, inbound backlinks, tag nodes, ghost nodes, and optionally semantic similarity connections. Reads `graph.json` directly (daemon-free). Returns `{note_id, outbound, inbound, semantic}` where each item has `note_id`, `title`, and `type` fields. Pass `include_semantic=true` to include embedding-based connections from `graph_enriched.json`.
+- **`find_surprising_connections`**: Find semantic bridges between topic clusters.
+- **`list_clusters`**: List indexed topic clusters and hub coverage.
+- **`list_god_nodes`**: List structurally central notes in the graph.
 
 **Vault health tools**
 - **`vault_stats`**: Get a snapshot of vault health — note count, orphan count, tag count, avg links, index status.
@@ -34,9 +43,15 @@ Before using `note_add`, verify the material has a stable definition, long-term
 scope, and at least one meaningful relation or source link. If it only describes
 what happened today, use `daily_add` or `create_daily_subnote`.
 
-**Index & agent tools**
+**Index tool**
 - **`index`**: Rebuild the semantic search index so the assistant can query recent changes.
-- **`pkm_ask`**: Ask a natural language question about your vault (requires `pkm daemon start` to be running).
+
+**Host-side synthesis**
+For questions that span notes, the assistant should use `search` to find starting
+points, `get_note_neighbors` to traverse no more than two graph depths, and
+`read_note` to load the selected sources before synthesizing an answer in the MCP
+host. These are ordinary FastMCP tools discovered through `tools/list`; PKM does
+not provide a separate answer-generation tool.
 
 ## Registration How-To
 

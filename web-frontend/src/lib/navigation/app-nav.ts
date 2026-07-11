@@ -2,9 +2,7 @@ export type AppNavPageId =
   | "notes"
   | "tags"
   | "graph"
-  | "ask"
   | "logger"
-  | "workflows"
   | "daily"
   | "configs";
 
@@ -47,15 +45,6 @@ export const appNavPages: AppNavPage[] = [
     href: (vaultName) => `/${vaultName}/graph`,
   },
   {
-    id: "ask",
-    label: "Ask",
-    meta: "agent",
-    commandLabel: "Open ask",
-    commandHint: "agent",
-    commandShortcut: "a",
-    href: (vaultName) => `/${vaultName}/ask`,
-  },
-  {
     id: "logger",
     label: "Logger",
     meta: "daily log",
@@ -64,15 +53,7 @@ export const appNavPages: AppNavPage[] = [
     commandShortcut: "l",
     href: (vaultName) => `/${vaultName}/logger`,
   },
-  {
-    id: "workflows",
-    label: "Workflows",
-    meta: "automation",
-    commandLabel: "Open workflows",
-    commandHint: "automation",
-    commandShortcut: "w",
-    href: (vaultName) => `/${vaultName}/workflows`,
-  },
+
   {
     id: "daily",
     label: "Daily",

@@ -523,38 +523,6 @@ def test_turn_start_search_query_uses_user_prompt_not_daily_context(
     assert captured_queries == ["2차전지 찾아줘"]
 
 
-def test_session_start_consumes_zettel_signal_and_uses_mcp_reference(
-    runner, vault_env, monkeypatch
-):
-    """Session-start surfaces daemon zettel signals once and switches to MCP guidance."""
-    signal = vault_env.pkm_dir / "zettel-pending"
-    signal.write_text(json.dumps({"marked": 2}), encoding="utf-8")
-    monkeypatch.setattr("pkm.commands.hook._detect_pkm_mcp", lambda: True)
-    monkeypatch.setattr(
-        "pkm.commands.hook._check_consolidation_trigger", lambda *a: None
-    )
-
-    result = runner.invoke(main, ["hook", "run", "session-start", "--format", "plain"])
-
-    assert result.exit_code == 0, result.output
-    assert "Zettel Loop Ready" in result.output
-    assert "Daemon auto-consolidated 2 daily note(s)" in result.output
-    assert "Use MCP tools for all PKM operations" in result.output
-    assert not signal.exists()
-
-
-def test_session_start_ignores_consolidation_failures(runner, vault_env, monkeypatch):
-    """Session-start still emits PKM guidance when consolidation policy fails."""
-    monkeypatch.setattr(
-        "pkm.commands.hook._check_consolidation_trigger",
-        lambda *a: (_ for _ in ()).throw(RuntimeError("state failed")),
-    )
-
-    result = runner.invoke(main, ["hook", "run", "session-start", "--format", "plain"])
-
-    assert result.exit_code == 0, result.output
-    assert "## PKM" in result.output
-
 
 def test_turn_start_falls_back_to_local_search_and_note_description(
     runner, vault_env, tmp_vault, monkeypatch

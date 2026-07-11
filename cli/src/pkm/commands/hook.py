@@ -115,96 +115,6 @@ def _write_hooks_debug(vault, enabled: bool) -> None:
     config_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _load_session_state(vault) -> dict[str, Any]:
-    """Load .pkm/session_state.json. Returns defaults on missing or corrupt."""
-    defaults: dict[str, Any] = {"session_count": 0, "last_consolidation_at": None}
-    try:
-        state_path = vault.pkm_dir / "session_state.json"
-        if not state_path.exists():
-            return defaults.copy()
-        data = json.loads(state_path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            return defaults.copy()
-        return {
-            "session_count": int(data.get("session_count", 0)),
-            "last_consolidation_at": data.get("last_consolidation_at"),
-        }
-    except Exception:
-        return defaults.copy()
-
-
-def _save_session_state(vault, state: dict[str, Any]) -> None:
-    """Write .pkm/session_state.json."""
-    try:
-        vault.pkm_dir.mkdir(parents=True, exist_ok=True)
-        state_path = vault.pkm_dir / "session_state.json"
-        state_path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
-    except Exception:
-        pass
-
-
-def _check_consolidation_trigger(vault, config: dict[str, Any]) -> str | None:
-    """Check if consolidation should be recommended.
-
-    Returns recommendation message string or None.
-    Side effect: increments session_count; resets after trigger.
-    """
-    try:
-        from datetime import datetime, timezone, timedelta
-
-        consolidation_cfg = config.get("consolidation", {})
-        auto_trigger = consolidation_cfg.get("auto_trigger", True)
-        if not auto_trigger:
-            return None
-
-        threshold = int(consolidation_cfg.get("session_threshold", 5))
-        cooldown_hours = int(consolidation_cfg.get("cooldown_hours", 24))
-
-        state = _load_session_state(vault)
-        state["session_count"] += 1
-
-        if state["session_count"] < threshold:
-            _save_session_state(vault, state)
-            return None
-
-        # Check cooldown
-        now = datetime.now(timezone.utc)
-        last_str = state.get("last_consolidation_at")
-        if last_str:
-            try:
-                last_dt = datetime.fromisoformat(last_str)
-                if last_dt.tzinfo is None:
-                    last_dt = last_dt.replace(tzinfo=timezone.utc)
-                if (now - last_dt) < timedelta(hours=cooldown_hours):
-                    _save_session_state(vault, state)
-                    return None
-            except ValueError:
-                pass
-
-        # Find candidates
-        from pkm.commands.consolidate import _list_candidate_dates
-
-        candidate_dates = _list_candidate_dates(vault)
-        if not candidate_dates:
-            state["session_count"] = 0
-            _save_session_state(vault, state)
-            return None
-
-        # Emit trigger
-        state["session_count"] = 0
-        state["last_consolidation_at"] = now.isoformat()
-        _save_session_state(vault, state)
-
-        lines = [f"{len(candidate_dates)} daily note(s) ready for consolidation. Run:"]
-        for d in candidate_dates[:5]:
-            lines.append(f"  pkm consolidate mark {d}")
-        if len(candidate_dates) > 5:
-            lines.append(f"  ... and {len(candidate_dates) - 5} more")
-        lines.append("  /pkm:distill-daily")
-        return "\n".join(lines)
-    except Exception:
-        return None
-
 
 def _detect_pkm_mcp() -> bool:
     """Return True if a PKM MCP server is configured in any supported agent tool.
@@ -305,37 +215,9 @@ def _extract_user_prompt(payload: dict[str, Any]) -> str:
 
 
 def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None:
-    vault = ctx.obj["vault"]
     lines = []
 
-    # 1. Zettel-pending signal (daemon auto-consolidated dailies)
-    try:
-        zettel_signal = vault.pkm_dir / "zettel-pending"
-        if zettel_signal.exists():
-            sig = json.loads(zettel_signal.read_text(encoding="utf-8"))
-            marked = sig.get("marked", 0)
-            lines.append("## Zettel Loop Ready")
-            lines.append(
-                f"Daemon auto-consolidated {marked} daily note(s) on shutdown. "
-                "Run `/pkm:zettel-loop` to distill into permanent knowledge."
-            )
-            lines.append("")
-            zettel_signal.unlink()
-    except Exception:
-        pass
-
-    # 2. Consolidation trigger (conditional)
-    try:
-        hook_config = _load_hook_config(vault)
-        trigger_msg = _check_consolidation_trigger(vault, hook_config)
-        if trigger_msg:
-            lines.append("## Consolidation Recommended")
-            lines.append(trigger_msg)
-            lines.append("")
-    except Exception:
-        pass
-
-    # 2. PKM command reference — MCP or CLI depending on what's available
+    # PKM command reference — MCP or CLI depending on what's available
     use_mcp = _detect_pkm_mcp()
     if use_mcp:
         lines.extend(
@@ -345,8 +227,8 @@ def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None
                 "",
                 "Knowledge collection protocol:",
                 "- Before non-trivial work: call `mcp__pkm__search(query=<topic>)` to recall related notes.",
-                "- If search returns an important result (importance >= 6): call `mcp__pkm__get_note_neighbors(note_id=<slug>)` to deepen context.",
-                "- If a prior decision or cross-note synthesis is needed: call `mcp__pkm__pkm_ask(query=<question>)`.",
+                "- If search returns an important result (importance >= 6): call `mcp__pkm__get_note_neighbors(note_id=<slug>)` to deepen context, with at most 2 graph depths total.",
+                "- Before cross-note synthesis: call `mcp__pkm__read_note(note_id=<slug>)` for each selected source, then synthesize in the agent host.",
                 "- If continuing prior work or the user references a previous session: call `mcp__pkm__read_daily_log(offset=1)` or an explicit `date_str`.",
                 "- At session end: always call `mcp__pkm__daily_add(text=<1-2 line summary>)`.",
                 "- For structured time-bound material: call `mcp__pkm__create_daily_subnote(...)`.",
@@ -357,7 +239,7 @@ def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None
                 "`mcp__pkm__read_daily_log` — read past daily log (offset=1 yesterday, offset=N N days ago, or date_str=YYYY-MM-DD)",
                 "`mcp__pkm__search` — recall related notes",
                 "`mcp__pkm__get_note_neighbors` — inspect graph links around a relevant note",
-                "`mcp__pkm__pkm_ask` — synthesize answers from vault notes",
+                "`mcp__pkm__read_note` — read selected source evidence before host-side synthesis",
                 "`mcp__pkm__note_add` — create durable atomic notes only (importance: 1-3 trivial, 4-6 moderate, 7-8 important, 9-10 critical)",
                 "  - Bias importance 7+ for anything the next agent would need. Default 5 if unsure.",
                 "`mcp__pkm__create_daily_subnote` — create linked time-bound sub-note + log [[wikilink]] in today's daily",
@@ -370,8 +252,8 @@ def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None
                 "## PKM",
                 "Knowledge collection protocol:",
                 '- Before non-trivial work: run `pkm search "<topic>"` to recall related notes.',
-                "- If search returns an important result (importance >= 6): run `pkm graph neighbors <note-id>` to deepen context.",
-                '- If a prior decision or cross-note synthesis is needed: run `pkm ask "<question>"`.',
+                "- If search returns an important result (importance >= 6): run `pkm graph neighbors <note-id>` to deepen context, with at most 2 graph depths total.",
+                "- Before cross-note synthesis: run `pkm note show <note-id>` for each selected source, then synthesize in the agent host.",
                 "- If continuing prior work or the user references a previous session: run `pkm daily --offset 1` or `pkm daily --date YYYY-MM-DD`.",
                 '- At session end: always run `pkm daily add "<1-2 line summary>"`.',
                 '- For structured time-bound material: run `pkm daily subnote "<title>" --content "..."`.',
@@ -383,7 +265,7 @@ def _handle_session_start(ctx, output_format: str, top: int, **_ignored) -> None
                 '`pkm daily subnote "<title>"` — create linked time-bound sub-note + log [[wikilink]] in today\'s daily',
                 '`pkm search "<query>"` — recall related notes',
                 "`pkm graph neighbors <note-id>` — inspect graph links around a relevant note",
-                '`pkm ask "<question>"` — synthesize answers from vault notes',
+                "`pkm note show <note-id>` — read selected source evidence before host-side synthesis",
                 '`pkm note add --content "<insight>" --type semantic --importance 7 --tags tag1,tag2` — durable atomic note',
                 "  - importance: 1-3 trivial, 4-6 moderate, 7-8 important (arch decisions, bug root causes), 9-10 critical (security, irreversible)",
                 "  - Bias 7+ for anything the next agent would need. Default 5 if unsure.",
@@ -545,11 +427,17 @@ def _handle_turn_start(
             if top_note_id
             else "→ mcp__pkm__get_note_neighbors(note_id=<slug>) — explore connections (2-depth max)"
         )
+        read_hint = (
+            f'→ mcp__pkm__read_note(note_id="{top_note_id}")'
+            " — read selected evidence before host synthesis"
+            if top_note_id
+            else "→ mcp__pkm__read_note(note_id=<slug>) — read selected evidence before host synthesis"
+        )
         lines.append(
             "# PKM Context\n"
             "Relevant notes above are exploration starting points.\n"
             f"{neighbor_hint}\n"
-            "→ mcp__pkm__pkm_ask(query=<question>) — synthesized answers from vault\n"
+            f"{read_hint}\n"
             "Before starting non-trivial work: mcp__pkm__search(query=<topic>)"
         )
     else:
@@ -915,7 +803,7 @@ _PKM_HOOKS: dict[str, list[dict[str, Any]]] = {
                 },
                 {
                     "type": "agent",
-                    "prompt": 'You are a PKM knowledge extractor. A Claude Code session just ended. The hook input JSON is: $ARGUMENTS\n\n1. Parse the JSON to extract the \'transcript_path\' field\n2. Read the transcript file at that path using the Read tool\n3. Identify knowledge worth preserving (be selective — only non-obvious, reusable knowledge)\n4. Save findings using pkm commands. See the /pkm skill for available commands and workflows.\n5. Return {"ok": true} when done. If transcript_path is missing/unreadable or nothing is worth saving, return {"ok": true} immediately.\n\nIMPORTANT: Skip trivial facts, already-known information, and tool outputs. Quality over quantity.',
+                    "prompt": 'You are a PKM knowledge extractor. A Claude Code session just ended. The hook input JSON is: $ARGUMENTS\n\n1. Parse the JSON to extract the \'transcript_path\' field\n2. Read the transcript file at that path using the Read tool\n3. Identify knowledge worth preserving (be selective — only non-obvious, reusable knowledge)\n4. Save findings using pkm commands. See the /pkm skill for available commands and procedures.\n5. Return {"ok": true} when done. If transcript_path is missing/unreadable or nothing is worth saving, return {"ok": true} immediately.\n\nIMPORTANT: Skip trivial facts, already-known information, and tool outputs. Quality over quantity.',
                     "timeout": 120,
                 },
             ]

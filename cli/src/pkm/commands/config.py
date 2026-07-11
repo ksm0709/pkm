@@ -30,16 +30,6 @@ CONFIG_SCHEMA = {
         "description": "Default graph traversal depth for search and show commands",
         "default": "0",
     },
-    "model": {
-        "internal_key": "model",
-        "description": "LLM model used by pkm ask (default: auto)",
-        "default": "auto",
-    },
-    "reasoning-effort": {
-        "internal_key": "reasoning-effort",
-        "description": "Reasoning effort for capable models (e.g., low, medium, high)",
-        "default": None,
-    },
     "graph-semantic-candidate-threshold": {
         "internal_key": "graph-semantic-candidate-threshold",
         "description": "Raw cosine floor for semantic graph edge candidates",

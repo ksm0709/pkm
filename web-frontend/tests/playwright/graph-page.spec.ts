@@ -200,6 +200,17 @@ const malformedPayload = {
 };
 
 test.describe("vault graph page", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.route("**/api/v1/vaults", async (route) => {
+      await json(route, [
+        { name: TEST_VAULT, path: "/tmp/bear", is_default: true },
+      ]);
+    });
+    await page.route("**/api/v1/vault/*/configs", async (route) => {
+      await json(route, { settings: [] });
+    });
+  });
+
   test("renders a canvas force graph from enriched graph data", async ({
     page,
   }) => {

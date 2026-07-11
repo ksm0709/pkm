@@ -21,8 +21,11 @@ pkm hook setup --tool claude-code
 
 Default setup installs `SessionStart` and `Stop` hooks only.
 
-- `SessionStart` emits concise PKM retrieval guidance. It tells agents when to use
-  `search`, graph neighbors, `ask`, daily-log reads, and daily logging.
+- `SessionStart` emits concise PKM retrieval guidance. For cross-note questions,
+  the agent host should call `search`, inspect promising results with
+  `get_note_neighbors` (at most two graph depths), explicitly call `read_note` for
+  the evidence it will use, and synthesize the answer in the host. It also covers
+  daily-log reads and end-of-session logging.
 - `Stop` preserves session knowledge when supported by the host agent.
 - `UserPromptSubmit` is not installed by default, so PKM no longer injects relevant
   notes or recent daily context on every user prompt.

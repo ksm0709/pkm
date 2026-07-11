@@ -10,13 +10,7 @@ from pkm.web.routes.annotations import (
     put_data_annotations,
     put_note_annotations,
 )
-from pkm.web.routes.ask import get_ask_options, get_ask_run, post_ask
-from pkm.web.routes.configs import (
-    delete_ask_credential,
-    get_configs,
-    patch_config_setting,
-    put_ask_credential,
-)
+from pkm.web.routes.configs import get_configs, patch_config_setting
 from pkm.web.routes.daily import (
     get_daily_date,
     get_daily_today,
@@ -43,15 +37,6 @@ from pkm.web.routes.notes import (
 from pkm.web.routes.search import index_vault, search_notes
 from pkm.web.routes.tags import list_tags, search_tags
 from pkm.web.routes.vault import get_vaults
-from pkm.web.routes.workflows import (
-    get_workflow,
-    get_workflow_history,
-    get_workflow_run_status,
-    list_workflow_history,
-    list_workflows,
-    run_workflow,
-    update_workflow,
-)
 
 
 def register_routes(app: web.Application) -> None:
@@ -116,10 +101,6 @@ def register_routes(app: web.Application) -> None:
     app.router.add_get("/api/v1/vault/{name}/graph/ego/{note_id}", get_ego_graph)
     app.router.add_get("/api/v1/vault/{name}/graph", get_graph)
 
-    # Ask — SSE
-    app.router.add_get("/api/v1/vault/{name}/ask/options", get_ask_options)
-    app.router.add_get("/api/v1/vault/{name}/ask/runs/{run_id}", get_ask_run)
-    app.router.add_post("/api/v1/vault/{name}/ask", post_ask)
 
     # Configs
     app.router.add_get("/api/v1/vault/{name}/configs", get_configs)
@@ -127,26 +108,3 @@ def register_routes(app: web.Application) -> None:
         "/api/v1/vault/{name}/configs/settings/{key}",
         patch_config_setting,
     )
-    app.router.add_put(
-        "/api/v1/vault/{name}/configs/ask/credentials/{provider}",
-        put_ask_credential,
-    )
-    app.router.add_delete(
-        "/api/v1/vault/{name}/configs/ask/credentials/{provider}",
-        delete_ask_credential,
-    )
-
-    # Workflows
-    app.router.add_get("/api/v1/vault/{name}/workflow-history", list_workflow_history)
-    app.router.add_get("/api/v1/vault/{name}/workflows", list_workflows)
-    app.router.add_get(
-        "/api/v1/vault/{name}/workflows/{id}/history",
-        get_workflow_history,
-    )
-    app.router.add_get(
-        "/api/v1/vault/{name}/workflows/{id}/run-status",
-        get_workflow_run_status,
-    )
-    app.router.add_post("/api/v1/vault/{name}/workflows/{id}/run", run_workflow)
-    app.router.add_get("/api/v1/vault/{name}/workflows/{id}", get_workflow)
-    app.router.add_patch("/api/v1/vault/{name}/workflows/{id}", update_workflow)

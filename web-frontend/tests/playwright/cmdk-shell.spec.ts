@@ -67,9 +67,7 @@ test.describe("command palette and shell navigation", () => {
       "Search",
       "Tags",
       "Graph",
-      "Ask",
       "Logger",
-      "Workflows",
       "Daily",
       "Configs",
     ]) {
@@ -104,13 +102,6 @@ test.describe("command palette and shell navigation", () => {
       .locator('button[aria-label="Graph"]')
       .evaluate((el) => (el as HTMLElement).click());
     await expect(page).toHaveURL(new RegExp(`/${vaultPath}/graph$`));
-
-    await page.getByRole("button", { name: "Open navigation drawer" }).click();
-    await expect(
-      page.locator('aside[aria-label="App navigation"]'),
-    ).toHaveAttribute("aria-hidden", "false");
-    await page.getByRole("button", { name: "Ask" }).click();
-    await expect(page).toHaveURL(new RegExp(`/${vaultPath}/ask$`));
   });
 
   test("searches notes from the command palette using backend search results", async ({
@@ -187,6 +178,12 @@ test.describe("command palette and shell navigation", () => {
         body: JSON.stringify(notes),
       });
     });
+    await page.route(`**/api/v1/vault/${vaultName}/configs`, async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ settings: [] }),
+      });
+    });
     await page.route(`**/api/v1/vault/${vaultName}/search**`, async (route) => {
       await route.fulfill({
         status: 404,
@@ -197,6 +194,8 @@ test.describe("command palette and shell navigation", () => {
     await page.goto(`/${vaultName}`);
     await page.waitForLoadState("networkidle").catch(() => {});
     await page.getByRole("button", { name: "Open command palette" }).click();
+    await expectCommandPaletteFocused(page);
+    await page.getByRole("option", { name: /Jump to note/ }).click();
     await expectCommandPaletteFocused(page);
 
     await page.locator(".cmdk-input").fill("research");
@@ -217,17 +216,13 @@ test.describe("command palette and shell navigation", () => {
       { query: "notes", label: /^Open notes\b/, path: `/${vaultPath}$` },
       { query: "tags", label: /^Open tags\b/, path: `/${vaultPath}/tags$` },
       { query: "graph", label: /^Open graph\b/, path: `/${vaultPath}/graph$` },
-      { query: "ask", label: /^Open ask\b/, path: `/${vaultPath}/ask$` },
+
       {
         query: "logger",
         label: /^Open logger\b/,
         path: `/${vaultPath}/logger$`,
       },
-      {
-        query: "workflow",
-        label: /^Open workflows\b/,
-        path: `/${vaultPath}/workflows$`,
-      },
+
       { query: "daily", label: /^Open daily\b/, path: `/${vaultPath}/daily$` },
       {
         query: "configs",

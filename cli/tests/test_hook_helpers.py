@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import builtins
 import json
-from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -122,47 +121,6 @@ def test_is_debug_mode_tolerates_loader_failures(tmp_vault, monkeypatch) -> None
     assert hook_mod._is_debug_mode(tmp_vault) is False
 
 
-def test_session_state_loads_defaults_and_coerces_valid_state(tmp_vault) -> None:
-    """Session state recovers from bad files and normalizes valid persisted fields."""
-    state_path = tmp_vault.pkm_dir / "session_state.json"
-    if state_path.exists():
-        state_path.unlink()
-
-    assert hook_mod._load_session_state(tmp_vault) == {
-        "session_count": 0,
-        "last_consolidation_at": None,
-    }
-
-    state_path.write_text("[]", encoding="utf-8")
-    assert hook_mod._load_session_state(tmp_vault)["session_count"] == 0
-
-    state_path.write_text("{{bad json", encoding="utf-8")
-    assert hook_mod._load_session_state(tmp_vault)["last_consolidation_at"] is None
-
-    state_path.write_text(
-        '{"session_count": "4", "last_consolidation_at": "2026-05-08T00:00:00"}',
-        encoding="utf-8",
-    )
-    state = hook_mod._load_session_state(tmp_vault)
-    assert state == {
-        "session_count": 4,
-        "last_consolidation_at": "2026-05-08T00:00:00",
-    }
-
-
-def test_save_session_state_swallows_filesystem_errors(tmp_vault, monkeypatch) -> None:
-    """State persistence failures should not block hook startup."""
-    original_write_text = Path.write_text
-
-    def fail_session_state_write(self, *args, **kwargs):
-        if self.name == "session_state.json":
-            raise OSError("read only")
-        return original_write_text(self, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "write_text", fail_session_state_write)
-
-    hook_mod._save_session_state(tmp_vault, {"session_count": 1})
-
 
 @pytest.mark.parametrize(
     ("payload", "expected"),
@@ -191,114 +149,6 @@ def test_extract_user_prompt_covers_platforms_and_fallbacks(payload, expected) -
     """Prompt extraction supports known hook platforms and conservative fallbacks."""
     assert hook_mod._extract_user_prompt(payload) == expected
 
-
-def test_consolidation_trigger_respects_disabled_auto_trigger(tmp_vault) -> None:
-    """Opting out of auto-trigger leaves session state untouched."""
-    result = hook_mod._check_consolidation_trigger(
-        tmp_vault, {"consolidation": {"auto_trigger": False}}
-    )
-
-    assert result is None
-    assert not (tmp_vault.pkm_dir / "session_state.json").exists()
-
-
-def test_consolidation_trigger_persists_below_threshold_count(tmp_vault) -> None:
-    """Below-threshold sessions are counted for a future recommendation."""
-    result = hook_mod._check_consolidation_trigger(
-        tmp_vault, {"consolidation": {"session_threshold": 3}}
-    )
-
-    assert result is None
-    state = json.loads((tmp_vault.pkm_dir / "session_state.json").read_text())
-    assert state["session_count"] == 1
-
-
-def test_consolidation_trigger_honors_naive_datetime_cooldown(tmp_vault) -> None:
-    """Cooldown parsing treats naive timestamps as UTC and suppresses early repeats."""
-    state_path = tmp_vault.pkm_dir / "session_state.json"
-    state_path.write_text(
-        json.dumps(
-            {
-                "session_count": 5,
-                "last_consolidation_at": datetime.now().isoformat(),
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    result = hook_mod._check_consolidation_trigger(
-        tmp_vault,
-        {"consolidation": {"session_threshold": 2, "cooldown_hours": 24}},
-    )
-
-    assert result is None
-    state = json.loads(state_path.read_text())
-    assert state["session_count"] == 6
-
-
-def test_consolidation_trigger_resets_count_when_no_candidates(
-    tmp_vault, monkeypatch
-) -> None:
-    """Threshold sessions without eligible daily notes reset instead of nagging."""
-    state_path = tmp_vault.pkm_dir / "session_state.json"
-    state_path.write_text(
-        json.dumps({"session_count": 4, "last_consolidation_at": None}),
-        encoding="utf-8",
-    )
-    monkeypatch.setattr("pkm.commands.consolidate._list_candidate_dates", lambda v: [])
-
-    result = hook_mod._check_consolidation_trigger(
-        tmp_vault, {"consolidation": {"session_threshold": 5}}
-    )
-
-    assert result is None
-    state = json.loads(state_path.read_text())
-    assert state["session_count"] == 0
-
-
-def test_consolidation_trigger_lists_candidates_and_truncates_long_output(
-    tmp_vault, monkeypatch
-) -> None:
-    """A mature session window emits a bounded consolidation recommendation."""
-    state_path = tmp_vault.pkm_dir / "session_state.json"
-    state_path.write_text(
-        json.dumps(
-            {
-                "session_count": 4,
-                "last_consolidation_at": "not-a-date",
-            }
-        ),
-        encoding="utf-8",
-    )
-    candidates = [f"2026-05-{day:02d}" for day in range(1, 8)]
-    monkeypatch.setattr(
-        "pkm.commands.consolidate._list_candidate_dates", lambda v: candidates
-    )
-
-    result = hook_mod._check_consolidation_trigger(
-        tmp_vault, {"consolidation": {"session_threshold": 5}}
-    )
-
-    assert result is not None
-    assert "7 daily note(s) ready" in result
-    assert "pkm consolidate mark 2026-05-01" in result
-    assert "... and 2 more" in result
-    state = json.loads(state_path.read_text())
-    assert state["session_count"] == 0
-    assert datetime.fromisoformat(state["last_consolidation_at"]).tzinfo is not None
-
-
-def test_consolidation_trigger_swallows_internal_failures(
-    tmp_vault, monkeypatch
-) -> None:
-    """Unexpected state/candidate failures do not break session-start hooks."""
-    monkeypatch.setattr(
-        hook_mod,
-        "_load_session_state",
-        lambda vault: (_ for _ in ()).throw(RuntimeError("state unavailable")),
-    )
-
-    assert hook_mod._check_consolidation_trigger(tmp_vault, {}) is None
 
 
 def test_detect_pkm_mcp_finds_claude_settings(tmp_path, monkeypatch) -> None:

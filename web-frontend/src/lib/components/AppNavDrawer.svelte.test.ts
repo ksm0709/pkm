@@ -36,7 +36,7 @@ describe("AppNavDrawer", () => {
     const drawer = target.querySelector("aside");
     expect(drawer?.getAttribute("aria-hidden")).toBe("true");
     expect(target.querySelector(".drawer-count")?.textContent).toBe(
-      "9 channels",
+      "7 channels",
     );
 
     const buttons = [
@@ -47,9 +47,7 @@ describe("AppNavDrawer", () => {
       "Search",
       "Tags",
       "Graph",
-      "Ask",
       "Logger",
-      "Workflows",
       "Daily",
       "Configs",
     ]);

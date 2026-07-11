@@ -647,7 +647,7 @@ def test_append_operation_log_swallows_filesystem_errors(tmp_vault, monkeypatch)
 
 
 # ---------------------------------------------------------------------------
-# read_note tool: 8-key JSON schema (tiny_agent path)
+# read_note tool: 8-key JSON schema
 # ---------------------------------------------------------------------------
 
 _REQUIRED_NOTE_KEYS = (
@@ -660,118 +660,6 @@ _REQUIRED_NOTE_KEYS = (
     "tags",
     "importance",
 )
-
-
-class TestReadNoteTinyAgent:
-    """tiny_agent @tool()-wrapped read_note.
-
-    The @tool() wrapper ignores positional args (must call with kwargs) and
-    serialises dict/list results to a JSON string. _call() handles both.
-    """
-
-    def _call(self, fn, **kwargs):
-        import asyncio
-        import inspect
-        import json as _json
-
-        result = fn(**kwargs)
-        if inspect.isawaitable(result):
-            result = asyncio.run(result)
-        if isinstance(result, str):
-            try:
-                return _json.loads(result)
-            except (ValueError, TypeError):
-                return result
-        return result
-
-    def test_returns_all_8_keys(self, tmp_vault, monkeypatch):
-        """read_note returns all 8 required keys."""
-        monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
-        from pkm.tools.notes import read_note
-
-        result = self._call(read_note, note_id="2026-04-01-mvcc")
-        assert isinstance(result, dict)
-        for key in _REQUIRED_NOTE_KEYS:
-            assert key in result, f"Missing key: {key}"
-
-    def test_missing_frontmatter_returns_empty_dict(self, tmp_vault, monkeypatch):
-        """read_note returns {} for frontmatter when note has no YAML header."""
-        bare_note = tmp_vault.notes_dir / "bare-note.md"
-        bare_note.write_text("No frontmatter here\n", encoding="utf-8")
-        monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
-        from pkm.tools.notes import read_note
-
-        result = self._call(read_note, note_id="bare-note")
-        assert result["frontmatter"] == {}
-
-    def test_missing_tags_returns_empty_list(self, tmp_vault, monkeypatch):
-        """read_note returns [] for tags when not in frontmatter."""
-        note = tmp_vault.notes_dir / "no-tags-note.md"
-        note.write_text("---\nid: no-tags-note\n---\nBody text\n", encoding="utf-8")
-        monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
-        from pkm.tools.notes import read_note
-
-        result = self._call(read_note, note_id="no-tags-note")
-        assert result["tags"] == []
-
-    def test_missing_importance_returns_none(self, tmp_vault, monkeypatch):
-        """read_note returns None for importance when not in frontmatter."""
-        monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
-        from pkm.tools.notes import read_note
-
-        result = self._call(read_note, note_id="2026-04-01-mvcc")
-        assert result["importance"] is None
-
-    def test_importance_cast_to_int(self, tmp_vault, monkeypatch):
-        """read_note casts float importance to int."""
-        note = tmp_vault.notes_dir / "imp-note.md"
-        note.write_text(
-            "---\nid: imp-note\nimportance: 7.0\ntags: []\n---\nBody\n",
-            encoding="utf-8",
-        )
-        monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
-        from pkm.tools.notes import read_note
-
-        result = self._call(read_note, note_id="imp-note")
-        assert result["importance"] == 7
-        assert isinstance(result["importance"], int)
-
-    def test_not_found_returns_error_key(self, tmp_vault, monkeypatch):
-        """read_note returns dict with 'error' key when note not found."""
-        monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
-        from pkm.tools.notes import read_note
-
-        result = self._call(read_note, note_id="does-not-exist-xyz")
-        assert "error" in result
-
-
-class TestRenameNoteTinyAgent:
-    def test_rename_note_tool_updates_wikilinks(self, tmp_vault, monkeypatch):
-        monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
-        source = tmp_vault.notes_dir / "old-tool-note.md"
-        source.write_text(
-            "---\nid: old-tool-note\ntags: []\n---\n\nBody\n",
-            encoding="utf-8",
-        )
-        linked = tmp_vault.notes_dir / "tool-linking-note.md"
-        linked.write_text(
-            "---\nid: tool-linking-note\ntags: []\n---\n\n[[old-tool-note]]\n",
-            encoding="utf-8",
-        )
-
-        from pkm.tools.notes import rename_note
-
-        result = TestReadNoteTinyAgent()._call(
-            rename_note,
-            old_note_id="old-tool-note",
-            new_note_id="new-tool-note",
-        )
-
-        assert result["status"] == "renamed"
-        assert result["wikilinks_updated"] == 1
-        assert not source.exists()
-        assert (tmp_vault.notes_dir / "new-tool-note.md").exists()
-        assert "[[new-tool-note]]" in linked.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

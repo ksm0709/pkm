@@ -130,7 +130,7 @@ describe("CmdK", () => {
       [...target.querySelectorAll(".row-label")].map(
         (node) => node.textContent,
       ),
-    ).toEqual(["Ask…"]);
+    ).toEqual([]);
 
     unmount(component);
   });
@@ -481,5 +481,34 @@ describe("CmdK", () => {
     expect(target.querySelector('[role="dialog"]')).toBeNull();
 
     unmount(component);
+  });
+
+  it("does not expose retired Ask query passthrough or Ask/Workflow command ids", async () => {
+    const { target, component } = render();
+    await tick();
+    await vi.runOnlyPendingTimersAsync();
+    await tick();
+
+    const input = target.querySelector<HTMLInputElement>(".cmdk-input");
+    input!.value = "pkm";
+    input!.dispatchEvent(new Event("input", { bubbles: true }));
+    await tick();
+
+    const labels = [...target.querySelectorAll(".row-label")].map(
+      (node) => node.textContent,
+    );
+
+    vi.mocked(goto).mockClear();
+    for (const id of ["cmd:ask", "nav:ask", "nav:workflows"]) {
+      window.dispatchEvent(
+        new CustomEvent("pkm:run-command-shortcut", { detail: { id } }),
+      );
+      await tick();
+    }
+    const destinations = vi.mocked(goto).mock.calls.map(([href]) => href);
+
+    unmount(component);
+
+    expect({ labels, destinations }).toEqual({ labels: [], destinations: [] });
   });
 });

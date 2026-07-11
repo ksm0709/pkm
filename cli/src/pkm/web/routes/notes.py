@@ -129,7 +129,7 @@ def _neighbors_data(vault: VaultConfig, note_id: str) -> dict:
     """Return neighbor graph data with semantic edges enabled.
 
     Mirrors pkm.tools.links._get_note_neighbors_data with include_semantic=True,
-    inlined here to avoid the tiny_agent dependency in the tools package.
+    inlined here to keep the authenticated web route independent of MCP adapters.
     """
     graph_path = vault.pkm_dir / "graph.json"
     if not graph_path.exists():

@@ -3,7 +3,6 @@ export type CmdKCoreCommandId =
   | "cmd:daily"
   | "cmd:daily-subnote"
   | "cmd:index-vault"
-  | "cmd:ask"
   | "cmd:switch"
   | "cmd:theme";
 
@@ -39,12 +38,7 @@ export const cmdkCoreCommandShortcuts: CmdKCommandShortcut[] = [
     hint: "rebuild search and graph",
     shortcut: "i",
   },
-  {
-    id: "cmd:ask",
-    label: "Ask…",
-    hint: "ask",
-    shortcut: "q",
-  },
+
   {
     id: "cmd:switch",
     label: "Switch vault…",

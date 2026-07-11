@@ -1,9 +1,8 @@
 """Integration tests: auth middleware auth-split (B6).
 
 Verifies:
-- ?token= query param is rejected (401) on non-SSE routes.
-- ?token= query param is accepted (200) on SSE-whitelisted routes.
-- Authorization: Bearer header is accepted (200) on all routes.
+- ?token= query param is rejected (401) on retained routes.
+- Authorization: Bearer *** is accepted (200) on all routes.
 """
 
 from __future__ import annotations
@@ -16,7 +15,6 @@ from pkm.config import WebConfig
 from pkm.web.auth import (
     SESSION_COOKIE_NAME,
     SESSION_MAX_AGE_SECONDS,
-    SSE_ROUTES,
     _load_token,
     create_session_cookie_value,
     hash_password,
@@ -47,52 +45,26 @@ def web_cfg(tmp_path) -> WebConfig:
 
 @pytest.fixture
 def app(web_cfg: WebConfig) -> _web.Application:
-    """App with a stub /ask SSE route so the middleware can identify it."""
-    a = make_app(web_config=web_cfg)
-
-    async def _ask_stub(request: _web.Request) -> _web.Response:
-        return _web.Response(text="ok")
-
-    # Register with the same template that SSE_ROUTES lists so resource.canonical matches.
-    a.router.add_get("/api/v1/vault/{name}/ask", _ask_stub)
-    return a
+    return make_app(web_config=web_cfg)
 
 
 @pytest.mark.anyio
-async def test_query_token_rejected_on_non_sse_route(app: _web.Application) -> None:
-    """`?token=` must return 401 on a regular (non-SSE) route."""
+async def test_query_token_rejected_on_retained_route(app: _web.Application) -> None:
+    """`?token=` must return 401 on a retained route."""
     async with TestClient(TestServer(app)) as client:
         resp = await client.get("/api/v1/health", params={"token": TOKEN})
         assert resp.status == 401
 
 
-@pytest.mark.anyio
-async def test_query_token_accepted_on_sse_route(app: _web.Application) -> None:
-    """`?token=` must return 200 on the SSE-whitelisted /ask route."""
-    async with TestClient(TestServer(app)) as client:
-        resp = await client.get("/api/v1/vault/any-vault/ask", params={"token": TOKEN})
-        assert resp.status == 200
-
 
 @pytest.mark.anyio
-async def test_bearer_header_accepted_on_non_sse_route(
+async def test_bearer_header_accepted_on_retained_route(
     app: _web.Application,
 ) -> None:
-    """`Authorization: Bearer` must work on any route."""
+    """`Authorization: Bearer` must work on retained routes."""
     async with TestClient(TestServer(app)) as client:
         resp = await client.get(
             "/api/v1/health", headers={"Authorization": f"Bearer {TOKEN}"}
-        )
-        assert resp.status == 200
-
-
-@pytest.mark.anyio
-async def test_bearer_header_accepted_on_sse_route(app: _web.Application) -> None:
-    """`Authorization: Bearer` must also work on the SSE /ask route."""
-    async with TestClient(TestServer(app)) as client:
-        resp = await client.get(
-            "/api/v1/vault/any-vault/ask",
-            headers={"Authorization": f"Bearer {TOKEN}"},
         )
         assert resp.status == 200
 
@@ -232,11 +204,6 @@ async def test_missing_password_config_fails_browser_login_closed(tmp_path) -> N
             headers={"Authorization": f"Bearer {TOKEN}"},
         )
         assert bearer.status == 200
-
-
-def test_sse_routes_constant_contains_ask() -> None:
-    """SSE_ROUTES must include the /ask path template."""
-    assert any("ask" in route for route in SSE_ROUTES)
 
 
 def test_load_token_fails_fast_for_missing_or_empty_token_file(tmp_path) -> None:

@@ -50,7 +50,7 @@ def test_sync_dir_replaces_stale_destination_tree(tmp_path: Path) -> None:
 def test_find_skill_src_uses_local_checkout_plugin_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A local CLI checkout resolves the sibling plugin skill directory only when present."""
+    """Prefer a local plugin tree, then fall back to packaged skill assets."""
     repo = tmp_path / "repo"
     cli_dir = repo / "cli"
     skill_dir = repo / "plugin" / "skills" / "pkm"
@@ -61,7 +61,8 @@ def test_find_skill_src_uses_local_checkout_plugin_dir(
     assert setup_mod._find_skill_src() == skill_dir
 
     skill_dir.rmdir()
-    assert setup_mod._find_skill_src() is None
+    packaged = Path(setup_mod.__file__).resolve().parents[1] / "_bundled_skill"
+    assert setup_mod._find_skill_src() == packaged
 
 
 def test_install_skill_files_syncs_agent_and_command_surfaces(
@@ -110,7 +111,7 @@ def test_wheel_install_finds_and_syncs_real_bundled_skill_files(tmp_path: Path) 
     cli_dir = Path(__file__).resolve().parents[1]
     dist_dir = tmp_path / "dist"
     subprocess.run(
-        ["uv", "build", "--wheel", "--out-dir", str(dist_dir)],
+        ["uv", "build", "--out-dir", str(dist_dir)],
         cwd=cli_dir,
         check=True,
         capture_output=True,
@@ -146,13 +147,21 @@ assert Path(pkm.__file__).is_relative_to(Path(os.environ["PKM_TEST_SITE_DIR"]))
 pkm._install_source.find_local_cli_dir = lambda: None
 source = _find_skill_src()
 assert source is not None
-assert (source / "SKILL.md").is_file()
-assert (source / "diagnosis" / "SKILL.md").is_file()
+required = (
+    "SKILL.md",
+    "AGENTS.md",
+    "diagnosis/SKILL.md",
+    "workflows/AGENTS.md",
+    "workflows/zettelkasten-maintenance.md",
+)
+for relative in required:
+    assert source.joinpath(*relative.split("/")).is_file(), relative
 assert install_skill_files() is True
 home = Path.home()
 for root in (home / ".claude", home / ".agents"):
-    assert (root / "skills" / "pkm" / "SKILL.md").is_file()
-    assert (root / "skills" / "pkm" / "diagnosis" / "SKILL.md").is_file()
+    installed = root / "skills" / "pkm"
+    for relative in required:
+        assert installed.joinpath(*relative.split("/")).is_file(), relative
 """
     subprocess.run(
         [sys.executable, "-c", script],

@@ -6,20 +6,13 @@ Each test does actual embedding work — expect ~5-15s per test.
 
 from __future__ import annotations
 
-import asyncio
 import json
-import os
 from pathlib import Path
 
 import pytest
 
 from pkm.config import VaultConfig
 from pkm.search_engine import build_index
-
-
-def _run(coro):
-    """Run an async tool coroutine synchronously."""
-    return asyncio.run(coro)
 
 
 # ---------------------------------------------------------------------------
@@ -216,25 +209,20 @@ def test_e2e_add_wikilink_creates_related_section(tmp_vault: VaultConfig) -> Non
     from pkm.tools.links import add_wikilink
 
     # python-basics has no ## Related section
-    os.environ["PKM_VAULT_DIR"] = str(tmp_vault.path)
-    try:
-        result = _run(
-            add_wikilink(
-                source_note_id="python-basics",
-                target_note_id="machine-learning",
-                description="both cover Python ML ecosystem",
-            )
-        )
-        assert "Error" not in result, f"Unexpected error: {result}"
+    result = add_wikilink(
+        tmp_vault,
+        source_note_id="python-basics",
+        target_note_id="machine-learning",
+        description="both cover Python ML ecosystem",
+    )
+    assert "Error" not in result, f"Unexpected error: {result}"
 
-        text = (tmp_vault.notes_dir / "python-basics.md").read_text(encoding="utf-8")
-        assert "## Related" in text
-        assert "- [[machine-learning|both cover Python ML ecosystem]]" in text
-        # Section must appear at end-of-file area
-        related_pos = text.index("## Related")
-        assert related_pos > text.index("---\n\n"), "## Related not in body"
-    finally:
-        del os.environ["PKM_VAULT_DIR"]
+    text = (tmp_vault.notes_dir / "python-basics.md").read_text(encoding="utf-8")
+    assert "## Related" in text
+    assert "- [[machine-learning|both cover Python ML ecosystem]]" in text
+    # Section must appear at end-of-file area
+    related_pos = text.index("## Related")
+    assert related_pos > text.index("---\n\n"), "## Related not in body"
 
 
 # ---------------------------------------------------------------------------
@@ -255,29 +243,24 @@ def test_e2e_add_wikilink_appends_to_existing_related(tmp_vault: VaultConfig) ->
 
     from pkm.tools.links import add_wikilink
 
-    os.environ["PKM_VAULT_DIR"] = str(tmp_vault.path)
-    try:
-        result = _run(
-            add_wikilink(
-                source_note_id="python-basics",
-                target_note_id="machine-learning",
-                description="both cover Python ML",
-            )
-        )
-        assert "Error" not in result, f"Unexpected error: {result}"
+    result = add_wikilink(
+        tmp_vault,
+        source_note_id="python-basics",
+        target_note_id="machine-learning",
+        description="both cover Python ML",
+    )
+    assert "Error" not in result, f"Unexpected error: {result}"
 
-        text = note_path.read_text(encoding="utf-8")
-        assert "- [[neural-networks|deep learning basics]]" in text, (
-            "Existing entry removed"
-        )
-        assert "- [[machine-learning|both cover Python ML]]" in text, (
-            "New entry not added"
-        )
+    text = note_path.read_text(encoding="utf-8")
+    assert "- [[neural-networks|deep learning basics]]" in text, (
+        "Existing entry removed"
+    )
+    assert "- [[machine-learning|both cover Python ML]]" in text, (
+        "New entry not added"
+    )
 
-        text.index("## Related")
-        assert text.count("## Related") == 1, "Duplicate ## Related sections created"
-    finally:
-        del os.environ["PKM_VAULT_DIR"]
+    text.index("## Related")
+    assert text.count("## Related") == 1, "Duplicate ## Related sections created"
 
 
 # ---------------------------------------------------------------------------
@@ -299,45 +282,40 @@ def test_e2e_create_hub_note_writes_frontmatter_and_members(
 
     from pkm.tools.search import create_hub_note
 
-    os.environ["PKM_VAULT_DIR"] = str(tmp_vault.path)
-    try:
-        result = _run(
-            create_hub_note(
-                cluster_index=cluster_id,
-                title="Test Hub Note",
-                description="This is a test hub note for cluster 0.",
-            )
-        )
-        assert "Error" not in result, f"Unexpected error: {result}"
-        assert "Test Hub Note" in result
+    result = create_hub_note(
+        tmp_vault,
+        cluster_index=cluster_id,
+        title="Test Hub Note",
+        description="This is a test hub note for cluster 0.",
+    )
+    assert "Error" not in result, f"Unexpected error: {result}"
+    assert "Test Hub Note" in result
 
-        # Find created file
-        list(tmp_vault.notes_dir.glob("*test-hub*")) + list(
-            tmp_vault.notes_dir.glob("*Test-Hub*")
-        )
-        # Also search by any file created after we started
-        created_files = [
-            f
-            for f in tmp_vault.notes_dir.glob("*.md")
-            if "test" in f.stem.lower() or "hub" in f.stem.lower()
-        ]
-        assert len(created_files) >= 1, (
-            f"Hub note file not found; files: {list(tmp_vault.notes_dir.glob('*.md'))}"
-        )
+    # Find created file
+    list(tmp_vault.notes_dir.glob("*test-hub*")) + list(
+        tmp_vault.notes_dir.glob("*Test-Hub*")
+    )
+    # Also search by any file created after we started
+    created_files = [
+        f
+        for f in tmp_vault.notes_dir.glob("*.md")
+        if "test" in f.stem.lower() or "hub" in f.stem.lower()
+    ]
+    assert len(created_files) >= 1, (
+        f"Hub note file not found; files: {list(tmp_vault.notes_dir.glob('*.md'))}"
+    )
 
-        hub_path = created_files[0]
-        text = hub_path.read_text(encoding="utf-8")
+    hub_path = created_files[0]
+    text = hub_path.read_text(encoding="utf-8")
 
-        assert "type: index" in text
-        assert "importance: 6" in text
-        assert "## Members" in text
+    assert "type: index" in text
+    assert "importance: 6" in text
+    assert "## Members" in text
 
-        # Each member should appear as a wikilink
-        members = clusters[0].get("members", [])
-        for member in members:
-            assert f"[[{member}]]" in text, f"Member [[{member}]] missing from hub note"
-    finally:
-        del os.environ["PKM_VAULT_DIR"]
+    # Each member should appear as a wikilink
+    members = clusters[0].get("members", [])
+    for member in members:
+        assert f"[[{member}]]" in text, f"Member [[{member}]] missing from hub note"
 
 
 # ---------------------------------------------------------------------------
@@ -360,30 +338,25 @@ def test_e2e_list_clusters_matches_hub_note_by_centroid(
     # Find the ML/Python-themed cluster to ensure the hub embeds close to its centroid.
     from pkm.tools.search import create_hub_note
 
-    os.environ["PKM_VAULT_DIR"] = str(tmp_vault.path)
-    try:
-        ml_cluster = next(
-            (
-                c
-                for c in clusters
-                if any(t in c.get("top_tags", []) for t in ("ml", "python", "ai"))
-            ),
-            clusters[0],
-        )
-        hub_result = _run(
-            create_hub_note(
-                cluster_index=ml_cluster["id"],
-                title="ML and Python Index",
-                description=(
-                    "Index for machine learning, Python programming, neural networks, deep learning, "
-                    "artificial intelligence, scikit-learn, TensorFlow, PyTorch, data science, and "
-                    "Python libraries for ML. Entry point for all Python-based machine learning notes."
-                ),
-            )
-        )
-        assert "Error" not in hub_result, f"create_hub_note failed: {hub_result}"
-    finally:
-        del os.environ["PKM_VAULT_DIR"]
+    ml_cluster = next(
+        (
+            c
+            for c in clusters
+            if any(t in c.get("top_tags", []) for t in ("ml", "python", "ai"))
+        ),
+        clusters[0],
+    )
+    hub_result = create_hub_note(
+        tmp_vault,
+        cluster_index=ml_cluster["id"],
+        title="ML and Python Index",
+        description=(
+            "Index for machine learning, Python programming, neural networks, deep learning, "
+            "artificial intelligence, scikit-learn, TensorFlow, PyTorch, data science, and "
+            "Python libraries for ML. Entry point for all Python-based machine learning notes."
+        ),
+    )
+    assert "Error" not in hub_result, f"create_hub_note failed: {hub_result}"
 
     # Step 3: re-index so hub note gets embedded
     build_index(tmp_vault)
@@ -391,24 +364,20 @@ def test_e2e_list_clusters_matches_hub_note_by_centroid(
     # Step 4: call list_clusters and verify hub matching
     from pkm.tools.search import list_clusters
 
-    os.environ["PKM_VAULT_DIR"] = str(tmp_vault.path)
-    try:
-        output = _run(list_clusters())
-        assert output.startswith("{"), f"Expected JSON output, got: {output[:100]}"
+    output = list_clusters(tmp_vault)
+    assert output.startswith("{"), f"Expected JSON output, got: {output[:100]}"
 
-        payload = json.loads(output)
-        assert "clusters" in payload
+    payload = json.loads(output)
+    assert "clusters" in payload
 
-        matched = [c for c in payload["clusters"] if c.get("hub_note") is not None]
-        assert len(matched) >= 1, (
-            f"No cluster matched a hub note. clusters={payload['clusters']}"
-        )
-        hub_titles = [c["hub_note"] for c in matched]
-        assert any("ML and Python" in t for t in hub_titles), (
-            f"Expected 'ML and Python' hub in hub_titles={hub_titles}"
-        )
-    finally:
-        del os.environ["PKM_VAULT_DIR"]
+    matched = [c for c in payload["clusters"] if c.get("hub_note") is not None]
+    assert len(matched) >= 1, (
+        f"No cluster matched a hub note. clusters={payload['clusters']}"
+    )
+    hub_titles = [c["hub_note"] for c in matched]
+    assert any("ML and Python" in t for t in hub_titles), (
+        f"Expected 'ML and Python' hub in hub_titles={hub_titles}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -430,30 +399,3 @@ def test_e2e_graceful_degradation_without_vector_db(tmp_vault: VaultConfig) -> N
     assert not tmp_vault.graph_enriched_path.exists(), (
         "graph_enriched.json should not be written when vector.db is absent"
     )
-
-
-# ---------------------------------------------------------------------------
-# Scenario 10: worker.py prompt sanity check
-# ---------------------------------------------------------------------------
-
-
-def test_e2e_worker_prompt_mentions_new_tools() -> None:
-    """zettelkasten_maintenance workflow config references all graphify tools."""
-    from pkm.workflows import load_workflows
-
-    configs = load_workflows()
-    maint = next((c for c in configs if c.id == "zettelkasten_maintenance"), None)
-    assert maint is not None, "zettelkasten_maintenance not found in loaded workflows"
-
-    prompt = maint.system_prompt_template
-    required = [
-        "find_surprising_connections",
-        "list_clusters",
-        "create_hub_note",
-        "add_wikilink",
-        "CLUSTER DRIFT REVIEW",
-    ]
-    for keyword in required:
-        assert keyword in prompt, (
-            f"'{keyword}' not found in zettelkasten_maintenance system_prompt_template"
-        )

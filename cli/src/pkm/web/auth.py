@@ -1,8 +1,7 @@
 """Authentication helpers and middleware for the PKM web server.
 
 Browser auth is password login -> HttpOnly session cookie.  The legacy bearer
-token remains valid for CLI/curl/MCP callers, and ``?token=`` remains limited
-to SSE routes because EventSource cannot send custom headers.
+token remains valid for CLI/curl/MCP callers. Query-string tokens are rejected.
 """
 
 from __future__ import annotations
@@ -19,10 +18,7 @@ from aiohttp import web
 
 from pkm.config import WebConfig, discover_vaults
 
-# Routes where ?token= query param is accepted as a fallback (SSE only).
-# Matched against the request's matched-route *template* (resource canonical),
-# not the raw URL, so path variables do not interfere.
-SSE_ROUTES: frozenset[str] = frozenset({"/api/v1/vault/{name}/ask"})
+
 PUBLIC_PATHS: frozenset[str] = frozenset(
     {
         "/",
@@ -193,9 +189,8 @@ def make_auth_middleware(web_config: WebConfig) -> web.middleware:
         """Authenticate every incoming request.
 
         Precedence:
-        1. ``Authorization: Bearer <token>`` header  — valid on all routes.
-        2. ``?token=<token>`` query param             — valid ONLY on SSE routes.
-        3. signed ``pkm_session`` cookie              — browser route.
+        1. ``Authorization: Bearer ***`` header — valid on all routes.
+        2. signed ``pkm_session`` cookie — browser route.
         """
         if _is_public_request(request):
             return await handler(request)
@@ -210,14 +205,6 @@ def make_auth_middleware(web_config: WebConfig) -> web.middleware:
                 return await handler(request)
             return web.Response(status=401, text="Invalid token")
 
-        # --- ?token= query param (SSE routes only) ---
-        resource = request.match_info.route.resource
-        route_template: str = resource.canonical if resource is not None else ""
-
-        if route_template in SSE_ROUTES:
-            provided = request.rel_url.query.get("token", "")
-            if provided and hmac.compare_digest(provided, expected):
-                return await handler(request)
 
         # --- Browser session cookie ---
         password_hash = _get_password_hash()

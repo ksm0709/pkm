@@ -22,7 +22,7 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Set up Python
-        run: uv python install 3.12
+        run: uv python install 3.10 3.12
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -34,18 +34,60 @@ jobs:
         with:
           version: 10
 
+      - name: Install frontend dependencies
+        working-directory: web-frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate SvelteKit types
+        working-directory: web-frontend
+        run: pnpm exec svelte-kit sync
+
+      - name: Check frontend formatting
+        working-directory: web-frontend
+        run: pnpm format:check
+
+      - name: Run frontend unit tests
+        working-directory: web-frontend
+        run: pnpm test:unit
+
       - name: Build web frontend
         working-directory: web-frontend
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm build
+        run: pnpm build
 
-      - name: Run tests
+      - name: Check frontend bundle budget
+        working-directory: web-frontend
+        run: pnpm bundle:check
+
+      - name: Install Playwright Chromium
+        working-directory: web-frontend
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run focused browser regressions
+        working-directory: web-frontend
+        run: |
+          pnpm exec playwright test \
+            tests/playwright/phase-b-retirement.spec.ts \
+            tests/playwright/a11y.spec.ts \
+            tests/playwright/graph-page.spec.ts \
+            tests/playwright/routing-events.generated.spec.ts
+          pnpm exec playwright test \
+            tests/playwright/cmdk-shell.spec.ts \
+            --grep "falls back to notes list"
+
+      - name: Run CLI tests
         working-directory: cli
         run: |
-          uv venv
-          uv pip install -e ".[search,dev]"
-          uv run pytest tests/ -v
+          uv run --python 3.10 --extra dev --extra search pytest tests/ -v
+          uv run --python 3.12 --extra dev --extra search pytest tests/ -v
+
+      - name: Build and smoke distribution artifacts
+        working-directory: cli
+        run: |
+          uv build --out-dir dist
+          uv venv .wheel-smoke
+          uv pip install --python .wheel-smoke/bin/python dist/pkm-*.whl 'aiohttp>=3.9'
+          .wheel-smoke/bin/pkm --help
+          .wheel-smoke/bin/python -c "import pkm.mcp_server; import pkm.web.server"
 
       - name: Python Semantic Release
         env:

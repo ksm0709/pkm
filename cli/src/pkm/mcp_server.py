@@ -7,7 +7,6 @@ Runs as a foreground stdio server. An MCP client spawns this process via config:
 
 from __future__ import annotations
 
-
 from datetime import date, datetime
 from typing import Any
 
@@ -15,7 +14,6 @@ import click
 from mcp.server.fastmcp import FastMCP
 
 from pkm.config import VaultConfig, get_vault
-from pkm.credential_store import agent_credential_env
 
 mcp = FastMCP("pkm")
 
@@ -143,7 +141,7 @@ def read_daily_log(
     Trigger condition: user references prior work ("어제", "지난번", "yesterday",
         "what did we do"), or you need to chain context across sessions.
     Anti-case: do NOT call repeatedly in a loop scanning many days — use offset with
-        a specific N. For multi-day search, prefer search() or pkm_ask().
+        a specific N. For multi-day lookup, prefer search().
     Workflow position: SESSION-START context recall, before any write operation.
 
     Args:
@@ -326,119 +324,6 @@ def index() -> dict[str, Any]:
     except Exception as e:
         return {"error": str(e)}
 
-
-@mcp.tool()
-async def pkm_ask(
-    query: str,
-    vault: str | None = None,
-    model: str | None = None,
-    timeout: int = 120,
-) -> dict[str, Any]:
-    """Ask a natural language question and get a synthesized answer from vault notes (RAG).
-
-    Use when you need an answer synthesized across multiple notes — prior decisions,
-    user preferences, patterns. Slower than search() but returns a direct answer.
-    Safe to run as a background task while other work continues.
-    Do NOT use as a substitute for search() — use search() for exploration, pkm_ask() for questions.
-
-    Args:
-        query: The natural language question to ask.
-        vault: Vault name for cross-vault search. Uses server vault if omitted.
-        model: Optional LLM model to use. Overrides config if provided.
-        timeout: Timeout in seconds to wait for the result (default 120).
-    """
-    import json
-    import asyncio
-    from pathlib import Path
-    from pkm.config import load_config
-
-    target_vault = _get_vault(vault)
-    sock_path = Path.home() / ".config" / "pkm" / "daemon.sock"
-
-    config_model = load_config().get("defaults", {}).get("model")
-    final_model = model or config_model or "auto"
-    model_candidates = None
-    if model is None and config_model and config_model != "auto":
-        try:
-            from pkm.models import resolve_model_candidates
-
-            model_candidates = resolve_model_candidates(config_model)
-        except Exception:
-            model_candidates = [config_model]
-    graph_depth = load_config().get("defaults", {}).get("graph-depth", 0)
-
-    env_keys = agent_credential_env()
-
-    reader = None
-    writer = None
-    for attempt in range(50):
-        try:
-            reader, writer = await asyncio.open_unix_connection(str(sock_path))
-            break
-        except (FileNotFoundError, ConnectionRefusedError):
-            if attempt == 0:
-                import subprocess
-                import sys
-
-                daemon_dir = Path.home() / ".config" / "pkm"
-                daemon_dir.mkdir(parents=True, exist_ok=True)
-                try:
-                    subprocess.Popen(
-                        [sys.executable, "-m", "pkm.daemon"],
-                        stdin=subprocess.DEVNULL,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                        start_new_session=True,
-                    )
-                except Exception:
-                    pass
-            await asyncio.sleep(0.1)
-
-    if not writer:
-        return {"error": "Daemon failed to start. Run 'pkm daemon start' manually."}
-
-    try:
-        req = {
-            "action": "ask",
-            "query": query,
-            "vault_name": target_vault.name,
-            "model": final_model,
-            "model_candidates": model_candidates,
-            "env_keys": env_keys,
-            "graph_depth": graph_depth,
-        }
-        writer.write(json.dumps(req).encode("utf-8") + b"\n")
-        await writer.drain()
-
-        data = await asyncio.wait_for(reader.readline(), timeout=timeout)
-
-        if not data:
-            return {"error": "No response from daemon."}
-
-        resp = json.loads(data.decode("utf-8"))
-
-        if resp.get("type") == "error" or "error" in resp:
-            error_msg = resp.get("message") or resp.get("error", "Unknown error")
-            return {"error": error_msg}
-
-        if "data" in resp and "response" in resp["data"]:
-            return {"result": resp["data"]["response"]}
-        elif "response" in resp:
-            return {"result": resp["response"]}
-        else:
-            return {"error": "Invalid response format from daemon."}
-
-    except asyncio.TimeoutError:
-        return {"error": f"Request timed out after {timeout} seconds."}
-    except Exception as e:
-        return {"error": f"An unexpected error occurred: {e}"}
-    finally:
-        try:
-            if writer:
-                writer.close()
-                await writer.wait_closed()
-        except Exception:
-            pass
 
 
 @mcp.tool()
@@ -850,7 +735,7 @@ def find_surprising_connections(top_n: int = 20) -> dict[str, Any]:
     from pkm.tools.search import find_surprising_connections as _tool
 
     try:
-        result = _tool(top_n=top_n)
+        result = _tool(_get_vault(), top_n=top_n)
         return {"result": result}
     except Exception as e:
         return {"error": str(e)}
@@ -866,7 +751,7 @@ def list_clusters() -> dict[str, Any]:
     from pkm.tools.search import list_clusters as _tool
 
     try:
-        result = _tool()
+        result = _tool(_get_vault())
         return {"result": result}
     except Exception as e:
         return {"error": str(e)}
@@ -882,7 +767,7 @@ def list_god_nodes(top_n: int = 10) -> dict[str, Any]:
     from pkm.tools.search import list_god_nodes as _tool
 
     try:
-        result = _tool(top_n=top_n)
+        result = _tool(_get_vault(), top_n=top_n)
         return {"result": result}
     except Exception as e:
         return {"error": str(e)}
@@ -899,7 +784,10 @@ def create_hub_note(cluster_index: int, title: str, description: str) -> dict[st
 
     try:
         result = _tool(
-            cluster_index=cluster_index, title=title, description=description
+            _get_vault(),
+            cluster_index=cluster_index,
+            title=title,
+            description=description,
         )
         return {"result": result}
     except Exception as e:
@@ -927,6 +815,7 @@ def add_wikilink(
 
     try:
         result = _tool(
+            _get_vault(),
             source_note_id=source_note_id,
             target_note_id=target_note_id,
             description=description,

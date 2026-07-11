@@ -89,7 +89,8 @@ def test_web_setup_writes_token_and_unit_when_linger_yes(
     assert "--project" not in unit_text
     assert "--extra" not in unit_text
     assert "Environment=PKM_DAEMON_KEEPALIVE=1" in unit_text
-    assert "Environment=PKM_WORKER_SANDBOX_PROFILE=trusted-native" in unit_text
+    assert "PKM_WORKER_SANDBOX_PROFILE" not in unit_text
+    assert "worker" not in unit_text.casefold()
     assert "pkm daemon run" in unit_text
     assert "WantedBy=default.target" in unit_text
 

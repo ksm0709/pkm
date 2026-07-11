@@ -72,57 +72,6 @@ const betaNotes = [
   },
 ];
 
-const workflowBodies: Record<string, string> = {
-  zettelkasten_maintenance:
-    "Execute the maintenance workflow.\n\n1. Review clusters.\n2. Create hub notes.\n3. Consolidate daily notes.",
-};
-
-let workflowConfigs: Record<
-  string,
-  {
-    id: string;
-    title: string;
-    schedule_hour: number;
-    trigger_time: string;
-    enabled: boolean;
-    marker_file: string;
-    pre_hook: string | null;
-    post_hook: string | null;
-    snippet: string;
-    body: string;
-    jitter_type: string;
-  }
->;
-let workflowHistories: Record<
-  string,
-  Array<{
-    workflow_id: string;
-    task_id: string;
-    hostname: string;
-    time: string;
-    status: "success" | "failure" | "queued" | "running";
-    source: string;
-    phase: string;
-    error: string | null;
-    result_summary: string;
-  }>
->;
-let workflowRunStatuses: Record<
-  string,
-  { status: "idle" | "queued" | "running"; task_id: string | null }
->;
-
-let askPayloads: Array<{
-  query?: string;
-  context?: string;
-  ask_session_id?: string;
-}> = [];
-let configCredentialStatus: Record<
-  string,
-  { configured: boolean; fingerprint: string | null }
->;
-let failNextConfigSaveFor = "";
-let configGetCount = 0;
 let notePutPayloads: { id: string; body: string }[] = [];
 
 const noteBodies: Record<string, unknown> = {
@@ -191,12 +140,7 @@ const noteBodies: Record<string, unknown> = {
 test.describe("generated routing and event contracts", () => {
   test.beforeEach(async ({ page }) => {
     resetMockNotes();
-    resetMockWorkflows();
-    resetMockConfigs();
-    askPayloads = [];
     notePutPayloads = [];
-    failNextConfigSaveFor = "";
-    configGetCount = 0;
     await mockPkmApi(page);
   });
 
@@ -208,8 +152,8 @@ test.describe("generated routing and event contracts", () => {
     );
     await page.goto("/");
 
-    await expect(page).toHaveURL(new RegExp(`/${otherVaultName}/logger$`));
-    await expectTopbar(page, otherVaultName, "logger");
+    await expect(page).toHaveURL(new RegExp(`/${vaultName}/logger$`));
+    await expectTopbar(page, vaultName, "logger");
     await expect(page.getByRole("heading", { name: "Logger" })).toHaveCount(0);
     await expect(page.getByText("Morning planning checkpoint.")).toBeVisible();
 
@@ -625,6 +569,8 @@ test.describe("generated routing and event contracts", () => {
 
     await page.keyboard.press("Control+K");
     await expectCommandPaletteFocused(page);
+    await page.getByRole("option", { name: /Jump to note/ }).click();
+    await expectCommandPaletteFocused(page);
     await page.locator(".cmdk-input").fill("project");
     await expect(
       page.getByRole("option", { name: /Project Plan/ }),
@@ -633,12 +579,6 @@ test.describe("generated routing and event contracts", () => {
     await expect(page).toHaveURL(
       new RegExp(`/${vaultName}/notes/project-plan$`),
     );
-
-    await page.goto(`/${vaultName}`);
-    await page.waitForLoadState("networkidle").catch(() => {});
-    await page.getByRole("button", { name: "Open navigation drawer" }).click();
-    await page.getByRole("button", { name: "Ask" }).click();
-    await expect(page).toHaveURL(new RegExp(`/${vaultName}/ask$`));
 
     await page.getByRole("button", { name: "Open navigation drawer" }).click();
     await page.getByRole("button", { name: "Daily" }).click();
@@ -720,556 +660,6 @@ test.describe("generated routing and event contracts", () => {
     await expect(page.getByText("2 linked notes")).toBeVisible();
   });
 
-  test("ask route auto-submits query params and streams manual submissions", async ({
-    page,
-  }) => {
-    await page.goto(`/${vaultName}/ask?q=hello%20world`);
-
-    await expect(page.getByText("hello world", { exact: true })).toBeVisible();
-    await expect(page.getByText("Answer for hello world")).toBeVisible();
-    await expect(
-      page.locator(".chat-event.thinking .event-icon"),
-    ).toHaveAttribute("aria-label", "Thinking");
-
-    await page.goto(`/${vaultName}/ask?q=result%20payload`);
-    await expect(
-      page.getByText("result payload", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      page.getByText("Response-only answer for result payload"),
-    ).toBeVisible();
-
-    await page.getByPlaceholder(/Ask/).fill("second question");
-    await page.getByRole("button", { name: "Submit" }).click();
-
-    await expect(
-      page.getByText("second question", { exact: true }),
-    ).toBeVisible();
-    await expect(page.getByText("Answer for second question")).toBeVisible();
-  });
-
-  test("ask restores recent transcript after page reload", async ({ page }) => {
-    await page.goto(`/${vaultName}/ask`);
-
-    const input = page.getByPlaceholder(/Ask/);
-    await input.fill("restore session check");
-    await page.getByRole("button", { name: "Submit" }).click();
-
-    await expect(
-      page.getByText("restore session check", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      page.getByText("Answer for restore session check"),
-    ).toBeVisible();
-
-    await page.reload();
-
-    await expect(
-      page.getByText("restore session check", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      page.getByText("Answer for restore session check"),
-    ).toBeVisible();
-    await expect(page.getByText("Enter a query packet below.")).toHaveCount(0);
-  });
-
-  test("ask keeps the latest assistant turn anchored near the chat bottom", async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: 390, height: 720 });
-    await page.goto(`/${vaultName}/ask`);
-
-    const input = page.getByPlaceholder(/Ask/);
-    await input.fill("scroll anchor check");
-    await page.getByRole("button", { name: "Submit" }).click();
-
-    await expect(
-      page.getByText("Answer for scroll anchor check"),
-    ).toBeVisible();
-    const bottomGap = async () => {
-      return page.evaluate(() => {
-        const scrollArea = document
-          .querySelector(".scroll-area")
-          ?.getBoundingClientRect();
-        const latestAssistant = Array.from(
-          document.querySelectorAll(".chat-message.assistant"),
-        )
-          .at(-1)
-          ?.getBoundingClientRect();
-        if (!scrollArea || !latestAssistant) return Number.POSITIVE_INFINITY;
-        return Math.round(scrollArea.bottom - latestAssistant.bottom);
-      });
-    };
-    await expect.poll(bottomGap).toBeGreaterThanOrEqual(56);
-    await expect.poll(bottomGap).toBeLessThanOrEqual(104);
-  });
-
-  test("ask input states and response transcript render correctly", async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: 390, height: 720 });
-    await page.goto(`/${vaultName}/ask`);
-
-    const input = page.getByPlaceholder(/Ask/);
-    const submit = page.getByRole("button", { name: "Submit" });
-    await expect(page.getByText("Enter a query packet below.")).toBeVisible();
-    await expect(
-      page.getByText("model test/default-model (auto)"),
-    ).toBeVisible();
-    await expect(submit).toBeDisabled();
-    const initialInputBox = await page.locator(".ask-input").boundingBox();
-    expect(initialInputBox).not.toBeNull();
-    expect(Math.abs(initialInputBox?.x ?? 0)).toBeLessThanOrEqual(1);
-    expect(Math.abs((initialInputBox?.width ?? 0) - 390)).toBeLessThanOrEqual(
-      1,
-    );
-    expect(
-      Math.abs(
-        (initialInputBox?.y ?? 0) + (initialInputBox?.height ?? 0) - 720,
-      ),
-    ).toBeLessThanOrEqual(2);
-    const pageScrollMetrics = await page.evaluate(() => ({
-      scrollHeight: document.documentElement.scrollHeight,
-      clientHeight: document.documentElement.clientHeight,
-      scrollY: window.scrollY,
-    }));
-    expect(pageScrollMetrics.scrollHeight).toBeLessThanOrEqual(
-      pageScrollMetrics.clientHeight + 1,
-    );
-    expect(pageScrollMetrics.scrollY).toBe(0);
-    const composerStyle = await page
-      .locator(".composer-shell")
-      .evaluate((el) => {
-        const style = getComputedStyle(el as HTMLElement);
-        return { position: style.position, flexShrink: style.flexShrink };
-      });
-    expect(composerStyle.position).toBe("relative");
-    expect(composerStyle.flexShrink).toBe("0");
-    const askPageStyle = await page.locator(".ask-page").evaluate((el) => {
-      const style = getComputedStyle(el as HTMLElement);
-      return {
-        height: style.height,
-        maxHeight: style.maxHeight,
-        overflow: style.overflow,
-      };
-    });
-    expect(askPageStyle.overflow).toBe("hidden");
-    expect(askPageStyle.maxHeight).toBe("none");
-    await page.setViewportSize({ width: 390, height: 560 });
-    await expect
-      .poll(async () => {
-        const box = await page.locator(".ask-input").boundingBox();
-        return Math.round((box?.y ?? 0) + (box?.height ?? 0));
-      })
-      .toBe(560);
-    await page.setViewportSize({ width: 390, height: 720 });
-    await expect
-      .poll(async () => {
-        const box = await page.locator(".ask-input").boundingBox();
-        return Math.round((box?.y ?? 0) + (box?.height ?? 0));
-      })
-      .toBe(720);
-    const modelBox = await page
-      .getByText("model test/default-model (auto)")
-      .boundingBox();
-    const submitBox = await submit.boundingBox();
-    const inputBox = await input.boundingBox();
-    expect(modelBox).not.toBeNull();
-    expect(submitBox).not.toBeNull();
-    expect(inputBox).not.toBeNull();
-    expect(modelBox?.x ?? 0).toBeLessThanOrEqual(inputBox?.x ?? 0);
-    const submitStyle = await submit.evaluate((el) => {
-      const style = getComputedStyle(el as HTMLElement);
-      return {
-        borderWidth: style.borderWidth,
-        backgroundColor: style.backgroundColor,
-      };
-    });
-    expect(submitStyle.borderWidth).toBe("0px");
-    const askTextareaStyle = await input.evaluate((el) => {
-      const style = getComputedStyle(el as HTMLElement);
-      return {
-        borderTopWidth: style.borderTopWidth,
-        borderRightWidth: style.borderRightWidth,
-        borderBottomWidth: style.borderBottomWidth,
-        borderLeftWidth: style.borderLeftWidth,
-      };
-    });
-    expect(askTextareaStyle).toEqual({
-      borderTopWidth: "0px",
-      borderRightWidth: "0px",
-      borderBottomWidth: "0px",
-      borderLeftWidth: "0px",
-    });
-
-    await input.fill("line one");
-    await expect(submit).toBeEnabled();
-    await input.press("Enter");
-    await expect(input).toHaveValue("line one\n");
-    await expect(page.getByText("line one", { exact: true })).toHaveCount(0);
-
-    await input.fill("rendering check");
-    await input.press("Control+Enter");
-
-    await expect(
-      page.getByText("rendering check", { exact: true }),
-    ).toBeVisible();
-    await expect(page.locator(".chat-message.user")).toContainText(
-      "rendering check",
-    );
-    await expect(
-      page.locator(".chat-event.thinking .event-icon"),
-    ).toHaveAttribute("aria-label", "Thinking");
-    await expect(page.getByText("Reasoning for rendering check")).toBeHidden();
-    await page.locator('summary[aria-label="Thinking details"]').click();
-    await expect(page.getByText("Reasoning for rendering check")).toBeVisible();
-    await expect(
-      page.locator(".chat-event.tool-use .event-icon"),
-    ).toHaveAttribute("aria-label", "Tool use");
-    await expect(page.locator(".chat-event.tool-use")).toContainText("search");
-    await expect(page.getByText('{"q":"rendering check"}')).toBeHidden();
-    await page.locator('summary[aria-label="Tool use details search"]').click();
-    await expect(page.getByText('{"q":"rendering check"}')).toBeVisible();
-    await expect(page.locator(".chat-event.task .event-icon")).toHaveAttribute(
-      "aria-label",
-      "Task",
-    );
-    await expect(page.locator(".chat-event.task")).toContainText(
-      "Queued rendering check",
-    );
-    await expect(
-      page.getByText(`Answer for rendering check ${longToken}`),
-    ).toBeVisible();
-    const transcriptChrome = await page
-      .locator(".chat-message.user, .chat-message.assistant, .chat-event")
-      .evaluateAll((els) =>
-        els.map((el) => {
-          const style = getComputedStyle(el as HTMLElement);
-          return {
-            borderTopWidth: style.borderTopWidth,
-            backgroundColor: style.backgroundColor,
-          };
-        }),
-      );
-    for (const style of transcriptChrome) {
-      expect(style.borderTopWidth).toBe("0px");
-      expect(style.backgroundColor).toBe("rgba(0, 0, 0, 0)");
-    }
-    await expect(input).toBeEnabled();
-    await expect(input).toHaveValue("");
-    await expect(submit).toBeDisabled();
-    const submittedInputBox = await page.locator(".ask-input").boundingBox();
-    expect(submittedInputBox).not.toBeNull();
-    expect(
-      Math.abs(
-        (submittedInputBox?.y ?? 0) + (submittedInputBox?.height ?? 0) - 720,
-      ),
-    ).toBeLessThanOrEqual(2);
-
-    const transcriptOverflow = await page
-      .locator(".transcript")
-      .evaluate((el) => ({
-        scrollWidth: el.scrollWidth,
-        clientWidth: el.clientWidth,
-      }));
-    expect(transcriptOverflow.scrollWidth).toBeLessThanOrEqual(
-      transcriptOverflow.clientWidth + 1,
-    );
-  });
-
-  test("ask pending agent turn renders animated ascii activity", async ({
-    page,
-  }) => {
-    await page.goto(`/${vaultName}/ask`);
-
-    const input = page.getByPlaceholder(/Ask/);
-    await input.fill("slow animation check");
-    await page.getByRole("button", { name: "Submit" }).click();
-
-    const activity = page.locator(".agent-activity");
-    const frame = activity.locator(".activity-frame");
-    await expect(activity).toBeVisible();
-    await expect(activity).toContainText("agent turn");
-    const firstFrame = await frame.textContent();
-    await expect.poll(async () => frame.textContent()).not.toBe(firstFrame);
-    await expect(
-      page.getByText("Answer for slow animation check"),
-    ).toBeVisible();
-    await expect(activity).toHaveCount(0);
-  });
-
-  test("ask keeps an active agent turn running across in-app route changes", async ({
-    page,
-  }) => {
-    await page.goto(`/${vaultName}/ask`);
-
-    const input = page.getByPlaceholder(/Ask/);
-    await input.fill("route carry check");
-    await page.getByRole("button", { name: "Submit" }).click();
-
-    await expect(
-      page.getByText("route carry check", { exact: true }),
-    ).toBeVisible();
-    await expect(page.locator(".agent-activity")).toBeVisible();
-
-    await page.getByRole("button", { name: "Open navigation drawer" }).click();
-    await page
-      .locator('button[aria-label="Notes"]')
-      .evaluate((el) => (el as HTMLElement).click());
-    await expect(page).toHaveURL(new RegExp(`/${vaultName}$`));
-    await expect(
-      page.getByRole("link", { name: /Project Plan/ }),
-    ).toBeVisible();
-
-    await page.getByRole("button", { name: "Open navigation drawer" }).click();
-    await page
-      .locator('button[aria-label="Ask"]')
-      .evaluate((el) => (el as HTMLElement).click());
-    await expect(page).toHaveURL(new RegExp(`/${vaultName}/ask$`));
-
-    await expect(
-      page.getByText("route carry check", { exact: true }),
-    ).toBeVisible();
-    await expect(page.locator(".agent-activity")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Submit" })).toBeDisabled();
-    await expect(page.getByText("Answer for route carry check")).toBeVisible();
-    await expect(page.locator(".agent-activity")).toHaveCount(0);
-  });
-
-  test("ask assistant output renders markdown content", async ({ page }) => {
-    await page.goto(`/${vaultName}/ask`);
-
-    await page.getByPlaceholder(/Ask/).fill("markdown check");
-    await page.getByRole("button", { name: "Submit" }).click();
-
-    const assistant = page.locator(".chat-message.assistant").last();
-    await expect(
-      assistant.getByRole("heading", { name: "Markdown reply", level: 2 }),
-    ).toBeVisible();
-    await expect(assistant.getByText("bold answer")).toBeVisible();
-    await expect(assistant.locator("strong")).toContainText("bold answer");
-    await expect(assistant.locator("li").first()).toContainText("First item");
-    await expect(assistant.locator("code")).toContainText("inline_code");
-    await expect(
-      assistant.getByRole("link", { name: "reference link" }),
-    ).toHaveAttribute("href", "https://example.com");
-    await expect(assistant.locator("pre")).toHaveCount(0);
-  });
-
-  test("ask manage_tasks tool renders task checklist above the input", async ({
-    page,
-  }) => {
-    await page.goto(`/${vaultName}/ask`);
-
-    await page.getByPlaceholder(/Ask/).fill("manage tasks check");
-    await page.getByRole("button", { name: "Submit" }).click();
-
-    const taskList = page.locator(".ask-task-list");
-    await expect(taskList).toBeVisible();
-    await expect(taskList.getByText("Review workflow schedule")).toBeVisible();
-    await expect(taskList.getByText("Write regression test")).toBeVisible();
-    await expect(taskList.getByText("Run task parser")).toBeVisible();
-    await expect(taskList.getByRole("checkbox")).toHaveCount(3);
-    await expect(
-      taskList.getByRole("checkbox", { name: "Review workflow schedule" }),
-    ).toBeChecked();
-    await expect(
-      taskList.getByRole("checkbox", { name: "Write regression test" }),
-    ).not.toBeChecked();
-    await expect(
-      taskList.getByRole("checkbox", { name: "Run task parser" }),
-    ).not.toBeChecked();
-    await expect(taskList).not.toContainText('[{"text"');
-
-    const completedTask = taskList.locator(".task-item", {
-      hasText: "Review workflow schedule",
-    });
-    const runningTask = taskList.locator(".task-item", {
-      hasText: "Run task parser",
-    });
-    await expect(completedTask.locator(".task-text")).toHaveCSS(
-      "text-decoration-line",
-      /line-through/,
-    );
-    await expect(runningTask.locator(".task-box")).toContainText(">");
-    await expect(runningTask).toHaveClass(/progress/);
-    await expect(page.locator(".chat-event.tool-use")).not.toContainText(
-      "manage_tasks",
-    );
-
-    const taskToggle = taskList.getByRole("button", { name: /Managed tasks/i });
-    await expect(taskToggle).toHaveAttribute("aria-expanded", "true");
-    await taskToggle.click();
-    await expect(taskToggle).toHaveAttribute("aria-expanded", "false");
-    await expect(taskList.getByText("Review workflow schedule")).toBeHidden();
-    await taskToggle.click();
-    await expect(taskToggle).toHaveAttribute("aria-expanded", "true");
-    await expect(taskList.getByText("Review workflow schedule")).toBeVisible();
-
-    const taskBox = await taskList.boundingBox();
-    const inputBox = await page.locator(".ask-input").boundingBox();
-    expect(taskBox).not.toBeNull();
-    expect(inputBox).not.toBeNull();
-    expect((taskBox?.y ?? 0) + (taskBox?.height ?? 0)).toBeLessThanOrEqual(
-      (inputBox?.y ?? 0) + 1,
-    );
-  });
-
-  test("ask slash menu shows session command, tiny-agent skills and workflows", async ({
-    page,
-  }) => {
-    await page.goto(`/${vaultName}/ask`);
-
-    const input = page.getByPlaceholder(/Ask/);
-    await input.fill("/");
-
-    const menu = page.locator(".ask-slash-menu");
-    await expect(menu).toBeVisible();
-    await expect(
-      menu.getByRole("option", { name: /^\/new\s+session/i }),
-    ).toBeVisible();
-    await expect(
-      menu.getByRole("option", { name: /^\/pkm\s+skill/i }),
-    ).toBeVisible();
-    await expect(
-      menu.getByRole("option", { name: /\/pkm:diagnosis.*skill/i }),
-    ).toBeVisible();
-    await expect(
-      menu.getByRole("option", {
-        name: /\/workflow zettelkasten_maintenance.*workflow/i,
-      }),
-    ).toBeVisible();
-    await expect(
-      menu.getByRole("option", { name: /\/search.*command/i }),
-    ).toHaveCount(0);
-    await expect(
-      menu.getByRole("option", { name: /\/tdd.*skill/i }),
-    ).toHaveCount(0);
-
-    const menuBox = await menu.boundingBox();
-    const inputBox = await page.locator(".ask-input").boundingBox();
-    expect(menuBox).not.toBeNull();
-    expect(inputBox).not.toBeNull();
-    expect((menuBox?.y ?? 0) + (menuBox?.height ?? 0)).toBeLessThanOrEqual(
-      (inputBox?.y ?? 0) + 1,
-    );
-
-    await input.fill("/zettel");
-    await expect(menu.getByRole("option").first()).toContainText(
-      "/workflow zettelkasten_maintenance",
-    );
-
-    await input.press("ArrowDown");
-    await input.press("ArrowUp");
-    await input.press("Enter");
-
-    await expect(input).toHaveValue("/workflow zettelkasten_maintenance");
-    await expect(menu).toHaveCount(0);
-    await expect(
-      page.getByText("/workflow zettelkasten_maintenance", { exact: true }),
-    ).toHaveCount(0);
-
-    await input.press("Control+Enter");
-
-    await expect(
-      page.getByText("/workflow zettelkasten_maintenance", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      page.getByText("Answer for /workflow zettelkasten_maintenance"),
-    ).toBeVisible();
-    await expect(input).toHaveValue("");
-  });
-
-  test("ask input suggests notes and tags while typing inline wikilinks", async ({
-    page,
-  }) => {
-    await page.goto(`/${vaultName}/ask`);
-
-    const textarea = page.locator(".ask-textarea");
-    await textarea.fill("Review [[");
-    const suggest = page.getByRole("listbox", { name: "Inline suggestions" });
-    await expect(suggest.getByRole("option").first()).toContainText(
-      "project-plan",
-    );
-
-    await textarea.fill("Review [[res");
-    await expect(suggest).toBeVisible();
-    await expect(suggest.getByRole("option").first()).toContainText(
-      "research-note",
-    );
-
-    await textarea.press("Enter");
-    await expect(textarea).toHaveValue("Review [[research-note]]");
-
-    await textarea.fill("Topic #pk");
-    await expect(suggest.getByRole("option", { name: /#pkm/ })).toBeVisible();
-    await textarea.press("Enter");
-    await expect(textarea).toHaveValue("Topic #pkm");
-  });
-
-  test("ask /new clears cached transcript and following asks send prior turns as context", async ({
-    page,
-  }) => {
-    await page.goto(`/${vaultName}/ask`);
-
-    const input = page.getByPlaceholder(/Ask/);
-    await input.fill("first context check");
-    await page.getByRole("button", { name: "Submit" }).click();
-    await expect(
-      page.getByText("Answer for first context check"),
-    ).toBeVisible();
-
-    await input.fill("second context check");
-    await page.getByRole("button", { name: "Submit" }).click();
-    await expect(
-      page.getByText("Answer for second context check"),
-    ).toBeVisible();
-
-    expect(askPayloads).toHaveLength(2);
-    expect(askPayloads[0].context ?? "").toBe("");
-    expect(askPayloads[0].ask_session_id ?? "").toMatch(/^web-/);
-    expect(askPayloads[1].context ?? "").toContain("User: first context check");
-    expect(askPayloads[1].context ?? "").toContain(
-      "Assistant: Answer for first context check",
-    );
-    expect(askPayloads[1].context ?? "").not.toContain("second context check");
-    expect(askPayloads[1].ask_session_id).toBe(askPayloads[0].ask_session_id);
-    const previousSessionId = askPayloads[1].ask_session_id;
-
-    await input.fill("/");
-    const menu = page.locator(".ask-slash-menu");
-    await expect(menu).toBeVisible();
-    await expect(
-      menu.getByRole("option", { name: /^\/new\s+session/i }),
-    ).toBeVisible();
-
-    await input.fill("/new");
-    await input.press("Control+Enter");
-
-    await expect(page.getByText("Enter a query packet below.")).toBeVisible();
-    await expect(
-      page.getByText("first context check", { exact: true }),
-    ).toHaveCount(0);
-    await expect(page.getByText("Answer for second context check")).toHaveCount(
-      0,
-    );
-    await expect(input).toHaveValue("");
-    await expect
-      .poll(() =>
-        page.evaluate(() => localStorage.getItem("pkm.askSession.alpha")),
-      )
-      .toBeNull();
-
-    await input.fill("fresh context check");
-    await page.getByRole("button", { name: "Submit" }).click();
-    await expect(
-      page.getByText("Answer for fresh context check"),
-    ).toBeVisible();
-    expect(askPayloads.at(-1)?.context ?? "").toBe("");
-    expect(askPayloads.at(-1)?.ask_session_id).toMatch(/^web-/);
-    expect(askPayloads.at(-1)?.ask_session_id).not.toBe(previousSessionId);
-  });
-
   test("logger route renders today logs and appends new timestamped entries", async ({
     page,
   }) => {
@@ -1303,12 +693,12 @@ test.describe("generated routing and event contracts", () => {
     const loggerInputBox = await page.locator(".logger-input").boundingBox();
     expect(loggerInputBox).not.toBeNull();
     const loggerViewportWidth = await page.evaluate(() => window.innerWidth);
-    expect(Math.abs(loggerInputBox?.x ?? -1)).toBeLessThanOrEqual(1);
+    expect(Math.abs((loggerInputBox?.x ?? -1) - 32)).toBeLessThanOrEqual(1);
     expect(
       Math.abs(
         (loggerInputBox?.x ?? 0) +
           (loggerInputBox?.width ?? 0) -
-          loggerViewportWidth,
+          (loggerViewportWidth - 32),
       ),
     ).toBeLessThanOrEqual(1);
     expect(
@@ -1371,96 +761,6 @@ test.describe("generated routing and event contracts", () => {
     await expect(suggest.getByRole("option", { name: /#work/ })).toBeVisible();
     await input.press("Enter");
     await expect(input).toHaveValue("Captured #work");
-  });
-
-  test("workflow routes render list, read mode detail, and editable schedule modal", async ({
-    page,
-  }) => {
-    const workflowId = Object.keys(workflowConfigs)[0];
-    const workflow = workflowConfigs[workflowId];
-    const manualTaskId = `${workflowId}_manual_web`;
-
-    await page.goto(`/${vaultName}`);
-    await page.waitForLoadState("networkidle").catch(() => {});
-    await page.getByRole("button", { name: "Open navigation drawer" }).click();
-    await expect(
-      page.locator('aside[aria-label="App navigation"]'),
-    ).toHaveAttribute("aria-hidden", "false");
-    await page
-      .locator('button[aria-label="Workflows"]')
-      .evaluate((el) => (el as HTMLElement).click());
-
-    await expect(page).toHaveURL(new RegExp(`/${vaultName}/workflows$`));
-    await expectTopbar(page, vaultName, "workflows");
-    await expect(page.getByRole("heading")).toHaveCount(0);
-    await expect(
-      page.locator(".ledger-head").getByText("WORKFLOW", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      page.locator(".ledger-head").getByText("TRIGGER", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      page.locator(".ledger-head").getByText("STATE", { exact: true }),
-    ).toBeVisible();
-    await expect(page.getByText(workflow.title)).toBeVisible();
-    await expect(page.getByText(workflow.trigger_time)).toBeVisible();
-    const workflowLink = page.getByRole("link").filter({
-      hasText: workflow.title,
-    });
-    await expect(workflowLink).toContainText("on");
-
-    await workflowLink.click();
-    await expect(page).toHaveURL(
-      new RegExp(`/${vaultName}/workflows/${workflowId}$`),
-    );
-    await expectTopbar(page, vaultName, `workflow:${workflowId}`);
-    await expect(page.locator(".workflow-header .meta-rail")).toContainText(
-      "WORKFLOW",
-    );
-    await expect(page.locator(".workflow-header .meta-rail")).toContainText(
-      workflowId,
-    );
-    await expect(page.getByText(workflow.snippet)).toBeVisible();
-    await expect(page.getByText("idle")).toBeVisible();
-
-    await page.getByRole("button", { name: "Run workflow" }).click();
-    await expect(page.getByText(`Queued ${manualTaskId}`)).toBeVisible();
-    await expect(page.getByText(`queued:${manualTaskId}`)).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Run workflow" }),
-    ).toBeDisabled();
-
-    await page.getByRole("button", { name: "Workflow history" }).click();
-    const historyPanel = page.getByRole("dialog", { name: "Workflow history" });
-    await expect(historyPanel).toBeVisible();
-    await expect(historyPanel).toContainText("queued");
-    await expect(historyPanel).toContainText(
-      "Queued manual workflow run from web.",
-    );
-    await expect(historyPanel).toContainText("history-host");
-    await expect(historyPanel).toContainText("success");
-    await expect(historyPanel).toContainText("created hub notes");
-    await expect(historyPanel).toContainText("model failed");
-    await historyPanel
-      .getByRole("button", { name: "Close workflow history" })
-      .click();
-    await expect(historyPanel).toHaveCount(0);
-
-    await page.getByRole("button", { name: "Workflow settings" }).click();
-    const modal = page.getByRole("dialog", { name: "Workflow settings" });
-    await expect(modal).toBeVisible();
-    await expect(modal.getByLabel("Enabled")).toBeChecked();
-    await expect(modal.getByLabel("Trigger time")).toHaveValue("02:00");
-
-    await modal.getByLabel("Enabled").uncheck();
-    await modal.getByLabel("Trigger time").fill("06:00");
-    await modal.getByRole("button", { name: "Save workflow settings" }).click();
-
-    await expect(modal).toHaveCount(0);
-    await expect(page.getByText("06:00")).toBeVisible();
-    await expect(page.getByText("off")).toBeVisible();
-    expect(workflowConfigs[workflowId].enabled).toBe(false);
-    expect(workflowConfigs[workflowId].trigger_time).toBe("06:00");
   });
 
   test("note body wraps long content within the viewport", async ({ page }) => {
@@ -1639,17 +939,6 @@ test.describe("generated routing and event contracts", () => {
 
     await page.goto(`/${vaultName}`);
     await openCommandPalette(page);
-    await page.locator(".cmdk-input").fill("ask routing");
-    await page.getByRole("option", { name: /Ask/ }).click();
-    await expect(page).toHaveURL(
-      new RegExp(`/${vaultName}/ask\\?q=ask%20routing$`),
-    );
-    await expect(page.getByText("ask routing", { exact: true })).toBeVisible();
-    await expect(page.getByText("Answer for ask routing")).toBeVisible();
-    await expectNoMissingPage(page);
-
-    await page.goto(`/${vaultName}`);
-    await openCommandPalette(page);
     await page.getByRole("option", { name: /Switch vault/ }).click();
     await expect(page).toHaveURL(new RegExp(`/${vaultName}$`));
     await expectTopbar(page, vaultName, "notes");
@@ -1691,18 +980,6 @@ test.describe("generated routing and event contracts", () => {
     await expectNoMissingPage(page);
 
     await page.goto(`/${vaultName}`);
-    await openCommandPalette(page);
-    await page.locator(".cmdk-input").fill("workflow");
-    await expect(
-      page.getByRole("option", { name: /Open workflows/ }),
-    ).toBeVisible();
-    await page.getByRole("option", { name: /Open workflows/ }).click();
-    await expect(page).toHaveURL(new RegExp(`/${vaultName}/workflows$`));
-    await expectTopbar(page, vaultName, "workflows");
-    await expect(page.getByText("zettelkasten maintenance")).toBeVisible();
-    await expectNoMissingPage(page);
-
-    await page.goto(`/${vaultName}`);
     await page.getByRole("button", { name: "Open navigation drawer" }).click();
     await expect(page.locator('button[aria-label="Graph"]')).toBeVisible();
 
@@ -1716,87 +993,13 @@ test.describe("generated routing and event contracts", () => {
     await expectNoMissingPage(page);
   });
 
-  test("configs route manages ask credentials without storing raw secrets", async ({
-    page,
-  }) => {
-    const rawSecret = "sk-live-raw-config-secret";
-    await page.goto(`/${vaultName}/configs`);
-
-    await expectTopbar(page, vaultName, "configs");
-    await expect(page.getByRole("heading", { name: "Configs" })).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: "Global Settings" }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: "Ask Model Credentials" }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: "Vault Settings" }),
-    ).toBeVisible();
-    await expect(page.locator('[data-setting-key="model"]')).toContainText(
-      "auto",
-    );
-    await expect(
-      page.locator('[data-setting-key^="graph-semantic"]'),
-    ).toHaveCount(0);
-
-    const openai = page.locator('[data-provider-id="openai"]');
-    const anthropic = page.locator('[data-provider-id="anthropic"]');
-    await expect(openai).toContainText("OpenAI");
-    await expect(openai).toContainText("OPENAI_API_KEY");
-    await expect(openai).toContainText("not configured");
-    await expect(anthropic).toContainText("Anthropic");
-    await expect(anthropic).toContainText("configured");
-    await expect(anthropic).toContainText("fp_existing");
-
-    const getCountBeforeSave = configGetCount;
-    await openai.getByLabel("OpenAI API key").fill(rawSecret);
-    await openai
-      .getByRole("button", { name: "Save OpenAI credential" })
-      .click();
-    await expect(openai.getByText("Saved", { exact: true })).toBeVisible();
-    expect(configGetCount).toBeGreaterThan(getCountBeforeSave);
-    await expect(openai.getByLabel("OpenAI API key")).toHaveValue("");
-    await expect(openai).toContainText("configured");
-    await expect(openai).toContainText("fp_openai_saved");
-
-    const storageSnapshot = await page.evaluate((secret) => {
-      const dump = (storage: Storage) =>
-        Array.from({ length: storage.length }, (_, index) => {
-          const key = storage.key(index) ?? "";
-          return `${key}=${storage.getItem(key) ?? ""}`;
-        }).join("\n");
-      return {
-        local: dump(localStorage),
-        session: dump(sessionStorage),
-      };
-    }, rawSecret);
-    expect(storageSnapshot.local).not.toContain(rawSecret);
-    expect(storageSnapshot.session).not.toContain(rawSecret);
-
-    failNextConfigSaveFor = "openai";
-    await openai.getByLabel("OpenAI API key").fill("sk-failing-secret");
-    await openai
-      .getByRole("button", { name: "Save OpenAI credential" })
-      .click();
-    await expect(
-      openai.getByText("Failed to save OpenAI credential."),
-    ).toBeVisible();
-    await expect(openai.getByLabel("OpenAI API key")).toHaveValue(
-      "sk-failing-secret",
-    );
-    await expect(
-      anthropic.getByText("Failed to save OpenAI credential."),
-    ).toHaveCount(0);
-  });
-
   test("command palette search, tag search, and empty states render deterministic content", async ({
     page,
   }) => {
     await page.goto(`/${vaultName}`);
     await page.waitForLoadState("networkidle").catch(() => {});
 
-    await openCommandPalette(page);
+    await openSearchPalette(page);
     await page.locator(".cmdk-input").fill("research");
     await expect(
       page.getByRole("option", { name: /Research Note/ }),
@@ -1810,7 +1013,7 @@ test.describe("generated routing and event contracts", () => {
     await expectNoMissingPage(page);
 
     await page.goto(`/${vaultName}`);
-    await openCommandPalette(page);
+    await openSearchPalette(page);
     await page.locator(".cmdk-input").fill("neighbor");
     await expect(
       page.getByRole("option", { name: /Research Note/ }),
@@ -1824,7 +1027,7 @@ test.describe("generated routing and event contracts", () => {
     await expectNoMissingPage(page);
 
     await page.goto(`/${vaultName}`);
-    await openCommandPalette(page);
+    await openSearchPalette(page);
     await page.locator(".cmdk-input").fill("#work");
     await expect(
       page.getByRole("option", { name: /Project Plan/ }),
@@ -1839,7 +1042,7 @@ test.describe("generated routing and event contracts", () => {
     await expectNoMissingPage(page);
 
     await page.goto(`/${vaultName}`);
-    await openCommandPalette(page);
+    await openSearchPalette(page);
     await page.locator(".cmdk-input").fill("#missing-tag");
     await expect(page.getByText("No matches.")).toBeVisible();
     await expect(page).toHaveURL(new RegExp(`/${vaultName}$`));
@@ -1897,141 +1100,10 @@ async function mockPkmApi(page: Page) {
       return;
     }
 
-    const workflowListMatch = path.match(
-      /^\/api\/v1\/vault\/([^/]+)\/workflows$/,
-    );
-    if (workflowListMatch && route.request().method() === "GET") {
-      await json(
-        route,
-        Object.values(workflowConfigs).map(
-          ({ body, jitter_type, ...summary }) => summary,
-        ),
-      );
-      return;
-    }
-
-    const workflowHistoryMatch = path.match(
-      /^\/api\/v1\/vault\/([^/]+)\/workflows\/([^/]+)\/history$/,
-    );
-    if (workflowHistoryMatch && route.request().method() === "GET") {
-      await json(route, workflowHistories[workflowHistoryMatch[2]] ?? []);
-      return;
-    }
-
-    const workflowRunStatusMatch = path.match(
-      /^\/api\/v1\/vault\/([^/]+)\/workflows\/([^/]+)\/run-status$/,
-    );
-    if (workflowRunStatusMatch && route.request().method() === "GET") {
-      await json(
-        route,
-        workflowRunStatuses[workflowRunStatusMatch[2]] ?? {
-          status: "idle",
-          task_id: null,
-        },
-      );
-      return;
-    }
-
-    const workflowRunMatch = path.match(
-      /^\/api\/v1\/vault\/([^/]+)\/workflows\/([^/]+)\/run$/,
-    );
-    if (workflowRunMatch && route.request().method() === "POST") {
-      const workflowId = workflowRunMatch[2];
-      const taskId = `${workflowId}_manual_web`;
-      workflowRunStatuses[workflowId] = { status: "queued", task_id: taskId };
-      workflowHistories[workflowId] = [
-        {
-          workflow_id: workflowId,
-          task_id: taskId,
-          hostname: "web-host",
-          time: "2026-05-10T03:00:00Z",
-          status: "queued",
-          source: "manual",
-          phase: "queued",
-          error: null,
-          result_summary: "Queued manual workflow run from web.",
-        },
-        ...(workflowHistories[workflowId] ?? []),
-      ];
-      await json(route, { status: "queued", task_id: taskId });
-      return;
-    }
-
-    const allWorkflowHistoryMatch = path.match(
-      /^\/api\/v1\/vault\/([^/]+)\/workflow-history$/,
-    );
-    if (allWorkflowHistoryMatch && route.request().method() === "GET") {
-      await json(route, Object.values(workflowHistories).flat());
-      return;
-    }
-
-    const workflowDetailMatch = path.match(
-      /^\/api\/v1\/vault\/([^/]+)\/workflows\/([^/]+)$/,
-    );
-    if (workflowDetailMatch) {
-      const id = workflowDetailMatch[2];
-      const workflow = workflowConfigs[id];
-      if (!workflow) {
-        await route.fulfill({ status: 404, body: "not found" });
-        return;
-      }
-      if (route.request().method() === "PATCH") {
-        const payload = route.request().postDataJSON() as {
-          enabled?: boolean;
-          trigger_time?: string;
-          schedule_hour?: number;
-        };
-        const triggerTime =
-          payload.trigger_time ??
-          (typeof payload.schedule_hour === "number"
-            ? `${String(payload.schedule_hour).padStart(2, "0")}:00`
-            : workflow.trigger_time);
-        workflowConfigs[id] = {
-          ...workflow,
-          enabled: payload.enabled ?? workflow.enabled,
-          trigger_time: triggerTime,
-          schedule_hour: Number(triggerTime.slice(0, 2)),
-        };
-        await json(route, workflowConfigs[id]);
-        return;
-      }
-      await json(route, workflow);
-      return;
-    }
-
     const configsMatch = path.match(/^\/api\/v1\/vault\/([^/]+)\/configs$/);
     if (configsMatch && route.request().method() === "GET") {
-      configGetCount += 1;
       await json(route, configPayload());
       return;
-    }
-
-    const credentialMatch = path.match(
-      /^\/api\/v1\/vault\/([^/]+)\/configs\/ask\/credentials\/([^/]+)$/,
-    );
-    if (credentialMatch) {
-      const providerId = credentialMatch[2];
-      if (route.request().method() === "PUT") {
-        if (failNextConfigSaveFor === providerId) {
-          failNextConfigSaveFor = "";
-          await route.fulfill({ status: 500, body: "save failed" });
-          return;
-        }
-        configCredentialStatus[providerId] = {
-          configured: true,
-          fingerprint: `fp_${providerId}_saved`,
-        };
-        await json(route, configProviderPayload(providerId));
-        return;
-      }
-      if (route.request().method() === "DELETE") {
-        configCredentialStatus[providerId] = {
-          configured: false,
-          fingerprint: null,
-        };
-        await json(route, configProviderPayload(providerId));
-        return;
-      }
     }
 
     const dailyDateMatch = path.match(
@@ -2111,30 +1183,6 @@ async function mockPkmApi(page: Page) {
         })),
         count: counts.size,
       });
-      return;
-    }
-
-    const askOptionsMatch = path.match(
-      /^\/api\/v1\/vault\/([^/]+)\/ask\/options$/,
-    );
-    if (askOptionsMatch) {
-      await json(route, {
-        model: "auto",
-        resolved_model: "test/default-model",
-        reasoning_effort: "medium",
-      });
-      return;
-    }
-
-    const askMatch = path.match(/^\/api\/v1\/vault\/([^/]+)\/ask$/);
-    if (askMatch && route.request().method() === "POST") {
-      const payload = route.request().postDataJSON() as {
-        query?: string;
-        context?: string;
-        ask_session_id?: string;
-      };
-      askPayloads.push(payload);
-      await sse(route, payload.query ?? "");
       return;
     }
 
@@ -2295,6 +1343,12 @@ async function openCommandPalette(page: Page) {
   await expectCommandPaletteFocused(page);
 }
 
+async function openSearchPalette(page: Page) {
+  await openCommandPalette(page);
+  await page.getByRole("option", { name: /Jump to note/ }).click();
+  await expectCommandPaletteFocused(page);
+}
+
 async function expectNoteHeaderId(page: Page, noteId: string) {
   const noteHeader = page.locator(".note-header");
   await expect(noteHeader.locator(".meta-rail")).toContainText("NOTE");
@@ -2408,67 +1462,6 @@ function resetMockNotes() {
   }
 }
 
-function resetMockWorkflows() {
-  const workflowId = Object.keys(workflowBodies)[0];
-  workflowConfigs = {
-    [workflowId]: {
-      id: workflowId,
-      title: workflowId.replaceAll("_", " "),
-      schedule_hour: 2,
-      trigger_time: "02:00",
-      enabled: true,
-      marker_file: "zettel-last-run",
-      pre_hook: null,
-      post_hook: null,
-      snippet: "Execute the maintenance workflow.",
-      body: workflowBodies[workflowId],
-      jitter_type: "md5_hostname",
-    },
-  };
-  workflowHistories = {
-    [workflowId]: [
-      {
-        workflow_id: workflowId,
-        task_id: "workflow-2",
-        hostname: "history-host",
-        time: "2026-05-10T02:00:00Z",
-        status: "failure",
-        source: "scheduled",
-        phase: "agent",
-        error: "model failed",
-        result_summary: "agent stopped",
-      },
-      {
-        workflow_id: workflowId,
-        task_id: "workflow-1",
-        hostname: "history-host",
-        time: "2026-05-10T01:00:00Z",
-        status: "success",
-        source: "manual",
-        phase: "complete",
-        error: null,
-        result_summary: "created hub notes",
-      },
-    ],
-  };
-  workflowRunStatuses = {
-    [workflowId]: { status: "idle", task_id: null },
-  };
-}
-
-function resetMockConfigs() {
-  configCredentialStatus = {
-    openai: {
-      configured: false,
-      fingerprint: null,
-    },
-    anthropic: {
-      configured: true,
-      fingerprint: "fp_existing",
-    },
-  };
-}
-
 function configPayload() {
   return {
     settings: [
@@ -2497,43 +1490,8 @@ function configPayload() {
         input_type: "number",
         options: [],
       },
-      {
-        key: "model",
-        section: "defaults",
-        internal_key: "model",
-        description: "LLM model used by pkm ask (default: auto)",
-        value: "auto",
-        default_value: "",
-        configured: true,
-        source: "configured",
-        input_type: "text",
-        options: [],
-      },
     ],
-    ask_credentials: {
-      providers: [
-        {
-          id: "openai",
-          label: "OpenAI",
-          env_key: "OPENAI_API_KEY",
-          ...configCredentialStatus.openai,
-        },
-        {
-          id: "anthropic",
-          label: "Anthropic",
-          env_key: "ANTHROPIC_API_KEY",
-          ...configCredentialStatus.anthropic,
-        },
-      ],
-    },
   };
-}
-
-function configProviderPayload(providerId: string) {
-  const providers = configPayload().ask_credentials.providers;
-  return (
-    providers.find((provider) => provider.id === providerId) ?? providers[0]
-  );
 }
 
 function snippetFor(query: string, body: string): string {
@@ -2550,85 +1508,5 @@ async function json(route: Route, body: unknown, status = 200) {
     status,
     contentType: "application/json",
     body: JSON.stringify(body),
-  });
-}
-
-async function sse(route: Route, query: string) {
-  const safeQuery = query || "empty query";
-  if (safeQuery === "slow animation check") {
-    await new Promise((resolve) => setTimeout(resolve, 900));
-  }
-  if (safeQuery === "route carry check") {
-    await new Promise((resolve) => setTimeout(resolve, 2500));
-  }
-  if (safeQuery === "result payload") {
-    await route.fulfill({
-      status: 200,
-      contentType: "text/event-stream",
-      body: [
-        "event: reasoning",
-        `data: ${JSON.stringify({ type: "reasoning", content: `Reasoning for ${safeQuery}` })}`,
-        "",
-        "event: result",
-        `data: ${JSON.stringify({ response: `Response-only answer for ${safeQuery}` })}`,
-        "",
-        "",
-      ].join("\n"),
-    });
-    return;
-  }
-  const answer =
-    safeQuery === "markdown check"
-      ? [
-          "## Markdown reply",
-          "",
-          "**bold answer** with `inline_code`.",
-          "",
-          "- First item",
-          "- Second item",
-          "",
-          "[reference link](https://example.com)",
-        ].join("\n")
-      : safeQuery === "rendering check"
-        ? `Answer for ${safeQuery} ${longToken}`
-        : `Answer for ${safeQuery}`;
-  await route.fulfill({
-    status: 200,
-    contentType: "text/event-stream",
-    body: [
-      "event: reasoning",
-      `data: ${JSON.stringify({ type: "reasoning", text: `Reasoning for ${safeQuery}` })}`,
-      "",
-      ...(safeQuery === "manage tasks check"
-        ? [
-            "event: tool_call",
-            `data: ${JSON.stringify({
-              type: "tool_call",
-              name: "manage_tasks",
-              arguments: {
-                tasks: JSON.stringify([
-                  { text: "Review workflow schedule", status: "done" },
-                  { text: "Write regression test", status: "pending" },
-                  { text: "Run task parser", status: "in_progress" },
-                ]),
-              },
-            })}`,
-            "",
-          ]
-        : []),
-      "event: tool_call",
-      `data: ${JSON.stringify({ type: "tool_call", name: "search", arguments: { q: safeQuery } })}`,
-      "",
-      "event: task",
-      `data: ${JSON.stringify({ type: "task", text: `Queued ${safeQuery}` })}`,
-      "",
-      "event: content",
-      `data: ${JSON.stringify({ type: "content", text: answer })}`,
-      "",
-      "event: result",
-      `data: ${JSON.stringify({ answer: `Final answer for ${safeQuery}` })}`,
-      "",
-      "",
-    ].join("\n"),
   });
 }

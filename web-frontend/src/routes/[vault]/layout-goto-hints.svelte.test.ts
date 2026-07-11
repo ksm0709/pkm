@@ -332,4 +332,16 @@ describe("vault layout goto key hints", () => {
 
     unmount(component);
   });
+
+  it("does not advertise retired Ask or Workflow leader shortcuts", async () => {
+    const { component } = render();
+    await flush();
+
+    await press(" ");
+    const text = hint()?.textContent ?? "";
+
+    unmount(component);
+
+    expect(text).not.toMatch(/Ask…|Open ask|Open workflows/);
+  });
 });

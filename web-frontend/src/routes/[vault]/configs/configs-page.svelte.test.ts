@@ -4,9 +4,7 @@ import { mount, tick, unmount } from "svelte";
 import Page from "./+page.svelte";
 
 const mocks = vi.hoisted(() => ({
-  deleteAskCredential: vi.fn(),
   loadConfigs: vi.fn(),
-  saveAskCredential: vi.fn(),
   saveConfigSetting: vi.fn(),
 }));
 
@@ -18,9 +16,7 @@ vi.mock("$app/stores", async () => {
 });
 
 vi.mock("$lib/configs/client", () => ({
-  deleteAskCredential: mocks.deleteAskCredential,
   loadConfigs: mocks.loadConfigs,
-  saveAskCredential: mocks.saveAskCredential,
   saveConfigSetting: mocks.saveConfigSetting,
 }));
 
@@ -43,7 +39,7 @@ describe("configs page", () => {
     return { target, component };
   }
 
-  it("renders ask model choices as a select and saves the selected model", async () => {
+  it("ignores stale Ask settings and credentials while retaining editable web settings", async () => {
     mocks.loadConfigs.mockResolvedValue({
       settings: [
         {
@@ -58,53 +54,67 @@ describe("configs page", () => {
           input_type: "select",
           options: ["auto", "gpt-5-nano"],
         },
+        {
+          key: "reasoning-effort",
+          section: "defaults",
+          internal_key: "reasoning_effort",
+          description: "Ask reasoning effort",
+          value: "medium",
+          default_value: "medium",
+          configured: false,
+          source: "default",
+          input_type: "select",
+          options: ["low", "medium", "high"],
+        },
+        {
+          key: "web-window-padding",
+          section: "web",
+          internal_key: "window_padding",
+          description: "Web window padding",
+          value: "32",
+          default_value: "32",
+          configured: false,
+          source: "default",
+          input_type: "number",
+          options: [],
+        },
       ],
-      ask_credentials: { providers: [] },
-    });
-    mocks.saveConfigSetting.mockResolvedValue({
-      key: "model",
-      section: "defaults",
-      internal_key: "model",
-      description: "LLM model",
-      value: "gpt-5-nano",
-      default_value: "auto",
-      configured: true,
-      source: "configured",
-      input_type: "select",
-      options: ["auto", "gpt-5-nano"],
+      ask_credentials: {
+        providers: [
+          {
+            id: "openai",
+            label: "OpenAI",
+            env_key: "OPENAI_API_KEY",
+            configured: true,
+            fingerprint: "sk-...abcd",
+          },
+        ],
+      },
     });
 
     const { target, component } = render();
     await flush();
 
-    const select = target.querySelector<HTMLSelectElement>(
-      'select[aria-label="model value"]',
-    );
-    expect(select).not.toBeNull();
-    expect(target.querySelector('input[aria-label="model value"]')).toBeNull();
-    expect(Array.from(select!.options).map((option) => option.value)).toEqual([
-      "auto",
-      "gpt-5-nano",
-    ]);
-
-    select!.value = "gpt-5-nano";
-    select!.dispatchEvent(new Event("change", { bubbles: true }));
-    await tick();
-
-    const saveButton = target.querySelector<HTMLButtonElement>(
-      'button[aria-label="Save model"]',
-    );
-    expect(saveButton?.disabled).toBe(false);
-    saveButton?.click();
-    await flush();
-
-    expect(mocks.saveConfigSetting).toHaveBeenCalledWith(
-      "main",
-      "model",
-      "gpt-5-nano",
-    );
+    const rendered = {
+      model: target.querySelector('[data-setting-key="model"]') !== null,
+      reasoningEffort:
+        target.querySelector('[data-setting-key="reasoning-effort"]') !== null,
+      credentials: target.querySelector(".ask-credentials") !== null,
+      apiKey: target.querySelector('[aria-label="OpenAI API key"]') !== null,
+      windowPadding: target.querySelector<HTMLInputElement>(
+        'input[aria-label="web-window-padding value"]',
+      )?.value,
+    };
 
     unmount(component);
+
+    expect(rendered).toEqual({
+      model: false,
+      reasoningEffort: false,
+      credentials: false,
+      apiKey: false,
+      windowPadding: "32",
+    });
   });
 
   it("dispatches config-change after saving window padding", async () => {
@@ -125,7 +135,6 @@ describe("configs page", () => {
           options: [],
         },
       ],
-      ask_credentials: { providers: [] },
     });
     mocks.saveConfigSetting.mockResolvedValue({
       key: "web-window-padding",
@@ -185,7 +194,6 @@ describe("configs page", () => {
           options: [],
         },
       ],
-      ask_credentials: { providers: [] },
     });
     mocks.saveConfigSetting.mockResolvedValue({
       key: "web-window-padding",

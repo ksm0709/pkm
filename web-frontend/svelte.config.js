@@ -13,6 +13,8 @@ const config = {
     alias: {
       $lib: "./src/lib",
     },
+    // SvelteKit defaults this to Date.now(), which churns every generated chunk hash.
+    version: { name: "pkm" },
   },
 };
 

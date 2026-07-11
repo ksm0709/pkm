@@ -8,9 +8,7 @@ describe("app navigation contract", () => {
       "notes",
       "tags",
       "graph",
-      "ask",
       "logger",
-      "workflows",
       "daily",
       "configs",
     ]);
@@ -32,12 +30,23 @@ describe("app navigation contract", () => {
       notes: "/main",
       tags: "/main/tags",
       graph: "/main/graph",
-      ask: "/main/ask",
       logger: "/main/logger",
-      workflows: "/main/workflows",
       daily: "/main/daily",
       configs: "/main/configs",
     });
+  });
+
+  it("keeps the retained CmdK command registry without Ask passthrough", () => {
+    expect(
+      cmdkCoreCommandShortcuts.map(({ id, shortcut }) => ({ id, shortcut })),
+    ).toEqual([
+      { id: "cmd:jump", shortcut: "/" },
+      { id: "cmd:daily", shortcut: "y" },
+      { id: "cmd:daily-subnote", shortcut: "s" },
+      { id: "cmd:index-vault", shortcut: "i" },
+      { id: "cmd:switch", shortcut: "v" },
+      { id: "cmd:theme", shortcut: "h" },
+    ]);
   });
 
   it("keeps every CmdK command on a unique Space leader shortcut", () => {

@@ -1,16 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiClient, apiGet } from "$lib/api/client.js";
-import {
-  deleteAskCredential,
-  loadConfigs,
-  saveAskCredential,
-  saveConfigSetting,
-} from "./client";
+import * as configsClient from "./client";
+import { loadConfigs, saveConfigSetting } from "./client";
 
 vi.mock("$lib/api/client.js", () => ({
   apiClient: vi.fn(),
   apiGet: vi.fn(),
 }));
+
+const graphDepthSetting = {
+  key: "graph-depth",
+  section: "defaults",
+  internal_key: "graph-depth",
+  description: "Default graph traversal depth",
+  value: "4",
+  default_value: "2",
+  configured: true,
+  source: "configured" as const,
+  input_type: "number" as const,
+  options: [],
+};
 
 describe("configs client", () => {
   beforeEach(() => {
@@ -18,34 +27,15 @@ describe("configs client", () => {
     vi.mocked(apiGet).mockReset();
   });
 
+  it("exports only generic config load and setting mutation operations", () => {
+    expect(Object.keys(configsClient).sort()).toEqual([
+      "loadConfigs",
+      "saveConfigSetting",
+    ]);
+  });
+
   it("loads the encoded vault configs endpoint", async () => {
-    const configs = {
-      settings: [
-        {
-          key: "model",
-          section: "defaults",
-          internal_key: "model",
-          description: "LLM model",
-          value: "auto",
-          default_value: "",
-          configured: true,
-          source: "configured",
-          input_type: "text",
-          options: [],
-        },
-      ],
-      ask_credentials: {
-        providers: [
-          {
-            id: "openai",
-            label: "OpenAI",
-            env_key: "OPENAI_API_KEY",
-            configured: true,
-            fingerprint: "sk-...abcd",
-          },
-        ],
-      },
-    };
+    const configs = { settings: [graphDepthSetting] };
     vi.mocked(apiGet).mockResolvedValueOnce(configs);
 
     await expect(loadConfigs("work vault")).resolves.toBe(configs);
@@ -53,25 +43,13 @@ describe("configs client", () => {
   });
 
   it("saves an encoded config setting and returns the updated setting", async () => {
-    const updated = {
-      key: "graph-depth",
-      section: "defaults",
-      internal_key: "graph-depth",
-      description: "Default graph traversal depth",
-      value: "4",
-      default_value: "",
-      configured: true,
-      source: "configured",
-      input_type: "number",
-      options: [],
-    };
     vi.mocked(apiClient).mockResolvedValueOnce(
-      new Response(JSON.stringify(updated), { status: 200 }),
+      new Response(JSON.stringify(graphDepthSetting), { status: 200 }),
     );
 
     await expect(
       saveConfigSetting("work vault", "graph-depth", "4"),
-    ).resolves.toEqual(updated);
+    ).resolves.toEqual(graphDepthSetting);
     expect(apiClient).toHaveBeenCalledWith(
       "/api/v1/vault/work%20vault/configs/settings/graph-depth",
       {
@@ -81,28 +59,22 @@ describe("configs client", () => {
     );
   });
 
-  it("sends null when resetting a config setting to its default", async () => {
-    const updated = {
-      key: "model",
-      section: "defaults",
-      internal_key: "model",
-      description: "LLM model",
-      value: "auto",
-      default_value: "auto",
+  it("resets a generic config setting with null", async () => {
+    const reset = {
+      ...graphDepthSetting,
+      value: "2",
       configured: false,
-      source: "default",
-      input_type: "text",
-      options: [],
+      source: "default" as const,
     };
     vi.mocked(apiClient).mockResolvedValueOnce(
-      new Response(JSON.stringify(updated), { status: 200 }),
+      new Response(JSON.stringify(reset), { status: 200 }),
     );
 
-    await expect(saveConfigSetting("main", "model", null)).resolves.toEqual(
-      updated,
-    );
+    await expect(
+      saveConfigSetting("main", "graph-depth", null),
+    ).resolves.toEqual(reset);
     expect(apiClient).toHaveBeenCalledWith(
-      "/api/v1/vault/main/configs/settings/model",
+      "/api/v1/vault/main/configs/settings/graph-depth",
       {
         method: "PATCH",
         body: JSON.stringify({ value: null }),
@@ -115,53 +87,8 @@ describe("configs client", () => {
       new Response("forbidden", { status: 403 }),
     );
 
-    await expect(saveConfigSetting("main", "model", "bad")).rejects.toThrow(
-      "PATCH config setting → 403",
-    );
-  });
-
-  it("saves an ask credential with encoded vault and provider ids", async () => {
-    vi.mocked(apiClient).mockResolvedValueOnce(
-      new Response(null, { status: 204 }),
-    );
-
-    await saveAskCredential("work vault", "provider/slash", "secret-key");
-
-    expect(apiClient).toHaveBeenCalledWith(
-      "/api/v1/vault/work%20vault/configs/ask/credentials/provider%2Fslash",
-      {
-        method: "PUT",
-        body: JSON.stringify({ api_key: "secret-key" }),
-      },
-    );
-  });
-
-  it("surfaces failed ask credential saves with the response status", async () => {
-    vi.mocked(apiClient).mockResolvedValueOnce(
-      new Response("bad", { status: 422 }),
-    );
-
     await expect(
-      saveAskCredential("main", "openai", "bad-key"),
-    ).rejects.toThrow("PUT ask credential → 422");
-  });
-
-  it("deletes an ask credential and reports delete failures", async () => {
-    vi.mocked(apiClient)
-      .mockResolvedValueOnce(new Response(null, { status: 204 }))
-      .mockResolvedValueOnce(new Response("locked", { status: 409 }));
-
-    await expect(
-      deleteAskCredential("main", "openai"),
-    ).resolves.toBeUndefined();
-    expect(apiClient).toHaveBeenNthCalledWith(
-      1,
-      "/api/v1/vault/main/configs/ask/credentials/openai",
-      { method: "DELETE" },
-    );
-
-    await expect(deleteAskCredential("main", "openai")).rejects.toThrow(
-      "DELETE ask credential → 409",
-    );
+      saveConfigSetting("main", "graph-depth", "bad"),
+    ).rejects.toThrow("PATCH config setting → 403");
   });
 });

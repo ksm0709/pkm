@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import TypeVar
 
 import click
@@ -19,6 +20,16 @@ def _run_sync(label: str, sync: Callable[[], _T]) -> _T:
         raise click.ClickException(f"Post-update {label} sync failed: {exc}") from exc
 
 
+def _remove_retired_task_queue() -> Path | None:
+    """Delete the retired ephemeral queue without reading or archiving its payloads."""
+    queue_path = Path.home() / ".config" / "pkm" / "task_queue.json"
+    try:
+        queue_path.unlink()
+    except FileNotFoundError:
+        return None
+    return queue_path
+
+
 @click.command("post-update", hidden=True)
 @click.option("--from-version", required=True, metavar="VERSION")
 def post_update_cmd(from_version: str) -> None:
@@ -30,7 +41,6 @@ def post_update_cmd(from_version: str) -> None:
         install_skill_files,
         sync_existing_web_unit,
     )
-    from pkm.workflows import sync_installed_workflow_defaults
 
     skills_installed = _run_sync("skill files", install_skill_files)
     if not skills_installed:
@@ -43,13 +53,9 @@ def post_update_cmd(from_version: str) -> None:
     if unit_path is not None:
         console.print(f"[green]✓ PKM web unit synced:[/green] {unit_path}")
 
-    workflow_path = _run_sync(
-        "workflow settings", sync_installed_workflow_defaults
-    )
-    if workflow_path is not None:
-        console.print(
-            f"[green]✓ PKM workflow settings synced:[/green] {workflow_path}"
-        )
+    removed_queue = _run_sync("retired task queue", _remove_retired_task_queue)
+    if removed_queue is not None:
+        console.print(f"[green]✓ Retired task queue removed:[/green] {removed_queue}")
 
     console.print(
         "[green]✓ Post-update synchronization complete[/green] "

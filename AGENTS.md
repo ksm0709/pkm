@@ -55,8 +55,7 @@ Terminal-first Personal Knowledge Management CLI for Obsidian vaults. Combines f
 - `click` ≥ 8.0 — CLI framework
 - `rich` ≥ 13.0 — terminal formatting
 - `mcp` ≥ 1.20 — MCP server protocol
-- `sentence-transformers` (optional) — semantic search embeddings
-- `tiny-agent-py` (optional, local path) — air-gapped LLM worker for `pkm ask`
+- `sentence-transformers` and `numpy` (optional) — semantic search embeddings and vector operations
 
 <!-- MANUAL: -->
 
@@ -84,11 +83,11 @@ When using the Lore Commit Protocol, keep its body and trailers, but the first l
 must still start with the typed prefix, for example:
 
 ```text
-fix: Preserve ask availability when configured LLM is unavailable
+fix: Preserve search fallback when the daemon is unavailable
 
-Configured pkm ask defaults could pin the daemon worker to a single Gemini model...
+Indexed search could fail instead of using the local index when the daemon is unavailable...
 
-Constraint: Explicit --model selection remains strict because it is a direct user override
+Constraint: Explicit vault selection remains strict because it is a direct user override
 Confidence: high
 Scope-risk: narrow
 Tested: cd cli && uv run pytest

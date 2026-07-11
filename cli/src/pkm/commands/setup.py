@@ -113,13 +113,13 @@ def _save_config_merged(setup_choices: dict, default_vault: str) -> None:
 
 SYSTEMD_UNIT_TEMPLATE = """\
 [Unit]
-Description=PKM Daemon (web + MCP + worker)
+Description=PKM daemon (web + search)
 After=network.target
 
 [Service]
 Type=simple
 Environment=PKM_DAEMON_KEEPALIVE=1
-Environment=PKM_WORKER_SANDBOX_PROFILE=trusted-native
+
 ExecStart=%h/.local/bin/pkm daemon run
 Restart=on-failure
 RestartSec=5
@@ -340,7 +340,7 @@ def setup_cmd(web: bool = False, reset: bool = False, port: int | None = None) -
     else:
         # Full interactive setup
         install_search = click.confirm(
-            "Install search and AI features? (sentence-transformers & litellm, enables 'pkm search' and 'pkm ask')",
+            "Install semantic search? (sentence-transformers and numpy; enables 'pkm search' and 'pkm index')",
             default=True,
         )
         install_dev = click.confirm(

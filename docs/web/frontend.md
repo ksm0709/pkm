@@ -22,7 +22,7 @@ web-frontend/
 ├── src/
 │   ├── lib/
 │   │   ├── editor/            # CodeMirror module assemblies
-│   │   ├── api/               # tiny fetch wrappers (auth, JSON, SSE)
+│   │   ├── api/               # small fetch wrappers for auth and JSON APIs
 │   │   └── stores/            # svelte stores (vault, theme, palette)
 │   ├── routes/                # SvelteKit pages (note, daily, search, graph)
 │   └── app.html
@@ -124,4 +124,7 @@ cursor-off states stay above WCAG AA.
 | Bundle        | `pnpm bundle:check`                             | ≤ 330 KB gzipped                                                                                           |
 | E2E motion    | `pnpm test:e2e tests/playwright/motion.spec.ts` | stagger 30±10ms, palette 120±20ms                                                                          |
 | A11y          | `pnpm test:a11y`                                | zero AA violations on light + dark                                                                         |
-| Perf          | `uv run pytest cli/tests/test_web_perf.py`      | P99 < 200ms during ask stream                                                                              |
+
+CI and the release job run formatting, unit tests, the production build, the
+bundle budget, and focused Playwright regressions covering retirement residue,
+accessibility, graph navigation, route generation, and the command palette.

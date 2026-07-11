@@ -8,10 +8,12 @@ Start MCP server (stdio transport).
 ## Description
 Runs a foreground JSON-RPC 2.0 server on stdin/stdout. An MCP client spawns this process automatically via its server configuration.
 
-The server exposes the same vault workflow tools used by local agents,
-including note creation, daily logs, note reads/renames, vault stats, stale note
-and orphan discovery, backlink/tag search, graph neighbors, consolidation
-tracking, and `pkm_ask`.
+FastMCP discovers direct tools for note creation, partial edits, reads and
+renames; daily logs and subnotes; semantic search and indexing; backlinks, tags,
+graph neighbors and graph analysis; vault health; and consolidation tracking.
+For a cross-note answer, the MCP host should call `search`, follow relevant
+`get_note_neighbors` results for at most two graph depths, call `read_note` on the
+selected evidence, and synthesize the answer itself.
 
 The MCP tool wrappers are covered by scenario tests at the function layer and
 by a JSON-RPC tools/list contract test. This keeps the stdio protocol contract

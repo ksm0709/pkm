@@ -3,16 +3,17 @@
 OpenAPI-style reference for `/api/v1/*` endpoints registered in
 `cli/src/pkm/web/routes/__init__.py`. Browser clients authenticate by
 password login and an HttpOnly session cookie. CLI/curl clients can still use
-the compatibility bearer token; SSE routes additionally accept `?token=` for
-`EventSource` clients.
+the compatibility bearer token. Credentials in URL query parameters are
+rejected; browser clients must use the session cookie and non-browser clients
+must use the bearer header.
 
 - **Base URL** — `http://<bind>:<port>` (default `127.0.0.1:7420`).
 - **Auth header** — `Authorization: Bearer <token>` from
   `~/.config/pkm/web-token`.
 - **Browser auth** — `POST /api/v1/auth/login` with the setup password sets
   the `pkm_session` cookie.
-- **Content type** — `application/json` for both requests and responses
-  unless noted (SSE routes return `text/event-stream`).
+- **Content type** — `application/json` for both requests and responses unless
+  a file endpoint documents a binary response.
 
 ## Common responses
 
@@ -24,7 +25,6 @@ the compatibility bearer token; SSE routes additionally accept `?token=` for
 | 401 | Missing/invalid auth |
 | 404 | Vault or note not found |
 | 409 | Note already exists (`POST /notes`) |
-| 503 | Worker unavailable (`POST /ask`) |
 
 ---
 
@@ -261,30 +261,3 @@ Get a specific date's daily note.
 - **Response 200** — 8-key note schema.
 - **400** — `date` not `YYYY-MM-DD`.
 - **404** — no daily note for that date.
-
----
-
-## Ask (SSE)
-
-### `POST /api/v1/vault/{name}/ask`
-
-Stream an LLM ask using server-sent events.
-
-- **Auth** — `Authorization: Bearer <token>` **or** `?token=<token>` query
-  param (whitelisted for SSE clients that can't set headers).
-- **Request body** — `{"query": string (required), "session_id"?: string}`
-- **Response 200** — `Content-Type: text/event-stream`. Each worker chunk
-  becomes one SSE event, named after `chunk.type`:
-  - `event: tool_detail` → `{"name": "...", "arguments": {...}}`
-  - `event: reasoning`   → `{"content": "..."}`
-  - `event: content`     → `{"content": "..."}`
-  - `event: result`      → `{"response": "..."}`  *(terminal on success)*
-  - `event: error`       → `{"reason": "draining"}` *(terminal on drain)* or
-                            `{"message": "..."}` *(terminal on worker error)*
-- **400** — empty/missing `query`.
-- **401** — missing auth.
-- **503** — worker not yet attached to daemon.
-
-The daemon emits keepalive comments every ~10s to keep proxies from
-collapsing the stream and bumps `DaemonState.last_activity` so idle-shutdown
-does not fire mid-ask.

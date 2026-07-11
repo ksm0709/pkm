@@ -65,7 +65,6 @@ def test_hook_run_session_start_no_dynamic_context(runner, vault_env, tmp_vault)
     assert "Knowledge collection protocol" in result.output
     assert "pkm search" in result.output
     assert "pkm graph neighbors" in result.output
-    assert "pkm ask" in result.output
     assert "pkm daily --offset 1" in result.output
     assert "pkm daily add" in result.output
 
@@ -275,83 +274,6 @@ def test_turn_start_no_stdin_shows_advisory(runner, vault_env):
     result = runner.invoke(main, ["hook", "run", "turn-start", "--format", "plain"])
     assert result.exit_code == 0
     assert "pkm search" in result.output
-
-
-# ---------------------------------------------------------------------------
-# GAP 4: session-start consolidation trigger
-# ---------------------------------------------------------------------------
-
-
-def test_session_start_increments_session_count(runner, vault_env, tmp_vault):
-    """Session-start increments session_count in .pkm/session_state.json."""
-    import json as _json
-
-    runner.invoke(main, ["hook", "run", "session-start"])
-    state_path = tmp_vault.pkm_dir / "session_state.json"
-    assert state_path.exists()
-    state = _json.loads(state_path.read_text())
-    assert state["session_count"] >= 1
-
-
-def test_consolidation_trigger_after_threshold(runner, vault_env, tmp_vault):
-    """After sessions reach threshold with unconsolidated daily notes, consolidation message appears."""
-    import json as _json
-    from datetime import timedelta
-
-    # Create unconsolidated daily notes
-    for i in range(1, 4):
-        d = (date.today() - timedelta(days=i)).isoformat()
-        (tmp_vault.daily_dir / f"{d}.md").write_text(
-            f"---\nid: {d}\ntags: []\n---\n- entry\n", encoding="utf-8"
-        )
-
-    # Enable auto_trigger via config with low threshold
-    config_path = tmp_vault.pkm_dir / "config.toml"
-    config_path.write_text(
-        "[consolidation]\nauto_trigger = true\nsession_threshold = 5\ncooldown_hours = 24\n"
-    )
-
-    # Set session_count to 4 (one below threshold so next invoke hits 5)
-    state_path = tmp_vault.pkm_dir / "session_state.json"
-    state_path.write_text(
-        _json.dumps({"session_count": 4, "last_consolidation_at": None})
-    )
-
-    result = runner.invoke(main, ["hook", "run", "session-start"])
-    assert result.exit_code == 0
-    assert (
-        "Consolidation Recommended" in result.output
-        or "consolidat" in result.output.lower()
-    )
-
-
-def test_consolidation_cooldown_suppresses_trigger(runner, vault_env, tmp_vault):
-    """If last_consolidation_at is within cooldown window, no trigger message."""
-    import json as _json
-    from datetime import datetime, timezone, timedelta
-
-    config_path = tmp_vault.pkm_dir / "config.toml"
-    config_path.write_text(
-        "[consolidation]\nauto_trigger = true\nsession_threshold = 2\ncooldown_hours = 24\n"
-    )
-
-    recent = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-    state_path = tmp_vault.pkm_dir / "session_state.json"
-    state_path.write_text(
-        _json.dumps({"session_count": 5, "last_consolidation_at": recent})
-    )
-
-    result = runner.invoke(main, ["hook", "run", "session-start"])
-    assert result.exit_code == 0
-    assert "Consolidation Recommended" not in result.output
-
-
-def test_corrupt_session_state_recovery(runner, vault_env, tmp_vault):
-    """Corrupt session_state.json is reset to defaults, no crash."""
-    state_path = tmp_vault.pkm_dir / "session_state.json"
-    state_path.write_text("{{invalid json{{", encoding="utf-8")
-    result = runner.invoke(main, ["hook", "run", "session-start"])
-    assert result.exit_code == 0
 
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 {
   "name": "pkm",
   "short_name": "pkm",
-  "description": "Personal knowledge management workspace for notes, logs, workflows, and ask sessions.",
+  "description": "Personal knowledge management workspace for notes, logs, search, and graphs.",
   "id": "/",
   "start_url": "/",
   "scope": "/",

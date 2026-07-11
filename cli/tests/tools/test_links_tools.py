@@ -1,97 +1,37 @@
-"""Tests for tools/links.py — find_backlinks_for_note."""
+"""Tests for framework-free vault-scoped link domain operations."""
 
 from __future__ import annotations
 
-import asyncio
 import json
 
 import networkx as nx
+import pytest
 
-from pkm.tools.links import add_wikilink, find_backlinks_for_note, get_note_neighbors
-
-
-def _run(coro):
-    """Run an async tool coroutine synchronously."""
-    return asyncio.run(coro)
+from pkm.tools.links import _get_note_neighbors_data, add_wikilink
 
 
-def test_finds_backlinks_to_mvcc(tmp_vault, monkeypatch):
-    monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
-    result = json.loads(_run(find_backlinks_for_note(note_id="2026-04-01-mvcc")))
-    note_ids = [b["note_id"] for b in result["backlinks"]]
-    # database-isolation.md and concurrency-note.md both link to 2026-04-01-mvcc
-    assert "database-isolation" in note_ids or "concurrency-note" in note_ids
-    assert result["count"] >= 1
-
-
-def test_orphan_has_no_backlinks(tmp_vault, monkeypatch):
-    monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
-    result = json.loads(_run(find_backlinks_for_note(note_id="isolated-note")))
-    assert result["count"] == 0
-    assert result["backlinks"] == []
-
-
-def test_unknown_note_returns_empty(tmp_vault, monkeypatch):
-    monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
-    result = json.loads(_run(find_backlinks_for_note(note_id="nonexistent-note-xyz")))
-    assert result["count"] == 0
-    assert result["note_id"] == "nonexistent-note-xyz"
-
-
-def test_backlinks_have_required_fields(tmp_vault, monkeypatch):
-    monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
-    result = json.loads(_run(find_backlinks_for_note(note_id="2026-04-01-mvcc")))
-    for b in result["backlinks"]:
-        assert "title" in b
-        assert "path" in b
-        assert "note_id" in b
-
-
-def test_find_backlinks_uses_filename_when_backlink_parse_fails(tmp_vault, monkeypatch):
-    monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
-    broken = tmp_vault.notes_dir / "broken-backlink.md"
-    broken.write_text("---\n: bad: yaml\n---\n", encoding="utf-8")
-    monkeypatch.setattr("pkm.wikilinks.find_backlinks", lambda vault, note_id: [broken])
-    monkeypatch.setattr(
-        "pkm.frontmatter.parse",
-        lambda path: (_ for _ in ()).throw(RuntimeError("bad note")),
-    )
-
-    result = json.loads(_run(find_backlinks_for_note(note_id="target")))
-    assert result["backlinks"] == [
-        {
-            "title": "broken-backlink",
-            "path": "broken-backlink.md",
-            "note_id": "broken-backlink",
-        }
-    ]
-
-
-def test_add_wikilink_appends_or_inserts_related_section(tmp_vault, monkeypatch):
-    monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
+def test_add_wikilink_appends_and_inserts_related_entries(tmp_vault) -> None:
     source = tmp_vault.notes_dir / "source-note.md"
     source.write_text(
         "---\nid: source-note\n---\nBody without newline", encoding="utf-8"
     )
 
-    created = _run(
-        add_wikilink(
-            source_note_id="source-note",
-            target_note_id="target-note",
-            description="shares test context",
-        )
+    created = add_wikilink(
+        tmp_vault,
+        source_note_id="source-note",
+        target_note_id="target-note",
+        description="shares test context",
     )
     assert "Added [[target-note]]" in created
     text = source.read_text(encoding="utf-8")
     assert "## Related" in text
     assert "- [[target-note|shares test context]]" in text
 
-    inserted = _run(
-        add_wikilink(
-            source_note_id="source-note",
-            target_note_id="second-note",
-            description="same workflow",
-        )
+    inserted = add_wikilink(
+        tmp_vault,
+        source_note_id="source-note",
+        target_note_id="second-note",
+        description="same workflow",
     )
     assert "Added [[second-note]]" in inserted
     assert (
@@ -102,36 +42,40 @@ def test_add_wikilink_appends_or_inserts_related_section(tmp_vault, monkeypatch)
     )
 
 
-def test_add_wikilink_reports_missing_source_and_write_errors(tmp_vault, monkeypatch):
-    monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
-    missing = _run(
-        add_wikilink(
-            source_note_id="missing-note", target_note_id="target", description="why"
-        )
+def test_add_wikilink_reports_missing_source(tmp_vault) -> None:
+    result = add_wikilink(
+        tmp_vault,
+        source_note_id="missing-note",
+        target_note_id="target",
+        description="why",
     )
-    assert "source note 'missing-note' not found" in missing
 
+    assert "source note 'missing-note' not found" in result
+
+
+def test_add_wikilink_propagates_write_errors(tmp_vault, monkeypatch) -> None:
     source = tmp_vault.notes_dir / "locked-source.md"
     source.write_text("---\nid: locked-source\n---\nBody\n", encoding="utf-8")
     monkeypatch.setattr(
         "pathlib.Path.write_text",
-        lambda *a, **kw: (_ for _ in ()).throw(OSError("locked")),
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("locked")),
     )
-    error = _run(
+
+    with pytest.raises(OSError, match="locked"):
         add_wikilink(
-            source_note_id="locked-source", target_note_id="target", description="why"
+            tmp_vault,
+            source_note_id="locked-source",
+            target_note_id="target",
+            description="why",
         )
-    )
-    assert error == "Error: locked"
 
 
-def test_get_note_neighbors_reports_missing_graph_and_semantic_neighbors(
-    tmp_vault, monkeypatch
-):
-    monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
-    missing = json.loads(_run(get_note_neighbors(note_id="a")))
-    assert "graph not found" in missing["error"]
+def test_get_note_neighbors_requires_graph(tmp_vault) -> None:
+    with pytest.raises(FileNotFoundError, match="graph not found"):
+        _get_note_neighbors_data(tmp_vault, "a")
 
+
+def test_get_note_neighbors_returns_structural_and_semantic_neighbors(tmp_vault) -> None:
     graph = nx.DiGraph()
     graph.add_node("a", title="A")
     graph.add_node("b", title="B")
@@ -150,9 +94,10 @@ def test_get_note_neighbors_reports_missing_graph_and_semantic_neighbors(
         json.dumps(nx.node_link_data(enriched)), encoding="utf-8"
     )
 
-    result = json.loads(_run(get_note_neighbors(note_id="a", include_semantic=True)))
-    assert result["outbound"][0]["note_id"] == "b"
-    assert result["inbound"][0]["note_id"] == "c"
+    result = _get_note_neighbors_data(tmp_vault, "a", include_semantic=True)
+
+    assert result["outbound"] == [{"note_id": "b", "title": "B", "type": "note"}]
+    assert result["inbound"] == [{"note_id": "c", "title": "C", "type": "note"}]
     assert result["semantic"] == [
         {
             "note_id": "semantic",
@@ -163,9 +108,16 @@ def test_get_note_neighbors_reports_missing_graph_and_semantic_neighbors(
     ]
 
 
-def test_get_note_neighbors_reports_unexpected_errors(tmp_vault, monkeypatch):
-    monkeypatch.setenv("PKM_VAULT_DIR", str(tmp_vault.path))
-    (tmp_vault.pkm_dir / "graph.json").write_text("{bad json", encoding="utf-8")
+def test_get_note_neighbors_returns_empty_for_unknown_note(tmp_vault) -> None:
+    graph = nx.DiGraph()
+    graph.add_node("known", title="Known")
+    (tmp_vault.pkm_dir / "graph.json").write_text(
+        json.dumps(nx.node_link_data(graph)), encoding="utf-8"
+    )
 
-    result = json.loads(_run(get_note_neighbors(note_id="a")))
-    assert "error" in result
+    assert _get_note_neighbors_data(tmp_vault, "missing") == {
+        "note_id": "missing",
+        "outbound": [],
+        "inbound": [],
+        "semantic": [],
+    }

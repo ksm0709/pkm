@@ -14,7 +14,7 @@ import pytest
 from pkm import cli as cli_mod
 import pkm.commands.setup as setup_mod
 import pkm.commands.update as update_mod
-import pkm.workflows as workflows_mod
+
 from pkm.cli import main
 from pkm.commands.update import update_cmd
 
@@ -248,7 +248,7 @@ def test_post_update_is_idempotent_and_uses_runtime_imported_helpers(
     """The hidden command safely reruns every v2 post-install synchronization."""
     calls: list[str] = []
     unit_path = tmp_path / "pkm-web.service"
-    workflow_path = tmp_path / "workflow.json"
+
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(cli_mod, "available_update", lambda _version: None)
     monkeypatch.setattr(
@@ -262,11 +262,7 @@ def test_post_update_is_idempotent_and_uses_runtime_imported_helpers(
         "sync_existing_web_unit",
         lambda: calls.append("web-unit") or unit_path,
     )
-    monkeypatch.setattr(
-        workflows_mod,
-        "sync_installed_workflow_defaults",
-        lambda: calls.append("workflows") or workflow_path,
-    )
+
 
     first = _runner().invoke(main, ["post-update", "--from-version", "2.96.0"])
     second = _runner().invoke(main, ["post-update", "--from-version", "2.96.0"])
@@ -277,15 +273,13 @@ def test_post_update_is_idempotent_and_uses_runtime_imported_helpers(
         "skills",
         "aliases",
         "web-unit",
-        "workflows",
         "skills",
         "aliases",
         "web-unit",
-        "workflows",
     ]
     assert "Post-update synchronization complete" in first.output
     assert str(unit_path) in first.output
-    assert str(workflow_path) in first.output
+
 
 
 def test_post_update_surfaces_helper_failure(monkeypatch):
