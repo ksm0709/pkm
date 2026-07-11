@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.96.2 (2026-07-11)
+
+### Bug Fixes
+
+- Quiesce services before package updates
+  ([`4a1b119`](https://github.com/ksm0709/pkm/commit/4a1b119de76c9a55cb86c283e05b9284dc7093f1))
+
+
 ## v2.96.1 (2026-07-11)
 
 ### Bug Fixes
