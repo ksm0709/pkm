@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.96.1 (2026-07-11)
+
+### Bug Fixes
+
+- Run post-update sync in fresh process
+  ([`3585137`](https://github.com/ksm0709/pkm/commit/3585137d7a220f7bad9f38262db38023cfbe439e))
+
+
 ## v2.96.0 (2026-07-10)
 
 ### Features
