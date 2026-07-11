@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.96.4 (2026-07-11)
+
+### Bug Fixes
+
+- Leave web service stopped after failed updates
+  ([`e123e6e`](https://github.com/ksm0709/pkm/commit/e123e6efe9d47114c1d828958d4cc5eb5854b179))
+
+
 ## v2.96.3 (2026-07-11)
 
 ### Bug Fixes
