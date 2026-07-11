@@ -118,7 +118,9 @@ def test_update_stops_live_queue_writer_before_fresh_process_scrub(
     assert not queue_path.exists()
 
 
-def test_failed_update_restarts_previously_active_service(monkeypatch, tmp_path: Path) -> None:
+def test_failed_update_leaves_previously_active_service_stopped(
+    monkeypatch, tmp_path: Path
+) -> None:
     repo, cli_dir = _make_repo(tmp_path)
     events: list[str] = []
 
@@ -138,4 +140,18 @@ def test_failed_update_restarts_previously_active_service(monkeypatch, tmp_path:
     result = CliRunner().invoke(update_cmd, [])
 
     assert result.exit_code == 1
-    assert events == ["stop", "restart"]
+    assert events == ["stop"]
+    assert "service remains stopped" in result.output
+    assert "systemctl --user start pkm-web.service" in result.output
+
+
+def test_update_docs_require_v2964_forward_bridge() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    docs = (repo_root / "docs" / "cli" / "pkm-update.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "v2.96.4" in docs
+    assert "forward-migration bridge" in docs
+    assert "v2.96.1` remains the temporary rollback target only" in docs
+    assert "restarts it only after" in docs

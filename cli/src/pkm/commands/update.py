@@ -300,8 +300,21 @@ def update_cmd(
     _block_pre_bridge_downgrade(version)
     pkm_executable = _resolve_current_pkm_executable()
     service_was_active = _quiesce_running_web_service()
+    service_restart_allowed = False
     if service_was_active:
-        ctx.call_on_close(_restart_web_service)
+
+        def finish_service_lifecycle() -> None:
+            if service_restart_allowed:
+                _restart_web_service()
+                return
+            console.print(
+                f"[yellow]Update did not complete; {_WEB_SERVICE} remains stopped.[/yellow]\n"
+                f"After correcting the update failure, retry `pkm update`. To restore the "
+                f"previously installed runtime manually, run:\n"
+                f"  systemctl --user start {_WEB_SERVICE}"
+            )
+
+        ctx.call_on_close(finish_service_lifecycle)
     cli_dir = find_local_cli_dir()
     in_git_repo = cli_dir is not None and (cli_dir.parent / ".git").exists()
 
@@ -403,7 +416,6 @@ def update_cmd(
             raise click.ClickException(str(e))
 
     _run_fresh_post_update(pkm_executable, prev_version)
-    console.print("[green]✓ pkm updated.[/green]")
 
     try:
         if in_git_repo:
@@ -447,6 +459,20 @@ def update_cmd(
     result = subprocess.run(
         [str(pkm_executable), "--version"], capture_output=True, text=True
     )
-    if result.returncode == 0:
-        first_line = result.stdout.strip().split("\n")[0]
-        console.print(f"\n[bold green]Now running: {first_line}[/bold green]")
+    if result.returncode != 0:
+        raise click.ClickException(
+            "pkm was reinstalled, but the new executable failed its version check."
+        )
+
+    first_line = result.stdout.strip().split("\n")[0]
+    if version:
+        expected_tag = _normalize_tag(version)
+        if not first_line.startswith(f"pkm {expected_tag}"):
+            raise click.ClickException(
+                f"pkm was reinstalled, but expected {expected_tag} and found: "
+                f"{first_line or '(empty version output)'}"
+            )
+
+    console.print("[green]✓ pkm updated.[/green]")
+    console.print(f"\n[bold green]Now running: {first_line}[/bold green]")
+    service_restart_allowed = True

@@ -680,6 +680,9 @@ def test_update_local_git_specific_version_normalizes_checkout_tag(
                 "--reinstall-package",
                 "pkm",
             ): SimpleNamespace(returncode=0, stdout="", stderr=""),
+            ("/installed/bin/pkm", "--version"): SimpleNamespace(
+                returncode=0, stdout="pkm v2.96.2\n", stderr=""
+            ),
         }
     )
     monkeypatch.setattr(update_mod.subprocess, "run", dispatcher)
@@ -825,6 +828,9 @@ def test_update_non_git_version_and_latest_tarball_install(monkeypatch, tmp_path
                 "--reinstall-package",
                 "pkm",
             ): SimpleNamespace(returncode=0, stdout="", stderr=""),
+            ("/installed/bin/pkm", "--version"): SimpleNamespace(
+                returncode=0, stdout="pkm v2.96.2\n", stderr=""
+            ),
         }
     )
     monkeypatch.setattr(update_mod.subprocess, "run", dispatcher)
