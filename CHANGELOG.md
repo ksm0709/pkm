@@ -2,6 +2,33 @@
 
 <!-- version list -->
 
+## v3.0.0 (2026-07-11)
+
+### Bug Fixes
+
+- Track active guidance in clean checkouts
+  ([`03d5af9`](https://github.com/ksm0709/pkm/commit/03d5af96f5db480b536abc8d6e868b360ae33cc5))
+
+- Track complete plugin skill mirror
+  ([`562deb4`](https://github.com/ksm0709/pkm/commit/562deb47743b8aca306486f7d8db6ce0b7cbae63))
+
+### Features
+
+- Remove embedded agent runtime
+  ([`59c6600`](https://github.com/ksm0709/pkm/commit/59c66006f5463a1eb1ce6726264e8aea2d74e908))
+
+### Testing
+
+- Await logger async actions deterministically
+  ([`e02e3c1`](https://github.com/ksm0709/pkm/commit/e02e3c160a28ed0843d08953ccc49ea854ed2ca0))
+
+### Breaking Changes
+
+- PKM no longer provides embedded Ask, workflows, worker execution, sandboxing, or
+  credential-management surfaces. Clients must rediscover retained MCP tools and perform synthesis
+  in the host.
+
+
 ## v2.96.6 (2026-07-11)
 
 ### Bug Fixes
