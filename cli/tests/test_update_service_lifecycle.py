@@ -25,6 +25,26 @@ def _make_repo(tmp_path: Path) -> tuple[Path, Path]:
     return repo, cli_dir
 
 
+def test_restart_reloads_unit_before_start(monkeypatch) -> None:
+    calls: list[list[str]] = []
+
+    def run(cmd, **_kwargs):
+        command = list(cmd)
+        calls.append(command)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(update_mod.subprocess, "run", run)
+
+    assert REAL_RESTART is not None
+    REAL_RESTART()
+
+    assert calls == [
+        ["systemctl", "--user", "daemon-reload"],
+        ["systemctl", "--user", "start", "pkm-web.service"],
+        ["systemctl", "--user", "is-active", "--quiet", "pkm-web.service"],
+    ]
+
+
 def test_quiesce_stops_and_verifies_active_user_service(monkeypatch) -> None:
     assert REAL_QUIESCE is not None
     calls: list[list[str]] = []
@@ -146,13 +166,13 @@ def test_failed_update_leaves_previously_active_service_stopped(
     assert "systemctl --user start pkm-web.service" in result.output
 
 
-def test_update_docs_require_v2965_forward_bridge() -> None:
+def test_update_docs_require_v2966_forward_bridge() -> None:
     repo_root = Path(__file__).resolve().parents[2]
     docs = (repo_root / "docs" / "cli" / "pkm-update.md").read_text(
         encoding="utf-8"
     )
 
-    assert "v2.96.5" in docs
+    assert "v2.96.6" in docs
     assert "forward-migration bridge" in docs
     assert "v2.96.1` remains the temporary rollback target only" in docs
     assert "restarts it only after" in docs

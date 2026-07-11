@@ -261,7 +261,16 @@ def _quiesce_running_web_service() -> bool:
 
 
 def _restart_web_service() -> None:
-    """Restart and verify a service that was active before the update."""
+    """Reload, restart, and verify a service that was active before the update."""
+    reloaded = subprocess.run(
+        ["systemctl", "--user", "daemon-reload"],
+        capture_output=True,
+        text=True,
+    )
+    if reloaded.returncode != 0:
+        raise click.ClickException(
+            f"pkm was updated, but systemd could not reload {_WEB_SERVICE}."
+        )
     started = subprocess.run(
         ["systemctl", "--user", "start", _WEB_SERVICE],
         capture_output=True,
