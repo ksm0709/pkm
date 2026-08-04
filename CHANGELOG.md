@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v3.1.1 (2026-08-04)
+
+### Bug Fixes
+
+- Avoid stale console after self-update
+  ([`8d99638`](https://github.com/ksm0709/pkm/commit/8d996384699ba3cd57f110a59307dcaa117ed8d1))
+
+
 ## v3.1.0 (2026-08-04)
 
 ### Features
