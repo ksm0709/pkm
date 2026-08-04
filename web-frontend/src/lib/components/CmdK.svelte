@@ -85,6 +85,7 @@
   let tagNotes = $state<TagSearchNote[]>([]);
   let vaultsList = $state<string[]>([]);
   let indexing = $state(false);
+  let creatingNote = $state(false);
   let indexProgressMessage = $state("");
   let indexError = $state("");
 
@@ -131,6 +132,34 @@
     const payload = (await response.json()) as { note_id?: string };
     if (payload.note_id) {
       await goto(`/${vaultName}/notes/${payload.note_id}`);
+    }
+  }
+
+  async function createNote() {
+    if (creatingNote) return;
+    const title =
+      typeof window !== "undefined" ? window.prompt("Note title") : null;
+    if (!title?.trim()) return;
+
+    creatingNote = true;
+    indexError = "";
+    try {
+      const response = await apiClient(`/api/v1/vault/${vaultName}/notes`, {
+        method: "POST",
+        body: JSON.stringify({ title, body: "", tags: [] }),
+      });
+      if (response.status !== 201)
+        throw new Error(`POST note -> ${response.status}`);
+      const payload = (await response.json()) as { note_id?: string };
+      if (!payload.note_id) throw new Error("POST note -> missing note_id");
+      await goto(`/${vaultName}/notes/${payload.note_id}`);
+    } catch (error) {
+      indexError =
+        error instanceof Error ? error.message : "Failed to create note.";
+      open = true;
+      throw error;
+    } finally {
+      creatingNote = false;
     }
   }
 
@@ -214,6 +243,14 @@
         shortcut: coreCommand["cmd:daily"].shortcut,
         run: () =>
           goto(`/${vaultName}/notes/${new Date().toISOString().slice(0, 10)}`),
+      },
+      {
+        kind: "command",
+        id: "cmd:add-note",
+        label: coreCommand["cmd:add-note"].label,
+        hint: coreCommand["cmd:add-note"].hint,
+        shortcut: coreCommand["cmd:add-note"].shortcut,
+        run: createNote,
       },
       {
         kind: "command",

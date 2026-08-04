@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
   import { page } from "$app/stores";
-  import { apiGet } from "$lib/api/client.js";
+  import { apiClient, apiGet } from "$lib/api/client.js";
   import { rememberVault } from "$lib/vault/remembered-vault";
 
   interface NoteEntry {
@@ -16,6 +17,7 @@
 
   let notes = $state<NoteEntry[]>([]);
   let loading = $state(true);
+  let creatingNote = $state(false);
   let error = $state("");
   let loadedAt = $state<string | null>(null);
 
@@ -60,6 +62,31 @@
     }
   }
 
+  async function createNote() {
+    if (creatingNote) return;
+    const title =
+      typeof window !== "undefined" ? window.prompt("Note title") : null;
+    if (!title?.trim()) return;
+
+    creatingNote = true;
+    error = "";
+    try {
+      const response = await apiClient(`/api/v1/vault/${vaultName}/notes`, {
+        method: "POST",
+        body: JSON.stringify({ title, body: "", tags: [] }),
+      });
+      if (response.status !== 201)
+        throw new Error(`POST note -> ${response.status}`);
+      const payload = (await response.json()) as { note_id?: string };
+      if (!payload.note_id) throw new Error("POST note -> missing note_id");
+      await goto(`/${vaultName}/notes/${payload.note_id}`);
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to create note.";
+    } finally {
+      creatingNote = false;
+    }
+  }
+
   $effect(() => {
     if (!vaultName) return;
     void loadNotes(vaultName);
@@ -91,6 +118,15 @@
 <main class="vault-home">
   <header class="ops-header">
     <div class="title-row">
+      <button
+        type="button"
+        class="add-note-button"
+        aria-label="Add note"
+        disabled={creatingNote}
+        onclick={() => void createNote()}
+      >
+        {creatingNote ? "Creating…" : "Add note"}
+      </button>
       <div class="status-stack" aria-label="Vault status">
         <span>{notes.length} notes</span>
         {#if loadedAt}
@@ -100,10 +136,10 @@
     </div>
   </header>
 
-  {#if loading}
-    <p class="status-msg">Loading…</p>
-  {:else if error}
+  {#if error}
     <p class="status-msg error">{error}</p>
+  {:else if loading}
+    <p class="status-msg">Loading…</p>
   {:else if notes.length === 0}
     <p class="status-msg faint">No notes found.</p>
   {:else}
@@ -187,6 +223,30 @@
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.08em;
+  }
+
+  .add-note-button {
+    min-height: 32px;
+    padding: 0 var(--space-3, 12px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm, 2px);
+    background: var(--surface-raised, var(--bg));
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: var(--type-chrome-size, 13px);
+    cursor: pointer;
+  }
+
+  .add-note-button:hover:not(:disabled),
+  .add-note-button:focus-visible {
+    border-color: var(--accent);
+    color: var(--accent);
+    outline: none;
+  }
+
+  .add-note-button:disabled {
+    cursor: wait;
+    opacity: 0.7;
   }
 
   .ops-grid {

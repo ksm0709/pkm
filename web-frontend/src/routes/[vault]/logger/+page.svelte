@@ -211,6 +211,32 @@
     }
   }
 
+  async function createNote() {
+    if (busy) return;
+    const title =
+      typeof window !== "undefined" ? window.prompt("Note title") : null;
+    loggerActionsOpen = false;
+    if (!title?.trim()) return;
+
+    busy = true;
+    error = "";
+    try {
+      const response = await apiClient(`/api/v1/vault/${vaultName}/notes`, {
+        method: "POST",
+        body: JSON.stringify({ title, body: "", tags: [] }),
+      });
+      if (response.status !== 201)
+        throw new Error(`POST note -> ${response.status}`);
+      const payload = (await response.json()) as { note_id?: string };
+      if (!payload.note_id) throw new Error("POST note -> missing note_id");
+      await goto(`/${vaultName}/notes/${payload.note_id}`);
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to create note.";
+    } finally {
+      busy = false;
+    }
+  }
+
   async function createDailySubnote() {
     const title =
       typeof window !== "undefined" ? window.prompt("Subnote title") : null;
@@ -417,6 +443,17 @@
     {/if}
     {#if loggerActionsOpen}
       <div class="logger-action-menu" role="menu" aria-label="Logger actions">
+        <button
+          type="button"
+          class="logger-action-row"
+          role="menuitem"
+          aria-label="Add note"
+          disabled={busy}
+          onclick={() => void createNote()}
+        >
+          <span aria-hidden="true">+</span>
+          <span>Add note</span>
+        </button>
         <button
           type="button"
           class="logger-action-row"

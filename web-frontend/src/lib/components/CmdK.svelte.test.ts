@@ -390,6 +390,160 @@ describe("CmdK", () => {
     unmount(component);
   });
 
+  it("lists Add note and creates the selected general note", async () => {
+    vi.stubGlobal(
+      "prompt",
+      vi.fn(() => "research notes"),
+    );
+    vi.mocked(apiClient).mockResolvedValue(
+      new Response(JSON.stringify({ note_id: "research-notes" }), {
+        status: 201,
+      }),
+    );
+    const { target, component } = render();
+    await tick();
+    await vi.runOnlyPendingTimersAsync();
+    await tick();
+
+    const addNoteCommand = [
+      ...target.querySelectorAll<HTMLElement>(".cmdk-row"),
+    ].find((row) => row.textContent?.includes("Add note"));
+    expect(addNoteCommand).not.toBeUndefined();
+    addNoteCommand?.click();
+
+    await flush();
+    expect(prompt).toHaveBeenCalledWith("Note title");
+    expect(apiClient).toHaveBeenCalledWith("/api/v1/vault/main/notes", {
+      method: "POST",
+      body: JSON.stringify({ title: "research notes", body: "", tags: [] }),
+    });
+    expect(goto).toHaveBeenCalledWith("/main/notes/research-notes");
+
+    unmount(component);
+  });
+
+  it("runs Add note from the registered command shortcut event", async () => {
+    vi.stubGlobal(
+      "prompt",
+      vi.fn(() => "shortcut note"),
+    );
+    vi.mocked(apiClient).mockResolvedValue(
+      new Response(JSON.stringify({ note_id: "shortcut-note" }), {
+        status: 201,
+      }),
+    );
+    const { component } = render(0, 0);
+    await tick();
+
+    window.dispatchEvent(
+      new CustomEvent("pkm:run-command-shortcut", {
+        detail: { id: "cmd:add-note" },
+      }),
+    );
+    await flush();
+
+    expect(apiClient).toHaveBeenCalledWith("/api/v1/vault/main/notes", {
+      method: "POST",
+      body: JSON.stringify({ title: "shortcut note", body: "", tags: [] }),
+    });
+    expect(goto).toHaveBeenCalledWith("/main/notes/shortcut-note");
+
+    unmount(component);
+  });
+
+  it("does not create a note from the command when its title is cancelled, empty, or whitespace", async () => {
+    vi.stubGlobal(
+      "prompt",
+      vi
+        .fn()
+        .mockReturnValueOnce(null)
+        .mockReturnValueOnce("")
+        .mockReturnValueOnce("   "),
+    );
+    const { component } = render(0, 0);
+    await tick();
+
+    for (let i = 0; i < 3; i += 1) {
+      window.dispatchEvent(
+        new CustomEvent("pkm:run-command-shortcut", {
+          detail: { id: "cmd:add-note" },
+        }),
+      );
+      await flush();
+    }
+
+    expect(apiClient).not.toHaveBeenCalled();
+    expect(goto).not.toHaveBeenCalled();
+
+    unmount(component);
+  });
+
+  it("opens the palette and shows an error when Add note fails", async () => {
+    vi.stubGlobal(
+      "prompt",
+      vi.fn(() => "failing note"),
+    );
+    vi.mocked(apiClient).mockResolvedValue(
+      new Response("failure", { status: 500 }),
+    );
+    const { target, component } = render(0, 0);
+    await tick();
+
+    window.dispatchEvent(
+      new CustomEvent("pkm:run-command-shortcut", {
+        detail: { id: "cmd:add-note" },
+      }),
+    );
+    await flush();
+
+    expect(target.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(target.querySelector(".cmdk-status.error")?.textContent).toContain(
+      "POST note -> 500",
+    );
+    expect(goto).not.toHaveBeenCalled();
+
+    unmount(component);
+  });
+
+  it("prevents duplicate Add note writes while a command creation is pending", async () => {
+    let resolveCreate!: (response: Response) => void;
+    const createPromise = new Promise<Response>((resolve) => {
+      resolveCreate = resolve;
+    });
+    vi.stubGlobal(
+      "prompt",
+      vi.fn(() => "pending note"),
+    );
+    vi.mocked(apiClient).mockReturnValue(createPromise);
+    const { component } = render(0, 0);
+    await tick();
+
+    window.dispatchEvent(
+      new CustomEvent("pkm:run-command-shortcut", {
+        detail: { id: "cmd:add-note" },
+      }),
+    );
+    window.dispatchEvent(
+      new CustomEvent("pkm:run-command-shortcut", {
+        detail: { id: "cmd:add-note" },
+      }),
+    );
+    await flush();
+
+    expect(prompt).toHaveBeenCalledTimes(1);
+    expect(apiClient).toHaveBeenCalledTimes(1);
+
+    resolveCreate(
+      new Response(JSON.stringify({ note_id: "pending-note" }), {
+        status: 201,
+      }),
+    );
+    await flush();
+    expect(goto).toHaveBeenCalledWith("/main/notes/pending-note");
+
+    unmount(component);
+  });
+
   it("lists Index vault as a command and rebuilds the vault index", async () => {
     vi.mocked(apiClient).mockResolvedValue(
       new Response(JSON.stringify({ status: "ok", count: 3 }), {

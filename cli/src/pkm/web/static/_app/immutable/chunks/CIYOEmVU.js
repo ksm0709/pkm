@@ -1,2 +1,0 @@
-import{o as w,q as T,r as x,u as E,d as O,v as Y,S as k}from"./Bow9vs6f.js";function n(r,f){return r===f||(r==null?void 0:r[k])===f}function B(r={},f,i,q){var p=w.r,S=O;return T(()=>{var a,t;return x(()=>{a=t,t=[],E(()=>{r!==i(...t)&&(f(r,...t),a&&n(i(...a),r)&&f(null,...a))})}),()=>{let s=S;for(;s!==p&&s.parent!==null&&s.parent.f&Y;)s=s.parent;const h=()=>{t&&n(i(...t),r)&&f(null,...t)},c=s.teardown;s.teardown=()=>{h(),c==null||c()}}}),r}export{B as b};
-//# sourceMappingURL=CIYOEmVU.js.map

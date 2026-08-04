@@ -108,6 +108,173 @@ describe("logger page", () => {
     unmount(component);
   });
 
+  it("creates a general note from the logger action menu and opens it", async () => {
+    vi.stubGlobal(
+      "prompt",
+      vi.fn(() => "research notes"),
+    );
+    vi.mocked(apiClient).mockResolvedValue(
+      new Response(JSON.stringify({ note_id: "research-notes" }), {
+        status: 201,
+      }),
+    );
+    const { target, component } = render();
+    await flush();
+
+    target
+      .querySelector<HTMLButtonElement>(
+        'button[aria-label="Open logger actions"]',
+      )
+      ?.click();
+    await tick();
+
+    const addNote = target.querySelector<HTMLButtonElement>(
+      'button[aria-label="Add note"]',
+    );
+    expect(addNote).not.toBeNull();
+    addNote?.click();
+
+    await waitFor(() => {
+      expect(apiClient).toHaveBeenCalledWith("/api/v1/vault/main/notes", {
+        method: "POST",
+        body: JSON.stringify({
+          title: "research notes",
+          body: "",
+          tags: [],
+        }),
+      });
+    });
+    await waitFor(() => {
+      expect(goto).toHaveBeenCalledWith("/main/notes/research-notes");
+    });
+
+    unmount(component);
+  });
+
+  it("does not call the API when a general note title is cancelled, empty, or whitespace", async () => {
+    vi.stubGlobal(
+      "prompt",
+      vi
+        .fn()
+        .mockReturnValueOnce(null)
+        .mockReturnValueOnce("")
+        .mockReturnValueOnce("   "),
+    );
+    const { target, component } = render();
+    await flush();
+
+    for (let i = 0; i < 3; i += 1) {
+      target
+        .querySelector<HTMLButtonElement>(
+          'button[aria-label="Open logger actions"]',
+        )
+        ?.click();
+      await tick();
+      target
+        .querySelector<HTMLButtonElement>('button[aria-label="Add note"]')
+        ?.click();
+      await flush();
+    }
+
+    expect(prompt).toHaveBeenCalledTimes(3);
+    expect(apiClient).not.toHaveBeenCalled();
+
+    unmount(component);
+  });
+
+  it("shows a rejected general note create request error and clears the busy state", async () => {
+    vi.stubGlobal(
+      "prompt",
+      vi.fn(() => "research notes"),
+    );
+    vi.mocked(apiClient).mockRejectedValue(new Error("network unavailable"));
+    const { target, component } = render();
+    await flush();
+
+    const actionsButton = target.querySelector<HTMLButtonElement>(
+      'button[aria-label="Open logger actions"]',
+    );
+    actionsButton?.click();
+    await tick();
+    target
+      .querySelector<HTMLButtonElement>('button[aria-label="Add note"]')
+      ?.click();
+
+    await waitFor(() => {
+      expect(target.querySelector(".status.error")?.textContent).toContain(
+        "network unavailable",
+      );
+    });
+    expect(actionsButton?.disabled).toBe(false);
+
+    unmount(component);
+  });
+
+  it("does not prompt or post again while a general note creation request is pending", async () => {
+    vi.stubGlobal(
+      "prompt",
+      vi.fn(() => "research notes"),
+    );
+    vi.mocked(apiClient).mockReturnValueOnce(new Promise(() => {}));
+    const { target, component } = render();
+    await flush();
+
+    const actionsButton = target.querySelector<HTMLButtonElement>(
+      'button[aria-label="Open logger actions"]',
+    );
+    actionsButton?.click();
+    await tick();
+    target
+      .querySelector<HTMLButtonElement>('button[aria-label="Add note"]')
+      ?.click();
+    await waitFor(() => {
+      expect(apiClient).toHaveBeenCalledTimes(1);
+    });
+
+    actionsButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await tick();
+    target
+      .querySelector<HTMLButtonElement>('button[aria-label="Add note"]')
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flush();
+
+    expect(prompt).toHaveBeenCalledTimes(1);
+    expect(apiClient).toHaveBeenCalledTimes(1);
+
+    unmount(component);
+  });
+
+  it("shows a visible error when a new note response omits note_id", async () => {
+    vi.stubGlobal(
+      "prompt",
+      vi.fn(() => "research notes"),
+    );
+    vi.mocked(apiClient).mockResolvedValue(
+      new Response(JSON.stringify({}), { status: 201 }),
+    );
+    const { target, component } = render();
+    await flush();
+
+    target
+      .querySelector<HTMLButtonElement>(
+        'button[aria-label="Open logger actions"]',
+      )
+      ?.click();
+    await tick();
+    target
+      .querySelector<HTMLButtonElement>('button[aria-label="Add note"]')
+      ?.click();
+
+    await waitFor(() => {
+      expect(target.querySelector(".error")?.textContent).toContain(
+        "POST note -> missing note_id",
+      );
+    });
+    expect(goto).not.toHaveBeenCalled();
+
+    unmount(component);
+  });
+
   it("uploads a selected file from the logger action menu and creates a visible log entry", async () => {
     vi.mocked(apiClient)
       .mockResolvedValueOnce(

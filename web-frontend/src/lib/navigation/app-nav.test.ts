@@ -42,6 +42,7 @@ describe("app navigation contract", () => {
     ).toEqual([
       { id: "cmd:jump", shortcut: "/" },
       { id: "cmd:daily", shortcut: "y" },
+      { id: "cmd:add-note", shortcut: "a" },
       { id: "cmd:daily-subnote", shortcut: "s" },
       { id: "cmd:index-vault", shortcut: "i" },
       { id: "cmd:switch", shortcut: "v" },

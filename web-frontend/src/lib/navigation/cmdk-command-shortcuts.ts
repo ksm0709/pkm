@@ -1,6 +1,7 @@
 export type CmdKCoreCommandId =
   | "cmd:jump"
   | "cmd:daily"
+  | "cmd:add-note"
   | "cmd:daily-subnote"
   | "cmd:index-vault"
   | "cmd:switch"
@@ -25,6 +26,12 @@ export const cmdkCoreCommandShortcuts: CmdKCommandShortcut[] = [
     label: "Open today's daily note",
     hint: "daily",
     shortcut: "y",
+  },
+  {
+    id: "cmd:add-note",
+    label: "Add note",
+    hint: "note",
+    shortcut: "a",
   },
   {
     id: "cmd:daily-subnote",
