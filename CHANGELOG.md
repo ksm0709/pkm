@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v3.1.0 (2026-08-04)
+
+### Features
+
+- Add web UI general note creation
+  ([`9ae242a`](https://github.com/ksm0709/pkm/commit/9ae242a522ac1c6014c50a60861f2e9bff0de13d))
+
+
 ## v3.0.1 (2026-07-11)
 
 ### Bug Fixes
