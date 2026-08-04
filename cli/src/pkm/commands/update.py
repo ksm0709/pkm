@@ -289,7 +289,7 @@ def _restart_web_service() -> None:
         raise click.ClickException(
             f"pkm was updated, but {_WEB_SERVICE} did not become active."
         )
-    console.print(f"[green]✓ {_WEB_SERVICE} restarted.[/green]")
+    click.echo(f"✓ {_WEB_SERVICE} restarted.")
 
 
 @click.command("update")
@@ -316,12 +316,13 @@ def update_cmd(
             if service_restart_allowed:
                 _restart_web_service()
                 return
-            console.print(
-                f"[yellow]Update did not complete; {_WEB_SERVICE} remains stopped.[/yellow]\n"
+            click.echo(
+                f"Update did not complete; {_WEB_SERVICE} remains stopped.\n"
                 f"After correcting the update failure, retry `pkm update`. To restore the "
                 f"previously installed runtime manually, run:\n"
                 f"  systemctl --user daemon-reload\n"
-                f"  systemctl --user start {_WEB_SERVICE}"
+                f"  systemctl --user start {_WEB_SERVICE}",
+                err=True,
             )
 
         ctx.call_on_close(finish_service_lifecycle)
@@ -455,14 +456,9 @@ def update_cmd(
 
                     if idx > 0:
                         cl_text = "\n\n".join(f"{h}\n\n{b}" for h, b in parsed[:idx])
-                        from rich.markdown import Markdown
-
-                        console.print(f"\n[bold]Changes since {since_v}:[/bold]")
-                        console.print(Markdown(cl_text))
+                        click.echo(f"\nChanges since {since_v}:\n{cl_text}")
                     elif idx == 0:
-                        console.print(
-                            f"\n[dim]No new changes found in changelog since {since_v}.[/dim]"
-                        )
+                        click.echo(f"\nNo new changes found in changelog since {since_v}.")
     except Exception:
         pass
 
@@ -483,6 +479,6 @@ def update_cmd(
                 f"{first_line or '(empty version output)'}"
             )
 
-    console.print("[green]✓ pkm updated.[/green]")
-    console.print(f"\n[bold green]Now running: {first_line}[/bold green]")
     service_restart_allowed = True
+    click.echo("✓ pkm updated.")
+    click.echo(f"\nNow running: {first_line}")

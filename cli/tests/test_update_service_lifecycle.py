@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
 import subprocess
 import sys
@@ -34,6 +35,33 @@ def test_restart_reloads_unit_before_start(monkeypatch) -> None:
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(update_mod.subprocess, "run", run)
+
+    assert REAL_RESTART is not None
+    REAL_RESTART()
+
+    assert calls == [
+        ["systemctl", "--user", "daemon-reload"],
+        ["systemctl", "--user", "start", "pkm-web.service"],
+        ["systemctl", "--user", "is-active", "--quiet", "pkm-web.service"],
+    ]
+
+
+def test_restart_does_not_render_with_rich_after_reinstall(monkeypatch) -> None:
+    """The updater callback must not touch a module from its replaced environment."""
+    calls: list[list[str]] = []
+
+    def run(cmd, **_kwargs):
+        calls.append(list(cmd))
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(update_mod.subprocess, "run", run)
+    monkeypatch.setattr(
+        update_mod.console,
+        "print",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("old Rich console used after reinstall")
+        ),
+    )
 
     assert REAL_RESTART is not None
     REAL_RESTART()
@@ -136,6 +164,59 @@ def test_update_stops_live_queue_writer_before_fresh_process_scrub(
     assert result.exit_code == 0, result.output
     assert events == ["stop", "source-update", "install", "post-update", "restart"]
     assert not queue_path.exists()
+
+
+def test_artifact_update_never_uses_old_rich_console_after_reinstall(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """A replaced tool environment must not be rendered by the old updater process."""
+    cli_dir = tmp_path / "downloaded" / "cli"
+    cli_dir.mkdir(parents=True)
+    (cli_dir / "pyproject.toml").write_text("[project]\nname = 'pkm'\n")
+    events: list[str] = []
+    tool_environment_replaced = False
+
+    @contextmanager
+    def source(*, ref: str | None):
+        assert ref == "v3.1.1"
+        yield cli_dir, False
+
+    def fresh_post_update(_executable: Path, _prev_version: str) -> None:
+        events.append("post-update")
+
+    def old_console_print(*_args, **_kwargs) -> None:
+        if tool_environment_replaced:
+            raise AssertionError("old Rich console used after reinstall")
+
+    monkeypatch.setattr(update_mod, "find_local_cli_dir", lambda: None)
+    monkeypatch.setattr(update_mod, "cli_source", source)
+    monkeypatch.setattr(update_mod, "_extra_installed", lambda _probe: False)
+    monkeypatch.setattr(update_mod, "load_config", lambda: {})
+    monkeypatch.setattr(update_mod, "_quiesce_running_web_service", lambda: True)
+    monkeypatch.setattr(update_mod, "_restart_web_service", lambda: events.append("restart"))
+    monkeypatch.setattr(update_mod, "_run_fresh_post_update", fresh_post_update)
+    monkeypatch.setattr(
+        update_mod, "_resolve_current_pkm_executable", lambda: Path("/installed/bin/pkm")
+    )
+    monkeypatch.setattr(update_mod.console, "print", old_console_print)
+    monkeypatch.setattr("pkm.__version__", "3.1.0")
+
+    def run(cmd, **_kwargs):
+        nonlocal tool_environment_replaced
+        command = list(cmd)
+        if command[:3] == ["uv", "tool", "install"]:
+            events.append("install")
+            tool_environment_replaced = True
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if command == ["/installed/bin/pkm", "--version"]:
+            return SimpleNamespace(returncode=0, stdout="pkm v3.1.1\n", stderr="")
+        raise AssertionError(f"unexpected command: {command}")
+
+    monkeypatch.setattr(update_mod.subprocess, "run", run)
+    result = CliRunner().invoke(update_cmd, ["3.1.1"])
+
+    assert result.exit_code == 0, result.output
+    assert events == ["install", "post-update", "restart"]
 
 
 def test_failed_update_leaves_previously_active_service_stopped(
