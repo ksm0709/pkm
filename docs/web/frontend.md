@@ -21,10 +21,11 @@ requests. The compatibility bearer token is not stored in browser storage.
 web-frontend/
 ├── src/
 │   ├── lib/
+│   │   ├── annotations/       # rendered-text anchor reconciliation
 │   │   ├── editor/            # CodeMirror module assemblies
 │   │   ├── api/               # small fetch wrappers for auth and JSON APIs
 │   │   └── stores/            # svelte stores (vault, theme, palette)
-│   ├── routes/                # SvelteKit pages (note, daily, search, graph)
+│   ├── routes/                # SvelteKit pages (note, daily, feedback, search, graph)
 │   └── app.html
 ├── static/                    # public assets (favicon, etc.)
 ├── tests/playwright/          # motion + a11y smoke gates
@@ -74,6 +75,34 @@ Components that need to drive navigation (CmdK, wikilink-widget,
 slash-menu) call `window.__pkmNav?.open(...)` rather than passing
 prop callbacks down arbitrary depth. The implementation is wired up
 once at the top-level layout.
+
+## Note annotation re-anchoring
+
+The note page reconciles stored text-quote anchors against normalized rendered
+blocks after Markdown rendering and before persistent marks are applied.
+
+- A unique exact quote remains `active`; duplicate exact matches use saved
+  prefix/suffix, heading path, and position scores.
+- If the quote changed, automatic recovery requires exact prefix and suffix
+  boundaries in the same rendered block with a bounded replacement span.
+- Ambiguous anchors become `needs_review`; anchors with no surviving selector
+  evidence become `orphaned`. Neither state is treated as resolved, and neither
+  is highlighted as if it were trustworthy.
+- The browser persists only anchor/status metadata through the ID-merge PATCH
+  endpoint, so unrelated annotations are not replaced. It sends both the
+  annotation document revision and the note body's `content_hash`; stale writes
+  fail instead of overwriting a concurrent annotation or source edit.
+- Annotation objects are serialized losslessly, including unknown extension
+  fields and original timestamps. Legacy Markdown projections never auto-PATCH;
+  an explicit user save carries `legacy_revision` to perform a one-way sidecar
+  cutover that removes the retired Markdown section. Note editor and task-state
+  PUTs send the loaded note `content_hash` as `If-Match`, so a stale page must
+  reload rather than overwrite note or annotation state. A rendered-source
+  revision prevents repeated writes for an unchanged document.
+
+The normalization/selector contract lives in
+`src/lib/annotations/text-anchor.ts`; `selector_version: 1` makes its offset
+semantics explicit for future migrations.
 
 ## Bundle budget
 
@@ -126,5 +155,6 @@ cursor-off states stay above WCAG AA.
 | A11y          | `pnpm test:a11y`                                | zero AA violations on light + dark                                                                         |
 
 CI and the release job run formatting, unit tests, the production build, the
-bundle budget, and focused Playwright regressions covering retirement residue,
-accessibility, graph navigation, route generation, and the command palette.
+bundle budget, and focused Playwright regressions covering annotation
+re-anchoring, retirement residue, accessibility, graph navigation, route
+generation, and the command palette.

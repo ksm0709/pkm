@@ -23,6 +23,16 @@ def app(web_cfg: WebConfig):
     return make_app(web_config=web_cfg)
 
 
+async def conditional_note_headers(client: TestClient, note_id: str) -> dict[str, str]:
+    headers = {"Authorization": f"Bearer {TOKEN}"}
+    response = await client.get(
+        f"/api/v1/vault/test-vault/notes/{note_id}",
+        headers=headers,
+    )
+    payload = await response.json()
+    return {**headers, "If-Match": f'"{payload["content_hash"]}"'}
+
+
 # --- POST /api/v1/vault/{name}/notes ---
 
 
@@ -233,10 +243,11 @@ async def test_ensure_note_rejects_tag_and_path_escape(
 async def test_update_note_returns_updated_body(app, tmp_vault: VaultConfig) -> None:
     """PUT /notes/{id} updates body and returns the updated 8-key schema."""
     async with TestClient(TestServer(app)) as client:
+        headers = await conditional_note_headers(client, "2026-04-01-mvcc")
         resp = await client.put(
             "/api/v1/vault/test-vault/notes/2026-04-01-mvcc",
             json={"body": "Updated MVCC content."},
-            headers={"Authorization": f"Bearer {TOKEN}"},
+            headers=headers,
         )
         assert resp.status == 200
         data = await resp.json()
@@ -245,15 +256,63 @@ async def test_update_note_returns_updated_body(app, tmp_vault: VaultConfig) -> 
 
 
 @pytest.mark.anyio
+async def test_update_note_requires_if_match(app, tmp_vault: VaultConfig) -> None:
+    async with TestClient(TestServer(app)) as client:
+        response = await client.put(
+            "/api/v1/vault/test-vault/notes/2026-04-01-mvcc",
+            json={"body": "Unconditional overwrite."},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+
+    assert response.status == 428
+
+
+@pytest.mark.anyio
+async def test_update_note_rejects_stale_if_match_without_overwrite(
+    app,
+    tmp_vault: VaultConfig,
+) -> None:
+    endpoint = "/api/v1/vault/test-vault/notes/2026-04-01-mvcc"
+    headers = {"Authorization": f"Bearer {TOKEN}"}
+
+    async with TestClient(TestServer(app)) as client:
+        initial_response = await client.get(endpoint, headers=headers)
+        initial = await initial_response.json()
+        first = await client.put(
+            endpoint,
+            json={"body": "First concurrent edit."},
+            headers={
+                **headers,
+                "If-Match": f'"{initial["content_hash"]}"',
+            },
+        )
+        stale = await client.put(
+            endpoint,
+            json={"body": "Stale overwrite."},
+            headers={
+                **headers,
+                "If-Match": f'"{initial["content_hash"]}"',
+            },
+        )
+        loaded_response = await client.get(endpoint, headers=headers)
+        loaded = await loaded_response.json()
+
+    assert first.status == 200
+    assert stale.status == 412
+    assert loaded["body"] == "First concurrent edit."
+
+
+@pytest.mark.anyio
 async def test_update_note_returns_daily_note_with_string_id(
     app, tmp_vault: VaultConfig
 ) -> None:
     """PUT /notes/{id} serializes YAML date ids as strings for daily notes."""
     async with TestClient(TestServer(app)) as client:
+        headers = await conditional_note_headers(client, "2026-04-01")
         resp = await client.put(
             "/api/v1/vault/test-vault/notes/2026-04-01",
             json={"body": "Updated daily content."},
-            headers={"Authorization": f"Bearer {TOKEN}"},
+            headers=headers,
         )
         assert resp.status == 200
         data = await resp.json()
@@ -265,10 +324,11 @@ async def test_update_note_returns_daily_note_with_string_id(
 async def test_update_note_preserves_tags(app, tmp_vault: VaultConfig) -> None:
     """PUT /notes/{id} without tags field preserves existing frontmatter tags."""
     async with TestClient(TestServer(app)) as client:
+        headers = await conditional_note_headers(client, "2026-04-01-mvcc")
         resp = await client.put(
             "/api/v1/vault/test-vault/notes/2026-04-01-mvcc",
             json={"body": "new body"},
-            headers={"Authorization": f"Bearer {TOKEN}"},
+            headers=headers,
         )
         assert resp.status == 200
         data = await resp.json()
@@ -279,10 +339,11 @@ async def test_update_note_preserves_tags(app, tmp_vault: VaultConfig) -> None:
 async def test_update_note_can_set_tags(app, tmp_vault: VaultConfig) -> None:
     """PUT /notes/{id} with tags field updates the note's tags."""
     async with TestClient(TestServer(app)) as client:
+        headers = await conditional_note_headers(client, "2026-04-01-mvcc")
         resp = await client.put(
             "/api/v1/vault/test-vault/notes/2026-04-01-mvcc",
             json={"body": "body", "tags": ["newtag"]},
-            headers={"Authorization": f"Bearer {TOKEN}"},
+            headers=headers,
         )
         assert resp.status == 200
         data = await resp.json()
@@ -293,10 +354,11 @@ async def test_update_note_can_set_tags(app, tmp_vault: VaultConfig) -> None:
 async def test_update_note_can_set_title(app, tmp_vault: VaultConfig) -> None:
     """PUT /notes/{id} with title updates frontmatter and response title."""
     async with TestClient(TestServer(app)) as client:
+        headers = await conditional_note_headers(client, "2026-04-01-mvcc")
         resp = await client.put(
             "/api/v1/vault/test-vault/notes/2026-04-01-mvcc",
             json={"title": "Updated MVCC Title"},
-            headers={"Authorization": f"Bearer {TOKEN}"},
+            headers=headers,
         )
         assert resp.status == 200
         data = await resp.json()

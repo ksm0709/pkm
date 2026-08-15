@@ -9,6 +9,7 @@ describe("app navigation contract", () => {
       "tags",
       "graph",
       "logger",
+      "feedback",
       "daily",
       "configs",
     ]);
@@ -31,6 +32,7 @@ describe("app navigation contract", () => {
       tags: "/main/tags",
       graph: "/main/graph",
       logger: "/main/logger",
+      feedback: "/main/feedback",
       daily: "/main/daily",
       configs: "/main/configs",
     });

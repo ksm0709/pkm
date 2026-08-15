@@ -10,11 +10,56 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from pkm.annotations.store import (
+    AnnotationSource,
+    annotation_sidecar_path,
+    note_lifecycle_lock,
+    rename_annotation_document,
+)
 from pkm.config import VaultConfig
 from pkm.frontmatter import parse, render
 from pkm.wikilinks import WikilinkRewriteResult, rewrite_wikilinks_in_vault
 
 _NOTE_ID_RE = re.compile(r"^[A-Za-z0-9가-힣@._-]{1,160}$")
+_LEGACY_ANNOTATIONS_HEADING = "## Annotations"
+
+
+def has_legacy_annotations_section(body: str) -> bool:
+    """Return whether a note body still contains the retired legacy section."""
+
+    return any(
+        line.strip() == _LEGACY_ANNOTATIONS_HEADING for line in re.split(r"\r?\n", body)
+    )
+
+
+def strip_legacy_annotations_section(body: str) -> str:
+    """Remove the reserved legacy annotations section from a parsed note body."""
+
+    lines = re.split(r"\r?\n", body)
+    heading_index = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if line.strip() == _LEGACY_ANNOTATIONS_HEADING
+        ),
+        -1,
+    )
+    if heading_index < 0:
+        return body
+
+    end_index = len(lines)
+    for index in range(heading_index + 1, len(lines)):
+        if re.match(r"^#{1,6}\s+", lines[index]):
+            end_index = index
+            break
+
+    start_index = heading_index
+    while start_index > 0 and not lines[start_index - 1].strip():
+        start_index -= 1
+    retained = lines[:start_index] + lines[end_index:]
+    while retained and not retained[-1].strip():
+        retained.pop()
+    return "\n".join(retained) + ("\n" if retained else "")
 
 
 @dataclass(frozen=True)
@@ -78,6 +123,26 @@ def rename_note_id(
     *,
     include_tags: bool = False,
 ) -> NoteRenameResult:
+    """Rename a note and its sidecar under ordered lifecycle locks."""
+
+    old_note_id = validate_note_id(old_note_id)
+    new_note_id = validate_note_id(new_note_id)
+    with note_lifecycle_lock(vault, old_note_id, new_note_id):
+        return _rename_note_id_locked(
+            vault,
+            old_note_id,
+            new_note_id,
+            include_tags=include_tags,
+        )
+
+
+def _rename_note_id_locked(
+    vault: VaultConfig,
+    old_note_id: str,
+    new_note_id: str,
+    *,
+    include_tags: bool = False,
+) -> NoteRenameResult:
     """Rename a note ID and rewrite all wikilinks to the new target."""
     old_note_id = validate_note_id(old_note_id)
     new_note_id = validate_note_id(new_note_id)
@@ -95,8 +160,17 @@ def rename_note_id(
     note = parse(source)
     meta = dict(note.meta or {})
     meta["id"] = new_note_id
+    old_annotation_source = AnnotationSource(kind="note", identifier=old_note_id)
+    new_annotation_source = AnnotationSource(kind="note", identifier=new_note_id)
+    if annotation_sidecar_path(vault, new_annotation_source).exists():
+        raise FileExistsError(f"Annotation sidecar for '{new_note_id}' already exists")
 
     destination.write_text(render(meta, note.body), encoding="utf-8")
+    try:
+        rename_annotation_document(vault, old_annotation_source, new_annotation_source)
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
     source.unlink()
 
     wikilinks = rewrite_wikilinks_in_vault(vault, old_note_id, new_note_id)

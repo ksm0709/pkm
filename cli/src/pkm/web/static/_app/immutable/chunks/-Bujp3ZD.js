@@ -1,0 +1,2 @@
+import{a as s,b as a}from"./CmulRH2P.js";function i(n){return`/api/v1/vault/${encodeURIComponent(n)}/configs`}function r(n,t){return`${i(n)}/settings/${encodeURIComponent(t)}`}async function f(n){return s(i(n))}async function g(n,t,e){const o=await a(r(n,t),{method:"PATCH",body:JSON.stringify({value:e})});if(!o.ok)throw new Error(`PATCH config setting → ${o.status}`);return await o.json()}export{f as l,g as s};
+//# sourceMappingURL=-Bujp3ZD.js.map

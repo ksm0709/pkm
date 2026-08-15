@@ -24,7 +24,7 @@ must use the bearer header.
 | 400 | Bad request (malformed body, invalid params) |
 | 401 | Missing/invalid auth |
 | 404 | Vault or note not found |
-| 409 | Note already exists (`POST /notes`) |
+| 409 | Conflict (for example, note exists or annotation changed concurrently) |
 
 ---
 
@@ -82,9 +82,11 @@ List notes in vault.
 
 Fetch a single note.
 
-- **Response 200** — 8-key schema:
+- **Response 200** — 9-key schema. `content_hash` is a SHA-256 revision of the
+  parsed Markdown body and is used as the note-side precondition for annotation
+  reconciliation:
   ```json
-  {"note_id": "...", "title": "...", "body": "...", "frontmatter": {...},
+  {"note_id": "...", "title": "...", "body": "...", "content_hash": "sha256:...", "frontmatter": {...},
    "created": "...", "updated": "...", "tags": [...], "importance": 0}
   ```
 - **404** — note not found.
@@ -94,16 +96,23 @@ Fetch a single note.
 Create a new note.
 
 - **Request body** — `{"title": string (required), "body": string?, "tags": string[]?}`
-- **Response 201** — 8-key note schema (see above).
+- **Response 201** — 9-key note schema (see above).
 - **400** — `title` missing.
 - **409** — note already exists.
 
 ### `PUT /api/v1/vault/{name}/notes/{id}`
 
-Update an existing note (body always; title/tags optional).
+Update an existing note (body always; title/tags optional). The request must
+include `If-Match: "sha256:..."` using the `content_hash` returned by the latest
+note GET. Note writes and annotation re-anchor PATCHes share the same lifecycle
+lock, so note hash validation and sidecar mutation cannot interleave.
 
 - **Request body** — `{"body": string?, "title": string?, "tags": string[]?}`
-- **Response 200** — 8-key note schema.
+- **Response 200** — 9-key note schema and the new content hash as `ETag`.
+- **409** — a stale client attempts to reintroduce the retired legacy
+  `## Annotations` section after sidecar cutover.
+- **412** — `If-Match` does not match the current note body.
+- **428** — `If-Match` is missing.
 - **404** — note not found.
 
 ### `GET /api/v1/vault/{name}/notes/{id}/neighbors`
@@ -126,6 +135,91 @@ Resolve a batch of note IDs to titles.
 - **Request body** — `{"ids": string[] (max 200)}`
 - **Response 200** — `{ "<id>": "<title>" }`. Unresolved IDs map to `""`.
 - **400** — `ids` not a list, or > 200 items.
+
+---
+
+## Note annotations
+
+Note annotations are stored in unified v2 sidecars. Reading a note with only a
+legacy Markdown `## Annotations` section adapts it in memory without writing;
+only an explicit user PUT carrying the current `legacy_revision` persists the
+v2 sidecar. Automatic re-anchor PATCH is rejected for a legacy projection, so a
+background read cannot silently cut over storage or miss later Markdown edits.
+
+A text anchor keeps the compatible `quote` and `occurrence` fields and may add
+rendered-text selector fields:
+
+```json
+{
+  "kind": "text_quote",
+  "quote": "multi-version concurrency control",
+  "occurrence": 0,
+  "selector_version": 1,
+  "prefix": "uses ",
+  "suffix": " for readers",
+  "start": 12,
+  "end": 45,
+  "heading_path": ["Overview"]
+}
+```
+
+Annotation `status` is `active`, `needs_review`, or `orphaned`. A source edit
+never implies that a comment is resolved: exact/context matches remain active,
+ambiguous matches need review, and anchors with no surviving evidence become
+orphaned. `reanchor` records `confidence` and the reason (`exact`, `context`,
+`ambiguous`, or `missing`). The document-level `source_revision` is an
+`fnv1a:<8 hex digits>` change detector for normalized rendered source; it is
+not a cryptographic integrity value.
+
+### `GET /api/v1/vault/{name}/annotations/note/{id}`
+
+Read the v2 annotation document or an in-memory legacy projection. GET is
+side-effect free. The response includes `annotation_revision`, `storage_mode`
+(`none`, `legacy`, or `v2`), and `legacy_revision` for legacy projections, and
+returns the annotation revision as an `ETag`.
+
+### `PUT /api/v1/vault/{name}/annotations/note/{id}`
+
+Submit the complete set of note annotations. New clients send `base_revision`
+and matching `If-Match`. IDs must be unique; rich text selectors, status,
+re-anchor metadata, and source revision are validated. Retained IDs are merged
+losslessly with the current record, so an older client's narrow
+`quote`/`occurrence` payload cannot erase rich selectors, timestamps, status, or
+unknown extension fields. **Deletion requires CAS**: a request with
+`base_revision` may delete omitted IDs, while a compatibility request without a
+base revision is lossless upsert-only and preserves omitted siblings. A legacy
+projection also requires the exact `legacy_revision` returned by GET. Successful
+legacy migration writes the sidecar and removes the reserved Markdown
+`## Annotations` section under the same note lifecycle lock; subsequent stale
+note PUTs that reintroduce that section are rejected.
+
+### `PATCH /api/v1/vault/{name}/annotations/note/{id}`
+
+Merge automatic re-anchor results by annotation ID, preserving every sibling
+annotation not named in `updates`.
+
+- **Request body**:
+  ```json
+  {
+    "base_revision": 7,
+    "base_note_revision": "sha256:...",
+    "source_revision": "fnv1a:1234abcd",
+    "updates": [
+      {
+        "id": "note-ann-1",
+        "anchor": {"kind": "text_quote", "quote": "MVCC", "occurrence": 0},
+        "status": "active",
+        "reanchor": {"confidence": 1, "reason": "exact"}
+      }
+    ]
+  }
+  ```
+- **Response 200** — the complete merged v2 annotation document.
+- **400** — malformed revision, selector, status, or metadata.
+- **412** — `If-Match` disagrees with `base_revision`.
+- **409** — stale annotation revision, stale note body revision, legacy storage,
+  or an update ID that no longer exists; the client must reload rather than
+  overwrite a concurrent change or recreate a deleted annotation.
 
 ---
 
@@ -242,7 +336,7 @@ Paginated list of daily-note summaries (descending).
 
 Get (or create) today's daily note.
 
-- **Response 200** — 8-key note schema.
+- **Response 200** — 9-key note schema.
 
 ### `POST /api/v1/vault/{name}/daily/today`
 
@@ -258,6 +352,32 @@ Append an entry or create a subnote.
 
 Get a specific date's daily note.
 
-- **Response 200** — 8-key note schema.
+- **Response 200** — 9-key note schema.
 - **400** — `date` not `YYYY-MM-DD`.
 - **404** — no daily note for that date.
+
+---
+
+## Feedback
+
+Feedback stays in the selected vault: every submission creates a tagged daily
+subnote and adds its wikilink to today's daily log. It is never sent to an
+external service.
+
+### `GET /api/v1/vault/{name}/feedback`
+
+List all feedback records, newest first.
+
+- **Response 200** — `[{
+  "note_id": "...", "title": "...", "description": "...",
+  "feedback_type": "requirement|bug|idea", "created_at": "..."
+  }]`
+
+### `POST /api/v1/vault/{name}/feedback`
+
+Create a feedback record.
+
+- **Request body** — `{"title": string, "description": string, "feedback_type"?: "requirement"|"bug"|"idea"}`
+- **Response 201** — the created feedback record.
+- **400** — invalid JSON, missing/invalid fields, title longer than 120 characters, or description longer than 8,000 characters.
+- **403** — a session-authenticated request is not same-origin.

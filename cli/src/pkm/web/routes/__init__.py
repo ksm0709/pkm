@@ -7,6 +7,7 @@ from aiohttp import web
 from pkm.web.routes.annotations import (
     get_data_annotations,
     get_note_annotations,
+    patch_note_annotation_anchors,
     put_data_annotations,
     put_note_annotations,
 )
@@ -24,6 +25,7 @@ from pkm.web.routes.data import (
     post_data_file,
     put_pdf_annotations,
 )
+from pkm.web.routes.feedback import get_feedback, post_feedback
 from pkm.web.routes.graph import get_ego_graph, get_graph
 from pkm.web.routes.notes import (
     batch_titles,
@@ -63,6 +65,10 @@ def register_routes(app: web.Application) -> None:
     app.router.add_get("/api/v1/vault/{name}/daily/{date}", get_daily_date)
     app.router.add_get("/api/v1/vault/{name}/daily", list_daily)
 
+    # Feedback — each submission is a tagged daily subnote and daily-log entry.
+    app.router.add_get("/api/v1/vault/{name}/feedback", get_feedback)
+    app.router.add_post("/api/v1/vault/{name}/feedback", post_feedback)
+
     # Unified annotations — source-scoped v2 sidecars.
     app.router.add_get(
         "/api/v1/vault/{name}/annotations/data/{path:.+}", get_data_annotations
@@ -75,6 +81,10 @@ def register_routes(app: web.Application) -> None:
     )
     app.router.add_put(
         "/api/v1/vault/{name}/annotations/note/{id}", put_note_annotations
+    )
+    app.router.add_patch(
+        "/api/v1/vault/{name}/annotations/note/{id}",
+        patch_note_annotation_anchors,
     )
 
     # Data files — flat and nested files under vault data/

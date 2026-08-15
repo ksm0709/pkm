@@ -3,6 +3,7 @@ export type AppNavPageId =
   | "tags"
   | "graph"
   | "logger"
+  | "feedback"
   | "daily"
   | "configs";
 
@@ -52,6 +53,15 @@ export const appNavPages: AppNavPage[] = [
     commandHint: "daily log",
     commandShortcut: "l",
     href: (vaultName) => `/${vaultName}/logger`,
+  },
+  {
+    id: "feedback",
+    label: "Feedback",
+    meta: "requests",
+    commandLabel: "Open feedback",
+    commandHint: "requests",
+    commandShortcut: "f",
+    href: (vaultName) => `/${vaultName}/feedback`,
   },
 
   {

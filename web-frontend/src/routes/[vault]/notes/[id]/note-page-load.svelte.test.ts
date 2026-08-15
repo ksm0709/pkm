@@ -226,11 +226,18 @@ describe("note page loading", () => {
     body: string,
     annotations?: unknown[],
   ) {
+    const resolvedAnnotations = annotations ?? parseLegacyAnnotations(body);
+    const storageMode = resolvedAnnotations.length > 0 ? "legacy" : "none";
     return {
       version: 2,
       source_key: `note:${noteId}`,
       source: { kind: "note", note_id: noteId },
-      annotations: annotations ?? parseLegacyAnnotations(body),
+      annotation_revision: 0,
+      storage_mode: storageMode,
+      ...(storageMode === "legacy"
+        ? { legacy_revision: `sha256:${"f".repeat(64)}` }
+        : {}),
+      annotations: resolvedAnnotations,
     };
   }
 
@@ -239,10 +246,8 @@ describe("note page loading", () => {
   ) {
     mocks.apiGet.mockImplementation(async (path: string) => {
       if (path.includes("/annotations/note/")) {
-        const direct = (await impl(path)) as
-          | { version?: number; annotations?: unknown[] }
-          | { body?: string; note_id?: string };
-        if (direct?.version === 2 && Array.isArray(direct.annotations)) {
+        const direct = (await impl(path)) as Record<string, unknown>;
+        if (direct.version === 2 && Array.isArray(direct.annotations)) {
           return direct;
         }
         const noteId = decodeURIComponent(
@@ -378,6 +383,66 @@ describe("note page loading", () => {
     unmount(component);
   });
 
+  it("sends the loaded note content hash when updating task state", async () => {
+    const contentHash = `sha256:${"b".repeat(64)}`;
+    mockApiGetWithAnnotationReadThrough(async (path: string) => {
+      if (path.endsWith("/neighbors")) {
+        return {
+          note_id: "alpha-note",
+          outbound: [],
+          inbound: [],
+          semantic: [],
+        };
+      }
+      return {
+        note_id: "alpha-note",
+        title: "Alpha",
+        body: "- [ ] Guarded task",
+        content_hash: contentHash,
+        frontmatter: {},
+        created: null,
+        updated: null,
+        tags: [],
+        importance: null,
+      };
+    });
+    mocks.apiClient.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          note_id: "alpha-note",
+          title: "Alpha",
+          body: "- [>] Guarded task",
+          content_hash: `sha256:${"c".repeat(64)}`,
+          frontmatter: {},
+          created: null,
+          updated: null,
+          tags: [],
+          importance: null,
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+    await waitFor(() => {
+      expect(target.querySelector("button.note-task-state")).not.toBeNull();
+    });
+    target.querySelector<HTMLButtonElement>("button.note-task-state")!.click();
+    await flush();
+
+    expect(mocks.apiClient).toHaveBeenCalledWith(
+      "/api/v1/vault/main/notes/alpha-note",
+      expect.objectContaining({
+        method: "PUT",
+        headers: { "If-Match": `"${contentHash}"` },
+      }),
+    );
+
+    unmount(component);
+  });
+
   it("annotates the selected note text and optionally adds a daily log entry", async () => {
     mockApiGetWithAnnotationReadThrough(async (path: string) => {
       if (path.endsWith("/neighbors")) {
@@ -399,7 +464,7 @@ describe("note page loading", () => {
       return {
         note_id: "alpha-note",
         title: "Alpha",
-        body: "Alpha body has a quote worth saving.",
+        body: "## Section\n\nAlpha body has a quote worth saving.",
         frontmatter: {},
         created: null,
         updated: null,
@@ -454,14 +519,17 @@ describe("note page loading", () => {
 
     const noteBody = target.querySelector<HTMLElement>(".note-body");
     expect(noteBody).not.toBeNull();
-    const textNode = document
-      .createTreeWalker(noteBody!, NodeFilter.SHOW_TEXT)
-      .nextNode() as Text;
-    const start = textNode.data.indexOf("quote worth saving");
+    const walker = document.createTreeWalker(noteBody!, NodeFilter.SHOW_TEXT);
+    let textNode = walker.nextNode() as Text | null;
+    while (textNode && !textNode.data.includes("quote worth saving")) {
+      textNode = walker.nextNode() as Text | null;
+    }
+    expect(textNode).not.toBeNull();
+    const start = textNode!.data.indexOf("quote worth saving");
     expect(start).toBeGreaterThanOrEqual(0);
     const range = document.createRange();
-    range.setStart(textNode, start);
-    range.setEnd(textNode, start + "quote worth saving.".length);
+    range.setStart(textNode!, start);
+    range.setEnd(textNode!, start + "quote worth saving.".length);
     const selection = window.getSelection();
     selection?.removeAllRanges();
     selection?.addRange(range);
@@ -510,6 +578,7 @@ describe("note page loading", () => {
         headers: {
           Accept: "application/json",
           "Content-Type": "application/json",
+          "If-Match": '"0"',
         },
         body: expect.stringContaining("Important context"),
       },
@@ -521,6 +590,7 @@ describe("note page loading", () => {
       version: 2,
       source_key: "note:alpha-note",
       source: { kind: "note", note_id: "alpha-note" },
+      base_revision: 0,
       annotations: [
         {
           kind: "note",
@@ -528,11 +598,20 @@ describe("note page loading", () => {
             kind: "text_quote",
             quote: "quote worth saving.",
             occurrence: 0,
+            selector_version: 1,
+            prefix: "Alpha body has a ",
+            suffix: "",
+            heading_path: ["Section"],
           },
+          status: "active",
+          reanchor: { confidence: 1, reason: "exact" },
           comment: "Important context",
         },
       ],
     });
+    expect(savedAnnotationDocument.source_revision).toMatch(
+      /^fnv1a:[0-9a-f]{8}$/,
+    );
     expect(
       mocks.apiClient.mock.calls.find(
         ([url, options]) =>
@@ -553,6 +632,206 @@ describe("note page loading", () => {
       },
     );
     expect(target.querySelector('[role="dialog"]')).toBeNull();
+
+    unmount(component);
+  });
+
+  it("re-anchors an externally edited quote and persists the merged selector", async () => {
+    const originalAnnotation = {
+      id: "note-ann-reanchor",
+      kind: "note" as const,
+      anchor: {
+        kind: "text_quote" as const,
+        quote: "old phrase",
+        occurrence: 0,
+        selector_version: 1,
+        prefix: "Before ",
+        suffix: " after.",
+        start: 7,
+        end: 17,
+        heading_path: [] as string[],
+      },
+      status: "active",
+      reanchor: { confidence: 1, reason: "exact" },
+      comment: "Keep this accurate",
+      created_at: "2026-07-06T10:00:00.000Z",
+      updated_at: "2026-07-06T10:00:00.000Z",
+    };
+    mockApiGetWithAnnotationReadThrough(async (path: string) => {
+      if (path.endsWith("/neighbors")) {
+        return {
+          note_id: "alpha-note",
+          outbound: [],
+          inbound: [],
+          semantic: [],
+        };
+      }
+      if (path.includes("/annotations/note/")) {
+        return {
+          version: 2,
+          source_key: "note:alpha-note",
+          source: { kind: "note", note_id: "alpha-note" },
+          annotation_revision: 7,
+          storage_mode: "v2",
+          source_revision: "fnv1a:00000000",
+          annotations: [originalAnnotation],
+        };
+      }
+      return {
+        note_id: "alpha-note",
+        title: "Alpha",
+        body: "Before revised phrase after.",
+        content_hash: `sha256:${"a".repeat(64)}`,
+        frontmatter: {},
+        created: null,
+        updated: null,
+        tags: [],
+        importance: null,
+      };
+    });
+    mocks.apiClient.mockImplementation(
+      async (_url: string, options?: RequestInit) => {
+        const patch = JSON.parse(String(options?.body));
+        return new Response(
+          JSON.stringify({
+            version: 2,
+            source_key: "note:alpha-note",
+            source: { kind: "note", note_id: "alpha-note" },
+            source_revision: patch.source_revision,
+            annotations: [{ ...originalAnnotation, ...patch.updates[0] }],
+          }),
+          { status: 200 },
+        );
+      },
+    );
+
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+
+    await waitFor(() => {
+      const patchCall = mocks.apiClient.mock.calls.find(
+        ([url, options]) =>
+          String(url).endsWith("/annotations/note/alpha-note") &&
+          options?.method === "PATCH",
+      );
+      expect(patchCall).toBeDefined();
+      const payload = JSON.parse(String(patchCall?.[1]?.body));
+      expect(payload.source_revision).toMatch(/^fnv1a:[0-9a-f]{8}$/);
+      expect(payload.base_revision).toBe(7);
+      expect(payload.base_note_revision).toBe(`sha256:${"a".repeat(64)}`);
+      expect(payload.updates).toMatchObject([
+        {
+          id: "note-ann-reanchor",
+          status: "active",
+          anchor: {
+            quote: "revised phrase",
+            occurrence: 0,
+            selector_version: 1,
+            prefix: "Before ",
+            suffix: " after.",
+          },
+          reanchor: { confidence: 0.9, reason: "context" },
+        },
+      ]);
+      expect(
+        target.querySelector(".annotation-source-marked")?.textContent,
+      ).toBe("revised phrase");
+    });
+
+    unmount(component);
+  });
+
+  it("shows ambiguous duplicate anchors as needing review without highlighting", async () => {
+    const originalAnnotation = {
+      id: "note-ann-ambiguous",
+      kind: "note" as const,
+      anchor: {
+        kind: "text_quote" as const,
+        quote: "target phrase",
+        occurrence: 0,
+        selector_version: 1,
+        prefix: "missing prefix",
+        suffix: "missing suffix",
+      },
+      status: "active",
+      reanchor: { confidence: 1, reason: "exact" },
+      comment: "Which occurrence?",
+      created_at: "",
+      updated_at: "",
+    };
+    mockApiGetWithAnnotationReadThrough(async (path: string) => {
+      if (path.endsWith("/neighbors")) {
+        return {
+          note_id: "alpha-note",
+          outbound: [],
+          inbound: [],
+          semantic: [],
+        };
+      }
+      if (path.includes("/annotations/note/")) {
+        return {
+          version: 2,
+          source_key: "note:alpha-note",
+          source: { kind: "note", note_id: "alpha-note" },
+          source_revision: "fnv1a:00000000",
+          annotations: [originalAnnotation],
+        };
+      }
+      return {
+        note_id: "alpha-note",
+        title: "Alpha",
+        body: "target phrase and target phrase",
+        content_hash: `sha256:${"b".repeat(64)}`,
+        frontmatter: {},
+        created: null,
+        updated: null,
+        tags: [],
+        importance: null,
+      };
+    });
+    mocks.apiClient.mockImplementation(
+      async (_url: string, options?: RequestInit) => {
+        const patch = JSON.parse(String(options?.body));
+        return new Response(
+          JSON.stringify({
+            version: 2,
+            source_key: "note:alpha-note",
+            source: { kind: "note", note_id: "alpha-note" },
+            source_revision: patch.source_revision,
+            annotations: [{ ...originalAnnotation, ...patch.updates[0] }],
+          }),
+          { status: 200 },
+        );
+      },
+    );
+
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+
+    await waitFor(() => {
+      const payload = JSON.parse(
+        String(
+          mocks.apiClient.mock.calls.find(
+            ([, options]) => options?.method === "PATCH",
+          )?.[1]?.body,
+        ),
+      );
+      expect(payload.updates).toMatchObject([
+        { id: "note-ann-ambiguous", status: "needs_review" },
+      ]);
+      expect(target.querySelector(".annotation-source-marked")).toBeNull();
+    });
+
+    const panelButton = Array.from(target.querySelectorAll("button")).find(
+      (button) => button.textContent?.includes("Annotations"),
+    );
+    panelButton?.click();
+    await flush();
+    expect(
+      target.querySelector(".annotation-status--needs_review")?.textContent,
+    ).toContain("Needs review");
 
     unmount(component);
   });
@@ -771,12 +1050,14 @@ describe("note page loading", () => {
         headers: {
           Accept: "application/json",
           "Content-Type": "application/json",
+          "If-Match": '"0"',
         },
         body: JSON.stringify({
           version: 2,
           source_key: "note:alpha-note",
           source: { kind: "note", note_id: "alpha-note" },
           annotations: [],
+          base_revision: 0,
         }),
       },
     );
@@ -1855,10 +2136,116 @@ describe("note page loading", () => {
       "/api/v1/vault/main/annotations/note/alpha-note",
       expect.objectContaining({ method: "PUT" }),
     );
-    const savedDocument = JSON.parse(mocks.apiClient.mock.calls[0][1].body);
+    const putCall = mocks.apiClient.mock.calls.find(
+      ([, options]) => options?.method === "PUT",
+    );
+    const savedDocument = JSON.parse(String(putCall?.[1]?.body));
     expect(savedDocument.annotations).toHaveLength(1);
     expect(savedDocument.annotations[0].comment).toBe("Other memo stays");
     expect(savedDocument.annotations[0].anchor.quote).toBe("Other marker.");
+
+    unmount(component);
+  });
+
+  it("traps focus in the annotation editor and restores the trigger on Escape", async () => {
+    mockApiGetWithAnnotationReadThrough(async (path: string) => {
+      if (path.endsWith("/neighbors")) {
+        return {
+          note_id: "alpha-note",
+          outbound: [],
+          inbound: [],
+          semantic: [],
+        };
+      }
+      if (path.includes("/annotations/note/")) {
+        return {
+          version: 2,
+          source_key: "note:alpha-note",
+          source: { kind: "note", note_id: "alpha-note" },
+          annotation_revision: 1,
+          storage_mode: "v2",
+          annotations: [
+            {
+              id: "focus-ann",
+              kind: "note",
+              anchor: {
+                kind: "text_quote",
+                quote: "Focus marker.",
+                occurrence: 0,
+              },
+              comment: "Keyboard memo",
+              created_at: "",
+              updated_at: "",
+            },
+          ],
+        };
+      }
+      return {
+        note_id: "alpha-note",
+        title: "Alpha",
+        body: "Focus source has Focus marker.",
+        content_hash: "sha256:" + "a".repeat(64),
+        frontmatter: {},
+        created: null,
+        updated: null,
+        tags: [],
+        importance: null,
+      };
+    });
+
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+
+    await waitFor(() => {
+      expect(
+        target.querySelector(".annotation-source-marked")?.textContent,
+      ).toBe("Focus marker.");
+    });
+    target
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="note-annotations-toggle"]',
+      )!
+      .click();
+    await tick();
+    const editTrigger = target.querySelector<HTMLButtonElement>(
+      '[data-testid="note-annotation-card-edit"]',
+    )!;
+    editTrigger.focus();
+    editTrigger.click();
+    await tick();
+
+    const textarea = target.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="Annotation text"]',
+    )!;
+    const save = target.querySelector<HTMLButtonElement>(
+      'button[aria-label="Save annotation"]',
+    )!;
+    expect(document.activeElement).toBe(textarea);
+
+    save.focus();
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Tab", bubbles: true }),
+    );
+    expect(document.activeElement).toBe(textarea);
+
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Tab",
+        shiftKey: true,
+        bubbles: true,
+      }),
+    );
+    expect(document.activeElement).toBe(save);
+
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+    );
+    await tick();
+    expect(
+      target.querySelector('[role="dialog"][aria-label="Edit annotation"]'),
+    ).toBeNull();
+    expect(document.activeElement).toBe(editTrigger);
 
     unmount(component);
   });
@@ -1878,6 +2265,30 @@ describe("note page loading", () => {
           outbound: [],
           inbound: [],
           semantic: [],
+        };
+      }
+      if (path.includes("/annotations/note/")) {
+        return {
+          version: 2,
+          source_key: "note:alpha-note",
+          source: { kind: "note", note_id: "alpha-note" },
+          annotation_revision: 4,
+          storage_mode: "v2",
+          annotations: [
+            {
+              id: "edit-ann",
+              kind: "note",
+              anchor: {
+                kind: "text_quote",
+                quote: "Edit marker.",
+                occurrence: 0,
+              },
+              comment: "Old memo",
+              created_at: "2026-07-06T10:00:00Z",
+              updated_at: "2026-07-06T10:00:00Z",
+              extension: { owner: "new-client" },
+            },
+          ],
         };
       }
       return {
@@ -1926,10 +2337,20 @@ describe("note page loading", () => {
       .click();
     await flush();
 
-    const savedDocument = JSON.parse(mocks.apiClient.mock.calls[0][1].body);
+    const putCall = mocks.apiClient.mock.calls.find(
+      ([, options]) => options?.method === "PUT",
+    );
+    const savedDocument = JSON.parse(String(putCall?.[1]?.body));
     expect(savedDocument.annotations).toHaveLength(1);
     expect(savedDocument.annotations[0].comment).toBe("Updated memo");
     expect(savedDocument.annotations[0].anchor.quote).toBe("Edit marker.");
+    expect(savedDocument.annotations[0].created_at).toBe(
+      "2026-07-06T10:00:00Z",
+    );
+    expect(savedDocument.annotations[0].extension).toEqual({
+      owner: "new-client",
+    });
+    expect(savedDocument.base_revision).toBe(4);
 
     unmount(component);
   });
@@ -2328,6 +2749,221 @@ describe("note page loading", () => {
       target.querySelector('[role="dialog"][aria-label="Annotation memo"]'),
     ).toBeNull();
 
+    unmount(component);
+  });
+
+  it("does not retry a failed automatic re-anchor PATCH and exposes the error", async () => {
+    const originalAnnotation = {
+      id: "failed-patch-ann",
+      kind: "note",
+      anchor: {
+        kind: "text_quote",
+        quote: "old phrase",
+        occurrence: 0,
+        selector_version: 1,
+        prefix: "Before ",
+        suffix: " after.",
+      },
+      status: "active",
+      reanchor: { confidence: 1, reason: "exact" },
+      comment: "memo",
+      created_at: "",
+      updated_at: "",
+    };
+    mocks.apiGet.mockImplementation(async (path: string) => {
+      if (path.endsWith("/neighbors")) {
+        return {
+          note_id: "alpha-note",
+          outbound: [],
+          inbound: [],
+          semantic: [],
+        };
+      }
+      if (path.includes("/annotations/note/")) {
+        return {
+          version: 2,
+          source_key: "note:alpha-note",
+          source: { kind: "note", note_id: "alpha-note" },
+          annotation_revision: 7,
+          storage_mode: "v2",
+          source_revision: "fnv1a:00000000",
+          annotations: [originalAnnotation],
+        };
+      }
+      return {
+        note_id: "alpha-note",
+        title: "Alpha",
+        body: "Before revised phrase after.",
+        content_hash: `sha256:${"d".repeat(64)}`,
+        frontmatter: {},
+        created: null,
+        updated: null,
+        tags: [],
+        importance: null,
+      };
+    });
+    mocks.apiClient.mockResolvedValue(new Response("", { status: 500 }));
+
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+    await waitFor(() => {
+      expect(
+        mocks.apiClient.mock.calls.filter(
+          ([, options]) => options?.method === "PATCH",
+        ),
+      ).toHaveLength(1);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    await tick();
+
+    expect(
+      mocks.apiClient.mock.calls.filter(
+        ([, options]) => options?.method === "PATCH",
+      ),
+    ).toHaveLength(1);
+    expect(target.querySelector('[role="alert"]')?.textContent).toContain(
+      "PATCH annotation",
+    );
+    unmount(component);
+  });
+
+  it("does not let an older PATCH response overwrite a newer memo PUT", async () => {
+    const originalAnnotation = {
+      id: "race-ann",
+      kind: "note",
+      anchor: {
+        kind: "text_quote",
+        quote: "old phrase",
+        occurrence: 0,
+        selector_version: 1,
+        prefix: "Before ",
+        suffix: " after.",
+        start: 7,
+        end: 17,
+        heading_path: [],
+      },
+      status: "active",
+      reanchor: { confidence: 1, reason: "exact" },
+      comment: "old memo",
+      created_at: "",
+      updated_at: "",
+    };
+    mocks.apiGet.mockImplementation(async (path: string) => {
+      if (path.endsWith("/neighbors")) {
+        return {
+          note_id: "alpha-note",
+          outbound: [],
+          inbound: [],
+          semantic: [],
+        };
+      }
+      if (path.includes("/annotations/note/")) {
+        return {
+          version: 2,
+          source_key: "note:alpha-note",
+          source: { kind: "note", note_id: "alpha-note" },
+          annotation_revision: 7,
+          storage_mode: "v2",
+          source_revision: "fnv1a:00000000",
+          annotations: [originalAnnotation],
+        };
+      }
+      return {
+        note_id: "alpha-note",
+        title: "Alpha",
+        body: "Before revised phrase after.",
+        content_hash: `sha256:${"e".repeat(64)}`,
+        frontmatter: {},
+        created: null,
+        updated: null,
+        tags: [],
+        importance: null,
+      };
+    });
+    let resolvePatch!: (response: Response) => void;
+    const patchResponse = new Promise<Response>((resolve) => {
+      resolvePatch = resolve;
+    });
+    let patchPayload: Record<string, unknown> | undefined;
+    mocks.apiClient.mockImplementation(
+      async (_path: string, options?: RequestInit) => {
+        if (options?.method === "PATCH") {
+          patchPayload = JSON.parse(String(options.body));
+          return patchResponse;
+        }
+        if (options?.method === "PUT") {
+          const document = JSON.parse(String(options.body));
+          return new Response(
+            JSON.stringify({
+              ...document,
+              annotation_revision: 8,
+              storage_mode: "v2",
+            }),
+            { status: 200 },
+          );
+        }
+        throw new Error(`Unexpected method ${options?.method}`);
+      },
+    );
+
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const component = mount(NotePage, { target });
+    await waitFor(() => {
+      expect(patchPayload).toBeDefined();
+      expect(
+        target.querySelector(".annotation-source-marked")?.textContent,
+      ).toBe("revised phrase");
+    });
+
+    target
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="note-annotations-toggle"]',
+      )!
+      .click();
+    await tick();
+    target
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="note-annotation-card-edit"]',
+      )!
+      .click();
+    await tick();
+    const textarea = target.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="Annotation text"]',
+    )!;
+    textarea.value = "edited memo";
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    target
+      .querySelector<HTMLButtonElement>('button[aria-label="Save annotation"]')!
+      .click();
+    await waitFor(() => {
+      expect(
+        target.querySelector(".note-annotation-card-memo")?.textContent,
+      ).toBe("edited memo");
+    });
+
+    const updates = patchPayload!.updates as Record<string, unknown>[];
+    resolvePatch(
+      new Response(
+        JSON.stringify({
+          version: 2,
+          source_key: "note:alpha-note",
+          source: { kind: "note", note_id: "alpha-note" },
+          annotation_revision: 8,
+          storage_mode: "v2",
+          source_revision: patchPayload!.source_revision,
+          annotations: [{ ...originalAnnotation, ...updates[0] }],
+        }),
+        { status: 200 },
+      ),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await tick();
+
+    expect(
+      target.querySelector(".note-annotation-card-memo")?.textContent,
+    ).toBe("edited memo");
     unmount(component);
   });
 });

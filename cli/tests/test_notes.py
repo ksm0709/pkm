@@ -171,6 +171,114 @@ def test_rename_note_id_updates_file_frontmatter_and_wikilinks(tmp_vault):
     assert "[[new-note]]" in daily.read_text(encoding="utf-8")
 
 
+def test_rename_note_id_moves_annotation_sidecar(tmp_vault):
+    from pkm.annotations.store import (
+        AnnotationSource,
+        annotation_sidecar_path,
+        empty_annotation_document,
+        read_annotation_document,
+        write_annotation_document,
+    )
+    from pkm.note_lifecycle import rename_note_id
+
+    note_path = tmp_vault.notes_dir / "old-annotated.md"
+    note_path.write_text(
+        "---\nid: old-annotated\ntitle: Old\ntags: []\n---\n\nAnnotated body.\n",
+        encoding="utf-8",
+    )
+    old_source = AnnotationSource(kind="note", identifier="old-annotated")
+    new_source = AnnotationSource(kind="note", identifier="new-annotated")
+    document = empty_annotation_document(old_source)
+    document["annotation_revision"] = 3
+    document["annotations"] = [{"id": "ann-1"}]
+    write_annotation_document(tmp_vault, old_source, document)
+
+    rename_note_id(tmp_vault, "old-annotated", "new-annotated")
+
+    assert not annotation_sidecar_path(tmp_vault, old_source).exists()
+    moved = read_annotation_document(tmp_vault, new_source)
+    assert moved["source_key"] == "note:new-annotated"
+    assert moved["source"] == {"kind": "note", "note_id": "new-annotated"}
+    assert moved["annotation_revision"] == 3
+    assert moved["annotations"] == [{"id": "ann-1"}]
+
+
+def test_note_rename_serializes_destination_annotation_writes(
+    tmp_vault,
+    monkeypatch,
+):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    from time import sleep
+
+    from pkm.annotations.store import (
+        AnnotationSource,
+        annotation_sidecar_path,
+        empty_annotation_document,
+        note_lifecycle_lock,
+        write_annotation_document,
+    )
+    import pkm.note_lifecycle as lifecycle
+
+    old_id = "old-race-note"
+    new_id = "new-race-note"
+    old_note = tmp_vault.notes_dir / f"{old_id}.md"
+    old_note.write_text(
+        f"---\nid: {old_id}\ntitle: Old\ntags: []\n---\n\nBody.\n",
+        encoding="utf-8",
+    )
+    old_source = AnnotationSource(kind="note", identifier=old_id)
+    new_source = AnnotationSource(kind="note", identifier=new_id)
+    write_annotation_document(
+        tmp_vault,
+        old_source,
+        {**empty_annotation_document(old_source), "annotations": [{"id": "old"}]},
+    )
+
+    destination_exposed = Event()
+    release_rename = Event()
+    competing_entered = Event()
+    real_rename_annotations = lifecycle.rename_annotation_document
+
+    def paused_rename_annotations(vault, source, destination):
+        destination_exposed.set()
+        assert release_rename.wait(timeout=2)
+        return real_rename_annotations(vault, source, destination)
+
+    monkeypatch.setattr(
+        lifecycle,
+        "rename_annotation_document",
+        paused_rename_annotations,
+    )
+
+    def competing_annotation_write() -> None:
+        assert destination_exposed.wait(timeout=2)
+        with note_lifecycle_lock(tmp_vault, new_id):
+            competing_entered.set()
+            if not annotation_sidecar_path(tmp_vault, new_source).exists():
+                write_annotation_document(
+                    tmp_vault,
+                    new_source,
+                    empty_annotation_document(new_source),
+                )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        renamed = executor.submit(lifecycle.rename_note_id, tmp_vault, old_id, new_id)
+        assert destination_exposed.wait(timeout=2)
+        competing = executor.submit(competing_annotation_write)
+        sleep(0.05)
+        assert not competing_entered.is_set()
+        release_rename.set()
+        renamed.result(timeout=2)
+        competing.result(timeout=2)
+
+    assert competing_entered.is_set()
+    assert not old_note.exists()
+    assert (tmp_vault.notes_dir / f"{new_id}.md").exists()
+    assert annotation_sidecar_path(tmp_vault, new_source).exists()
+    assert not annotation_sidecar_path(tmp_vault, old_source).exists()
+
+
 def test_note_rename_command_updates_wikilinks(cli_runner, tmp_vault):
     source = tmp_vault.notes_dir / "old-cli-note.md"
     source.write_text(

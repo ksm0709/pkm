@@ -7,6 +7,13 @@
   import ScrollPositionOverlay from "$lib/components/ScrollPositionOverlay.svelte";
   import CodeMirror from "$lib/editor/CodeMirror.svelte";
   import { tagHue } from "$lib/notes/rendered-markdown.js";
+  import {
+    reconcileTextQuoteAnchor,
+    renderedSourceRevision,
+    type TextAnchorStatus,
+    type TextAnchorTarget,
+    type TextQuoteAnchor,
+  } from "$lib/annotations/text-anchor";
   import { graphKeyNav } from "$lib/navigation/graph-keynav.svelte";
   import {
     clampFloatingPosition,
@@ -20,6 +27,7 @@
     note_id: string;
     title: string;
     body: string;
+    content_hash: string;
     frontmatter: Record<string, unknown>;
     created: string | null;
     updated: string | null;
@@ -70,6 +78,10 @@
   let editorDirty = $derived(editorDoc !== savedDoc);
   let noteAnnotationsPanelOpen = $state(false);
   let noteAnnotations = $state<SourceAnnotation[]>([]);
+  let noteAnnotationSourceRevision = $state("");
+  let noteAnnotationRevision = $state(0);
+  let noteAnnotationStorageMode = $state<"none" | "legacy" | "v2">("none");
+  let noteAnnotationLegacyRevision = $state("");
   let loadToken = 0;
   const dailyNoteIdPattern = /^\d{4}-\d{2}-\d{2}$/;
   const taskStateOrder = ["[ ]", "[>]", "[x]", "[~]"] as const;
@@ -217,6 +229,9 @@
       `/api/v1/vault/${vaultName}/notes/${note.note_id}`,
       {
         method: "PUT",
+        headers: note.content_hash
+          ? { "If-Match": `"${note.content_hash}"` }
+          : undefined,
         body: JSON.stringify({ body: updatedBody }),
       },
     );
@@ -267,9 +282,10 @@
     );
   }
 
-  interface SourceSearchTarget {
+  interface SourceSearchTarget extends TextAnchorTarget {
     element: HTMLElement;
     text: string;
+    headingPath: string[];
   }
 
   interface ParsedAnnotation {
@@ -281,6 +297,11 @@
     entryEndLine: number;
   }
 
+  interface ReanchorMetadata {
+    confidence: number;
+    reason: "exact" | "context" | "ambiguous" | "missing";
+  }
+
   interface SourceAnnotation {
     id: string;
     quote: string;
@@ -288,16 +309,19 @@
     memo: string;
     entryStartLine: number;
     entryEndLine: number;
+    anchor: TextQuoteAnchor;
+    status: TextAnchorStatus;
+    reanchor?: ReanchorMetadata;
+    raw?: NoteAnnotationV2;
   }
 
   interface NoteAnnotationV2 {
+    [key: string]: unknown;
     id: string;
     kind: "note";
-    anchor: {
-      kind: "text_quote";
-      quote: string;
-      occurrence: number;
-    };
+    anchor: TextQuoteAnchor;
+    status?: TextAnchorStatus;
+    reanchor?: ReanchorMetadata;
     comment: string;
     created_at: string;
     updated_at: string;
@@ -307,6 +331,10 @@
     version: 2;
     source_key: string;
     source: { kind: "note"; note_id: string };
+    annotation_revision?: number;
+    storage_mode?: "none" | "legacy" | "v2";
+    legacy_revision?: string;
+    source_revision?: string;
     annotations: NoteAnnotationV2[];
   }
 
@@ -348,15 +376,33 @@
       ),
     ).filter((element) => !isInAnnotationSection(element, heading));
     const candidateSet = new Set(candidates);
+    const headingStack: Array<{ level: number; text: string }> = [];
     return candidates
       .map((element) => {
         const hasNestedCandidate = candidates.some(
           (other) => other !== element && element.contains(other),
         );
-        const text = hasNestedCandidate
-          ? textExcludingNestedCandidates(element, candidateSet)
-          : (element.textContent ?? "");
-        return { element, text: normalizeAnnotationQuote(text) };
+        const text = normalizeAnnotationQuote(
+          hasNestedCandidate
+            ? textExcludingNestedCandidates(element, candidateSet)
+            : (element.textContent ?? ""),
+        );
+        const headingLevel = /^H([1-6])$/.exec(element.tagName)?.[1];
+        if (headingLevel) {
+          const level = Number(headingLevel);
+          while (
+            headingStack.length > 0 &&
+            headingStack[headingStack.length - 1].level >= level
+          ) {
+            headingStack.pop();
+          }
+          headingStack.push({ level, text });
+        }
+        return {
+          element,
+          text,
+          headingPath: headingStack.map((item) => item.text),
+        };
       })
       .filter((target) => target.text.length > 0);
   }
@@ -676,13 +722,124 @@
       });
   }
 
+  function sameReanchorState(
+    current: SourceAnnotation,
+    next: SourceAnnotation,
+  ) {
+    return (
+      current.status === next.status &&
+      JSON.stringify(current.anchor) === JSON.stringify(next.anchor) &&
+      JSON.stringify(current.reanchor) === JSON.stringify(next.reanchor)
+    );
+  }
+
+  function reconcilePersistentAnnotations(targets: SourceSearchTarget[]) {
+    if (noteAnnotations.length === 0) return noteAnnotations;
+    if (noteAnnotationStorageMode === "legacy") return noteAnnotations;
+    const sourceRevision = renderedSourceRevision(targets);
+    const requiresSelectorUpgrade = noteAnnotations.some(
+      (annotation) =>
+        annotation.anchor.selector_version !== 1 || !annotation.reanchor,
+    );
+    if (
+      sourceRevision === noteAnnotationSourceRevision &&
+      !requiresSelectorUpgrade
+    ) {
+      return noteAnnotations;
+    }
+
+    const nextAnnotations = noteAnnotations.map((annotation) => {
+      const resolution = reconcileTextQuoteAnchor(annotation.anchor, targets);
+      const sourceHref = annotationSourceHref(
+        resolution.anchor.quote,
+        resolution.anchor.occurrence,
+      );
+      return {
+        ...annotation,
+        quote: resolution.anchor.quote,
+        sourceHref,
+        anchor: resolution.anchor,
+        status: resolution.status,
+        reanchor: {
+          confidence: resolution.confidence,
+          reason: resolution.reason,
+        },
+      } satisfies SourceAnnotation;
+    });
+    const updates = nextAnnotations.filter(
+      (annotation, index) =>
+        !sameReanchorState(noteAnnotations[index], annotation),
+    );
+    noteAnnotations = nextAnnotations;
+    noteAnnotationSourceRevision = sourceRevision;
+
+    if (annotationPatchToken === null && note?.content_hash) {
+      const targetVault = vaultName;
+      const targetNoteId = note.note_id;
+      const baseRevision = noteAnnotationRevision;
+      const baseNoteRevision = note.content_hash;
+      const mutationToken = ++annotationMutationEpoch;
+      annotationPatchToken = mutationToken;
+      annotationError = "";
+      void patchNoteAnnotationAnchors(
+        targetVault,
+        targetNoteId,
+        sourceRevision,
+        baseRevision,
+        baseNoteRevision,
+        updates,
+      )
+        .then((savedDocument) => {
+          if (
+            !isCurrentAnnotationTarget(targetVault, targetNoteId) ||
+            annotationMutationEpoch !== mutationToken ||
+            annotationPatchToken !== mutationToken ||
+            noteAnnotationSourceRevision !== sourceRevision
+          ) {
+            return;
+          }
+          noteAnnotations =
+            savedDocument.annotations.length > 0
+              ? savedDocument.annotations
+              : nextAnnotations;
+          noteAnnotationSourceRevision =
+            savedDocument.sourceRevision || sourceRevision;
+          noteAnnotationRevision = savedDocument.annotationRevision;
+          noteAnnotationStorageMode = savedDocument.storageMode;
+          noteAnnotationLegacyRevision = savedDocument.legacyRevision;
+          annotationError = "";
+          schedulePersistentAnnotationMarks();
+        })
+        .catch((patchError: unknown) => {
+          if (
+            !isCurrentAnnotationTarget(targetVault, targetNoteId) ||
+            annotationMutationEpoch !== mutationToken ||
+            annotationPatchToken !== mutationToken
+          )
+            return;
+          annotationError =
+            patchError instanceof Error
+              ? patchError.message
+              : "Failed to persist re-anchored annotations.";
+        })
+        .finally(() => {
+          if (annotationPatchToken === mutationToken) {
+            annotationPatchToken = null;
+          }
+        });
+    }
+    return nextAnnotations;
+  }
+
   function applyPersistentAnnotationMarks() {
     clearPersistentAnnotationMarks();
     if (!noteBodyElement || !note?.body || editMode) return false;
 
     annotationSourcesByElement = new WeakMap<HTMLElement, SourceAnnotation[]>();
-    const parsedAnnotations = noteAnnotations;
     const targets = sourceSearchTargets(noteBodyElement);
+    const parsedAnnotations = reconcilePersistentAnnotations(targets).filter(
+      (annotation) => annotation.status === "active",
+    );
     const grouped = new Map<string, SourceAnnotation[]>();
     for (const annotation of parsedAnnotations) {
       const group = grouped.get(annotation.sourceHref) ?? [];
@@ -879,6 +1036,11 @@
   let annotationAddToLog = $state(false);
   let annotationSaving = $state(false);
   let annotationError = $state("");
+  let annotationMutationEpoch = 0;
+  let annotationPatchToken: number | null = null;
+  let annotateDialogElement = $state<HTMLElement | null>(null);
+  let annotationTextareaElement = $state<HTMLTextAreaElement | null>(null);
+  let annotationDialogReturnFocus: HTMLElement | null = null;
   let annotationPopup = $state<AnnotationPopup | null>(null);
   let annotationSourcesByElement = new WeakMap<
     HTMLElement,
@@ -960,35 +1122,58 @@
   function sourceAnnotationFromV2(
     annotation: NoteAnnotationV2,
   ): SourceAnnotation {
-    const sourceHref = annotationSourceHref(
-      annotation.anchor.quote,
-      annotation.anchor.occurrence,
-    );
+    const anchor: TextQuoteAnchor = {
+      ...annotation.anchor,
+      quote: normalizeAnnotationQuote(annotation.anchor.quote),
+      heading_path: annotation.anchor.heading_path
+        ? [...annotation.anchor.heading_path]
+        : undefined,
+    };
+    const sourceHref = annotationSourceHref(anchor.quote, anchor.occurrence);
+    const status = ["active", "needs_review", "orphaned"].includes(
+      annotation.status ?? "",
+    )
+      ? (annotation.status as TextAnchorStatus)
+      : "active";
     return {
       id: annotation.id,
-      quote: normalizeAnnotationQuote(annotation.anchor.quote),
+      quote: anchor.quote,
       sourceHref,
       memo: annotation.comment ?? "",
       entryStartLine: 0,
       entryEndLine: 0,
+      anchor,
+      status,
+      reanchor: annotation.reanchor,
+      raw: structuredClone(annotation),
     };
   }
 
   function sourceAnnotationToV2(
     annotation: SourceAnnotation,
   ): NoteAnnotationV2 {
-    const parsed = parseAnnotationSourceHash(annotation.sourceHref);
+    const raw = annotation.raw ?? ({} as Partial<NoteAnnotationV2>);
+    const reanchor =
+      annotation.reanchor ??
+      (annotation.status === "active"
+        ? ({ confidence: 1, reason: "exact" } satisfies ReanchorMetadata)
+        : undefined);
     return {
+      ...raw,
       id: annotation.id,
       kind: "note",
       anchor: {
-        kind: "text_quote",
-        quote: parsed?.quote ?? annotation.quote,
-        occurrence: parsed?.occurrence ?? 0,
+        ...(raw.anchor ?? {}),
+        ...annotation.anchor,
+        heading_path: annotation.anchor.heading_path
+          ? [...annotation.anchor.heading_path]
+          : undefined,
       },
+      status: annotation.status,
+      reanchor: annotation.reanchor,
       comment: annotation.memo,
-      created_at: "",
-      updated_at: "",
+      created_at: typeof raw.created_at === "string" ? raw.created_at : "",
+      updated_at: typeof raw.updated_at === "string" ? raw.updated_at : "",
     };
   }
 
@@ -997,6 +1182,9 @@
     annotations: SourceAnnotation[],
   ): NoteAnnotationDocumentV2 {
     const document = emptyNoteAnnotationDocument(note_id);
+    if (noteAnnotationSourceRevision) {
+      document.source_revision = noteAnnotationSourceRevision;
+    }
     document.annotations = annotations.map(sourceAnnotationToV2);
     return document;
   }
@@ -1022,10 +1210,42 @@
     });
   }
 
+  function annotationDocumentState(payload: unknown, fallbackRevision = 0) {
+    const document =
+      payload && typeof payload === "object"
+        ? (payload as Partial<NoteAnnotationDocumentV2>)
+        : {};
+    const annotationRevision =
+      typeof document.annotation_revision === "number" &&
+      Number.isInteger(document.annotation_revision) &&
+      document.annotation_revision >= 0
+        ? document.annotation_revision
+        : fallbackRevision;
+    const storageMode = ["none", "legacy", "v2"].includes(
+      document.storage_mode ?? "",
+    )
+      ? (document.storage_mode as "none" | "legacy" | "v2")
+      : "v2";
+    return {
+      annotations: sourceAnnotationsFromDocument(payload),
+      sourceRevision:
+        typeof document.source_revision === "string"
+          ? document.source_revision
+          : "",
+      annotationRevision,
+      storageMode,
+      legacyRevision:
+        typeof document.legacy_revision === "string"
+          ? document.legacy_revision
+          : "",
+    };
+  }
+
   async function loadNoteAnnotationSources(vault: string, id: string) {
-    return sourceAnnotationsFromDocument(
-      await apiGet<NoteAnnotationDocumentV2>(noteAnnotationsHref(vault, id)),
+    const payload = await apiGet<NoteAnnotationDocumentV2>(
+      noteAnnotationsHref(vault, id),
     );
+    return annotationDocumentState(payload);
   }
 
   async function putNoteAnnotationSources(
@@ -1033,17 +1253,62 @@
     id: string,
     annotations: SourceAnnotation[],
   ) {
-    const document = noteAnnotationDocumentFromSources(id, annotations);
+    const mutationToken = ++annotationMutationEpoch;
+    const baseRevision = noteAnnotationRevision;
+    const storageMode = noteAnnotationStorageMode;
+    const legacyRevision = noteAnnotationLegacyRevision;
+    const document = {
+      ...noteAnnotationDocumentFromSources(id, annotations),
+      base_revision: baseRevision,
+      ...(storageMode === "legacy" && legacyRevision
+        ? { legacy_revision: legacyRevision }
+        : {}),
+    };
     const response = await apiClient(noteAnnotationsHref(vault, id), {
       method: "PUT",
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
+        "If-Match": `"${baseRevision}"`,
       },
       body: JSON.stringify(document),
     });
     if (!response.ok) throw new Error(`PUT annotation -> ${response.status}`);
-    return sourceAnnotationsFromDocument(await response.json());
+    return {
+      ...annotationDocumentState(await response.json(), baseRevision + 1),
+      mutationToken,
+    };
+  }
+
+  async function patchNoteAnnotationAnchors(
+    vault: string,
+    id: string,
+    sourceRevision: string,
+    baseRevision: number,
+    baseNoteRevision: string,
+    updates: SourceAnnotation[],
+  ) {
+    const response = await apiClient(noteAnnotationsHref(vault, id), {
+      method: "PATCH",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "If-Match": `"${baseRevision}"`,
+      },
+      body: JSON.stringify({
+        base_revision: baseRevision,
+        base_note_revision: baseNoteRevision,
+        source_revision: sourceRevision,
+        updates: updates.map((annotation) => ({
+          id: annotation.id,
+          anchor: annotation.anchor,
+          status: annotation.status,
+          reanchor: annotation.reanchor,
+        })),
+      }),
+    });
+    if (!response.ok) throw new Error(`PATCH annotation -> ${response.status}`);
+    return annotationDocumentState(await response.json(), baseRevision + 1);
   }
 
   function selectedAnnotationDraft(
@@ -1051,14 +1316,33 @@
     occurrence: number,
     memo: string,
   ): SourceAnnotation {
-    const sourceHref = annotationSourceHref(quote, occurrence);
+    const anchor: TextQuoteAnchor = {
+      kind: "text_quote",
+      quote: normalizeAnnotationQuote(quote),
+      occurrence,
+    };
+    const targets = noteBodyElement ? sourceSearchTargets(noteBodyElement) : [];
+    const resolution = reconcileTextQuoteAnchor(anchor, targets);
+    if (targets.length > 0) {
+      noteAnnotationSourceRevision = renderedSourceRevision(targets);
+    }
+    const sourceHref = annotationSourceHref(
+      resolution.anchor.quote,
+      resolution.anchor.occurrence,
+    );
     return {
       id: `note-ann-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
-      quote: normalizeAnnotationQuote(quote),
+      quote: resolution.anchor.quote,
       sourceHref,
       memo,
       entryStartLine: 0,
       entryEndLine: 0,
+      anchor: resolution.anchor,
+      status: resolution.status,
+      reanchor: {
+        confidence: resolution.confidence,
+        reason: resolution.reason,
+      },
     };
   }
 
@@ -1298,8 +1582,20 @@
     }, 600);
   }
 
+  function rememberAnnotationDialogTrigger() {
+    annotationDialogReturnFocus =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+  }
+
+  function focusAnnotationDialog() {
+    void tick().then(() => annotationTextareaElement?.focus());
+  }
+
   function openAnnotateDialog() {
     if (!annotateMenu) return;
+    rememberAnnotationDialogTrigger();
     annotateDialog = {
       quote: annotateMenu.quote,
       occurrence: annotateMenu.occurrence,
@@ -1308,14 +1604,20 @@
     annotationAddToLog = false;
     annotationError = "";
     annotateMenu = null;
+    focusAnnotationDialog();
   }
 
   function closeAnnotateDialog() {
+    const returnFocus = annotationDialogReturnFocus;
+    annotationDialogReturnFocus = null;
     annotateDialog = null;
     annotationText = "";
     annotationAddToLog = false;
     annotationError = "";
     annotationSaving = false;
+    void tick().then(() => {
+      if (returnFocus && document.contains(returnFocus)) returnFocus.focus();
+    });
   }
 
   function resetAnnotationState() {
@@ -1323,9 +1625,16 @@
     cancelPersistentAnnotationMarkSchedule();
     noteAnnotationsPanelOpen = false;
     noteAnnotations = [];
+    noteAnnotationSourceRevision = "";
+    noteAnnotationRevision = 0;
+    noteAnnotationStorageMode = "none";
+    noteAnnotationLegacyRevision = "";
+    annotationMutationEpoch += 1;
+    annotationPatchToken = null;
     annotateMenu = null;
     dismissAnnotationPopup();
     clearPersistentAnnotationMarks();
+    annotationDialogReturnFocus = null;
     closeAnnotateDialog();
   }
 
@@ -1341,6 +1650,7 @@
   }
 
   function openEditAnnotation(annotation: SourceAnnotation) {
+    rememberAnnotationDialogTrigger();
     const parsed = parseAnnotationSourceHash(annotation.sourceHref);
     annotateDialog = {
       quote: annotation.quote,
@@ -1351,6 +1661,7 @@
     annotationAddToLog = false;
     annotationError = "";
     dismissAnnotationPopup();
+    focusAnnotationDialog();
   }
 
   async function deleteAnnotation(annotation: SourceAnnotation) {
@@ -1364,13 +1675,21 @@
     );
 
     try {
-      const savedAnnotations = await putNoteAnnotationSources(
+      const savedDocument = await putNoteAnnotationSources(
         targetVault,
         targetNoteId,
         nextAnnotations,
       );
-      if (!isCurrentAnnotationTarget(targetVault, targetNoteId)) return;
-      noteAnnotations = savedAnnotations;
+      if (
+        !isCurrentAnnotationTarget(targetVault, targetNoteId) ||
+        annotationMutationEpoch !== savedDocument.mutationToken
+      )
+        return;
+      noteAnnotations = savedDocument.annotations;
+      noteAnnotationSourceRevision = savedDocument.sourceRevision;
+      noteAnnotationRevision = savedDocument.annotationRevision;
+      noteAnnotationStorageMode = savedDocument.storageMode;
+      noteAnnotationLegacyRevision = savedDocument.legacyRevision;
       dismissAnnotationPopup();
       await tick();
       if (!applyPersistentAnnotationMarks()) {
@@ -1418,18 +1737,26 @@
       : [...noteAnnotations, nextAnnotation];
 
     try {
-      const savedAnnotations = await putNoteAnnotationSources(
+      const savedDocument = await putNoteAnnotationSources(
         targetVault,
         targetNoteId,
         nextAnnotations,
       );
-      if (!isCurrentAnnotationTarget(targetVault, targetNoteId)) return;
-      noteAnnotations = savedAnnotations;
+      if (
+        !isCurrentAnnotationTarget(targetVault, targetNoteId) ||
+        annotationMutationEpoch !== savedDocument.mutationToken
+      )
+        return;
+      noteAnnotations = savedDocument.annotations;
+      noteAnnotationSourceRevision = savedDocument.sourceRevision;
+      noteAnnotationRevision = savedDocument.annotationRevision;
+      noteAnnotationStorageMode = savedDocument.storageMode;
+      noteAnnotationLegacyRevision = savedDocument.legacyRevision;
       annotateDialog = {
         quote,
         occurrence,
         editingAnnotation:
-          savedAnnotations.find(
+          savedDocument.annotations.find(
             (annotation) => annotation.id === nextAnnotation.id,
           ) ?? nextAnnotation,
       };
@@ -1510,9 +1837,17 @@
       neighbors = neighborsResult.value;
     }
     if (annotationsResult.status === "fulfilled") {
-      noteAnnotations = annotationsResult.value;
+      noteAnnotations = annotationsResult.value.annotations;
+      noteAnnotationSourceRevision = annotationsResult.value.sourceRevision;
+      noteAnnotationRevision = annotationsResult.value.annotationRevision;
+      noteAnnotationStorageMode = annotationsResult.value.storageMode;
+      noteAnnotationLegacyRevision = annotationsResult.value.legacyRevision;
     } else {
       noteAnnotations = [];
+      noteAnnotationSourceRevision = "";
+      noteAnnotationRevision = 0;
+      noteAnnotationStorageMode = "none";
+      noteAnnotationLegacyRevision = "";
     }
     loadingNeighbors = false;
 
@@ -1573,6 +1908,9 @@
         `/api/v1/vault/${vaultName}/notes/${encodeURIComponent(note.note_id)}`,
         {
           method: "PUT",
+          headers: note.content_hash
+            ? { "If-Match": `"${note.content_hash}"` }
+            : undefined,
           body: JSON.stringify({ body: editorDoc }),
         },
       );
@@ -1673,6 +2011,40 @@
     };
 
     const handleGlobalKeyDown = (event: KeyboardEvent) => {
+      if (annotateDialog && annotateDialogElement) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          closeAnnotateDialog();
+          return;
+        }
+        if (event.key === "Tab") {
+          const focusable = Array.from(
+            annotateDialogElement.querySelectorAll<HTMLElement>(
+              'textarea:not([disabled]), input:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+            ),
+          );
+          if (focusable.length > 0) {
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            const active = document.activeElement;
+            if (
+              event.shiftKey &&
+              (active === first || !annotateDialogElement.contains(active))
+            ) {
+              event.preventDefault();
+              last.focus();
+            } else if (
+              !event.shiftKey &&
+              (active === last || !annotateDialogElement.contains(active))
+            ) {
+              event.preventDefault();
+              first.focus();
+            }
+          }
+          return;
+        }
+      }
       if (event.key === "Escape") {
         dismissAnnotateMenu();
         dismissAnnotationPopup();
@@ -1685,7 +2057,7 @@
 
     document.addEventListener("selectionchange", handleSelectionChange);
     document.addEventListener("pointerdown", handleGlobalPointerDown, true);
-    document.addEventListener("keydown", handleGlobalKeyDown);
+    document.addEventListener("keydown", handleGlobalKeyDown, true);
     window.addEventListener("hashchange", handleHashChange);
     window.addEventListener("scroll", dismissAnnotateMenu, true);
     window.addEventListener("wheel", dismissAnnotateMenu, { passive: true });
@@ -1701,7 +2073,7 @@
         handleGlobalPointerDown,
         true,
       );
-      document.removeEventListener("keydown", handleGlobalKeyDown);
+      document.removeEventListener("keydown", handleGlobalKeyDown, true);
       window.removeEventListener("hashchange", handleHashChange);
       window.removeEventListener("scroll", dismissAnnotateMenu, true);
       window.removeEventListener("wheel", dismissAnnotateMenu);
@@ -1802,6 +2174,10 @@
         {/if}
       </header>
 
+      {#if annotationError}
+        <p class="annotation-sync-error" role="alert">{annotationError}</p>
+      {/if}
+
       {#if !editMode && noteAnnotationsPanelOpen}
         <section
           id="note-annotations-panel"
@@ -1825,7 +2201,15 @@
                 >
                   <div class="note-annotation-card-meta">
                     <span>Note annotation</span>
-                    <span>line {annotation.entryStartLine + 1}</span>
+                    <span
+                      class={`annotation-status annotation-status--${annotation.status}`}
+                    >
+                      {annotation.status === "needs_review"
+                        ? "Needs review"
+                        : annotation.status === "orphaned"
+                          ? "Orphaned"
+                          : "Active"}
+                    </span>
                   </div>
                   <blockquote>{annotation.quote}</blockquote>
                   <p class="note-annotation-card-memo">{annotation.memo}</p>
@@ -1833,6 +2217,8 @@
                     <button
                       type="button"
                       data-testid="note-annotation-card-source"
+                      disabled={annotationSaving ||
+                        annotation.status !== "active"}
                       onclick={() => openNoteAnnotationSource(annotation)}
                     >
                       원문 보기
@@ -1953,15 +2339,19 @@
 
       {#if annotateDialog}
         <div
+          bind:this={annotateDialogElement}
           role="dialog"
           aria-modal="true"
-          aria-label="Annotate selection"
+          aria-label={annotateDialog.editingAnnotation
+            ? "Edit annotation"
+            : "Annotate selection"}
           class="annotate-dialog"
         >
           <p class="annotate-quote">“{annotateDialog.quote}”</p>
           <label class="annotate-field">
             <span>Annotation</span>
             <textarea
+              bind:this={annotationTextareaElement}
               aria-label="Annotation text"
               bind:value={annotationText}
               disabled={annotationSaving}
@@ -2182,6 +2572,27 @@
     font-size: var(--type-chrome-sm-size, 11px);
     text-transform: uppercase;
     letter-spacing: 0.08em;
+  }
+
+  .annotation-status {
+    padding: 2px 7px;
+    border: 1px solid color-mix(in srgb, var(--text-muted) 45%, transparent);
+    border-radius: 999px;
+  }
+
+  .annotation-status--active {
+    border-color: color-mix(in srgb, #35c978 55%, var(--border));
+    color: #35c978;
+  }
+
+  .annotation-status--needs_review {
+    border-color: color-mix(in srgb, #e8a735 65%, var(--border));
+    color: #e8a735;
+  }
+
+  .annotation-status--orphaned {
+    border-color: color-mix(in srgb, #ff6b6b 65%, var(--border));
+    color: #ff8c8c;
   }
 
   .note-annotation-card blockquote,
@@ -2453,6 +2864,7 @@
     cursor: not-allowed;
   }
 
+  .annotation-sync-error,
   .annotate-error {
     margin: var(--space-2, 8px) 0 0;
     color: var(--signal-danger, #c0392b);

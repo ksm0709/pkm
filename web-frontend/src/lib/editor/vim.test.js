@@ -30,6 +30,7 @@ describe("vim mappings", () => {
       ["<leader>t", ":cmdk_nav_tags<CR>", "normal"],
       ["<leader>g", ":cmdk_nav_graph<CR>", "normal"],
       ["<leader>l", ":cmdk_nav_logger<CR>", "normal"],
+      ["<leader>f", ":cmdk_nav_feedback<CR>", "normal"],
       ["<leader>d", ":cmdk_nav_daily<CR>", "normal"],
       ["<leader>c", ":cmdk_nav_configs<CR>", "normal"],
       ["gd", ":gotoDaily<CR>", "normal"],
@@ -58,6 +59,7 @@ describe("vim mappings", () => {
       "cmdk_nav_tags",
       "cmdk_nav_graph",
       "cmdk_nav_logger",
+      "cmdk_nav_feedback",
       "cmdk_nav_daily",
       "cmdk_nav_configs",
     ]);

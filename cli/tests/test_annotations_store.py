@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from hashlib import sha256
+from threading import Barrier, Event
+from time import sleep
 
 from pkm.annotations.store import (
     AnnotationSource,
     annotation_sidecar_path,
     empty_annotation_document,
+    mutate_annotation_document,
+    note_lifecycle_lock,
     read_annotation_document,
     write_annotation_document,
 )
@@ -71,3 +76,60 @@ def test_missing_annotation_sidecar_returns_canonical_empty_document(
         },
         "annotations": [],
     }
+
+
+def test_concurrent_annotation_mutations_preserve_disjoint_updates(
+    tmp_vault: VaultConfig,
+) -> None:
+    source = AnnotationSource(kind="note", identifier="concurrent-note")
+    start = Barrier(3)
+
+    def add_annotation(annotation_id: str) -> None:
+        start.wait()
+
+        def mutate(document: dict) -> dict:
+            sleep(0.05)
+            document["annotations"].append({"id": annotation_id})
+            return document
+
+        mutate_annotation_document(tmp_vault, source, mutate)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(add_annotation, "first")
+        second = executor.submit(add_annotation, "second")
+        start.wait()
+        first.result(timeout=2)
+        second.result(timeout=2)
+
+    loaded = read_annotation_document(tmp_vault, source)
+    assert {item["id"] for item in loaded["annotations"]} == {"first", "second"}
+
+
+def test_note_lifecycle_lock_serializes_note_and_sidecar_mutations(
+    tmp_vault: VaultConfig,
+) -> None:
+    first_entered = Event()
+    release_first = Event()
+    second_entered = Event()
+
+    def first_mutation() -> None:
+        with note_lifecycle_lock(tmp_vault, "locked-note"):
+            first_entered.set()
+            assert release_first.wait(timeout=2)
+
+    def second_mutation() -> None:
+        assert first_entered.wait(timeout=2)
+        with note_lifecycle_lock(tmp_vault, "locked-note"):
+            second_entered.set()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(first_mutation)
+        second = executor.submit(second_mutation)
+        assert first_entered.wait(timeout=2)
+        sleep(0.05)
+        assert not second_entered.is_set()
+        release_first.set()
+        first.result(timeout=2)
+        second.result(timeout=2)
+
+    assert second_entered.is_set()

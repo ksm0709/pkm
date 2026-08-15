@@ -10,7 +10,7 @@ from aiohttp import web
 
 from pkm.config import VaultConfig
 from pkm.frontmatter import parse
-from pkm.web.routes.notes import _json_safe, _resolve_vault
+from pkm.web.routes.notes import _json_safe, _note_content_hash, _resolve_vault
 
 _DATE_ONLY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _DATED_DAILY_FILE_RE = re.compile(r"^(?P<date>\d{4}-\d{2}-\d{2})(?:-.+)?$")
@@ -70,6 +70,7 @@ def _daily_note_response(path: Path) -> dict:
         "note_id": str(note.id),
         "title": str(note.title),
         "body": note.body,
+        "content_hash": _note_content_hash(note.body),
         "frontmatter": _json_safe(fm),
         "created": _json_safe(fm.get("created_at") or fm.get("source") or None),
         "updated": _json_safe(fm.get("updated_at") or None),

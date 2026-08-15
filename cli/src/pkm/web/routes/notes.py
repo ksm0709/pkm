@@ -4,15 +4,33 @@ from __future__ import annotations
 
 import datetime
 import json
+from hashlib import sha256
 from typing import Any
 
 import networkx as nx
 from aiohttp import web
 
+from pkm.annotations.store import (
+    AnnotationSource,
+    annotation_sidecar_path,
+    note_lifecycle_lock,
+)
 from pkm.config import VaultConfig, discover_vaults
 from pkm.frontmatter import parse, render
-from pkm.note_lifecycle import validate_note_id
+from pkm.note_lifecycle import has_legacy_annotations_section, validate_note_id
 from pkm.note_summary import note_description as _shared_note_description
+
+
+def _note_content_hash(body: str) -> str:
+    return f"sha256:{sha256(body.encode('utf-8')).hexdigest()}"
+
+
+def _validate_note_if_match(request: web.Request, current_hash: str) -> None:
+    if_match = request.headers.get("If-Match")
+    if if_match is None:
+        raise web.HTTPPreconditionRequired(reason="If-Match is required")
+    if if_match != f'"{current_hash}"':
+        raise web.HTTPPreconditionFailed(reason="Note content changed")
 
 
 def _json_safe(obj: Any) -> Any:
@@ -263,6 +281,7 @@ async def get_note(request: web.Request) -> web.Response:
                     "note_id": str(note.id),
                     "title": str(note.title),
                     "body": note.body,
+                    "content_hash": _note_content_hash(note.body),
                     "frontmatter": _json_safe(fm),
                     "created": _json_safe(
                         fm.get("created_at") or fm.get("source") or None
@@ -298,6 +317,7 @@ def _note_response(path) -> dict:
         "note_id": str(note.id),
         "title": str(note.title),
         "body": note.body,
+        "content_hash": _note_content_hash(note.body),
         "frontmatter": _json_safe(fm),
         "created": _json_safe(fm.get("created_at") or fm.get("source") or None),
         "updated": _json_safe(fm.get("updated_at") or None),
@@ -351,33 +371,57 @@ async def create_note_handler(request: web.Request) -> web.Response:
 async def ensure_note_handler(request: web.Request) -> web.Response:
     """POST /api/v1/vault/{name}/notes/{id}/ensure — create unresolved note."""
     vault = _resolve_vault(request.match_info["name"])
-    note_id = request.match_info["id"]
-    path, created = _ensure_blank_note(vault, note_id)
+    try:
+        note_id = validate_note_id(request.match_info["id"])
+    except ValueError:
+        raise web.HTTPBadRequest(reason="Invalid note id")
+    with note_lifecycle_lock(vault, note_id):
+        path, created = _ensure_blank_note(vault, note_id)
     return web.json_response(_note_response(path), status=201 if created else 200)
 
 
 async def update_note(request: web.Request) -> web.Response:
     """PUT /api/v1/vault/{name}/notes/{id} — update note body (and optionally title/tags)."""
     vault = _resolve_vault(request.match_info["name"])
-    note_id = request.match_info["id"]
+    try:
+        note_id = validate_note_id(request.match_info["id"])
+    except ValueError:
+        raise web.HTTPBadRequest(reason="Invalid note id")
 
     try:
         data = await request.json()
     except Exception:
         raise web.HTTPBadRequest(reason="Invalid JSON body")
 
-    for base_dir in (vault.notes_dir, vault.daily_dir):
-        path = base_dir / f"{note_id}.md"
-        if path.exists():
-            note = parse(path)
-            new_body = data.get("body", note.body)
-            meta = dict(note.meta or {})
-            if "title" in data:
-                meta["title"] = data["title"]
-            if "tags" in data:
-                meta["tags"] = data["tags"]
-            path.write_text(render(meta, new_body), encoding="utf-8")
-            return web.json_response(_note_response(path))
+    with note_lifecycle_lock(vault, note_id):
+        for base_dir in (vault.notes_dir, vault.daily_dir):
+            path = base_dir / f"{note_id}.md"
+            if path.exists():
+                note = parse(path)
+                current_hash = _note_content_hash(note.body)
+                _validate_note_if_match(request, current_hash)
+                new_body = data.get("body", note.body)
+                source = AnnotationSource(kind="note", identifier=note_id)
+                if annotation_sidecar_path(
+                    vault, source
+                ).is_file() and has_legacy_annotations_section(new_body):
+                    raise web.HTTPConflict(
+                        reason=(
+                            "Legacy ## Annotations is retired after sidecar migration; "
+                            "reload before saving"
+                        )
+                    )
+                meta = dict(note.meta or {})
+                if "title" in data:
+                    meta["title"] = data["title"]
+                if "tags" in data:
+                    meta["tags"] = data["tags"]
+                path.write_text(render(meta, new_body), encoding="utf-8")
+                payload = _note_response(path)
+                return web.json_response(
+                    payload,
+                    headers={"ETag": f'"{payload["content_hash"]}"'},
+                )
 
     raise web.HTTPNotFound(reason=f"Note '{note_id}' not found in vault '{vault.name}'")
 
