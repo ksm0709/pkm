@@ -10,6 +10,8 @@
     description: string;
     feedback_type: FeedbackType;
     created_at: string;
+    email_status?: "sent" | "not_configured" | "failed";
+    email_recipient?: string;
   }
 
   const feedbackTypeLabels: Record<FeedbackType, string> = {
@@ -94,7 +96,15 @@
       title = "";
       description = "";
       feedbackType = "requirement";
-      success = "Saved to this vault and linked from today's daily log.";
+      if (record.email_status === "sent") {
+        success = `Saved to this vault and emailed to ${record.email_recipient ?? "your inbox"}.`;
+      } else if (record.email_status === "not_configured") {
+        success = "Saved to this vault. Email delivery needs SMTP setup.";
+      } else if (record.email_status === "failed") {
+        success = "Saved to this vault, but email delivery failed.";
+      } else {
+        success = "Saved to this vault and linked from today's daily log.";
+      }
     } catch (cause) {
       if (vaultName !== vault) return;
       error =

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,7 @@ from aiohttp import web
 
 from pkm.commands.daily import DAILY_TEMPLATE, _add_subnote_link, _sanitize_title
 from pkm.frontmatter import parse, render
+from pkm.web.feedback_mail import send_feedback_email
 from pkm.web.routes.notes import _resolve_vault
 from pkm.web.security import request_same_origin_or_bearer_allowed
 
@@ -143,4 +145,16 @@ async def post_feedback(request: web.Request) -> web.Response:
         daily_path.write_text(DAILY_TEMPLATE.format(date=today), encoding="utf-8")
     _add_subnote_link(daily_path, now.strftime("%H:%M:%S"), note_id)
 
-    return web.json_response(_feedback_record(feedback_path), status=201)
+    record = _feedback_record(feedback_path)
+    delivery = await asyncio.to_thread(
+        send_feedback_email,
+        vault_name=vault.name,
+        title=record["title"],
+        description=record["description"],
+        feedback_type=record["feedback_type"],
+        created_at=record["created_at"],
+    )
+    record["email_status"] = delivery.status
+    if delivery.recipient:
+        record["email_recipient"] = delivery.recipient
+    return web.json_response(record, status=201)

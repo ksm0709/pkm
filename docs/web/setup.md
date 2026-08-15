@@ -130,3 +130,43 @@ systemd user unit does not exist yet.
 The bundled SPA assets ship inside the wheel under
 `pkm/web/static/`, so a `pip install -U` updates the frontend in lockstep
 with the daemon.
+
+## 8. Feedback email notifications
+
+To email every web feedback entry to `ksm07091@gmail.com`, configure SMTP in a
+private systemd environment file:
+
+```bash
+mkdir -p ~/.config/pkm
+chmod 700 ~/.config/pkm
+```
+
+Create `~/.config/pkm/feedback-mail.env` with mode `0600`:
+
+```ini
+PKM_FEEDBACK_SMTP_HOST=smtp.gmail.com
+PKM_FEEDBACK_SMTP_PORT=587
+PKM_FEEDBACK_SMTP_USERNAME=ksm07091@gmail.com
+PKM_FEEDBACK_SMTP_PASSWORD=<Google app password>
+PKM_FEEDBACK_EMAIL_FROM=ksm07091@gmail.com
+PKM_FEEDBACK_SMTP_STARTTLS=true
+```
+
+Add this drop-in at `~/.config/systemd/user/pkm-web.service.d/feedback-mail.conf`:
+
+```ini
+[Service]
+EnvironmentFile=%h/.config/pkm/feedback-mail.env
+```
+
+Then apply it:
+
+```bash
+systemctl --user daemon-reload
+pkm web restart
+```
+
+The recipient defaults to `ksm07091@gmail.com`; set
+`PKM_FEEDBACK_EMAIL_TO` in the environment file to override it. Feedback is
+always saved to the vault even if SMTP is unavailable, and the page reports
+the delivery state.

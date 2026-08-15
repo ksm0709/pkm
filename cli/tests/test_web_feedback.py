@@ -9,6 +9,8 @@ from aiohttp.test_utils import TestClient, TestServer
 
 from pkm.commands.daily import _make_subnote_content
 from pkm.config import VaultConfig, WebConfig
+from pkm.web.feedback_mail import FeedbackEmailResult
+from pkm.web.routes import feedback as feedback_route
 from pkm.web.server import make_app
 
 TOKEN = "test-feedback-token"
@@ -60,6 +62,39 @@ async def test_post_feedback_creates_tagged_subnote_and_daily_link(
         tmp_vault.daily_dir / f"{datetime.now():%Y-%m-%d}.md"
     ).read_text(encoding="utf-8")
     assert f"[[{record['note_id']}]]" in daily_log
+
+
+@pytest.mark.anyio
+async def test_post_feedback_emails_the_saved_record(
+    app, tmp_vault: VaultConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[dict[str, str]] = []
+
+    def send(**kwargs: str) -> FeedbackEmailResult:
+        calls.append(kwargs)
+        return FeedbackEmailResult(status="sent", recipient="ksm07091@gmail.com")
+
+    monkeypatch.setattr(feedback_route, "send_feedback_email", send)
+    async with TestClient(TestServer(app)) as client:
+        response = await client.post(
+            "/api/v1/vault/test-vault/feedback",
+            json={"title": "Email this", "description": "Send my feedback."},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        record = await response.json()
+
+    assert response.status == 201
+    assert record["email_status"] == "sent"
+    assert record["email_recipient"] == "ksm07091@gmail.com"
+    assert calls == [
+        {
+            "vault_name": "test-vault",
+            "title": "Email this",
+            "description": "Send my feedback.",
+            "feedback_type": "requirement",
+            "created_at": record["created_at"],
+        }
+    ]
 
 
 @pytest.mark.anyio

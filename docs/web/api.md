@@ -361,8 +361,8 @@ Get a specific date's daily note.
 ## Feedback
 
 Feedback stays in the selected vault: every submission creates a tagged daily
-subnote and adds its wikilink to today's daily log. It is never sent to an
-external service.
+subnote and adds its wikilink to today's daily log. When SMTP is configured,
+the same record is also emailed to `ksm07091@gmail.com` by default.
 
 ### `GET /api/v1/vault/{name}/feedback`
 
@@ -378,6 +378,26 @@ List all feedback records, newest first.
 Create a feedback record.
 
 - **Request body** — `{"title": string, "description": string, "feedback_type"?: "requirement"|"bug"|"idea"}`
-- **Response 201** — the created feedback record.
+- **Response 201** — the created feedback record plus `email_status`
+  (`sent`, `not_configured`, or `failed`). The record is retained in the vault
+  even when delivery cannot be attempted or fails.
 - **400** — invalid JSON, missing/invalid fields, title longer than 120 characters, or description longer than 8,000 characters.
 - **403** — a session-authenticated request is not same-origin.
+
+### Feedback email delivery
+
+The web service reads SMTP settings from its environment. The recipient is
+`ksm07091@gmail.com` unless `PKM_FEEDBACK_EMAIL_TO` overrides it.
+
+```ini
+PKM_FEEDBACK_SMTP_HOST=smtp.gmail.com
+PKM_FEEDBACK_SMTP_PORT=587
+PKM_FEEDBACK_SMTP_USERNAME=ksm07091@gmail.com
+PKM_FEEDBACK_SMTP_PASSWORD=<Google app password>
+PKM_FEEDBACK_EMAIL_FROM=ksm07091@gmail.com
+PKM_FEEDBACK_SMTP_STARTTLS=true
+```
+
+For implicit TLS on port 465, set `PKM_FEEDBACK_SMTP_USE_SSL=true` instead of
+STARTTLS. Store credentials in a mode-`0600` systemd `EnvironmentFile`, then
+restart `pkm-web`; never place the password in the vault or browser code.
