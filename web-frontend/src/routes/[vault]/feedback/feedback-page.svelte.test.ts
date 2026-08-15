@@ -27,6 +27,22 @@ describe("feedback page", () => {
     await tick();
   }
 
+  async function waitFor(assertion: () => void | Promise<void>) {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      try {
+        await assertion();
+        return;
+      } catch (error) {
+        lastError = error;
+        await Promise.resolve();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        await tick();
+      }
+    }
+    throw lastError;
+  }
+
   function render() {
     const target = document.createElement("div");
     document.body.appendChild(target);
@@ -81,7 +97,9 @@ describe("feedback page", () => {
       ?.dispatchEvent(
         new SubmitEvent("submit", { bubbles: true, cancelable: true }),
       );
-    await flush();
+    await waitFor(() => {
+      expect(target.textContent).toContain("Saved to this vault");
+    });
 
     expect(apiClient).toHaveBeenCalledWith("/api/v1/vault/main/feedback", {
       method: "POST",
@@ -91,7 +109,6 @@ describe("feedback page", () => {
         feedback_type: "requirement",
       }),
     });
-    expect(target.textContent).toContain("Saved to this vault");
     expect(target.textContent).toContain("Keep feedback local");
 
     unmount(component);
