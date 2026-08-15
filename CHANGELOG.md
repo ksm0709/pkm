@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v3.3.0 (2026-08-15)
+
+### Features
+
+- Email each saved web feedback entry to the owner
+  ([`b292dd0`](https://github.com/ksm0709/pkm/commit/b292dd03ebfad0247c8962a1148736c753b98127))
+
+
 ## v3.2.0 (2026-08-15)
 
 ### Features
