@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v3.2.0 (2026-08-15)
+
+### Features
+
+- Retain web feedback and annotations in the vault
+  ([`3413675`](https://github.com/ksm0709/pkm/commit/3413675cf537fdcab2326fe0895079133f0e8054))
+
+### Testing
+
+- Make feedback save assertion wait for rendered state
+  ([`c98b7b0`](https://github.com/ksm0709/pkm/commit/c98b7b0fff47edde35e88e7cb26b3b582f0f3e71))
+
+
 ## v3.1.1 (2026-08-04)
 
 ### Bug Fixes
