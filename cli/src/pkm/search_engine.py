@@ -30,6 +30,10 @@ from typing import Any
 
 _MODEL_CACHE: dict[str, Any] = {}
 logger = logging.getLogger(__name__)
+DAEMON_STARTUP_TIMEOUT_ENV = "PKM_DAEMON_STARTUP_TIMEOUT"
+DEFAULT_DAEMON_STARTUP_TIMEOUT = 45.0
+DAEMON_STARTUP_POLL_ENV = "PKM_DAEMON_STARTUP_POLL_SECONDS"
+DEFAULT_DAEMON_STARTUP_POLL = 0.5
 
 
 def _require_transformers(model_name: str):
@@ -534,6 +538,70 @@ def find_similar(
         return []
 
 
+def _daemon_config_dir() -> Path:
+    return Path.home() / ".config" / "pkm"
+
+
+def _startup_seconds(name: str, default: float, override: float | None = None) -> float:
+    if override is not None:
+        return override
+    from pkm.daemon import _env_float
+
+    return _env_float(name, default)
+
+
+def _spawn_daemon_if_unlocked(config_dir: Path) -> None:
+    config_dir.mkdir(parents=True, exist_ok=True)
+    from pkm.daemon import daemon_lock_held
+
+    if daemon_lock_held(config_dir / "daemon.lock"):
+        return
+    subprocess.Popen(
+        [sys.executable, "-m", "pkm.daemon"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+
+def _wait_for_daemon_socket(sock_path: Path, timeout: float) -> bool:
+    interval = _startup_seconds(DAEMON_STARTUP_POLL_ENV, DEFAULT_DAEMON_STARTUP_POLL)
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+                sock.settimeout(0.2)
+                sock.connect(str(sock_path))
+            return True
+        except (FileNotFoundError, ConnectionRefusedError, socket.timeout, OSError):
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(interval)
+
+
+def _search_socket(
+    sock_path: Path,
+    request: dict[str, Any],
+    *,
+    read_timeout: float,
+) -> list[SearchResult] | None:
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.2)
+        sock.connect(str(sock_path))
+        sock.settimeout(read_timeout)
+        sock.sendall(json.dumps(request).encode("utf-8") + b"\n")
+        resp_line = sock.makefile("r", encoding="utf-8").readline()
+        if not resp_line:
+            return None
+        data = json.loads(resp_line)
+        if "error" in data:
+            return None
+        if isinstance(data, list):
+            return [SearchResult(**res) for res in data]
+        return [SearchResult(**res) for res in data.get("results", [])]
+
+
 def search_via_daemon(
     query: str,
     vault: VaultConfig,
@@ -541,58 +609,43 @@ def search_via_daemon(
     min_importance: float = 1.0,
     memory_type_filter: str | None = None,
     recency_weight: float = 0.0,
+    *,
+    start_and_wait: bool = False,
+    startup_timeout: float | None = None,
 ) -> list[SearchResult] | None:
     """Attempt to search via the background ML daemon. Returns None if daemon is unavailable."""
     index_path = vault.pkm_dir / "index.json"
     if not index_path.exists():
         return None
 
-    sock_path = Path.home() / ".config" / "pkm" / "daemon.sock"
+    sock_path = _daemon_config_dir() / "daemon.sock"
+    request = {
+        "query": query,
+        "vault_name": vault.name,
+        "top_n": top_n,
+        "min_importance": min_importance,
+        "memory_type_filter": memory_type_filter,
+        "recency_weight": recency_weight,
+    }
 
     try:
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
-            sock.settimeout(0.2)
-            sock.connect(str(sock_path))
-            sock.settimeout(1.5)
-
-            req = {
-                "query": query,
-                "vault_name": vault.name,
-                "top_n": top_n,
-                "min_importance": min_importance,
-                "memory_type_filter": memory_type_filter,
-                "recency_weight": recency_weight,
-            }
-            sock.sendall(json.dumps(req).encode("utf-8") + b"\n")
-
-            f = sock.makefile("r", encoding="utf-8")
-            resp_line = f.readline()
-            if not resp_line:
-                return None
-
-            data = json.loads(resp_line)
-            if "error" in data:
-                return None
-
-            if isinstance(data, list):
-                return [SearchResult(**res) for res in data]
-
-            return [SearchResult(**res) for res in data.get("results", [])]
-
+        return _search_socket(sock_path, request, read_timeout=1.5)
     except (FileNotFoundError, ConnectionRefusedError, socket.timeout):
-        daemon_dir = Path.home() / ".config" / "pkm"
-        daemon_dir.mkdir(parents=True, exist_ok=True)
         try:
-            subprocess.Popen(
-                [sys.executable, "-m", "pkm.daemon"],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
+            _spawn_daemon_if_unlocked(_daemon_config_dir())
         except Exception:
             pass
-        return None
+        if not start_and_wait:
+            return None
+        timeout = _startup_seconds(
+            DAEMON_STARTUP_TIMEOUT_ENV, DEFAULT_DAEMON_STARTUP_TIMEOUT, startup_timeout
+        )
+        if not _wait_for_daemon_socket(sock_path, timeout):
+            return None
+        try:
+            return _search_socket(sock_path, request, read_timeout=timeout)
+        except Exception:
+            return None
     except Exception:
         return None
 
@@ -622,16 +675,8 @@ def update_index_via_daemon(vault: VaultConfig) -> bool:
             return data.get("status") == "ok"
 
     except (FileNotFoundError, ConnectionRefusedError, socket.timeout):
-        daemon_dir = Path.home() / ".config" / "pkm"
-        daemon_dir.mkdir(parents=True, exist_ok=True)
         try:
-            subprocess.Popen(
-                [sys.executable, "-m", "pkm.daemon"],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
+            _spawn_daemon_if_unlocked(_daemon_config_dir())
         except Exception:
             pass
         return False

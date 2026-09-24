@@ -15,6 +15,8 @@ For a cross-note answer, the MCP host should call `search`, follow relevant
 `get_note_neighbors` results for at most two graph depths, call `read_note` on the
 selected evidence, and synthesize the answer itself.
 
+`search` uses the background daemon. If the daemon socket is down, the server starts one process (unless the daemon lock is already held), waits until the socket accepts connections, and retries the search once. The wait is bounded by `PKM_DAEMON_STARTUP_TIMEOUT` (default 45 seconds, polled every `PKM_DAEMON_STARTUP_POLL_SECONDS`, default 0.5). The tool returns `Daemon unavailable` only when the socket does not come up in time.
+
 The MCP tool wrappers are covered by scenario tests at the function layer and
 by a JSON-RPC tools/list contract test. This keeps the stdio protocol contract
 stable while allowing wrapper behavior such as missing notes, rename conflicts,

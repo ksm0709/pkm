@@ -12,7 +12,16 @@ import time
 import click
 from rich.console import Console
 
-from pkm.daemon import SOCKET_PATH, LOG_PATH
+from pkm.daemon import (
+    EXIT_REASON_IDLE,
+    EXIT_STATE_PATH,
+    LOCK_PATH,
+    LOG_PATH,
+    SOCKET_PATH,
+    daemon_argv_matches,
+    daemon_lock_held,
+    read_process_cmdline,
+)
 
 console = Console()
 
@@ -29,29 +38,36 @@ def _is_daemon_alive() -> bool:
 
 
 def _get_daemon_pid() -> int | None:
-    """Return the PID of the running daemon process, or None."""
     try:
-        import psutil
+        pid = int(LOCK_PATH.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+    if pid <= 0 or not daemon_lock_held(LOCK_PATH):
+        return None
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return None
+    except PermissionError:
+        pass
+    except OSError:
+        return None
+    cmdline = read_process_cmdline(pid)
+    if cmdline is not None and not daemon_argv_matches(cmdline):
+        return None
+    return pid
 
-        for proc in psutil.process_iter(["pid", "cmdline"]):
-            cmdline = proc.info.get("cmdline") or []
-            if "pkm.daemon" in " ".join(cmdline):
-                return proc.info["pid"]
-    except ImportError:
-        pass
-    # Fallback: grep /proc
+
+def daemon_status_code() -> str:
+    if _is_daemon_alive():
+        return "running"
+    if _get_daemon_pid():
+        return "stale"
     try:
-        result = subprocess.run(
-            ["pgrep", "-f", "pkm.daemon"],
-            capture_output=True,
-            text=True,
-        )
-        pids = result.stdout.strip().split()
-        if pids:
-            return int(pids[0])
-    except Exception:
-        pass
-    return None
+        reason = EXIT_STATE_PATH.read_text(encoding="utf-8").strip()
+    except OSError:
+        reason = ""
+    return "idle_exit" if reason == EXIT_REASON_IDLE else "stopped"
 
 
 @click.group("daemon")
@@ -62,19 +78,20 @@ def daemon_group() -> None:
 @daemon_group.command("status")
 def daemon_status() -> None:
     """Show whether the daemon is running."""
+    code = daemon_status_code()
     pid = _get_daemon_pid()
-    alive = _is_daemon_alive()
 
-    if alive:
+    if code == "running":
         pid_str = f"PID {pid}" if pid else "PID unknown"
         console.print(f"[green]running[/green]  ({pid_str})")
         console.print(f"Socket: [dim]{SOCKET_PATH}[/dim]")
-    elif pid:
+    elif code == "stale":
         console.print(
             f"[yellow]stale[/yellow]  (PID {pid} exists but socket unresponsive)"
         )
     else:
-        console.print("[red]stopped[/red]")
+        label = "stopped (idle exit)" if code == "idle_exit" else "stopped"
+        console.print(f"[red]{label}[/red]")
         console.print("Run [bold cyan]pkm daemon start[/bold cyan] to launch it.")
 
 
@@ -89,6 +106,7 @@ def daemon_start() -> None:
     try:
         proc = subprocess.Popen(
             [sys.executable, "-m", "pkm.daemon"],
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,

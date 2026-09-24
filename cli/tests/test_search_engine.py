@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import types
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -1025,6 +1027,45 @@ def test_search_via_daemon_returns_none_for_empty_error_or_bad_payload(
     )
 
     assert search_via_daemon("query", tmp_vault) is None
+
+
+def test_search_via_daemon_does_not_wait_or_spawn_over_a_held_lock(
+    tmp_vault: VaultConfig, tmp_path, monkeypatch
+):
+    """CLI search returns immediately, and a held lock prevents a second spawn."""
+    import fcntl
+    import os
+
+    _write_minimal_index(tmp_vault)
+    home = tmp_path / "home"
+    monkeypatch.setattr("pkm.search_engine.Path.home", lambda: home)
+    connects = {"n": 0}
+
+    def factory(*_args, **_kwargs):
+        connects["n"] += 1
+        return _FakeSocket(connect_error=FileNotFoundError("missing socket"))
+
+    popen_calls = []
+    monkeypatch.setattr("pkm.search_engine.socket.socket", factory)
+    monkeypatch.setattr(
+        "pkm.search_engine.subprocess.Popen",
+        lambda *args, **kwargs: popen_calls.append((args, kwargs)) or SimpleNamespace(pid=1),
+    )
+
+    assert search_via_daemon("query", tmp_vault) is None
+    assert connects["n"] == 1
+    assert popen_calls[0][1]["stdin"] is subprocess.DEVNULL
+
+    lock = home / ".config" / "pkm" / "daemon.lock"
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(lock, os.O_CREAT | os.O_RDWR, 0o644)
+    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    popen_calls.clear()
+    try:
+        assert search_via_daemon("query", tmp_vault, start_and_wait=True, startup_timeout=0) is None
+    finally:
+        os.close(fd)
+    assert popen_calls == []
 
 
 def test_search_via_daemon_connect_failure_starts_daemon_best_effort(

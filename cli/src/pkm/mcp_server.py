@@ -271,6 +271,7 @@ def search(
             top_n=top,
             memory_type_filter=memory_type,
             min_importance=min_importance,
+            start_and_wait=True,
         )
         if results is None:
             return {
