@@ -400,7 +400,7 @@ class TestSearch:
         assert result["count"] == 1 and result["results"][0]["note_id"] == "n"
         assert popen[0][0][0][-2:] == ["-m", "pkm.daemon"]
         assert popen[0][1]["stdin"] is subprocess.DEVNULL
-        assert 12.0 in timeouts
+        assert timeouts and max(timeouts) <= 12
 
     def test_search_errors_when_spawned_daemon_never_accepts(
         self, mcp_server, tmp_vault: VaultConfig, tmp_path: Path, monkeypatch

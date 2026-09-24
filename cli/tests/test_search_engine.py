@@ -1068,6 +1068,69 @@ def test_search_via_daemon_does_not_wait_or_spawn_over_a_held_lock(
     assert popen_calls == []
 
 
+def test_search_retry_read_uses_remaining_startup_budget(
+    tmp_vault: VaultConfig, tmp_path, monkeypatch
+):
+    """Socket wait and the retried read share one startup deadline."""
+    _write_minimal_index(tmp_vault)
+    monkeypatch.setattr("pkm.search_engine.Path.home", lambda: tmp_path / "home")
+    clock = {"now": 1000.0}
+    monkeypatch.setattr("pkm.search_engine.time.monotonic", lambda: clock["now"])
+    monkeypatch.setattr(
+        "pkm.search_engine.time.sleep",
+        lambda seconds: clock.__setitem__("now", clock["now"] + seconds),
+    )
+    monkeypatch.setenv("PKM_DAEMON_STARTUP_POLL_SECONDS", "1")
+    payload = (
+        '{"results":[{"note_id":"n","title":"N","score":0.5,'
+        '"backlink_count":0,"tags":[],"rank":1}]}\n'
+    )
+    steps = [
+        FileNotFoundError("down"),
+        FileNotFoundError("down"),
+        FileNotFoundError("down"),
+        "",
+        payload,
+    ]
+    timeouts: list[float] = []
+
+    class Sock:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            return False
+
+        def settimeout(self, timeout):
+            timeouts.append(timeout)
+
+        def connect(self, _path):
+            step = steps.pop(0)
+            if isinstance(step, BaseException):
+                raise step
+            self.line = step
+
+        def sendall(self, _data):
+            return None
+
+        def makefile(self, *_args, **_kwargs):
+            return self
+
+        def readline(self):
+            return getattr(self, "line", "")
+
+    monkeypatch.setattr("pkm.search_engine.socket.socket", lambda *_a, **_k: Sock())
+    monkeypatch.setattr(
+        "pkm.search_engine.subprocess.Popen", lambda *_a, **_k: SimpleNamespace(pid=1)
+    )
+
+    results = search_via_daemon("query", tmp_vault, start_and_wait=True, startup_timeout=5)
+
+    assert [result.note_id for result in results or []] == ["n"]
+    assert timeouts[-1] == 3.0
+    assert max(timeouts) == 3.0
+
+
 def test_search_via_daemon_connect_failure_starts_daemon_best_effort(
     tmp_vault: VaultConfig, tmp_path, monkeypatch
 ):

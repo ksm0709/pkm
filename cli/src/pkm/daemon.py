@@ -526,11 +526,32 @@ def read_process_cmdline(pid: int) -> list[str] | None:
     return [part.decode("utf-8", "surrogateescape") for part in parts]
 
 
+def _python_interpreter_name(argv0: str) -> bool:
+    """True for python, python3, and python3.x (optional .exe)."""
+    name = Path(argv0).name
+    lower = name.lower()
+    if lower.endswith(".exe"):
+        lower = lower[:-4]
+    if lower in {"python", "python3"}:
+        return True
+    prefix = "python3."
+    if not lower.startswith(prefix):
+        return False
+    parts = lower[len(prefix) :].split(".")
+    return bool(parts) and all(part.isdigit() for part in parts)
+
+
 def daemon_argv_matches(argv: list[str]) -> bool:
+    """Exact daemon argv, including a shebang `pkm daemon run` (interpreter + script)."""
     if len(argv) == 3 and argv[1:] == ["-m", "pkm.daemon"]:
         return True
-    name = Path(argv[0]).name if argv else ""
-    return len(argv) == 3 and name in {"pkm", "pkm.exe"} and argv[1:] == ["daemon", "run"]
+    if len(argv) not in {3, 4} or argv[-2:] != ["daemon", "run"]:
+        return False
+    if Path(argv[-3]).name not in {"pkm", "pkm.exe"}:
+        return False
+    if len(argv) == 3:
+        return True
+    return _python_interpreter_name(argv[0])
 
 
 def daemon_lock_held(path: Path | None = None) -> bool:

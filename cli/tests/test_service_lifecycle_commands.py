@@ -116,6 +116,52 @@ def test_get_daemon_pid_uses_lock_file_not_cmdline_substring(monkeypatch, tmp_pa
         os.close(fd)
 
 
+def test_shebang_daemon_run_status_and_stop(monkeypatch, tmp_path):
+    """A 4-element shebang `pkm daemon run` is the daemon; a shell argv is not."""
+    import pkm.commands.daemon as daemon_mod
+
+    lock_path = tmp_path / "daemon.lock"
+    monkeypatch.setattr(daemon_mod, "LOCK_PATH", lock_path)
+    monkeypatch.setattr(daemon_mod, "EXIT_STATE_PATH", tmp_path / "no-exit")
+    monkeypatch.setattr(daemon_mod, "_is_daemon_alive", lambda: False)
+    lock_path.write_text("4242\n", encoding="utf-8")
+    fd = os.open(lock_path, os.O_RDWR)
+    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    killed = []
+
+    def fake_kill(pid, sig):
+        if sig == 0:
+            return None
+        killed.append((pid, sig))
+
+    monkeypatch.setattr(daemon_mod.os, "kill", fake_kill)
+    shebang = ["/usr/bin/python3.12", "/home/user/.local/bin/pkm", "daemon", "run"]
+    monkeypatch.setattr(daemon_mod, "read_process_cmdline", lambda _pid: list(shebang))
+    try:
+        status = _runner().invoke(daemon_group, ["status"])
+        assert status.exit_code == 0
+        assert "stale" in status.output
+        assert "4242" in status.output
+        stopped = _runner().invoke(daemon_group, ["stop"])
+        assert stopped.exit_code == 0
+        assert "Daemon stopped" in stopped.output
+        assert killed == [(4242, daemon_mod.signal.SIGTERM)]
+
+        monkeypatch.setattr(
+            daemon_mod,
+            "read_process_cmdline",
+            lambda _pid: ["bash", "-c", "pkm daemon run"],
+        )
+        hidden = _runner().invoke(daemon_group, ["status"])
+        assert "stale" not in hidden.output
+        assert "stopped" in hidden.output
+        missed = _runner().invoke(daemon_group, ["stop"])
+        assert "not running" in missed.output
+        assert killed == [(4242, daemon_mod.signal.SIGTERM)]
+    finally:
+        os.close(fd)
+
+
 def test_status_idle_exit_is_not_stale(monkeypatch, tmp_path):
     """Idle-timeout shutdown is stopped (idle exit); stale requires a live PID."""
     from pkm.commands.daemon import daemon_status_code

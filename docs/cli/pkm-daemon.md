@@ -14,7 +14,7 @@ Manage the background ML daemon for fast semantic search.
 
 ## Status
 
-`pkm daemon status` prints `running`, `stale` (live lock-file PID, socket down), `stopped (idle exit)`, or `stopped`. The PID comes from `~/.config/pkm/daemon.lock` while that process holds the lock and its argv is exactly `python -m pkm.daemon` or `pkm daemon run`. Idle shutdown writes `idle` to `~/.config/pkm/daemon.exit` and the next start removes it. `pkm daemon start` closes the daemon's stdin.
+`pkm daemon status` prints `running`, `stale` (live lock-file PID, socket down), `stopped (idle exit)`, or `stopped`. The PID comes from `~/.config/pkm/daemon.lock` while that process holds the lock and its argv is exactly `python -m pkm.daemon`, `pkm daemon run`, or a shebang launch `[python, …/pkm, daemon, run]`. Idle shutdown writes `idle` to `~/.config/pkm/daemon.exit` and the next start removes it. `pkm daemon start` closes the daemon's stdin.
 
 ## Examples
 ```bash

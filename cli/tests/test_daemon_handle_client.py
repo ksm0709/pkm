@@ -342,7 +342,10 @@ def test_cmdline_match_is_exact_for_psutil_and_proc(monkeypatch, tmp_path) -> No
     proc = tmp_path / "cmdline"
     monkeypatch.setattr(daemon, "_load_psutil", lambda: None)
     monkeypatch.setattr(daemon, "_proc_cmdline_path", lambda _pid: proc)
-    proc.write_bytes(b"bash\0-c\0pkm.daemon\0")
+    proc.write_bytes(b"bash\0-c\0pkm daemon run\0")
     assert not daemon.daemon_argv_matches(daemon.read_process_cmdline(3) or [])
-    proc.write_bytes(b"/usr/bin/pkm\0daemon\0run\0")
+    proc.write_bytes(
+        b"/usr/bin/python3.12\0/home/u/.local/bin/pkm\0daemon\0run\0"
+    )
     assert daemon.daemon_argv_matches(daemon.read_process_cmdline(3) or [])
+    assert not daemon.daemon_argv_matches(["sh", "-c", "/home/u/.local/bin/pkm daemon run"])

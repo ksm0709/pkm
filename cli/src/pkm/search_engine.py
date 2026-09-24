@@ -545,16 +545,34 @@ def _daemon_config_dir() -> Path:
 def _startup_seconds(name: str, default: float, override: float | None = None) -> float:
     if override is not None:
         return override
-    from pkm.daemon import _env_float
+    try:
+        value = float(os.environ.get(name, ""))
+    except ValueError:
+        return default
+    return value if value >= 0 else default
 
-    return _env_float(name, default)
+
+def _daemon_lock_held(lock_path: Path) -> bool:
+    if not lock_path.exists():
+        return False
+    try:
+        fd = os.open(lock_path, os.O_RDONLY)
+    except OSError:
+        return False
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            return True
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return False
+    finally:
+        os.close(fd)
 
 
 def _spawn_daemon_if_unlocked(config_dir: Path) -> None:
     config_dir.mkdir(parents=True, exist_ok=True)
-    from pkm.daemon import daemon_lock_held
-
-    if daemon_lock_held(config_dir / "daemon.lock"):
+    if _daemon_lock_held(config_dir / "daemon.lock"):
         return
     subprocess.Popen(
         [sys.executable, "-m", "pkm.daemon"],
@@ -565,9 +583,8 @@ def _spawn_daemon_if_unlocked(config_dir: Path) -> None:
     )
 
 
-def _wait_for_daemon_socket(sock_path: Path, timeout: float) -> bool:
+def _wait_for_daemon_socket(sock_path: Path, deadline: float) -> bool:
     interval = _startup_seconds(DAEMON_STARTUP_POLL_ENV, DEFAULT_DAEMON_STARTUP_POLL)
-    deadline = time.monotonic() + timeout
     while True:
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
@@ -640,10 +657,13 @@ def search_via_daemon(
         timeout = _startup_seconds(
             DAEMON_STARTUP_TIMEOUT_ENV, DEFAULT_DAEMON_STARTUP_TIMEOUT, startup_timeout
         )
-        if not _wait_for_daemon_socket(sock_path, timeout):
+        deadline = time.monotonic() + timeout
+        if not _wait_for_daemon_socket(sock_path, deadline):
             return None
         try:
-            return _search_socket(sock_path, request, read_timeout=timeout)
+            # Socket wait and this read share one budget. Floor avoids a 0 timeout.
+            remaining = max(0.2, deadline - time.monotonic())
+            return _search_socket(sock_path, request, read_timeout=remaining)
         except Exception:
             return None
     except Exception:
