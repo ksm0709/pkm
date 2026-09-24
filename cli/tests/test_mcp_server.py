@@ -9,6 +9,7 @@ import sys
 import time
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import click
@@ -338,6 +339,86 @@ class TestSearch:
             result = mcp_server.search(query="test")
             assert "error" in result
             assert result["code"] == -32000
+
+    def _patch_daemon_io(self, monkeypatch, tmp_path, steps, connects=None):
+        queue = list(steps)
+        timeouts: list[float] = []
+
+        class Sock:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+            def settimeout(self, timeout):
+                timeouts.append(timeout)
+
+            def connect(self, _path):
+                if connects is not None:
+                    connects["n"] += 1
+                step = queue.pop(0) if queue else steps[-1]
+                if isinstance(step, BaseException):
+                    raise step
+                self.line = step
+
+            def sendall(self, _data):
+                return None
+
+            def makefile(self, *_args, **_kwargs):
+                return self
+
+            def readline(self):
+                return getattr(self, "line", "")
+
+        popen: list = []
+        monkeypatch.setattr("pkm.search_engine.Path.home", lambda: tmp_path / "home")
+        monkeypatch.setattr("pkm.search_engine.socket.socket", lambda *_a, **_k: Sock())
+        monkeypatch.setattr(
+            "pkm.search_engine.subprocess.Popen",
+            lambda *args, **kwargs: popen.append((args, kwargs)) or SimpleNamespace(pid=4),
+        )
+        monkeypatch.setattr("pkm.search_engine.time.sleep", lambda *_a: None)
+        return popen, timeouts
+
+    def test_search_retries_after_spawned_daemon_accepts_connections(
+        self, mcp_server, tmp_vault: VaultConfig, tmp_path: Path, monkeypatch
+    ) -> None:
+        """MCP search waits for the spawned daemon socket and retries once."""
+        (tmp_vault.pkm_dir / "index.json").write_text("{}", encoding="utf-8")
+        payload = (
+            '{"results":[{"note_id":"n","title":"N","score":0.5,'
+            '"backlink_count":0,"tags":[],"rank":1}]}\n'
+        )
+        popen, timeouts = self._patch_daemon_io(
+            monkeypatch, tmp_path, [FileNotFoundError("missing"), "", payload]
+        )
+        monkeypatch.setenv("PKM_DAEMON_STARTUP_TIMEOUT", "12")
+
+        result = mcp_server.search(query="recall")
+
+        assert result["count"] == 1 and result["results"][0]["note_id"] == "n"
+        assert popen[0][0][0][-2:] == ["-m", "pkm.daemon"]
+        assert popen[0][1]["stdin"] is subprocess.DEVNULL
+        assert timeouts and max(timeouts) <= 12
+
+    def test_search_errors_when_spawned_daemon_never_accepts(
+        self, mcp_server, tmp_vault: VaultConfig, tmp_path: Path, monkeypatch
+    ) -> None:
+        """Startup timeout returns the daemon-unavailable error without hanging."""
+        (tmp_vault.pkm_dir / "index.json").write_text("{}", encoding="utf-8")
+        connects = {"n": 0}
+        popen, _timeouts = self._patch_daemon_io(
+            monkeypatch, tmp_path, [FileNotFoundError("missing")], connects
+        )
+        monkeypatch.setenv("PKM_DAEMON_STARTUP_TIMEOUT", "0")
+
+        result = mcp_server.search(query="recall")
+
+        assert result["code"] == -32000
+        assert "Daemon unavailable" in result["error"]
+        assert connects["n"] >= 2 and len(popen) == 1
+        assert popen[0][1]["stdin"] is subprocess.DEVNULL
 
     def test_cross_vault(self, mcp_server, tmp_path: Path) -> None:
         """Passing vault parameter resolves alternate vault."""

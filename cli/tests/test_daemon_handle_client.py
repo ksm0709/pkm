@@ -262,7 +262,7 @@ async def test_handle_client_empty_and_invalid_requests_are_safe() -> None:
 
 
 @pytest.mark.anyio
-async def test_idle_checker_closes_server_after_timeout(monkeypatch) -> None:
+async def test_idle_checker_closes_server_after_timeout(monkeypatch, tmp_path) -> None:
     """Idle checker closes the server when activity is older than the timeout."""
     import pkm.daemon as daemon
 
@@ -276,11 +276,76 @@ async def test_idle_checker_closes_server_after_timeout(monkeypatch) -> None:
         return None
 
     server = Server()
+    marker = tmp_path / "daemon.exit"
+    monkeypatch.setattr(daemon, "EXIT_STATE_PATH", marker)
     monkeypatch.delenv(daemon.KEEPALIVE_ENV, raising=False)
     monkeypatch.setattr(daemon.asyncio, "sleep", fake_sleep)
     monkeypatch.setattr(daemon, "_activity_now", lambda: 10_000)
     daemon.DaemonState.last_activity = 0
+    daemon.DaemonState.exit_reason = None
 
     await daemon.idle_checker(server)
 
     assert server.closed is True
+    assert daemon.DaemonState.exit_reason == daemon.EXIT_REASON_IDLE
+    assert marker.read_text(encoding="utf-8").strip() == "idle"
+
+
+def test_daemon_lock_records_pid_and_start_clears_idle_marker(monkeypatch, tmp_path) -> None:
+    """The singleton lock stores this PID, and a successful start clears idle exit."""
+    import os
+
+    import pkm.daemon as daemon
+
+    lock_path = tmp_path / "daemon.lock"
+    marker = tmp_path / "daemon.exit"
+    marker.write_text("idle\n", encoding="utf-8")
+    monkeypatch.setattr(daemon, "LOCK_PATH", lock_path)
+    monkeypatch.setattr(daemon, "EXIT_STATE_PATH", marker)
+    daemon.DaemonState.exit_reason = "idle"
+
+    lock_fd = daemon._acquire_singleton_lock()
+    try:
+        assert lock_fd is not None
+        assert lock_path.read_text(encoding="utf-8").strip() == str(os.getpid())
+        assert daemon._acquire_singleton_lock() is None
+        daemon._note_daemon_started()
+        assert not marker.exists()
+        assert daemon.DaemonState.exit_reason is None
+    finally:
+        if lock_fd is not None:
+            lock_fd.close()
+
+
+def test_cmdline_match_is_exact_for_psutil_and_proc(monkeypatch, tmp_path) -> None:
+    """psutil and /proc both require exact daemon argv, not a substring."""
+    from types import ModuleType
+
+    import pkm.daemon as daemon
+
+    class Process:
+        def __init__(self, pid):
+            self.args = (
+                ["bash", "-c", "python -m pkm.daemon"]
+                if pid == 1
+                else ["/usr/bin/python3", "-m", "pkm.daemon"]
+            )
+
+        def cmdline(self):
+            return list(self.args)
+
+    fake = ModuleType("psutil")
+    fake.Process = Process
+    monkeypatch.setattr(daemon, "_load_psutil", lambda: fake)
+    assert not daemon.daemon_argv_matches(daemon.read_process_cmdline(1) or [])
+    assert daemon.daemon_argv_matches(daemon.read_process_cmdline(2) or [])
+    proc = tmp_path / "cmdline"
+    monkeypatch.setattr(daemon, "_load_psutil", lambda: None)
+    monkeypatch.setattr(daemon, "_proc_cmdline_path", lambda _pid: proc)
+    proc.write_bytes(b"bash\0-c\0pkm daemon run\0")
+    assert not daemon.daemon_argv_matches(daemon.read_process_cmdline(3) or [])
+    proc.write_bytes(
+        b"/usr/bin/python3.12\0/home/u/.local/bin/pkm\0daemon\0run\0"
+    )
+    assert daemon.daemon_argv_matches(daemon.read_process_cmdline(3) or [])
+    assert not daemon.daemon_argv_matches(["sh", "-c", "/home/u/.local/bin/pkm daemon run"])

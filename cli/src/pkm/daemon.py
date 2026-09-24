@@ -23,6 +23,8 @@ from pkm.search_service import get_cached_index, resolve_search_vault, run_in_pr
 
 SOCKET_PATH = Path.home() / ".config" / "pkm" / "daemon.sock"
 LOCK_PATH = Path.home() / ".config" / "pkm" / "daemon.lock"
+EXIT_STATE_PATH = LOCK_PATH.with_name("daemon.exit")
+EXIT_REASON_IDLE = "idle"
 LOG_PATH = Path.home() / ".config" / "pkm" / "daemon.log"
 LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 IDLE_TIMEOUT = 3600
@@ -102,6 +104,7 @@ class DaemonState:
 
     auto_index_last_attempt: dict[str, float] = {}
     indexing_vaults: set[str] = set()
+    exit_reason: str | None = None
 
 
 def _bump_activity() -> None:
@@ -395,6 +398,8 @@ async def idle_checker(server: asyncio.Server):
         await asyncio.sleep(60)
         if _activity_now() - DaemonState.last_activity > IDLE_TIMEOUT:
             logger.info("Idle timeout reached. Shutting down daemon.")
+            DaemonState.exit_reason = EXIT_REASON_IDLE
+            _persist_shutdown_marker()
             server.close()
             break
 
@@ -492,20 +497,129 @@ async def version_checker(server: asyncio.Server):
             logger.warning("Version check error: %s", e)
 
 
+def _load_psutil():
+    try:
+        import psutil
+    except ImportError:
+        return None
+    return psutil
+
+
+def _proc_cmdline_path(pid: int) -> Path:
+    return Path(f"/proc/{pid}/cmdline")
+
+
+def read_process_cmdline(pid: int) -> list[str] | None:
+    psutil = _load_psutil()
+    if psutil is not None:
+        try:
+            return [str(arg) for arg in psutil.Process(pid).cmdline()]
+        except Exception:
+            pass
+    try:
+        raw = _proc_cmdline_path(pid).read_bytes()
+    except OSError:
+        return None
+    parts = raw.split(b"\0")
+    if parts and parts[-1] == b"":
+        parts.pop()
+    return [part.decode("utf-8", "surrogateescape") for part in parts]
+
+
+def _python_interpreter_name(argv0: str) -> bool:
+    """True for python, python3, and python3.x (optional .exe)."""
+    name = Path(argv0).name
+    lower = name.lower()
+    if lower.endswith(".exe"):
+        lower = lower[:-4]
+    if lower in {"python", "python3"}:
+        return True
+    prefix = "python3."
+    if not lower.startswith(prefix):
+        return False
+    parts = lower[len(prefix) :].split(".")
+    return bool(parts) and all(part.isdigit() for part in parts)
+
+
+def daemon_argv_matches(argv: list[str]) -> bool:
+    """Exact daemon argv, including a shebang `pkm daemon run` (interpreter + script)."""
+    if len(argv) == 3 and argv[1:] == ["-m", "pkm.daemon"]:
+        return True
+    if len(argv) not in {3, 4} or argv[-2:] != ["daemon", "run"]:
+        return False
+    if Path(argv[-3]).name not in {"pkm", "pkm.exe"}:
+        return False
+    if len(argv) == 3:
+        return True
+    return _python_interpreter_name(argv[0])
+
+
+def daemon_lock_held(path: Path | None = None) -> bool:
+    lock_path = LOCK_PATH if path is None else path
+    if not lock_path.exists():
+        return False
+    try:
+        fd = os.open(lock_path, os.O_RDONLY)
+    except OSError:
+        return False
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            return True
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return False
+    finally:
+        os.close(fd)
+
+
+def _clear_exit_marker() -> None:
+    try:
+        EXIT_STATE_PATH.unlink(missing_ok=True)
+    except OSError:
+        logger.warning("Could not clear daemon exit marker at %s", EXIT_STATE_PATH)
+
+
+def _persist_shutdown_marker() -> None:
+    if getattr(DaemonState, "exit_reason", None) != EXIT_REASON_IDLE:
+        _clear_exit_marker()
+        return
+    try:
+        EXIT_STATE_PATH.write_text(EXIT_REASON_IDLE + "\n", encoding="utf-8")
+    except OSError:
+        logger.warning("Could not record idle exit at %s", EXIT_STATE_PATH)
+
+
+def _note_daemon_started() -> None:
+    DaemonState.exit_reason = None
+    _clear_exit_marker()
+
+
+def _acquire_singleton_lock():
+    LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+    lock_fd = open(LOCK_PATH, "a+", encoding="utf-8")
+    try:
+        fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        lock_fd.close()
+        return None
+    lock_fd.seek(0)
+    lock_fd.truncate()
+    lock_fd.write(f"{os.getpid()}\n")
+    lock_fd.flush()
+    return lock_fd
+
+
 async def async_main():
     SOCKET_PATH.parent.mkdir(parents=True, exist_ok=True)
     os.chmod(SOCKET_PATH.parent, 0o700)
 
     # Acquire exclusive flock — OS auto-releases on process death (even SIGKILL)
-    _lock_fd = open(LOCK_PATH, "w")
-    try:
-        fcntl.flock(_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
+    _lock_fd = _acquire_singleton_lock()
+    if _lock_fd is None:
         logger.warning("Another daemon is already running (lock held). Exiting.")
-        _lock_fd.close()
         return
-    _lock_fd.write(str(os.getpid()))
-    _lock_fd.flush()
+    _note_daemon_started()
 
     # Clean up stale socket from a crashed daemon
     SOCKET_PATH.unlink(missing_ok=True)
@@ -567,6 +681,7 @@ async def async_main():
                 SOCKET_PATH.unlink()
             except OSError:
                 pass
+        _persist_shutdown_marker()
         try:
             _lock_fd.close()
             LOCK_PATH.unlink(missing_ok=True)
