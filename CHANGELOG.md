@@ -2,6 +2,23 @@
 
 <!-- version list -->
 
+## v3.3.1 (2026-09-24)
+
+### Bug Fixes
+
+- Identify the daemon from its lock file and wait for MCP startup
+  ([#1](https://github.com/ksm0709/pkm/pull/1),
+  [`3d794dc`](https://github.com/ksm0709/pkm/commit/3d794dc447bc56b0d6e7f971bac4e3743aba36c2))
+
+- Recognize shebang pkm daemon run and share the MCP startup budget
+  ([#1](https://github.com/ksm0709/pkm/pull/1),
+  [`3d794dc`](https://github.com/ksm0709/pkm/commit/3d794dc447bc56b0d6e7f971bac4e3743aba36c2))
+
+- Stop false stale daemon status and wait for MCP startup
+  ([#1](https://github.com/ksm0709/pkm/pull/1),
+  [`3d794dc`](https://github.com/ksm0709/pkm/commit/3d794dc447bc56b0d6e7f971bac4e3743aba36c2))
+
+
 ## v3.3.0 (2026-08-15)
 
 ### Features
